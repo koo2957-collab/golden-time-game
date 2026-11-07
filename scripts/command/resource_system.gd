@@ -186,6 +186,7 @@ func _try_enter(entry: Dictionary, tick: int) -> bool:
 			events.add(tick, "staging_full", {"squad": str(data.get("name", ""))})
 		return false
 	var squad := units.add_squad(data, false)
+	squad.arrival = "후착"
 	_state[squad.id] = State.EN_ROUTE
 	var vehicles := units.vehicles_of_squad(squad.id)
 	# 같은 차로에 이미 들어오는 차량이 있으면 그 뒤에서 출발한다

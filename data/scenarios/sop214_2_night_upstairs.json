@@ -47,13 +47,18 @@
   "dispatch": {
     "title": "출동 지령 — 주택 화재 (새벽)",
     "lines": [
-      "대상: 2층 단독주택 (벽돌조), 주택가 이면도로",
+      "대상: 2층 단독주택 (벽돌조), 주택가 이면도로 · 동쪽 약 2m에 단층 이웃집",
       "신고 내용(남편, 휴대전화): \"2층 딸 방에서 불이 났어요. 아내랑 딸이 아직 안에 있어요!\"",
       "시간·날씨: 03:40, 맑음, 북풍 3m/s",
       "출동대: 진압1(펌프차·물탱크차), 구조1 (선착) · 후착: 진압2(펌프차, 약 4분 뒤), 구조2(약 6분 뒤)",
       "소화전: 건물 동쪽 보도 지상식 1개소 · 대기1단계 장소: 도로 동쪽"
     ],
     "reported_victims": true
+  },
+  "wind": {
+    "from_deg": 0,
+    "speed_mps": 3,
+    "note": "바람이 불어오는 방향(북=0, 시계방향)과 풍속. 인접 건물 가열에 영향 (SOP 214-2.4.4)"
   },
   "report_truth": {
     "use": "단독주택",
@@ -65,6 +70,7 @@
       "safety.ff_down",
       "safety.air_exit",
       "safety.withdraw",
+      "safety.collapse",
       "safety.command_post",
       "safety.rit",
       "safety.emergency",
@@ -74,6 +80,7 @@
       "rescue.time",
       "rescue.search_order",
       "property.spread",
+      "property.exposure",
       "property.water",
       "fire.extinguish",
       "fire.water_supply",

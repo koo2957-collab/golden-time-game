@@ -39,6 +39,8 @@ var height := 0
 var faces: Dictionary = {}
 ## 소화전 위치 (가장 아래층 기준 셀)
 var hydrants: Array[Vector2i] = []
+## 도면 안의 건물들 [{id, name, rect: Rect2i, exposure}]. 첫 번째(main)가 화재 건물, exposure는 인접 건물(연소 확대 대상)
+var structures: Array[Dictionary] = []
 var load_errors: PackedStringArray = []
 
 var _floors: Dictionary = {}  # level -> FloorData
@@ -124,8 +126,10 @@ func road_rows(level: int) -> Vector2i:
 	return rows
 
 
-## 해당 층에서 건물 구조물(바닥·벽·문·창·계단)이 차지하는 범위
+## 해당 층에서 화재 건물(main)의 범위. structures가 없으면 구조물(바닥·벽·문·창·계단)이 차지하는 범위
 func footprint(level: int) -> Rect2i:
+	if not structures.is_empty():
+		return structures[0].rect
 	var result := Rect2i()
 	var found := false
 	for y in height:
@@ -145,6 +149,13 @@ func _parse(data: Dictionary) -> void:
 	width = int(data.get("width", 0))
 	height = int(data.get("height", 0))
 	faces = data.get("faces", {})
+	for st: Dictionary in data.get("structures", []):
+		var r: Array = st.get("rect", [0, 0, 0, 0])
+		structures.append({
+			"id": str(st.get("id", "")), "name": str(st.get("name", "")),
+			"rect": Rect2i(int(r[0]), int(r[1]), int(r[2]), int(r[3])),
+			"exposure": bool(st.get("exposure", false)),
+		})
 	for h: Array in data.get("hydrants", []):
 		hydrants.append(Vector2i(int(h[0]), int(h[1])))
 	if width <= 0 or height <= 0:
@@ -200,3 +211,16 @@ func _parse_floor(data: Dictionary) -> void:
 			"rect": Rect2i(int(r[0]), int(r[1]), int(r[2]), int(r[3])),
 		})
 	_floors[f.level] = f
+
+
+## 셀이 속한 건물 (structures). 없으면 빈 사전
+func structure_at(x: int, y: int) -> Dictionary:
+	for st in structures:
+		if (st.rect as Rect2i).has_point(Vector2i(x, y)):
+			return st
+	return {}
+
+
+## 인접 건물(연소 확대 대상)의 셀인지
+func is_exposure(x: int, y: int) -> bool:
+	return bool(structure_at(x, y).get("exposure", false))

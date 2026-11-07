@@ -25,7 +25,7 @@ func _first_event(sim: SimWorld, type: String, room: String) -> Dictionary:
 
 func test_layout_built_from_plan() -> void:
 	var sim := _open_run()
-	assert_eq(sim.fire.comps.size(), 12, "방 12개가 구획으로 만들어짐")
+	assert_eq(sim.fire.comps.size(), 14, "방 12개 + 옆집 2개가 구획으로 만들어짐")
 	var living := _room(sim, "1층 거실")
 	var kinds := {}
 	for oi in living.openings:

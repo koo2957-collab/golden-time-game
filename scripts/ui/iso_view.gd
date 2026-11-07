@@ -304,6 +304,11 @@ func _draw_cell_objects(x: int, y: int) -> void:
 		_box(Vector2(x + 0.3, y + 0.3), Vector2(x + 0.7, y + 0.7), 0.0, HYDRANT_M, PlanStyle.HYDRANT_COLOR, PlanStyle.HYDRANT_COLOR)
 		var label := proj.to_screen(Vector2(x + 0.5, y + 0.5), HYDRANT_M + 0.4)
 		draw_string(PlanStyle.font(), label + Vector2(-30, 0), "소화전", HORIZONTAL_ALIGNMENT_CENTER, 60, 13, PlanStyle.HYDRANT_COLOR.lightened(0.4))
+	if level == sim.building.levels()[0] and Vector2i(x, y) == sim.gas.valve and sim.gas.known(sim.command.survey):
+		var gc := PlanStyle.GAS_COLOR if sim.gas.open else PlanStyle.GAS_COLOR.darkened(0.5)
+		_box(Vector2(x + 0.25, y + 0.25), Vector2(x + 0.75, y + 0.75), 0.0, 0.9, gc, gc)
+		var gl := proj.to_screen(Vector2(x + 0.5, y + 0.5), 1.3)
+		draw_string(PlanStyle.font(), gl + Vector2(-60, 0), "%s%s" % [sim.gas.valve_text, "" if sim.gas.open else " (차단)"], HORIZONTAL_ALIGNMENT_CENTER, 120, 13, gc.lightened(0.4))
 	var fh := _furniture_height(x, y)
 	if fh > 0.0:
 		var color := THERMAL_FURNITURE if thermal else _furniture_color(x, y)

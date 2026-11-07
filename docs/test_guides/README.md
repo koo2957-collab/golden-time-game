@@ -25,3 +25,4 @@
 | M6b 시나리오·다시 하기 | [M6b_scenarios_replay.md](M6b_scenarios_replay.md) |
 | M6.5 2025 SOP 정합화 | [M6.5_sop2025.md](M6.5_sop2025.md) |
 | M7a 명령칸·교육 모드 | [M7a_command_cards.md](M7a_command_cards.md) |
+| M7b-1 인접 건물·가스·붕괴·후착대 | [M7b1_exposure.md](M7b1_exposure.md) |

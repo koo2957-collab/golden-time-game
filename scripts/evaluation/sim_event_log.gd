@@ -201,6 +201,20 @@ static func describe_text(e: Dictionary) -> String:
 			text = "%s — %s" % [e.reason, e.crew]
 		"tactical_done":
 			text = "%s — %s" % [e.text, e.crew]
+		"exposure_heating":
+			text = "%s 외벽 가열 (%s 화염) — 경계관창 필요" % [e.target, e.get("from", "")]
+		"exposure_ignition":
+			text = "%s으로 연소 확대" % e.target
+		"collapse_sign":
+			text = "붕괴 징후 (폭음·균열음) — %s" % e.room
+		"collapse":
+			text = "붕괴 — %s" % e.room
+		"gas_off_start":
+			text = "가스 밸브 차단하러 감 — %s" % e.crew
+		"gas_shutoff":
+			text = "%s 차단 — %s" % [e.what, e.crew]
+		"gas_explosion":
+			text = "가스 폭발 — %s" % e.room
 		"activity_ended":
 			text = "활동 종료 — %s" % e.reason
 		"span_warning":

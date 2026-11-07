@@ -12,6 +12,7 @@ extends RefCounted
 ##   search:       인명검색 (crew_ids, target = 방 안 셀)
 ##   rescue / rescue_ff: 요구조자(other = 요구조자 id) / 쓰러진 대원(other = 대원 id) 구조 (crew_ids 중 첫 조)
 ##   overhaul:     잔불정리 (crew_ids, target = 방 안 셀, SOP 202-6)
+##   gas_off:      가스 밸브 차단 (crew_ids 중 첫 조, SOP 214-2.2)
 
 var tick := -1
 var action := ""
@@ -74,6 +75,13 @@ func execute(sim: SimWorld) -> void:
 				sim.tactical.cancel(id)
 				sim.rescue.cancel(id)
 				sim.rekindle.order_overhaul(id, target, tick)
+		"gas_off":
+			for id in crew_ids:
+				sim.doors.cancel(id)
+				sim.rescue.cancel(id)
+				sim.tactical.cancel(id)
+				if sim.gas.order_off(id, tick):
+					break
 		"stop":
 			for id in crew_ids:
 				sim.tactical.cancel(id)

@@ -272,7 +272,7 @@ func _check_spread() -> Dictionary:
 	var spread: PackedStringArray = []
 	var flashed: PackedStringArray = []
 	for c in sim.fire.comps:
-		if c.ever_burned and c != origin:
+		if c.ever_burned and c != origin and not sim.fire.is_exposure_comp(c):
 			spread.append(c.display_name())
 		if c.flashed:
 			flashed.append(c.display_name())
@@ -281,6 +281,52 @@ func _check_spread() -> Dictionary:
 	if not flashed.is_empty():
 		detail += " · 플래시오버: " + ", ".join(flashed)
 	return {"score": clampf(1.0 - spread.size() / bad, 0.0, 1.0), "detail": detail}
+
+
+## 인접 건물 연소 확대 방지 (SOP 214-2.4): 가열이 시작되지 않았으면 해당 없음
+func _check_exposure() -> Dictionary:
+	var ex := sim.exposure
+	if not ex.has_exposure() or ex.peak < float(_params.get("min_ratio", 0.2)):
+		return {}
+	var name := ex.exposure_name()
+	if not ex.ignited.is_empty():
+		var e: Dictionary = sim.events.of_type("exposure_ignition")[0]
+		return {"score": 0.0, "detail": "%s %s으로 연소 확대 — 경계관창을 두지 않음" % [_t(e.tick), e.target]}
+	var pct := roundi(ex.peak * 100.0)
+	if ex.protected_tick < 0:
+		return {"score": 0.3, "detail": "%s 외벽 가열 최고 %d%% — 경계관창 없이 불이 옮겨 붙지 않았을 뿐" % [name, pct]}
+	return {"score": clampf(1.0 - maxf(0.0, ex.peak - 0.4) / 0.6, 0.4, 1.0),
+		"detail": "%s 외벽 가열 최고 %d%% · 경계관창 %s부터" % [name, pct, _t(ex.protected_tick)]}
+
+
+## 가스 차단 (SOP 214-2.2): 가스 시설이 없으면 해당 없음
+func _check_gas() -> Dictionary:
+	var g := sim.gas
+	if not g.has_gas():
+		return {}
+	if g.exploded:
+		return {"score": 0.0, "detail": "밸브가 열린 채 가스 폭발 (%s)" % g.valve_text}
+	if g.closed_tick < 0:
+		return {"score": 0.1, "detail": "%s를 끝까지 차단하지 않음" % g.valve_text}
+	var t := g.closed_tick * SimClock.TICK_DT
+	return {"score": _linear(t, _params.good_s, _params.bad_s), "detail": "%s 차단 %s (기준 %d분 이내)" % [g.valve_text, _t(g.closed_tick), int(_params.good_s / 60)]}
+
+
+## 붕괴 징후 후 철수 (SOP 205-3.5, 214-2.5): 징후가 없으면 해당 없음
+func _check_collapse() -> Dictionary:
+	var first := sim.collapse.first_sign_tick()
+	if first < 0:
+		return {}
+	for e in sim.events.of_type("ff_down"):
+		if e.reason == "붕괴":
+			return {"score": 0.0, "detail": "붕괴 징후(%s) 뒤 철수하지 않아 대원이 붕괴에 휘말림" % _t(first)}
+	var start: int = first / SimRecorder.EVERY_TICKS
+	var rec := sim.recorder
+	for i in range(start, rec.seconds()):
+		if rec.indoor[i] == 0:
+			var dur := float(i - start)
+			return {"score": _linear(dur, _params.good_s, _params.bad_s), "detail": "붕괴 징후(%s) 후 %d초 만에 내부 대원 철수" % [_t(first), roundi(dur)]}
+	return {"score": 0.0, "detail": "붕괴 징후(%s) 후에도 건물 안에 대원이 남음" % _t(first)}
 
 
 func _check_water_damage() -> Dictionary:

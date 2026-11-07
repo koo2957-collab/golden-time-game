@@ -105,6 +105,11 @@ func _check() -> void:
 	for type in ["rollover_sign", "backdraft_sign", "air_alarm", "mayday", "victim_found", "tactical_halt"]:
 		if not ev.of_type(type).is_empty():
 			_trigger(type)
+	for type in ["exposure_heating", "collapse_sign"]:
+		if not ev.of_type(type).is_empty():
+			_trigger(type)
+	if sim.gas.open and sim.gas.known(cmd.survey):
+		_trigger("gas_known")
 	if not ev.of_type("squad_staged").is_empty():
 		_trigger("staged")
 	if not ev.of_type("span_warning").is_empty():

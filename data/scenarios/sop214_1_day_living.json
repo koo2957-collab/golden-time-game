@@ -8,7 +8,7 @@
   "dispatch": {
     "title": "출동 지령 — 주택 화재",
     "lines": [
-      "대상: 2층 단독주택 (벽돌조), 주택가 이면도로",
+      "대상: 2층 단독주택 (벽돌조), 주택가 이면도로 · 동쪽 약 2m에 단층 이웃집",
       "신고 내용(이웃): \"옆집 1층 창문에서 검은 연기가 나요. 할머니랑 손자가 사는 집인데 나온 사람이 안 보여요.\"",
       "시간·날씨: 평일 14:20, 맑음, 북서풍 2m/s",
       "출동대: 진압1(펌프차·물탱크차), 구조1 (선착) · 후착: 진압2(펌프차, 약 3분 뒤), 진압3(펌프차·물탱크차, 약 5분 뒤)",
@@ -16,6 +16,11 @@
     ],
     "reported_victims": true,
     "note": "reported_victims: 신고로 구조대상자 가능성이 알려져 있으면 최초 상황보고의 '구조대상자 있음'이 정답"
+  },
+  "wind": {
+    "from_deg": 315,
+    "speed_mps": 2,
+    "note": "바람이 불어오는 방향(북=0, 시계방향)과 풍속. 인접 건물 가열에 영향 (SOP 214-2.4.4)"
   },
   "commander": {
     "name": "서정호",
@@ -39,6 +44,7 @@
       "safety.ff_down",
       "safety.air_exit",
       "safety.withdraw",
+      "safety.collapse",
       "safety.command_post",
       "safety.rit",
       "safety.emergency",
@@ -48,6 +54,7 @@
       "rescue.time",
       "rescue.search_order",
       "property.spread",
+      "property.exposure",
       "property.water",
       "fire.extinguish",
       "fire.water_supply",

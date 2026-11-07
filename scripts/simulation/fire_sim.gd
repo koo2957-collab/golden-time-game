@@ -36,8 +36,11 @@ func _init(p_building: BuildingData, p_config: FireConfig, rng: RandomNumberGene
 	_build_compartments()
 	_build_openings()
 	var fo := config.range_of("flashover_temp_c")
+	# 인접 건물 구획은 따로 뽑는다: 인접 건물이 있어도 화재 건물·요구조자의 시드 결과가 같다
+	var ex_rng := RandomNumberGenerator.new()
+	ex_rng.seed = hash(rng.seed + 7919)
 	for c in comps:
-		c.flashover_temp = rng.randf_range(fo.x, fo.y)
+		c.flashover_temp = (ex_rng if is_exposure_comp(c) else rng).randf_range(fo.x, fo.y)
 	grid = FuelGrid.build(building, config, comps, openings, room_map)
 	model = CompartmentModel.new(comps, openings, config)
 
@@ -96,6 +99,11 @@ func compartment_at(level: int, x: int, y: int) -> Compartment:
 		return null
 	var ci: int = room_map[level][y * building.width + x]
 	return comps[ci] if ci >= 0 else null
+
+
+## 인접 건물(연소 확대 대상)의 구획인가
+func is_exposure_comp(c: Compartment) -> bool:
+	return c != null and building.is_exposure(c.rect.position.x, c.rect.position.y)
 
 
 func opening_at(cell: Vector3i) -> Opening:

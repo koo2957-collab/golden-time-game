@@ -49,13 +49,18 @@
   "dispatch": {
     "title": "출동 지령 — 주택 화재 (가스 우려)",
     "lines": [
-      "대상: 2층 단독주택 (벽돌조), 주택가 이면도로",
+      "대상: 2층 단독주택 (벽돌조), 주택가 이면도로 · 동쪽 약 2m에 단층 이웃집",
       "신고 내용(이웃): \"옆집 부엌 쪽에서 불길이 보여요. 할머니 혼자 사시는데 다리가 불편하세요.\"",
       "시간·날씨: 평일 18:50, 흐림, 남서풍 4m/s",
       "출동대: 진압1(소형 펌프차·물탱크차), 구조1 (선착) · 후착: 진압2(인접 관할, 약 7분 뒤)",
       "소화전: 건물 동쪽 보도 지상식 1개소 · 대기1단계 장소: 도로 동쪽"
     ],
     "reported_victims": true
+  },
+  "wind": {
+    "from_deg": 225,
+    "speed_mps": 4,
+    "note": "바람이 불어오는 방향(북=0, 시계방향)과 풍속. 인접 건물 가열에 영향 (SOP 214-2.4.4)"
   },
   "report_truth": {
     "use": "단독주택",
@@ -67,6 +72,7 @@
       "safety.ff_down",
       "safety.air_exit",
       "safety.withdraw",
+      "safety.collapse",
       "safety.command_post",
       "safety.rit",
       "safety.emergency",
@@ -76,6 +82,8 @@
       "rescue.time",
       "rescue.search_order",
       "property.spread",
+      "property.exposure",
+      "property.gas",
       "property.water",
       "fire.extinguish",
       "fire.water_supply",
@@ -189,7 +197,20 @@
           }
         }
       }
-    ]
+    ],
+    "gas": {
+      "valve": [
+        14,
+        1
+      ],
+      "stove": [
+        15,
+        4,
+        1
+      ],
+      "text": "주방 뒤 LPG 밸브",
+      "note": "밸브가 열려 있으면 가스레인지 칸이 계속 다시 불붙고, 주방이 플래시오버에 이르면 가스 폭발 (SOP 214-2.2·2.3)"
+    }
   },
   "arrivals": [
     {

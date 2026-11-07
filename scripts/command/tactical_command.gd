@@ -21,6 +21,7 @@ static func make(p_action: String, p_crew_ids: Array[int], p_target := Vector3i.
 func execute(sim: SimWorld) -> void:
 	for id in crew_ids:
 		sim.rekindle.cancel(id)
+		sim.gas.cancel(id)
 		sim.tactical.order(action, id, target, tick)
 
 

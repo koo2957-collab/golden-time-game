@@ -669,7 +669,7 @@ func _receo_text() -> String:
 			saved += 1
 	var unsearched := 0
 	for c in sim.fire.comps:
-		if c.searched_tick < 0:
+		if c.searched_tick < 0 and not sim.fire.is_exposure_comp(c):
 			unsearched += 1
 	var rooms := {}
 	var grid := sim.fire.grid
@@ -688,13 +688,22 @@ func _receo_text() -> String:
 		if h.flowing:
 			nozzles += 1
 	var embers := sim.rekindle.spotted_cells().size()
+	var ex := sim.exposure
+	var exposure_text := "인접 건물 없음"
+	var exposure_hot := false
+	if ex.has_exposure():
+		var r := ex.max_ratio()
+		exposure_hot = r >= 0.2 or not ex.ignited.is_empty()
+		exposure_text = "%s 연소 확대됨" % ex.exposure_name() if not ex.ignited.is_empty() else "%s 가열 %d%%" % [ex.exposure_name(), roundi(r * 100.0)]
+	if sim.gas.has_gas():
+		exposure_text += " · 가스 %s" % ("차단됨" if not sim.gas.open else "열림")
 	var items := [
 		[cmd.safety.emergency() or signs > 0 or (inside > 0 and min_air < 0.3), "안전",
 			"%s내부 %d명%s%s" % ["⚠ 긴급탈출 · " if cmd.safety.emergency() else "", inside,
 			" · 최저 공기 %d%%" % roundi(min_air * 100.0) if inside > 0 else "", " · 특수현상 징후 %d" % signs if signs > 0 else ""]],
 		[possible and (found > saved or unsearched > 0), "R 구조",
 			"구조대상자 %s · 발견 %d · 구조 %d · 미검색 구획 %d" % ["가능성 있음" if possible else "없음", found, saved, unsearched]],
-		[flashed > 0, "E 외부", "창 화염 분출 가능 %d구획 · 인접 건물 없음" % flashed if flashed > 0 else "징후 없음 · 인접 건물 없음"],
+		[flashed > 0 or exposure_hot, "E 외부", "%s · %s" % ["창 화염 분출 가능 %d구획" % flashed if flashed > 0 else "징후 없음", exposure_text]],
 		[rooms.size() > 1, "C 확산", "연소 확인 구획 %d" % rooms.size()],
 		[rooms.size() > 0, "E 진압", "방수 중 관창 %d" % nozzles],
 		[embers > 0, "O 잔불", "찾은 불씨 %d" % embers],

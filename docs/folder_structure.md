@@ -24,7 +24,7 @@ scripts/
                    perception.gd(정보 안개·시야·열화상), rescue_system.gd(요구조자·검색·구조)
     compartment/   구획(방) 2층 모델: compartment.gd, opening.gd(문·창·계단), compartment_model.gd(계산)
     grid/          건물 도면(building_data.gd), 길찾기(pathfinder.gd), 셀 연소(fuel_grid.gd)
-    hazards/       특수현상(hazard_system.gd): 롤오버 징후, 플래시오버 피해, 백드래프트 징후·폭발, 350℃ 경고
+    hazards/       특수현상(hazard_system.gd): 롤오버 징후, 플래시오버 피해, 백드래프트 징후·폭발, 350℃ 경고, 인접 건물 연소(exposure_system.gd), 가스(gas_system.gd), 붕괴(collapse_system.gd)
                    잔불정리·재발화(rekindle_system.gd)
     suppression/   물 공급·방수(water_system.gd), 수관(hose_line.gd). 배연은 M4
   units/           대원, 출동대, 차량, 요구조자
@@ -187,6 +187,20 @@ tests/             단위 테스트(test_*.gd)와 조작 점검(ui_smoke.gd)
 | 교육 모드 | `HintUi` + `data/sop/hints.json` 13종. 트리거가 처음 성립하면 카드(SOP 조항·원리·권장 행동)를 띄우고 멈춤. 결과 파일에 mode·difficulty 기록 |
 
 검증은 `tests/test_tactical.gd`, `tests/test_hints.gd`.
+
+## 주택화재 완성도 요약 (M7b-1)
+
+| 요소 | 내용 |
+|---|---|
+| 건물 묶음 | 건물 파일 `structures`: 화재 건물(첫 번째, 둘러보기 외곽 기준)과 `exposure: true` 인접 건물. `BuildingData.structure_at`·`is_exposure`, `FireSim.is_exposure_comp`. 인접 건물 구획의 플래시오버 온도는 따로 뽑아 기존 시드 결과가 바뀌지 않음 |
+| 인접 건물 연소 | `scripts/simulation/hazards/exposure_system.gd`. 화재 건물 외부 개구부 ↔ 마주 보는 인접 창(8m 안) 짝. 원천 구획이 최성기·플래시오버이고 개구부가 열렸으면 q·분출 비율·바람/(4πd²) 복사열, 기준(5kW/㎡)을 넘는 만큼 누적 → 40% 가열 알림, 100% 창 파손·착화. 경계관창이면 식음 |
+| 바람 | 시나리오 `wind: {from_deg, speed_mps}`. 풍하 방향일수록 1 + 0.15 × 풍속 × cos |
+| 가스 | `gas_system.gd`, 시나리오 `site.gas {valve, stove, text}`. 장비 명령 `gas_off`(밸브 우클릭) — 10초 작업 |
+| 붕괴 | `collapse_system.gd`. 건물 구조에 "벽돌"이 있으면 최성기 구획 진행 600초 → 60% 징후, 100% 붕괴 |
+| 후착대 | `Squad.arrival` 선착/후착. 명령칸 `"후착 진압대"`: 포위 진압(W)·경계관창(V)·교차 탐색·철수(X) |
+| 평가·힌트 | 규칙 property.exposure·property.gas·safety.collapse (27개), 힌트 exposure_heating·collapse_sign·gas_known (16종). 인접 건물 구획은 연소 확대(property.spread)·미검색 구획에서 뺀다 |
+
+값은 모두 `data/fire/hazard_params.json`의 추정값. 검증은 `tests/test_exposure.gd`.
 
 ## 요구조자·구조·특수현상 요약 (M4b)
 

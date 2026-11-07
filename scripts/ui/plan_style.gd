@@ -20,6 +20,7 @@ const HOSE_COLOR := Color("e8dcc0")
 ## 소화전 흡수관 · 물탱크차 급수관
 const SUPPLY_LINE := Color("64b5f6")
 const HYDRANT_COLOR := Color("e53935")
+const GAS_COLOR := Color("facc15")
 const WATER_COLOR := Color(0.62, 0.84, 1.0, 0.9)
 const FOG_COLOR := Color(0.75, 0.88, 1.0, 0.3)
 const TANK_BG := Color(0.05, 0.07, 0.1, 0.85)

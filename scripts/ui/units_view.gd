@@ -32,6 +32,11 @@ func _draw() -> void:
 			draw_circle(c, 7.0, PlanStyle.HYDRANT_COLOR)
 			draw_arc(c, 7.0, 0.0, TAU, 16, Color.WHITE, 1.5)
 			draw_string(PlanStyle.font(), c + Vector2(-30, -12), "소화전", HORIZONTAL_ALIGNMENT_CENTER, 60, 12, PlanStyle.HYDRANT_COLOR.lightened(0.4))
+		if sim.gas.known(sim.command.survey):
+			var g := PlanStyle.to_px(Vector2(sim.gas.valve) + Vector2(0.5, 0.5))
+			var gc := PlanStyle.GAS_COLOR if sim.gas.open else PlanStyle.GAS_COLOR.darkened(0.5)
+			draw_rect(Rect2(g - Vector2(6, 6), Vector2(12, 12)), gc)
+			draw_string(PlanStyle.font(), g + Vector2(-60, -12), "%s%s" % [sim.gas.valve_text, "" if sim.gas.open else " (차단)"], HORIZONTAL_ALIGNMENT_CENTER, 120, 12, gc.lightened(0.4))
 		for w in sim.command.survey.witnesses:
 			if w.present(sim.clock.tick):
 				var wc := PlanStyle.to_px(w.pos)

@@ -3,7 +3,7 @@ extends RefCounted
 ## 시뮬레이션 전체 상태. 화면 노드에 의존하지 않는다.
 ## 명령은 issue()로 받아 다음 틱 시작 시 실행하고 기록한다.
 ## 한 틱의 순서: 명령(투입·지연 판정) → 문 작업 → 열기 접근 판정 → 진입 통제 → 이동 → 후착대 도착 → 대원 상태 → 구조(운반·검색) → 물 → 화재
-##               → 특수현상 → 불씨·재발화 → 고수준 명령 → 요구조자 노출·발견 → 무전·보고 → (주기적으로) 시야
+##               → 특수현상 → 불씨·재발화 → 인접 건물·가스·붕괴 → 고수준 명령 → 요구조자 노출·발견 → 무전·보고 → (주기적으로) 시야
 
 const DEFAULT_UNIT_STATS_PATH := "res://data/units/firefighter.json"
 const FIRE_PARAMS_PATH := "res://data/fire/fire_params.json"
@@ -31,6 +31,9 @@ var rescue: RescueSystem
 var hazards: HazardSystem
 var rekindle: RekindleSystem
 var tactical: TacticalSystem
+var exposure: ExposureSystem
+var gas: GasSystem
+var collapse: CollapseSystem
 var command: CommandSystem
 var command_log := CommandLog.new()
 var events := SimEventLog.new()
@@ -89,6 +92,9 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.rescue = RescueSystem.new(sim.fire, sim.units, sim.pathfinder, sim.perception, hazard_params, sim.events)
 	sim.hazards = HazardSystem.new(sim.fire, sim.units, sim.rescue, sim.perception, hazard_params, sim.events)
 	sim.rekindle = RekindleSystem.new(sim.fire, sim.units, sim.pathfinder, hazard_params, sim.events, p_seed)
+	sim.exposure = ExposureSystem.new(sim.fire, sim.water, hazard_params, sim.events)
+	sim.gas = GasSystem.new(sim.fire, sim.units, sim.pathfinder, hazard_params, sim.events)
+	sim.collapse = CollapseSystem.new(sim.fire, sim.units, sim.rescue, hazard_params, sim.events)
 	sim.command = CommandSystem.new(sim.fire, sim.units, sim.pathfinder, sim.rescue, sim.water, sim.doors, sim.perception, sim.clock, ParamTable.from_dict(radio_data), sim.events)
 	sim.command.resources = ResourceSystem.new(sim.units, sim.pathfinder, sim.conditions, building, sim.events)
 	var safety := SafetySystem.new(sim.fire, sim.units, sim.pathfinder, sim.rescue, sim.water, sim.doors, ParamTable.from_dict(safety_data), sim.events)
@@ -131,6 +137,8 @@ static func from_scenario(path: String, command_rules := true, seed_override := 
 		sim.fire.apply_scenario(data.get("fire", {}))
 		sim.rescue.add_victims(data.get("victims", []), sim.rng)
 		sim.command.apply_scenario(data)
+		sim.exposure.apply_scenario(data)
+		sim.gas.apply_scenario(data)
 		if not command_rules:
 			sim.command.entry_order_required = false
 			sim.command.auto_slow = false
@@ -191,6 +199,9 @@ func _step() -> void:
 	fire.step(dt, clock.tick)
 	hazards.step(clock.tick)
 	rekindle.step(dt, clock.tick)
+	exposure.step(dt, clock.tick)
+	gas.step(dt, clock.tick)
+	collapse.step(dt, clock.tick)
 	tactical.step(clock.tick)
 	rescue.step_after_fire(dt, clock.tick)
 	command.step(dt, clock.tick)

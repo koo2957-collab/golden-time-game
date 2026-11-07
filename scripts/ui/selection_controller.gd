@@ -253,6 +253,10 @@ func _issue_right_click(world_pos: Vector2) -> void:
 		var casualty := _casualty_at(world_pos)
 		if casualty.x >= 0:
 			sim.issue(EquipmentCommand.make("rescue" if casualty.x == 0 else "rescue_ff", selected, -1, casualty.y))
+		elif level == 1 and sim.gas.open and sim.gas.known(sim.command.survey) and sim.gas.valve_near(cell_f):
+			# 가스 밸브 우클릭: 첫 조가 가서 차단 (SOP 214-2.2)
+			sim.issue(EquipmentCommand.make("gas_off", selected))
+			marker_cell = Vector2(sim.gas.valve) + Vector2(0.5, 0.5)
 		elif door and not door.is_open:
 			# 닫힌 문 우클릭: 문 개방 (잠긴 문은 파괴)
 			sim.issue(EquipmentCommand.make("door_open", selected, -1, -1, Vector3i(door.cells[0].x, door.cells[0].y, level)))

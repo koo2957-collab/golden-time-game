@@ -231,7 +231,9 @@ func _refresh_selection() -> void:
 	selection_label.text = "\n".join(lines) if not lines.is_empty() else "선택 없음"
 	_command_panel.visible = not _crew_ids.is_empty()
 	if not _crew_ids.is_empty():
-		_build_card_row(sim.units.squad_of_crew(_crew_ids[0]).type)
+		var squad := sim.units.squad_of_crew(_crew_ids[0])
+		var card := "%s %s" % [squad.arrival, squad.type]
+		_build_card_row(card if _cards.has(card) else squad.type)
 	_command_buttons["stop"].disabled = not any_flowing
 	var entry := _command_buttons["entry"] as Button
 	var need := false
@@ -259,7 +261,7 @@ func _build_card_row(type: String) -> void:
 	_card_row.add_child(title)
 	for spec: Dictionary in _cards.get(type, _cards.get("진압대", [])):
 		var b := Button.new()
-		b.text = "%s (%s)" % [spec.label, spec.key]
+		b.text = "%s (%s)" % [spec.label, spec.key] if str(spec.get("key", "")) != "" else str(spec.label)
 		b.tooltip_text = str(spec.get("hint", ""))
 		b.focus_mode = Control.FOCUS_NONE
 		b.custom_minimum_size = Vector2(170, 44)

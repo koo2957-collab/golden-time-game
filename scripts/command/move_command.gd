@@ -18,6 +18,7 @@ func execute(sim: SimWorld) -> void:
 		sim.rescue.cancel(id)
 		sim.rekindle.cancel(id)
 		sim.tactical.cancel(id)
+		sim.gas.cancel(id)
 	sim.units.order_move(crew_ids, target, sim.pathfinder)
 
 

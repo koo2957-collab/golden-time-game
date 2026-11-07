@@ -29,5 +29,17 @@
   "ember_min_fuel_ratio": {"value": 0.25, "source": "추정", "note": "남은 연료가 처음의 이 비율 이상이어야 불씨가 숨는다"},
   "rekindle_min_s": {"value": 180, "source": "추정", "note": "불씨를 두면 다시 불이 붙기까지 걸리는 시간 (최소)"},
   "rekindle_max_s": {"value": 480, "source": "추정", "note": "같은 시간 (최대). 사이에서 시드로 정한다"},
-  "overhaul_s": {"value": 45, "source": "추정", "note": "방 하나 잔불정리에 걸리는 시간 (불씨 확인·정확한 주수, SOP 202-6.2)"}
+  "overhaul_s": {"value": 45, "source": "추정", "note": "방 하나 잔불정리에 걸리는 시간 (불씨 확인·정확한 주수, SOP 202-6.2)"},
+
+  "exposure_max_m": {"value": 8, "source": "추정", "note": "화재 건물 창·문에서 이 거리 안의 마주 보는 인접 건물 창이 복사열을 받는다 (SOP 214-2.4)"},
+  "exposure_ext_fraction": {"value": 0.35, "source": "추정", "note": "플래시오버 이후 개구부 밖으로 나오는 화염의 열방출 비율"},
+  "exposure_crit_kw": {"value": 5, "source": "추정", "note": "이 복사열(kW/㎡) 이상부터 인접 건물 창이 가열된다"},
+  "exposure_ignite_kj": {"value": 3000, "source": "추정", "note": "누적 가열량(kJ/㎡)이 이만큼이면 인접 건물 창이 깨지고 실내에 불이 옮겨 붙는다"},
+  "exposure_cool_kw": {"value": 30, "source": "추정", "note": "경계관창이 지키면 누적 가열량이 초당 이만큼 줄고 더 쌓이지 않는다 (214-2.4.1·2.4.2)"},
+  "exposure_sign_ratio": {"value": 0.4, "source": "추정", "note": "누적 가열이 이 비율이면 '인접 건물 외벽 가열' 경고"},
+  "wind_k": {"value": 0.15, "source": "추정", "note": "바람 1m/s당 풍하 쪽 복사·화염 영향 증가 비율 (214-2.4.4 풍하 보강)"},
+  "gas_reignite_s": {"value": 20, "source": "추정", "note": "가스 밸브가 열려 있으면 가스레인지 칸이 이 간격으로 다시 불붙는다 (214-2.2)"},
+  "gas_off_s": {"value": 10, "source": "추정", "note": "밸브 차단에 걸리는 시간"},
+  "collapse_s": {"value": 600, "source": "추정", "note": "노후 벽돌조 구획이 최성기 상태로 이만큼 타면 붕괴 (SOP 214-1.2)"},
+  "collapse_sign_ratio": {"value": 0.6, "source": "추정", "note": "붕괴 진행이 이 비율이면 폭음·균열음 등 붕괴 징후 (205-2.2)"}
 }

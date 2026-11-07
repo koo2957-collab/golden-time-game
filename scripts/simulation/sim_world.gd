@@ -11,6 +11,7 @@ const MATERIALS_PATH := "res://data/materials/materials.json"
 const VEHICLES_PATH := "res://data/units/vehicles.json"
 const HAZARD_PARAMS_PATH := "res://data/fire/hazard_params.json"
 const RADIO_PARAMS_PATH := "res://data/command/radio_params.json"
+const SURVEY_PARAMS_PATH := "res://data/command/survey_params.json"
 ## 시야는 이 틱마다 다시 계산한다 (0.3초)
 const PERCEPTION_EVERY_TICKS := 3
 
@@ -41,8 +42,9 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	var vehicle_stats: Variant = JsonData.load_file(VEHICLES_PATH)
 	var hazard_data: Variant = JsonData.load_file(HAZARD_PARAMS_PATH)
 	var radio_data: Variant = JsonData.load_file(RADIO_PARAMS_PATH)
+	var survey_data: Variant = JsonData.load_file(SURVEY_PARAMS_PATH)
 	var fire_config := FireConfig.load_files(FIRE_PARAMS_PATH, MATERIALS_PATH)
-	if building == null or not roster is Dictionary or not stats_data is Dictionary or not vehicle_stats is Dictionary or not hazard_data is Dictionary or not radio_data is Dictionary or fire_config == null:
+	if building == null or not roster is Dictionary or not stats_data is Dictionary or not vehicle_stats is Dictionary or not hazard_data is Dictionary or not radio_data is Dictionary or not survey_data is Dictionary or fire_config == null:
 		return null
 	var stats := ParamTable.from_dict(stats_data)
 	var sim := SimWorld.new()
@@ -61,6 +63,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.hazards = HazardSystem.new(sim.fire, sim.units, sim.rescue, sim.perception, hazard_params, sim.events)
 	sim.command = CommandSystem.new(sim.fire, sim.units, sim.pathfinder, sim.rescue, sim.water, sim.doors, sim.perception, sim.clock, ParamTable.from_dict(radio_data), sim.events)
 	sim.command.resources = ResourceSystem.new(sim.units, sim.pathfinder, sim.conditions, building, sim.events)
+	sim.command.survey = SiteSurvey.new(sim.fire, sim.units, sim.pathfinder, sim.command.resources, sim.command.commander, ParamTable.from_dict(survey_data), sim.events)
 	sim.water.safe_cell = sim.conditions.safe_to_enter
 	sim.rescue.water = sim.water
 	sim.doors.on_door_opened = sim.hazards.on_door_opened

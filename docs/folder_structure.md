@@ -13,6 +13,7 @@ scripts/
   autoload/        전역 싱글톤 (EventBus, GameManager)
   command/         지휘 계층: command_system.gd(지휘권·상황보고·전략·진입 명령·대원 보고·자동 감속),
                    resource_system.gd(후착대·대기1단계·투입·지원 요청), organization.gd(단위대·통솔범위·작전망),
+                   site_survey.gd(둘러보기·물증·진술·현장지휘소), witness.gd(관계인),
                    radio.gd(무전 채널), 명령 객체(move_command, equipment_command, command_order), command_log.gd
   simulation/      시뮬레이션 코어 (화면과 분리, 고정 틱)
                    sim_world.gd(전체 상태·명령 실행), sim_clock.gd(고정 틱 시계), json_data.gd,
@@ -114,6 +115,18 @@ tests/             단위 테스트(test_*.gd)와 조작 점검(ui_smoke.gd)
 | 단위대 | 방면(A~D면)·층·기능(배연·인명구조·급수). 출동대장 한 명을 단위지휘관으로 정한다. 단위대마다 작전망을 두고, 소속 출동대의 일반 보고·응답은 작전망으로 간다(대원 안전·구조대상자 보고는 지휘망). 전략 전파 응답은 단위지휘관이 한 번 |
 
 검증은 `tests/test_organization.gd`.
+
+## 현장 정보 요약 (M5c)
+
+| 요소 | 내용 |
+|---|---|
+| 둘러보기 | 지휘관이 건물 면 바깥 10m 안에서 30° 이상 각도로 보면 그 면을 확인 (모서리에서는 두 면). 시나리오 `site.faces`의 면 정보가 열리고, 위험 요소면 상황보고 ④ 정답에 들어간다. [360° 둘러보기]는 건물 둘레 3칸 밖 모서리를 시계 방향으로 돈다 |
+| 관계인 | `site.witnesses`. 3m 안에서 질문 (질문당 8초, 움직이면 끊김). 진술의 `reliable`은 화면에 나오지 않는다 (M6 디브리핑). `rooms`는 지도에 [제보: 구조대상자 가능], 믿을 만한 진술의 `hazard`는 확인한 위험 요소 |
+| 물증 | 실내등(`site.lights`): 확인한 면의 창에 불빛. 현관 신발(`site.shoes`): 문이 열리고 지휘관·대원이 2m 안 |
+| 보완 보고 | 선언 후 C → 구조대상자·위험 요소를 다시 송신, 그때 확인 가능한 사실과 비교해 기록 |
+| 현장지휘소 | 30초 이상 머문 곳: 관찰(보이는 면 2개 좋음·1개 보통·0 나쁨), 안전(SOP 205-1.3: 발화층 높이 ½ 안 위험, 건물 높이 안 주의), 동선(차도·대기 장소 위 방해). 고정·이동 시간도 기록 |
+
+수치는 `data/command/survey_params.json`. 검증은 `tests/test_site_survey.gd`.
 
 ## 요구조자·구조·특수현상 요약 (M4b)
 

@@ -32,6 +32,13 @@ func _draw() -> void:
 			draw_circle(c, 7.0, PlanStyle.HYDRANT_COLOR)
 			draw_arc(c, 7.0, 0.0, TAU, 16, Color.WHITE, 1.5)
 			draw_string(PlanStyle.font(), c + Vector2(-30, -12), "소화전", HORIZONTAL_ALIGNMENT_CENTER, 60, 12, PlanStyle.HYDRANT_COLOR.lightened(0.4))
+		for w in sim.command.survey.witnesses:
+			if w.present(sim.clock.tick):
+				var wc := PlanStyle.to_px(w.pos)
+				var wr := RADIUS_CELLS * PlanStyle.CELL_PX
+				draw_circle(wc, wr, PlanStyle.WITNESS_BODY)
+				draw_arc(wc, wr, 0.0, TAU, 24, PlanStyle.WITNESS_HEAD, 2.0)
+				draw_string(PlanStyle.font(), wc + Vector2(-60, -wr - 4.0), "관계인 · %s" % w.name, HORIZONTAL_ALIGNMENT_CENTER, 120, FONT_SIZE, PlanStyle.WITNESS_HEAD)
 		var rects := sim.command.resources.staging_rects()
 		for r in rects:
 			var px := Rect2(PlanStyle.to_px(r.position), PlanStyle.to_px(r.end) - PlanStyle.to_px(r.position))
@@ -45,6 +52,15 @@ func _draw() -> void:
 			_draw_vehicle(v, alpha)
 		for line in supply_lines(sim):
 			draw_line(PlanStyle.to_px(line[0]), PlanStyle.to_px(line[1]), PlanStyle.SUPPLY_LINE, 4.0)
+	for o in sim.command.survey.lit_windows():
+		if o.level == level:
+			for c in o.cells:
+				draw_rect(Rect2(PlanStyle.to_px(Vector2(c)), Vector2.ONE * PlanStyle.CELL_PX), PlanStyle.LIT_WINDOW)
+	for room in sim.building.rooms(level):
+		if sim.command.survey.reported_rooms.has(room.id):
+			var rr: Rect2i = room.rect
+			var rc := PlanStyle.to_px(Vector2(rr.position) + Vector2(rr.size) * 0.5)
+			draw_string(PlanStyle.font(), rc + Vector2(-90, 22), "[제보: 구조대상자 가능]", HORIZONTAL_ALIGNMENT_CENTER, 180, FONT_SIZE, PlanStyle.REPORTED_ROOM)
 	for crew_id in selection.selected:
 		_draw_path(sim.units.get_crew(crew_id).leader, alpha)
 	if selection.commander_selected:

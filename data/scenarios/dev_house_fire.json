@@ -25,6 +25,37 @@
     "note": "최초 상황보고(SOP 101-2.1) 정답 중 도면으로 알 수 없는 것. 층수·구조는 건물 파일, 연소 상황·구조대상자·특수현상 징후는 그때까지 확인한 사실로 판정한다"
   },
   "entry_order_required": true,
+  "site": {
+    "note": "현장 정보 (SOP 101-2.2, 102-2.2, 202-2). 면 정보는 지휘관이 그 면을 봐야 알 수 있다. hazard가 있으면 상황보고 ④ 정답에 들어간다",
+    "faces": [
+      {"face": "C", "text": "뒷마당 LPG 용기 2개 (C면 담장 옆)", "hazard": "위험물(가스 등)"}
+    ],
+    "lights": ["2F_room3"],
+    "note_lights": "실내등이 켜진 방. 그 방의 창이 있는 면을 보면 창 불빛이 보인다 (SOP 202-2.3.1)",
+    "shoes": [
+      {"door": [13, 20, 1], "text": "현관에 신발 2켤레 (노인용 실내화, 아동용 운동화)"}
+    ],
+    "witnesses": [
+      {
+        "name": "이웃 주민", "source": "신고자", "pos": [2, 25], "arrive_s": 0,
+        "statements": {
+          "victims": {"text": "할머니랑 손자가 같이 살아요. 오늘 둘 다 나오는 걸 못 봤어요.", "reliable": true},
+          "origin": {"text": "1층 거실 쪽 창문에서 검은 연기가 먼저 났어요.", "reliable": true},
+          "hazards": {"text": "뒤쪽은 잘 몰라요.", "reliable": true},
+          "doors": {"text": "현관은 늘 잠가 두세요.", "reliable": true}
+        }
+      },
+      {
+        "name": "할머니 딸", "source": "가족", "pos": [35, 25], "arrive_s": 150,
+        "statements": {
+          "victims": {"text": "엄마는 이 시간엔 경로당에 가세요. 아이만 1층 작은방에서 낮잠 자고 있을 거예요.", "reliable": false, "rooms": ["1F_room1"], "note": "할머니는 실제로 2층 방3에 있다 (2층 방3 실내등과 엇갈림)"},
+          "origin": {"text": "모르겠어요, 저도 방금 왔어요.", "reliable": true},
+          "hazards": {"text": "뒷마당에 LPG 통이 있어요.", "reliable": true, "hazard": "위험물(가스 등)"},
+          "doors": {"text": "옆문(D면)은 안 잠가요. 현관이랑 뒷문은 잠겨 있어요.", "reliable": true}
+        }
+      }
+    ]
+  },
   "reinforcements": "res://data/units/dev_reinforcements.json",
   "arrivals": [
     {"squad": "pump2", "time_s": 180},

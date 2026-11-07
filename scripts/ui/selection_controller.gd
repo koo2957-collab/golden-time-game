@@ -7,12 +7,16 @@ extends Node2D
 ##              발견한 요구조자·쓰러진 대원 우클릭: 구조 / 닫힌 문 우클릭: 개방(잠긴 문은 파괴)
 ## - 우클릭(차량): 이동, 소화전 점령(소화전 우클릭), 급수(물탱크차로 펌프차 우클릭)
 ## - 현장지휘관 클릭: 지휘관 선택 → 우클릭: 이동 (건물 안으로는 들어가지 않는다)
+## - 관계인 클릭: 진술 창 (witness_clicked)
 ## - Ctrl+숫자: 부대 지정 / 숫자: 부대 호출
 ## - 대상 지정 명령(begin_mode): 수관 연장(펌프차 클릭), 직사·분무 방수(목표 클릭). 우클릭·Esc로 취소
 ## 선택 단위는 조(2인 1조)와 차량이며, 현재 보고 있는 층의 대원만 선택된다.
 ## 좌표 변환은 projection(상황판/입체)을 따른다.
 
 enum Mode { NONE, HOSE, STRAIGHT, FOG, DOOR, SEARCH }
+
+## 관계인을 클릭했을 때 (world가 진술 창을 연다)
+signal witness_clicked(index: int)
 
 const DRAG_THRESHOLD_PX := 6.0
 const MARKER_DURATION_MS := 500.0
@@ -167,6 +171,10 @@ func _click_select(world_pos: Vector2, add: bool) -> void:
 	if not add and _commander_at(world_pos):
 		_set_selection([], [], true)
 		return
+	var witness := _witness_at(world_pos)
+	if not add and witness >= 0:
+		witness_clicked.emit(witness)
+		return
 	var crew_id := _crew_at(world_pos)
 	var vehicle_id := -1 if crew_id >= 0 else _vehicle_at(world_pos)
 	if crew_id < 0 and vehicle_id < 0:
@@ -304,6 +312,15 @@ func _crew_at(world_pos: Vector2) -> int:
 
 
 ## world_pos 아래에 현장지휘관이 있는지
+func _witness_at(world_pos: Vector2) -> int:
+	if level != sim.building.levels()[0]:
+		return -1
+	for w in sim.command.survey.witnesses:
+		if w.present(sim.clock.tick) and projection.to_screen(w.pos, projection.pick_height_m).distance_to(world_pos) < projection.pick_radius_px:
+			return w.index
+	return -1
+
+
 func _commander_at(world_pos: Vector2) -> bool:
 	var c := sim.command.commander
 	return c.level == level and projection.to_screen(c.pos, projection.pick_height_m).distance_to(world_pos) < projection.pick_radius_px

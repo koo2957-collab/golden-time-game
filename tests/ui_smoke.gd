@@ -62,6 +62,16 @@ func _run() -> void:
 	_click(Vector2(8.5, 26.5), MOUSE_BUTTON_RIGHT)
 	sim.step_ticks(1)
 	_check("지휘관 우클릭 이동", sim.command_log.entries[-1] is CommandOrder, true)
+	# 관계인 클릭 → 진술 창 → 질문
+	_click(sim.command.survey.witnesses[0].pos, MOUSE_BUTTON_LEFT, false, false, true)
+	_check("관계인 클릭 → 진술 창", cui.witness_visible(), true)
+	cui.ask_witness(["victims"] as Array[String])
+	_check("질문하면 창 닫힘", cui.witness_visible(), false)
+	sim.step_ticks(100)
+	_check("진술 들음", sim.events.of_type("statement").size(), 1)
+	_key(KEY_F)
+	_check("F → 현장 정보 창", cui.info_visible(), true)
+	cui._close(cui._info)
 	# C → 지휘권 선언·최초 상황보고 양식
 	_key(KEY_C)
 	_check("C → 상황보고 양식", cui._report.visible, true)

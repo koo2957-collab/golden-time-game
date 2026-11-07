@@ -8,6 +8,9 @@ extends RefCounted
 ##   support:        지원 요청 (answers.level = 지원 수준 보기 글자)
 ##   division:       단위대 지정 (value = 단위지휘관 출동대, squad_ids = 소속 출동대, answers.name = 단위대 이름)
 ##   division_clear: 단위대 해제 (answers.name)
+##   survey:         지휘관 360° 둘러보기 (건물 둘레 한 바퀴)
+##   ask:            관계인에게 질문 (value = 관계인 index, answers.questions = 질문 key 배열)
+##   update_report:  상황 보완 보고 (answers: victims, hazards)
 
 var tick := -1
 var action := ""
@@ -45,6 +48,12 @@ func execute(sim: SimWorld) -> void:
 			cmd.order_division(str(answers.get("name", "")), value, squad_ids, tick)
 		"division_clear":
 			cmd.order_division_clear(str(answers.get("name", "")), tick)
+		"survey":
+			cmd.survey.walk_around()
+		"ask":
+			cmd.survey.ask(value, answers.get("questions", []), tick)
+		"update_report":
+			cmd.update_report(answers, tick)
 
 
 func to_dict() -> Dictionary:

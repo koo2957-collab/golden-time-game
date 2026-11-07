@@ -19,6 +19,8 @@ const NOTICE_TYPES: Array[String] = [
 	"rescue_hose_crew", "exit_blocked", "search_done", "rollover_sign", "backdraft_sign", "backdraft",
 	"fgi_warning", "window_vented", "entry_wait", "entry_rejected", "withdraw", "auto_slow",
 	"squad_dispatched", "staging_full", "order_en_route", "span_warning", "division_set", "division_cleared",
+	"face_seen", "site_info_found", "clue_found", "witness_arrived", "statement", "ask_too_far", "ask_cancelled",
+	"command_post", "report_updated",
 ]
 ## 알림으로도 띄우는 무전 우선순위
 const NOTICE_RADIO_PRIORITIES: Array[String] = ["대원 안전", "구조대상자"]
@@ -202,9 +204,11 @@ func _refresh_selection() -> void:
 		lines.append(_vehicle_line(sim.units.get_vehicle(vid)))
 	if _commander_selected:
 		var cmd := sim.command
-		lines.append("현장지휘관 %s %s (%s) — 지휘 위치: %s
-    우클릭: 이동 (건물 안으로는 혼자 들어가지 않음) · C: 지휘권 선언·전략" % [
-			cmd.commander.name, cmd.commander.rank, cmd.commander_title, cmd.commander_position_text()])
+		var ask := cmd.survey.asking()
+		lines.append("현장지휘관 %s %s (%s) — 지휘 위치: %s%s
+    우클릭: 이동 (건물 안으로는 혼자 들어가지 않음) · C: 지휘권 선언·전략 · 관계인 클릭: 질문" % [
+			cmd.commander.name, cmd.commander.rank, cmd.commander_title, cmd.commander_position_text(),
+			" · 관계인에게 질문 중 (%d개 남음)" % ask.questions.size() if not ask.is_empty() else ""])
 	selection_label.text = "\n".join(lines) if not lines.is_empty() else "선택 없음"
 	_command_panel.visible = not _crew_ids.is_empty()
 	_command_buttons["stop"].disabled = not any_flowing

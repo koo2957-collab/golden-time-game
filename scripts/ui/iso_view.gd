@@ -55,6 +55,7 @@ var thermal := false
 var _furniture_h: Dictionary = {}  # level -> PackedFloat32Array
 var _opening_of: Dictionary = {}  # Vector3i -> Opening
 var _footprint: Dictionary = {}  # level -> Rect2i
+var _lit: Array[Opening] = []  # 불빛이 보이는 창 (그릴 때마다 갱신)
 
 
 func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProjection) -> void:
@@ -88,6 +89,7 @@ func _draw() -> void:
 		return
 	var b := sim.building
 	var alpha := sim.clock.alpha()
+	_lit = sim.command.survey.lit_windows()
 	_draw_ground()
 	_draw_room_labels()
 	if level == b.levels()[0]:
@@ -115,6 +117,10 @@ func _draw() -> void:
 	var commander := sim.command.commander
 	if commander.level == level:
 		_bucket(buckets, UnitsView.display_pos(commander, alpha), commander)
+	if level == b.levels()[0]:
+		for w in sim.command.survey.witnesses:
+			if w.present(sim.clock.tick):
+				_bucket(buckets, w.pos, w)
 	for d in range(0, b.width + b.height - 1):
 		for x in range(maxi(0, d - b.height + 1), mini(d, b.width - 1) + 1):
 			_draw_cell_objects(x, d - x)
@@ -128,6 +134,8 @@ func _draw() -> void:
 					_draw_unit(item[1], alpha)
 				elif item[1] is Victim:
 					_draw_victim(item[1])
+				elif item[1] is Witness:
+					_draw_witness(item[1])
 				else:
 					_draw_vehicle(item[1], alpha)
 	if not thermal:
@@ -242,6 +250,8 @@ func _draw_room_labels() -> void:
 		draw_string(font, center + Vector2(-60, LABEL_FONT_SIZE * 0.35), room.name, HORIZONTAL_ALIGNMENT_CENTER, 120, LABEL_FONT_SIZE, PlanStyle.ROOM_LABEL)
 		if _room_searched(room.id):
 			draw_string(font, center + Vector2(-60, LABEL_FONT_SIZE * 1.6), "[검색 완료]", HORIZONTAL_ALIGNMENT_CENTER, 120, LABEL_FONT_SIZE, PlanStyle.SEARCHED)
+		elif sim.command.survey.reported_rooms.has(room.id):
+			draw_string(font, center + Vector2(-90, LABEL_FONT_SIZE * 1.6), "[제보: 구조대상자 가능]", HORIZONTAL_ALIGNMENT_CENTER, 180, LABEL_FONT_SIZE, PlanStyle.REPORTED_ROOM)
 
 
 func _draw_face_labels() -> void:
@@ -258,7 +268,8 @@ func _draw_face_labels() -> void:
 		var side: String = sim.building.faces[face]
 		if anchors.has(side):
 			var p := proj.to_screen(anchors[side])
-			draw_string(PlanStyle.font(), p + Vector2(-40, 0), "%s면" % face, HORIZONTAL_ALIGNMENT_CENTER, 80, FACE_FONT_SIZE, PlanStyle.FACE_LABEL)
+			var seen := sim.command.survey.face_seen(face)
+			draw_string(PlanStyle.font(), p + Vector2(-50, 0), "%s면%s" % [face, " ✓" if seen else ""], HORIZONTAL_ALIGNMENT_CENTER, 100, FACE_FONT_SIZE, PlanStyle.FACE_LABEL)
 
 
 func _draw_path(ff: Firefighter, alpha: float) -> void:
@@ -324,6 +335,8 @@ func _draw_window(x: int, y: int) -> void:
 	var wall := _structure_color(PlanStyle.CELL_COLORS[BuildingData.Cell.WALL])
 	var o: Opening = _opening_of.get(Vector3i(x, y, level))
 	var glass := GLASS_COLOR if not (o and o.broken) else Color(0, 0, 0, 0)
+	if o and not o.broken and o in _lit:
+		glass = PlanStyle.LIT_WINDOW
 	if thermal:
 		glass = THERMAL_STRUCTURE
 	if h < WINDOW_SILL_M:
@@ -413,6 +426,21 @@ func _draw_commander(alpha: float) -> void:
 	draw_arc(head, UNIT_HEAD_R, 0.0, TAU, 16, PlanStyle.UNIT_OUTLINE, 1.0)
 	var label := proj.to_screen(p, UNIT_LABEL_M)
 	draw_string(PlanStyle.font(), label + Vector2(-30, 0), "지휘", HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color.WHITE)
+
+
+## 관계인: 사복 차림, 머리 위 이름
+func _draw_witness(w: Witness) -> void:
+	var feet := proj.to_screen(w.pos, 0.0)
+	draw_colored_polygon(_ellipse(feet, 10, 5), Color(0, 0, 0, 0.3))
+	var top := proj.to_screen(w.pos, UNIT_BODY_M)
+	var body := Rect2(feet.x - UNIT_HALF_W, top.y, UNIT_HALF_W * 2.0, feet.y - top.y)
+	draw_rect(body, PlanStyle.WITNESS_BODY)
+	draw_rect(body, PlanStyle.UNIT_OUTLINE, false, 1.0)
+	var head := proj.to_screen(w.pos, UNIT_HEAD_M)
+	draw_circle(head, UNIT_HEAD_R, PlanStyle.WITNESS_HEAD)
+	draw_arc(head, UNIT_HEAD_R, 0.0, TAU, 16, PlanStyle.UNIT_OUTLINE, 1.0)
+	var label := proj.to_screen(w.pos, UNIT_LABEL_M)
+	draw_string(PlanStyle.font(), label + Vector2(-60, 0), "관계인 · %s" % w.name, HORIZONTAL_ALIGNMENT_CENTER, 120, 12, PlanStyle.WITNESS_HEAD)
 
 
 ## 공기호흡기 잔량 막대 (경보 이하면 빨강)

@@ -44,6 +44,7 @@ func _ready() -> void:
 	hud.command_pressed.connect(_on_command)
 	hud.command_ui.order_issued.connect(sim.issue)
 	hud.command_ui.dialog_changed.connect(_on_dialog_changed)
+	selection.witness_clicked.connect(hud.command_ui.open_witness)
 	EventBus.command_mode_changed.connect(_on_command_mode_changed)
 	camera.setup(projection().bounds(sim.building), START_ZOOM[view_mode])
 	# 지도가 도로 쪽으로 넓으므로 건물을 화면 가운데에 두고 시작한다
@@ -71,6 +72,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		hud.command_ui.open_command_dialog()
 	elif event.is_action_pressed("cmd_org"):
 		hud.command_ui.open_org_dialog()
+	elif event.is_action_pressed("cmd_info"):
+		hud.command_ui.open_info_dialog()
 	elif event.is_action_pressed("cmd_entry"):
 		_on_command("entry")
 	elif event.is_action_pressed("time_pause"):

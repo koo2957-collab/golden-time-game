@@ -8,6 +8,7 @@ extends RefCounted
 ##   자동 감속: 위험 징후·요구조자 발견 등 중요한 사건이 생기면 1배속으로 돌아간다
 ##   후착대·지원 요청 (103): ResourceSystem. 대기 중인 출동대에 처음 명령하면 투입 무전이 먼저 나간다
 ##   단위대·통솔범위 (105): Organization. 직접 지휘가 적정을 넘으면 명령이 늦게 실행된다
+##   현장 정보 (101-2.2, 102-2, 202-2)·현장지휘소 (104-1.3): SiteSurvey. 보완 보고로 상황을 다시 전파한다
 ##   작전망 (107-3.2): 단위대 소속 출동대의 일반 보고·응답은 그 단위대 작전망으로 간다 (안전·구조대상자 보고는 지휘망)
 
 enum Strategy { NONE, OFFENSIVE, DEFENSIVE, COMBINED }
@@ -71,6 +72,7 @@ var events: SimEventLog
 var radio: Radio
 var resources: ResourceSystem
 var org: Organization
+var survey: SiteSurvey
 
 ## 진입 명령 규칙을 적용할지 (시나리오 = 적용, 지휘 규칙과 무관한 테스트 = 끔)
 var entry_order_required := false
@@ -86,6 +88,8 @@ var strategy := Strategy.NONE
 var command_tick := -1
 ## 최초 상황보고 내용과 판정. 송신 전이면 빈 사전
 var report: Dictionary = {}
+## 상황 보완 보고 (101-2.2①) 판정 기록 [{tick, items, correct, scored}]
+var report_updates: Array[Dictionary] = []
 ## 출동 지령 (시나리오 dispatch)
 var dispatch: Dictionary = {}
 ## 상황보고 정답 중 도면으로 알 수 없는 것 (시나리오 report_truth: use, vehicle_access, hazards)
@@ -143,6 +147,7 @@ func apply_scenario(data: Dictionary) -> void:
 		commander.prev_level = commander.level
 	entry_order_required = bool(data.get("entry_order_required", true))
 	resources.apply_scenario(data)
+	survey.apply_scenario(data)
 
 
 func declared() -> bool:
@@ -189,6 +194,7 @@ func before_move(tick: int) -> void:
 
 func after_move(dt: float, tick: int) -> void:
 	commander.step(dt, units.walk_speed_cells)
+	survey.step(dt, tick)
 	resources.step(tick)
 	for c in units.crews:
 		var inside := _indoor(c.leader.level, c.leader.pos)
@@ -323,6 +329,37 @@ func order_strategy(s: Strategy, tick: int) -> bool:
 		priority = Radio.Priority.SAFETY
 	radio.send(priority, COMMANDER, "전 대원", body, tick, _on_strategy_received.bind(s))
 	return true
+
+
+## 상황 보완 보고 (SOP 101-2.2①): 둘러보기·진술로 알게 된 구조대상자·위험 요소를 다시 전파한다.
+## answers: victims, hazards(배열). 그때까지 확인할 수 있던 사실과 비교해 기록한다.
+func update_report(answers: Dictionary, tick: int) -> bool:
+	if not declared():
+		return false
+	var truth := observed_truth()
+	var hazards: Array[String] = []
+	for h in answers.get("hazards", []):
+		hazards.append(str(h))
+	hazards.sort()
+	var hz_text := ", ".join(PackedStringArray(hazards)) if not hazards.is_empty() else "없음"
+	var items: Array[Dictionary] = [
+		_item(2, "구조대상자", answers.get("victims", ""), truth.victims),
+		_item(4, "위험 요소", hz_text, ", ".join(PackedStringArray(truth.hazards)) if not truth.hazards.is_empty() else "없음"),
+	]
+	var correct := 0
+	for it in items:
+		if it.correct:
+			correct += 1
+	var entry := {"tick": tick, "items": items, "correct": correct, "scored": items.size()}
+	var body := "상황 보완. 구조대상자 %s. 위험 요소 %s. %s 전략 유지." % [answers.get("victims", ""), hz_text, STRATEGY_NAMES[effective_strategy()]]
+	radio.send(Radio.Priority.KEY_FACTOR, COMMANDER, "%s, 각 출동대" % DISPATCH_CENTER, body, tick, _on_update_sent.bind(entry))
+	return true
+
+
+func _on_update_sent(tick: int, entry: Dictionary) -> void:
+	entry["sent_tick"] = tick
+	report_updates.append(entry)
+	events.add(tick, "report_updated", {"correct": entry.correct, "scored": entry.scored})
 
 
 ## 지원 요청 (SOP 103-1.2). level: 지원 수준 보기 글자 (시나리오 support)
@@ -554,7 +591,11 @@ func observed_truth() -> Dictionary:
 	if not events.of_type("rollover_sign").is_empty() or not events.of_type("backdraft_sign").is_empty():
 		hazards.append("특수현상 징후")
 	for h in report_truth.get("hazards", []):
-		hazards.append(str(h))
+		if not str(h) in hazards:
+			hazards.append(str(h))
+	for h in survey.known_hazards():
+		if not h in hazards:
+			hazards.append(h)
 	hazards.sort()
 	var n := b.levels().size()
 	return {

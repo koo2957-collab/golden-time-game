@@ -149,6 +149,24 @@ static func describe_text(e: Dictionary) -> String:
 			text = "단위대 지정 — %s (지휘: %s 대장, 소속: %s, %s)" % [e.division, e.supervisor, e.squads, e.channel]
 		"division_cleared":
 			text = "단위대 해제 — %s" % e.division
+		"face_seen":
+			text = "%s면 확인 (둘러보기 %d/%d)" % [e.face, e.count, e.total]
+		"site_info_found":
+			text = "%s면에서 확인 — %s" % [e.face, e.text]
+		"clue_found":
+			text = "물증 — %s" % e.text
+		"witness_arrived":
+			text = "관계인 도착 — %s" % e.witness
+		"statement":
+			text = "진술 — %s: \"%s\"" % [e.witness, e.text]
+		"ask_too_far":
+			text = "관계인에게 질문하려면 지휘관이 가까이 가야 함 — %s" % e.witness
+		"ask_cancelled":
+			text = "지휘관이 움직여 질문이 끊김 — %s" % e.witness
+		"command_post":
+			text = "현장지휘소 — 관찰 %s%s · 안전 %s (건물에서 %.1fm) · 동선 %s" % [e.observe, " (%s면)" % e.faces if e.faces != "" else "", e.safety, e.distance_m, e.route]
+		"report_updated":
+			text = "상황 보완 보고 (%d/%d 항목 일치)" % [e.correct, e.scored]
 		"span_warning":
 			text = "통솔범위 %s — 직접 지휘 %d개 (적정 %d, 한계 %d). 단위지휘관을 지정하세요 (SOP 105)" % [e.level, e.count, e.ideal, e.max]
 		_:

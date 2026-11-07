@@ -4,6 +4,8 @@ extends Control
 ##   출동 지령 창 (시작 시), 지휘권 선언·최초 상황보고 양식 (SOP 101-2.1), 전략 변경 창 (106-2),
 ##   방어 전략 중 진입 명령 확인 창, 무전 기록 (107), 진입 현황 (201-3.7),
 ##   조직·지원 창: 지원 요청 (103-1.2), 단위대 지정·해제 (105-3.1), 통솔범위 표시 (105)
+##   진술 창 (관계인 클릭, 202-1.2), 현장 정보 창 (F, 101-2.2), 상황 보완 보고 창 (101-2.2①),
+##   둘러보기·현장지휘소 판정 표시 (102-2.2, 104-1.3)
 ## 창이 열려 있는 동안 게임 시간은 멈춘다 (dialog_changed로 알린다).
 
 ## 지휘 명령을 내릴 때 (world가 sim.issue로 넘긴다)
@@ -44,6 +46,19 @@ var _org_members: HFlowContainer
 var _org_list: VBoxContainer
 var _org_support: HBoxContainer
 var _org_squads: Array[int] = []  # 단위지휘관 보기 순서 -> squad id
+var _survey_label: Label
+var _witness: PanelContainer
+var _witness_index := -1
+var _witness_title: Label
+var _witness_status: Label
+var _witness_answers: Label
+var _witness_checks: VBoxContainer
+var _witness_ask: Button
+var _info: PanelContainer
+var _info_label: Label
+var _update: PanelContainer
+var _update_victims: OptionButton
+var _update_hazards: Array[CheckBox] = []
 
 
 func setup(p_sim: SimWorld) -> void:
@@ -56,6 +71,9 @@ func setup(p_sim: SimWorld) -> void:
 	_build_strategy()
 	_build_confirm()
 	_build_org()
+	_build_witness()
+	_build_info()
+	_build_update()
 
 
 func _process(delta: float) -> void:
@@ -68,7 +86,8 @@ func _process(delta: float) -> void:
 
 
 func any_dialog_open() -> bool:
-	return _dispatch.visible or _report.visible or _strategy.visible or _confirm.visible or _org.visible
+	return _dispatch.visible or _report.visible or _strategy.visible or _confirm.visible or _org.visible \
+		or _witness.visible or _info.visible or _update.visible
 
 
 func set_radio_visible(on: bool) -> void:
@@ -113,6 +132,38 @@ func assign_division(name: String, supervisor: int, members: Array[int]) -> void
 	for cb: CheckBox in _org_members.get_children():
 		cb.button_pressed = int(cb.get_meta("squad")) in members
 	_submit_division()
+
+
+## 관계인 진술 창 (관계인 클릭)
+func open_witness(index: int) -> void:
+	if any_dialog_open() or index < 0 or index >= sim.command.survey.witnesses.size():
+		return
+	_witness_index = index
+	_rebuild_witness()
+	_open(_witness)
+
+
+func witness_visible() -> bool:
+	return _witness.visible
+
+
+## 진술 창에서 질문을 고르고 묻는다 (조작 점검용)
+func ask_witness(questions: Array[String]) -> void:
+	for cb: CheckBox in _witness_checks.get_children():
+		cb.button_pressed = str(cb.get_meta("q")) in questions
+	_submit_ask()
+
+
+## 현장 정보 창 (F): 둘러보기·진술·물증 기록
+func open_info_dialog() -> void:
+	if any_dialog_open():
+		return
+	_info_label.text = _info_text()
+	_open(_info)
+
+
+func info_visible() -> bool:
+	return _info.visible
 
 
 func show_dispatch() -> void:
@@ -228,6 +279,7 @@ func _refresh_radio() -> void:
 	if cmd.held_count() > 0:
 		span += "  · 실행 대기 명령 %d건" % cmd.held_count()
 	_span_label.text = span
+	_survey_label.text = _survey_text()
 	_span_label.add_theme_color_override("font_color", WARN_COLOR if n > cmd.org.span_ideal else DIM_COLOR)
 
 
@@ -280,10 +332,16 @@ func _build_radio_panel() -> void:
 	_span_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_span_label.custom_minimum_size = Vector2(RADIO_WIDTH - 16, 0)
 	box.add_child(_span_label)
+	_survey_label = _label("", 15, TEXT_COLOR)
+	_survey_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_survey_label.custom_minimum_size = Vector2(RADIO_WIDTH - 16, 0)
+	box.add_child(_survey_label)
 	var row := HBoxContainer.new()
 	var report_button := _button("지휘 (C)", open_command_dialog)
 	var org_button := _button("조직·지원 (O)", open_org_dialog)
-	for b in [report_button, org_button]:
+	var info_button := _button("현장 정보 (F)", open_info_dialog)
+	var walk_button := _button("360° 둘러보기", func() -> void: order_issued.emit(CommandOrder.make("survey")))
+	for b in [report_button, org_button, info_button, walk_button]:
 		b.custom_minimum_size = Vector2(150, 34)
 		row.add_child(b)
 	box.add_child(row)
@@ -351,6 +409,16 @@ func _build_strategy() -> void:
 		_strategy_buttons.append(b)
 	row.add_child(_button("취소", func() -> void: _close(_strategy)))
 	box.add_child(row)
+	box.add_child(HSeparator.new())
+	box.add_child(_label("둘러보기·진술로 새로 알게 된 구조대상자·위험 요소는 보완 보고로 전파합니다 (SOP 101-2.2①).", 15, DIM_COLOR))
+	var more := HBoxContainer.new()
+	more.add_child(_button("상황 보완 보고", func() -> void:
+		_close(_strategy)
+		_update_victims.select(0)
+		for cb in _update_hazards:
+			cb.button_pressed = false
+		_open(_update)))
+	box.add_child(more)
 
 
 func _build_confirm() -> void:
@@ -475,6 +543,157 @@ func _submit_division() -> void:
 	var name := _org_name.get_item_text(_org_name.selected)
 	order_issued.emit(CommandOrder.make("division", members, supervisor, Vector3i.ZERO, {"name": name}))
 	_close(_org)
+
+
+## 둘러보기 현황과 현장지휘소 판정 한 줄
+func _survey_text() -> String:
+	var survey := sim.command.survey
+	var faces: PackedStringArray = []
+	for key in survey.face_keys():
+		faces.append("%s%s" % [key, "✓" if survey.face_seen(key) else "–"])
+	var p := survey.post
+	var text := "둘러보기 %s" % " ".join(faces)
+	if not p.is_empty():
+		text += "  ·  지휘 위치: 관찰 %s%s · 안전 %s (건물에서 %.1fm) · 동선 %s" % [p.observe,
+			"(%s면)" % p.faces if p.faces != "" else "", p.safety, p.distance_m, p.route]
+	return text
+
+
+func _info_text() -> String:
+	var survey := sim.command.survey
+	var lines: PackedStringArray = [_survey_text(), ""]
+	if survey.log.is_empty():
+		lines.append("아직 확인한 정보가 없습니다.")
+	for entry in survey.log:
+		var t := int(entry.tick * SimClock.TICK_DT)
+		lines.append("%02d:%02d  [%s] %s — %s" % [floori(t / 60.0), t % 60, entry.kind, entry.source, entry.text])
+	var hz := survey.known_hazards()
+	lines.append("")
+	lines.append("확인한 위험 요소: %s" % (", ".join(PackedStringArray(hz)) if not hz.is_empty() else "없음"))
+	return "\n".join(lines)
+
+
+func _build_witness() -> void:
+	_witness = _dialog()
+	var box: VBoxContainer = _witness.get_child(0)
+	_witness_title = _label("", 22, Color("fde68a"))
+	box.add_child(_witness_title)
+	box.add_child(_label("관계인·목격자의 말은 틀릴 수도 있습니다. 다른 단서와 맞춰 보세요 (SOP 101-2.2②).", 15, DIM_COLOR))
+	_witness_status = _label("", 16, TEXT_COLOR)
+	box.add_child(_witness_status)
+	_witness_answers = _label("", 16, RADIO_COLOR)
+	_witness_answers.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_witness_answers.custom_minimum_size = Vector2(DIALOG_WIDTH - 40, 0)
+	box.add_child(_witness_answers)
+	_witness_checks = VBoxContainer.new()
+	box.add_child(_witness_checks)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_END
+	row.add_child(_button("지휘관 이동", func() -> void:
+		var w := sim.command.survey.witnesses[_witness_index]
+		order_issued.emit(CommandOrder.make("commander_move", [], 0, Vector3i(floori(w.pos.x) + 1, floori(w.pos.y), 1)))
+		_close(_witness)))
+	row.add_child(_button("닫기", func() -> void: _close(_witness)))
+	_witness_ask = _button("질문", _submit_ask)
+	row.add_child(_witness_ask)
+	box.add_child(row)
+
+
+func _rebuild_witness() -> void:
+	var survey := sim.command.survey
+	var w := survey.witnesses[_witness_index]
+	_witness_title.text = "관계인 — %s" % w.label()
+	var near := survey.in_ask_range(_witness_index)
+	_witness_status.text = "질문할 수 있음 (질문 하나에 %.0f초, 그동안 지휘관은 움직이지 않음)" % survey.ask_seconds() if near \
+		else "지휘관이 가까이(3m) 가야 질문할 수 있습니다."
+	var answers: PackedStringArray = []
+	for q: String in w.asked:
+		answers.append("%s → \"%s\"" % [SiteSurvey.QUESTIONS[q], w.statements[q].get("text", "")])
+	_witness_answers.text = "\n".join(answers) if not answers.is_empty() else "(아직 들은 진술 없음)"
+	for c in _witness_checks.get_children():
+		c.queue_free()
+		_witness_checks.remove_child(c)
+	for q: String in SiteSurvey.QUESTIONS:
+		if w.asked.has(q) or not w.statements.has(q):
+			continue
+		var cb := CheckBox.new()
+		cb.text = SiteSurvey.QUESTIONS[q]
+		cb.focus_mode = Control.FOCUS_NONE
+		cb.set_meta("q", q)
+		_witness_checks.add_child(cb)
+	_witness_ask.disabled = not near or _witness_checks.get_child_count() == 0
+
+
+func _submit_ask() -> void:
+	var qs: Array[String] = []
+	for cb: CheckBox in _witness_checks.get_children():
+		if cb.button_pressed:
+			qs.append(str(cb.get_meta("q")))
+	if qs.is_empty():
+		return
+	order_issued.emit(CommandOrder.make("ask", [], _witness_index, Vector3i.ZERO, {"questions": qs}))
+	_close(_witness)
+
+
+func _build_info() -> void:
+	_info = _dialog()
+	var box: VBoxContainer = _info.get_child(0)
+	box.add_child(_label("현장 정보 (SOP 101-2.2, 202-2) — 둘러보기·진술·물증", 22, Color("fde68a")))
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(DIALOG_WIDTH - 40, 420)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_info_label = _label("", 16, TEXT_COLOR)
+	_info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_info_label.custom_minimum_size = Vector2(DIALOG_WIDTH - 60, 0)
+	scroll.add_child(_info_label)
+	box.add_child(scroll)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_END
+	row.add_child(_button("닫기", func() -> void: _close(_info)))
+	box.add_child(row)
+
+
+func _build_update() -> void:
+	_update = _dialog()
+	var box: VBoxContainer = _update.get_child(0)
+	box.add_child(_label("상황 보완 보고 (SOP 101-2.2①)", 22, Color("fde68a")))
+	box.add_child(_label("지금까지 확인한 사실로 다시 보고합니다. 전략은 그대로 유지합니다 (바꾸려면 전략 변경).", 15, DIM_COLOR))
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 16)
+	box.add_child(grid)
+	grid.add_child(_label("② 구조대상자", 17, DIM_COLOR))
+	_update_victims = OptionButton.new()
+	_update_victims.focus_mode = Control.FOCUS_NONE
+	_update_victims.custom_minimum_size = Vector2(320, 34)
+	_update_victims.add_item(PLACEHOLDER)
+	for v in CommandSystem.REPORT_OPTIONS.victims:
+		_update_victims.add_item(v)
+	grid.add_child(_update_victims)
+	grid.add_child(_label("④ 위험 요소 (없으면 비움)", 17, DIM_COLOR))
+	var flow := HFlowContainer.new()
+	flow.custom_minimum_size = Vector2(520, 0)
+	for h in CommandSystem.REPORT_OPTIONS.hazards:
+		var cb := CheckBox.new()
+		cb.text = h
+		cb.focus_mode = Control.FOCUS_NONE
+		flow.add_child(cb)
+		_update_hazards.append(cb)
+	grid.add_child(flow)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_END
+	row.add_child(_button("취소", func() -> void: _close(_update)))
+	row.add_child(_button("무전 송신", func() -> void:
+		if _update_victims.selected <= 0:
+			return
+		var hz: Array[String] = []
+		for cb in _update_hazards:
+			if cb.button_pressed:
+				hz.append(cb.text)
+		order_issued.emit(CommandOrder.make("update_report", [], 0, Vector3i.ZERO,
+			{"victims": _update_victims.get_item_text(_update_victims.selected), "hazards": hz}))
+		_close(_update)))
+	box.add_child(row)
 
 
 func _row_auto(grid: GridContainer, title: String, key: String) -> void:

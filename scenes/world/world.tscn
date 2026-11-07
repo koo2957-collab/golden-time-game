@@ -1,0 +1,43 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://scripts/world.gd" id="1_world"]
+[ext_resource type="Script" path="res://scripts/ui/floor_plan_view.gd" id="2_plan"]
+[ext_resource type="Script" path="res://scripts/ui/units_view.gd" id="3_units"]
+[ext_resource type="Script" path="res://scripts/ui/selection_controller.gd" id="4_select"]
+[ext_resource type="Script" path="res://scripts/ui/rts_camera.gd" id="5_camera"]
+[ext_resource type="PackedScene" path="res://scenes/ui/hud.tscn" id="6_hud"]
+[ext_resource type="Script" path="res://scripts/ui/fire_view.gd" id="7_fire"]
+[ext_resource type="Script" path="res://scripts/ui/iso_view.gd" id="8_iso"]
+
+[node name="World" type="Node2D"]
+script = ExtResource("1_world")
+
+[node name="Map" type="Node2D" parent="."]
+
+[node name="FloorPlanView" type="Node2D" parent="Map"]
+script = ExtResource("2_plan")
+
+[node name="Effects" type="Node2D" parent="."]
+
+[node name="FireView" type="Node2D" parent="Effects"]
+script = ExtResource("7_fire")
+
+[node name="Units" type="Node2D" parent="."]
+
+[node name="UnitsView" type="Node2D" parent="Units"]
+script = ExtResource("3_units")
+
+[node name="Iso" type="Node2D" parent="."]
+
+[node name="IsoView" type="Node2D" parent="Iso"]
+script = ExtResource("8_iso")
+
+[node name="SelectionController" type="Node2D" parent="."]
+script = ExtResource("4_select")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+script = ExtResource("5_camera")
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="HUD" parent="UI" instance=ExtResource("6_hud")]

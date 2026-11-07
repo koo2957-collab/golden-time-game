@@ -1,0 +1,55 @@
+{
+  "note": "조작 테스트용 편성. 인물은 모두 가상이다. spawn은 조장 위치(셀), 짝은 오른쪽 옆 셀에 배치된다. thermal_camera: 열화상카메라 휴대 조. vehicles의 spawn은 차량 중심(셀), heading은 차량 앞쪽 방향(기본 [1, 0] = 동쪽).",
+  "squads": [
+    {
+      "id": "pump1",
+      "name": "진압1",
+      "type": "진압대",
+      "color": "#3B82F6",
+      "vehicles": [
+        {"type": "펌프차", "spawn": [10, 30], "heading": [1, 0]},
+        {"type": "물탱크차", "spawn": [26, 30], "heading": [1, 0]}
+      ],
+      "crews": [
+        {
+          "spawn": [10, 23],
+          "thermal_camera": true,
+          "members": [
+            {"name": "김도현", "rank": "소방위", "role": "진압대장"},
+            {"name": "이준호", "rank": "소방교", "role": "관창수"}
+          ]
+        },
+        {
+          "spawn": [13, 23],
+          "members": [
+            {"name": "박성민", "rank": "소방장", "role": "관창보조"},
+            {"name": "정우진", "rank": "소방사", "role": "관창보조"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "rescue1",
+      "name": "구조1",
+      "type": "구조대",
+      "color": "#F59E0B",
+      "crews": [
+        {
+          "spawn": [17, 23],
+          "thermal_camera": true,
+          "members": [
+            {"name": "최현수", "rank": "소방위", "role": "구조대장"},
+            {"name": "강민재", "rank": "소방장", "role": "구조대원"}
+          ]
+        },
+        {
+          "spawn": [20, 23],
+          "members": [
+            {"name": "윤태경", "rank": "소방교", "role": "구조대원"},
+            {"name": "한지훈", "rank": "소방사", "role": "구조대원"}
+          ]
+        }
+      ]
+    }
+  ]
+}

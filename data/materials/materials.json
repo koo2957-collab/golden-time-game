@@ -1,0 +1,9 @@
+{
+  "note": "셀(0.5m × 0.5m) 하나 기준 가연물 특성. 모두 추정값이며 현장·문헌 검수가 필요하다. fuel_mj: 연료량, peak_kw: 최대 열방출률, ramp_s: 착화 후 최대에 이르는 시간, ignition_kj: 착화에 필요한 누적 열량, soot_yield: 그을음 발생률, flame_spread: 옆 셀 화염에 의한 착화 민감도(기본 1)",
+  "소파": {"fuel_mj": 100, "peak_kw": 320, "ramp_s": 240, "ignition_kj": 60, "soot_yield": 0.10, "color": "#8d6e63", "source": "추정"},
+  "침대": {"fuel_mj": 110, "peak_kw": 260, "ramp_s": 240, "ignition_kj": 70, "soot_yield": 0.08, "color": "#9fa8da", "source": "추정"},
+  "목재가구": {"fuel_mj": 150, "peak_kw": 120, "ramp_s": 300, "ignition_kj": 120, "soot_yield": 0.03, "color": "#a1887f", "source": "추정"},
+  "주방": {"fuel_mj": 90, "peak_kw": 180, "ramp_s": 240, "ignition_kj": 100, "soot_yield": 0.06, "color": "#90a4ae", "source": "추정"},
+  "내장재": {"fuel_mj": 25, "peak_kw": 60, "ramp_s": 30, "ignition_kj": 220, "soot_yield": 0.04, "flame_spread": 0.15, "color": "#d5dbe1", "source": "추정", "note": "바닥재·벽지·천장재. 옆 불꽃으로는 잘 번지지 않고 주로 복사열(플래시오버)로 착화한다"},
+  "문": {"fuel_mj": 40, "peak_kw": 90, "ramp_s": 120, "ignition_kj": 150, "soot_yield": 0.03, "color": "#c08a3e", "source": "추정"}
+}

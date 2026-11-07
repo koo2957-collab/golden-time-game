@@ -1,0 +1,76 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/hud.gd" id="1_hud"]
+
+[node name="HUD" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_hud")
+
+[node name="ClockPanel" type="PanelContainer" parent="."]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 336.0
+offset_bottom = 56.0
+mouse_filter = 2
+
+[node name="ClockLabel" type="Label" parent="ClockPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "경과 00:00   ×1"
+
+[node name="FloorTabs" type="HBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -196.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = 56.0
+grow_horizontal = 0
+alignment = 2
+
+[node name="SelectionPanel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = -56.0
+offset_right = 716.0
+offset_bottom = -16.0
+grow_vertical = 0
+mouse_filter = 2
+
+[node name="SelectionLabel" type="Label" parent="SelectionPanel"]
+layout_mode = 2
+size_flags_vertical = 0
+theme_override_font_sizes/font_size = 18
+text = "선택 없음"
+
+[node name="HelpLabel" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -716.0
+offset_top = -48.0
+offset_right = -16.0
+offset_bottom = -16.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_colors/font_color = Color(0.56, 0.63, 0.7, 1)
+theme_override_font_sizes/font_size = 15
+text = "좌클릭 선택 · 드래그 범위선택 · 우클릭 이동(펌프차: 수관 연장, 닫힌 문: 개방·파괴) · Ctrl+숫자 부대지정 · E 문 · H 수관 · A 직사 · S 분무 · D 중지
+방향키/휠 버튼 끌기 카메라 · 휠 줌 · PgUp/PgDn 층 · Tab 입체/상황판 · T 열화상 · F1~F3 배속 · Space 일시정지 · F5 다시 시작"
+horizontal_alignment = 2
+vertical_alignment = 2

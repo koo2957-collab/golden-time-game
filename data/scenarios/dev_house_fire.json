@@ -1,0 +1,17 @@
+{
+  "id": "dev_house_fire",
+  "title": "개발용: 2층 주택 거실 화재",
+  "note": "M2 화재 시뮬레이션 확인용. 정식 시나리오 형식은 M6에서 확정한다.",
+  "building": "res://data/buildings/house_2f.json",
+  "roster": "res://data/units/test_roster.json",
+  "seed": 2026,
+  "fire": {
+    "ignitions": [
+      {"level": 1, "cell": [12, 17], "time_s": 0, "note": "거실 소파"}
+    ],
+    "doors_closed": [],
+    "doors_open": [],
+    "doors_locked": [[13, 20, 1], [12, 3, 1]],
+    "note_doors": "현관문(A면)·뒷문(C면)은 잠김, 옆문(D면)은 닫혀 있지만 잠기지 않음"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "note": "대원 능력·한계 수치. source: 교재 = 소방전술 I, 공학식 = 화재공학 상관식·문헌, 추정 = 현장 검수 필요.",
+  "walk_speed_mps": {"value": 1.2, "unit": "m/s", "source": "추정", "note": "개인보호장비 착용 상태의 일반 보행 속도"},
+  "crouch_speed_factor": {"value": 0.5, "source": "추정", "note": "연기층이 내려와 낮은 자세로 이동할 때의 속도 비율 (SOP 201-3.3)"},
+  "eye_height_standing_m": {"value": 1.6, "source": "추정"},
+  "eye_height_crouched_m": {"value": 0.9, "source": "추정"},
+
+  "scba_air_l": {"value": 2040, "source": "추정", "note": "공기호흡기 6.8L × 300bar"},
+  "scba_alarm_ratio": {"value": 0.18, "source": "추정", "note": "경보 압력 약 55bar / 300bar"},
+  "air_use_rest_lpm": {"value": 40, "source": "추정", "note": "가벼운 활동"},
+  "air_use_work_lpm": {"value": 60, "source": "추정", "note": "이동·방수·문 개방 등 작업"},
+  "air_use_heat_lpm": {"value": 80, "source": "추정", "note": "고열 환경 작업"},
+  "scba_swap_s": {"value": 60, "source": "추정", "note": "차량 근처(바깥)에서 용기 교체에 걸리는 시간"},
+  "scba_swap_range_m": {"value": 6, "source": "추정"},
+
+  "heat_routine_kw_m2": {"value": 1.7, "source": "공학식", "note": "방화복 착용 시 일상 활동 가능 복사열 (문헌값, 검수 필요)"},
+  "heat_hazard_kw_m2": {"value": 10, "source": "공학식", "note": "이 복사열 이상이면 접근하지 못하고 물러난다 (문헌값, 검수 필요)"},
+  "heat_stress_seconds_at_hazard": {"value": 240, "source": "추정", "note": "위험 상한(10kW/㎡)에 계속 노출되면 이 시간에 행동 불능"},
+  "heat_recovery_seconds": {"value": 600, "source": "추정", "note": "열 스트레스가 최대에서 0으로 회복되는 시간 (바깥·일상 구간)"},
+  "flame_radiant_fraction": {"value": 0.3, "source": "공학식", "note": "화염 열방출 중 복사로 나가는 비율"},
+
+  "flashlight_bonus_m": {"value": 0.5, "source": "추정", "note": "짙은 연기 속 랜턴은 연기 입자에 빛이 반사되어 시야를 거의 늘리지 못한다"},
+  "lower_layer_visibility_factor": {"value": 4, "source": "추정", "note": "연기층 아래(하부층) 시야는 상부층보다 이만큼 길다"},
+  "flame_glow_factor": {"value": 3, "source": "추정", "note": "화염 불빛은 형체보다 이 배수만큼 멀리 보인다"},
+  "max_sight_m": {"value": 15, "source": "추정", "note": "맑은 실내에서도 한 번에 살피는 최대 거리"},
+  "thermal_camera_range_m": {"value": 15, "source": "추정", "note": "열화상카메라 탐지 거리 (SOP 202-1.5)"},
+
+  "door_open_s": {"value": 3, "source": "추정", "note": "잠기지 않은 문 개방·폐쇄"},
+  "forcible_entry_s": {"value": 60, "source": "추정", "note": "잠긴 문 파괴(강제 개방). SOP 202-3.3 현장지휘관 명령으로 실시"},
+  "forcible_entry_min_people": {"value": 2, "source": "추정", "note": "파괴 작업에 문 앞에 있어야 하는 최소 인원"}
+}

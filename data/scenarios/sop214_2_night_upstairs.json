@@ -1,0 +1,263 @@
+{
+  "id": "sop214_2_night_upstairs",
+  "title": "주택화재 ② 새벽 · 2층 침실",
+  "note": "정식 시나리오 (M6b). 인물은 모두 가상.",
+  "meta": {
+    "order": 2,
+    "sop": "214 주택화재",
+    "difficulty": "중급",
+    "role": "선착대장",
+    "estimated_min": 25,
+    "summary": "새벽 3시 40분, 2층 딸 방(방4) 침대에서 불이 났습니다. 남편은 빠져나왔지만 아내와 딸이 2층에 있습니다. 1층으로 진입해 2층으로 올라가야 하고, 연기는 2층 복도로 퍼집니다. 딸의 위치는 판마다 바뀝니다(방4 또는 복도). 이웃의 말은 믿기 어렵습니다."
+  },
+  "building": "res://data/buildings/house_2f.json",
+  "roster": "res://data/units/test_roster.json",
+  "commander": {
+    "name": "서정호",
+    "rank": "소방경",
+    "title": "선착대장",
+    "spawn": [
+      6,
+      26
+    ],
+    "note": "가상 인물"
+  },
+  "entry_order_required": true,
+  "reinforcements": "res://data/units/dev_reinforcements.json",
+  "staging": {
+    "name": "도로 동쪽",
+    "lanes": [
+      {
+        "y": 36,
+        "x_min": 43
+      },
+      {
+        "y": 30,
+        "x_min": 43
+      }
+    ],
+    "gap_cells": 1,
+    "note": "대기1단계 장소 (SOP 103-2.1). 후착 차량은 지도 동쪽 끝에서 서쪽을 보고 들어와 차로(y)의 x_min부터 차례로 선다. 자리가 없으면 진입로에서 기다린다"
+  },
+  "seed": 7341,
+  "variation": {
+    "random_seed": true,
+    "note": "판마다 다른 시드: 딸의 위치(rooms 후보)와 요구조자 자리가 바뀐다"
+  },
+  "dispatch": {
+    "title": "출동 지령 — 주택 화재 (새벽)",
+    "lines": [
+      "대상: 2층 단독주택 (벽돌조), 주택가 이면도로",
+      "신고 내용(남편, 휴대전화): \"2층 딸 방에서 불이 났어요. 아내랑 딸이 아직 안에 있어요!\"",
+      "시간·날씨: 03:40, 맑음, 북풍 3m/s",
+      "출동대: 진압1(펌프차·물탱크차), 구조1 (선착) · 후착: 진압2(펌프차, 약 4분 뒤), 구조2(약 6분 뒤)",
+      "소화전: 건물 동쪽 보도 지상식 1개소 · 대기1단계 장소: 도로 동쪽"
+    ],
+    "reported_victims": true
+  },
+  "report_truth": {
+    "use": "단독주택",
+    "vehicle_access": "진입 가능, 회차 불가",
+    "hazards": []
+  },
+  "evaluation": {
+    "rules": [
+      "safety.ff_down",
+      "safety.air_exit",
+      "safety.withdraw",
+      "safety.command_post",
+      "safety.rit",
+      "safety.emergency",
+      "safety.officer",
+      "safety.entry_judgment",
+      "rescue.survival",
+      "rescue.time",
+      "rescue.search_order",
+      "property.spread",
+      "property.water",
+      "fire.extinguish",
+      "fire.water_supply",
+      "fire.overhaul",
+      "fire.watch",
+      "command.declare",
+      "command.report",
+      "command.strategy",
+      "command.survey",
+      "command.witness",
+      "command.span",
+      "command.par_end"
+    ],
+    "params": {},
+    "time_limit_s": 2400,
+    "objectives": [
+      "2층 구조대상자(아내·딸) 생존 구조 — 화점실·직상층 검색 순서 판단 (SOP 202-3.1.2, 214-2.1)",
+      "대원 안전: 2층 진입조의 공기 잔량·롤오버 징후 관리 (SOP 108, 201)",
+      "2층 방4 화재를 복도·다른 방으로 번지기 전에 진압 (SOP 214-2.4)",
+      "진술의 신뢰성 판단 — 신고 내용·물증과 맞춰 보기 (SOP 101-2.2②)"
+    ],
+    "end_state": "아내와 딸 모두 생존 구조, 대원 부상 없음, 화재는 방4에서 완진, 숨은 불씨 정리"
+  },
+  "site": {
+    "faces": [
+      {
+        "face": "D",
+        "text": "2층 방4 창에서 연기 분출, 옆집 처마까지 약 2m — 연소 확대 우려"
+      },
+      {
+        "face": "C",
+        "text": "뒤쪽 전기 인입선이 처져 있음",
+        "hazard": "전기 위험"
+      }
+    ],
+    "lights": [
+      "1F_hall"
+    ],
+    "shoes": [
+      {
+        "door": [
+          13,
+          20,
+          1
+        ],
+        "text": "현관에 신발 3켤레 (어른 2, 아이 1)"
+      }
+    ],
+    "witnesses": [
+      {
+        "name": "남편",
+        "source": "가족",
+        "pos": [
+          3,
+          25
+        ],
+        "arrive_s": 0,
+        "statements": {
+          "victims": {
+            "text": "아내는 안방(2층 방2)에, 딸은 자기 방(방4)에서 자고 있었어요. 저는 연기 냄새에 깨서 뛰쳐나왔어요.",
+            "reliable": true,
+            "rooms": [
+              "2F_room2",
+              "2F_room4"
+            ],
+            "note": "딸은 판에 따라 복도로 나와 있을 수 있다"
+          },
+          "origin": {
+            "text": "딸 방 쪽에서 타는 냄새가 났어요.",
+            "reliable": true
+          },
+          "hazards": {
+            "text": "가스는 도시가스예요. 위험한 건 없을 거예요.",
+            "reliable": true
+          },
+          "doors": {
+            "text": "현관은 잠겨 있어요. 열쇠를 두고 나왔어요.",
+            "reliable": true
+          }
+        }
+      },
+      {
+        "name": "앞집 주민",
+        "source": "목격자",
+        "pos": [
+          35,
+          25
+        ],
+        "arrive_s": 60,
+        "statements": {
+          "victims": {
+            "text": "어젯밤에 그 집 가족이 여행 간다고 했던 것 같은데요.",
+            "reliable": false,
+            "note": "사실이 아니다. 신고자(남편)의 말과 현관 신발 3켤레와 어긋난다"
+          },
+          "origin": {
+            "text": "2층 오른쪽 창에서 불빛이 번쩍했어요.",
+            "reliable": true
+          },
+          "hazards": {
+            "text": "뒤쪽 전깃줄이 늘 처져 있었어요.",
+            "reliable": true,
+            "hazard": "전기 위험"
+          },
+          "doors": {
+            "text": "그건 모르겠어요.",
+            "reliable": true
+          }
+        }
+      }
+    ]
+  },
+  "arrivals": [
+    {
+      "squad": "pump2",
+      "time_s": 240
+    },
+    {
+      "squad": "rescue2",
+      "time_s": 360
+    }
+  ],
+  "support": {
+    "추가 출동대 요청": {
+      "squads": [
+        "pump3",
+        "pump4"
+      ],
+      "delay_s": 360
+    },
+    "대응 1단계 발령": {
+      "squads": [
+        "pump3",
+        "pump4",
+        "pump5"
+      ],
+      "delay_s": 360
+    },
+    "note": "지원 요청(SOP 103-1.2) 후 도착할 출동대와 걸리는 시간 (추정)"
+  },
+  "victims": [
+    {
+      "name": "아내",
+      "age": 41,
+      "mobility": "자력 피난 불가 (수면 중 연기 흡입)",
+      "level": 2,
+      "room": "2F_room2"
+    },
+    {
+      "name": "딸",
+      "age": 10,
+      "mobility": "자력 피난 불가",
+      "level": 2,
+      "rooms": [
+        "2F_room4",
+        "2F_hall"
+      ]
+    }
+  ],
+  "fire": {
+    "ignitions": [
+      {
+        "level": 2,
+        "cell": [
+          27,
+          16
+        ],
+        "time_s": 0,
+        "note": "방4 침대"
+      }
+    ],
+    "doors_closed": [],
+    "doors_open": [],
+    "doors_locked": [
+      [
+        13,
+        20,
+        1
+      ],
+      [
+        12,
+        3,
+        1
+      ]
+    ]
+  }
+}

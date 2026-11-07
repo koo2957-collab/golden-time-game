@@ -5,13 +5,16 @@ extends Control
 ##   방어 전략 중 진입 명령 확인 창, 무전 기록 (107), 진입 현황 (201-3.7),
 ##   조직·지원 창: 지원 요청 (103-1.2), 단위대 지정·해제 (105-3.1), 통솔범위 표시 (105)
 ##   진술 창 (관계인 클릭, 202-1.2), 현장 정보 창 (F, 101-2.2), 상황 보완 보고 창 (101-2.2①),
-##   둘러보기·현장지휘소 판정 표시 (102-2.2, 104-1.3)
+##   둘러보기·현장지휘소 판정 표시 (102-2.2, 104-1.3), 활동 종료 선언 확인 창 (113-1.1, 200-4.1, 202-6.5)
+##   대원 안전 (109, SSG 9, 108-1.4): 긴급탈출 지시·인원점검 버튼, 조직 창의 RIT·현장안전담당 지정, 긴급탈출 상황 표시
 ## 창이 열려 있는 동안 게임 시간은 멈춘다 (dialog_changed로 알린다).
 
 ## 지휘 명령을 내릴 때 (world가 sim.issue로 넘긴다)
 signal order_issued(order: CommandOrder)
 ## 창이 열리거나 닫힐 때
 signal dialog_changed(open: bool)
+## 종료 창을 열 때 (교육 모드 힌트)
+signal end_dialog_opened
 
 const RADIO_LINES := 6
 const RADIO_WIDTH := 660.0
@@ -39,6 +42,7 @@ var _checks: Dictionary = {}  # 항목 -> Array[CheckBox]
 var _auto_labels: Dictionary = {}  # 항목 -> Label
 var _strategy_buttons: Array[Button] = []
 var _span_label: Label
+var _receo_label: RichTextLabel
 var _org: PanelContainer
 var _org_name: OptionButton
 var _org_supervisor: OptionButton
@@ -59,6 +63,12 @@ var _info_label: Label
 var _update: PanelContainer
 var _update_victims: OptionButton
 var _update_hazards: Array[CheckBox] = []
+var _end: PanelContainer
+var _end_status: Label
+var _end_watch: OptionButton
+var _role_crew: OptionButton
+var _role_crews: Array[int] = []
+var _role_list: Label
 
 
 func setup(p_sim: SimWorld) -> void:
@@ -74,6 +84,7 @@ func setup(p_sim: SimWorld) -> void:
 	_build_witness()
 	_build_info()
 	_build_update()
+	_build_end()
 
 
 func _process(delta: float) -> void:
@@ -87,7 +98,7 @@ func _process(delta: float) -> void:
 
 func any_dialog_open() -> bool:
 	return _dispatch.visible or _report.visible or _strategy.visible or _confirm.visible or _org.visible \
-		or _witness.visible or _info.visible or _update.visible
+		or _witness.visible or _info.visible or _update.visible or _end.visible
 
 
 func set_radio_visible(on: bool) -> void:
@@ -164,6 +175,40 @@ func open_info_dialog() -> void:
 
 func info_visible() -> bool:
 	return _info.visible
+
+
+## 열린 창을 모두 닫는다 (디브리핑으로 넘어갈 때)
+func close_all() -> void:
+	for p in [_dispatch, _report, _strategy, _confirm, _org, _witness, _info, _update, _end]:
+		_close(p)
+	_radio_panel.visible = false
+
+
+## 활동 종료 선언을 확인하는 창 (조작 점검용으로도 쓴다)
+func open_end_confirm() -> void:
+	_close(_strategy)
+	if not any_dialog_open():
+		_rebuild_end()
+		_open(_end)
+		end_dialog_opened.emit()
+
+
+func confirm_end() -> void:
+	var watch := ""
+	if _end_watch.selected > 0:
+		watch = _end_watch.get_item_text(_end_watch.selected)
+	order_issued.emit(CommandOrder.make("end", [], 0, Vector3i.ZERO, {"watch": watch}))
+	_close(_end)
+
+
+## 종료 창의 감시 지정을 고른다 (조작 점검용): 0 지정 안 함, 1 관계자, 2부터 출동대 감시조
+func set_end_watch(i: int) -> void:
+	_end_watch.select(i)
+
+
+## 조에 안전 임무를 맡긴다 (조작 점검용)
+func assign_role(crew_id: int, role: int) -> void:
+	order_issued.emit(CommandOrder.make("role", [crew_id], role))
 
 
 func show_dispatch() -> void:
@@ -280,6 +325,7 @@ func _refresh_radio() -> void:
 		span += "  · 실행 대기 명령 %d건" % cmd.held_count()
 	_span_label.text = span
 	_survey_label.text = _survey_text()
+	_receo_label.text = _receo_text()
 	_span_label.add_theme_color_override("font_color", WARN_COLOR if n > cmd.org.span_ideal else DIM_COLOR)
 
 
@@ -288,6 +334,8 @@ func _entry_text() -> String:
 	var cmd := sim.command
 	var lines: PackedStringArray = ["전략: %s%s" % [CommandSystem.STRATEGY_NAMES[cmd.strategy],
 		"" if cmd.declared() else "  (지휘권 미선언 — C)"]]
+	if cmd.safety.emergency():
+		lines.insert(0, "⚠ 긴급탈출 상황 — 무선 침묵 (SOP 109). 쓰러진 대원에게 RIT·가까운 조 투입 (우클릭)")
 	var res := cmd.resources
 	for squad in sim.units.squads:
 		if res.is_en_route(squad.id):
@@ -303,6 +351,9 @@ func _entry_text() -> String:
 			state += " · %s%s" % [d.name, " 지휘" if d.supervisor == squad.id else ""]
 		var inside: PackedStringArray = []
 		for c in squad.crews:
+			var role := cmd.safety.role_of(c.id)
+			if role != SafetySystem.Role.NONE:
+				state += " · %d조 %s%s" % [c.number, "RIT" if role == SafetySystem.Role.RIT else "안전담당", " 투입" if cmd.safety.deployed.has(c.id) else ""]
 			if not sim.building.cell(c.leader.level, floori(c.leader.pos.x), floori(c.leader.pos.y)) in BuildingData.OUTDOOR:
 				var air := minf(c.leader.air_ratio(), c.partner.air_ratio() if c.partner else 1.0)
 				inside.append("%d조 %s 공기 %d%%" % [c.number, sim.building.floor_name(c.leader.level), roundi(air * 100.0)])
@@ -328,6 +379,13 @@ func _build_radio_panel() -> void:
 	box.add_child(HSeparator.new())
 	_entry_label = _label("", 15, TEXT_COLOR)
 	box.add_child(_entry_label)
+	_receo_label = RichTextLabel.new()
+	_receo_label.bbcode_enabled = true
+	_receo_label.fit_content = true
+	_receo_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_receo_label.custom_minimum_size = Vector2(RADIO_WIDTH - 16, 0)
+	_receo_label.add_theme_font_size_override("normal_font_size", 15)
+	box.add_child(_receo_label)
 	_span_label = _label("", 15, DIM_COLOR)
 	_span_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_span_label.custom_minimum_size = Vector2(RADIO_WIDTH - 16, 0)
@@ -345,6 +403,14 @@ func _build_radio_panel() -> void:
 		b.custom_minimum_size = Vector2(150, 34)
 		row.add_child(b)
 	box.add_child(row)
+	var row2 := HBoxContainer.new()
+	var evac := _button("긴급탈출 지시", func() -> void: order_issued.emit(CommandOrder.make("evacuate")))
+	evac.add_theme_color_override("font_color", WARN_COLOR)
+	var par := _button("인원점검 (P)", func() -> void: order_issued.emit(CommandOrder.make("par")))
+	for b in [evac, par]:
+		b.custom_minimum_size = Vector2(150, 34)
+		row2.add_child(b)
+	box.add_child(row2)
 	add_child(_radio_panel)
 
 
@@ -385,7 +451,7 @@ func _build_report() -> void:
 	_row_checks(grid, "⑥ 소방 활동", "activities", opts.activities)
 	_row_option(grid, "⑦ 전략", "strategy", ["공격", "방어", "병행"])
 	_row_option(grid, "⑧ 지원 요청", "support", opts.support)
-	_row_option(grid, "⑨ 차량 진입·회차", "access", opts.access)
+	_row_option(grid, "⑨ 차량 진입·회차 (참고, 채점 안 함)", "access", opts.access)
 	var buttons := HBoxContainer.new()
 	buttons.alignment = BoxContainer.ALIGNMENT_END
 	_report_submit = _button("무전 송신", submit_report)
@@ -412,6 +478,7 @@ func _build_strategy() -> void:
 	box.add_child(HSeparator.new())
 	box.add_child(_label("둘러보기·진술로 새로 알게 된 구조대상자·위험 요소는 보완 보고로 전파합니다 (SOP 101-2.2①).", 15, DIM_COLOR))
 	var more := HBoxContainer.new()
+	more.add_child(_button("활동 종료 선언", open_end_confirm))
 	more.add_child(_button("상황 보완 보고", func() -> void:
 		_close(_strategy)
 		_update_victims.select(0)
@@ -474,6 +541,24 @@ func _build_org() -> void:
 	box.add_child(_label("현재 단위대", 17, DIM_COLOR))
 	_org_list = VBoxContainer.new()
 	box.add_child(_org_list)
+	box.add_child(HSeparator.new())
+	box.add_child(_label("안전 임무 (SSG 9 RIT, SOP 108-1.4 현장안전담당) — 맡은 조는 다른 임무를 받지 않고 밖에서 대기", 15, DIM_COLOR))
+	var roles := HBoxContainer.new()
+	_role_crew = OptionButton.new()
+	_role_crew.focus_mode = Control.FOCUS_NONE
+	_role_crew.custom_minimum_size = Vector2(260, 38)
+	roles.add_child(_role_crew)
+	for spec in [["RIT 지정", SafetySystem.Role.RIT], ["현장안전담당 지정", SafetySystem.Role.OFFICER], ["임무 해제", SafetySystem.Role.NONE]]:
+		var role: int = spec[1]
+		var b := _button(spec[0], func() -> void:
+			if _role_crew.selected >= 0 and _role_crew.selected < _role_crews.size():
+				order_issued.emit(CommandOrder.make("role", [_role_crews[_role_crew.selected]], role))
+				_close(_org))
+		b.custom_minimum_size = Vector2(170, 38)
+		roles.add_child(b)
+	box.add_child(roles)
+	_role_list = _label("", 15, TEXT_COLOR)
+	box.add_child(_role_list)
 	var close := HBoxContainer.new()
 	close.alignment = BoxContainer.ALIGNMENT_END
 	close.add_child(_button("닫기", func() -> void: _close(_org)))
@@ -510,6 +595,19 @@ func _rebuild_org() -> void:
 		cb.focus_mode = Control.FOCUS_NONE
 		cb.set_meta("squad", squad.id)
 		_org_members.add_child(cb)
+	_role_crew.clear()
+	_role_crews.clear()
+	var role_lines: PackedStringArray = []
+	for c in sim.units.crews:
+		if not cmd.resources.on_scene(c.squad_id):
+			continue
+		var name := "%s %d조" % [sim.units.squads[c.squad_id].name, c.number]
+		var role := cmd.safety.role_of(c.id)
+		_role_crew.add_item(name + ("  [%s]" % SafetySystem.ROLE_NAMES[role] if role != SafetySystem.Role.NONE else ""))
+		_role_crews.append(c.id)
+		if role != SafetySystem.Role.NONE:
+			role_lines.append("%s — %s%s" % [name, SafetySystem.ROLE_NAMES[role], " (투입)" if cmd.safety.deployed.has(c.id) else ""])
+	_role_list.text = "현재: " + (", ".join(role_lines) if not role_lines.is_empty() else "없음")
 	for c in _org_list.get_children():
 		c.queue_free()
 		_org_list.remove_child(c)
@@ -543,6 +641,77 @@ func _submit_division() -> void:
 	var name := _org_name.get_item_text(_org_name.selected)
 	order_issued.emit(CommandOrder.make("division", members, supervisor, Vector3i.ZERO, {"name": name}))
 	_close(_org)
+
+
+## 대원 안전 + RECEO 상태판 (SOP 106-1.1② 전술적 우선순위, 208-1.1 RECEO). 확인한 정보 기준,
+## 처리되지 않은 첫 줄을 '현재 우선'으로 강조한다.
+func _receo_text() -> String:
+	var cmd := sim.command
+	var b := sim.building
+	var inside := 0
+	var min_air := 1.0
+	for ff in sim.units.firefighters:
+		if not b.cell(ff.level, floori(ff.pos.x), floori(ff.pos.y)) in BuildingData.OUTDOOR:
+			inside += 1
+			min_air = minf(min_air, ff.air_ratio())
+	var signs := 0
+	for t in ["rollover_sign", "backdraft_sign", "fgi_warning"]:
+		for e in sim.events.of_type(t):
+			if sim.clock.tick - int(e.tick) <= cmd.safety.factor_recent_ticks:
+				signs += 1
+	var possible := cmd.victim_truth() == "있음"
+	var found := 0
+	var saved := 0
+	for v in sim.rescue.victims:
+		if v.discovered:
+			found += 1
+		if v.state == Victim.State.RESCUED:
+			saved += 1
+	var unsearched := 0
+	for c in sim.fire.comps:
+		if c.searched_tick < 0:
+			unsearched += 1
+	var rooms := {}
+	var grid := sim.fire.grid
+	for i in grid.burning:
+		if not sim.perception.enabled or sim.perception.seen_burning[i] == 1:
+			var p := grid.cell_of(i)
+			var c := sim.fire.compartment_at(p.z, p.x, p.y)
+			if c:
+				rooms[c.index] = true
+	var flashed := 0
+	for c in sim.fire.comps:
+		if c.flashed:
+			flashed += 1
+	var nozzles := 0
+	for h in sim.water.hoses:
+		if h.flowing:
+			nozzles += 1
+	var embers := sim.rekindle.spotted_cells().size()
+	var items := [
+		[cmd.safety.emergency() or signs > 0 or (inside > 0 and min_air < 0.3), "안전",
+			"%s내부 %d명%s%s" % ["⚠ 긴급탈출 · " if cmd.safety.emergency() else "", inside,
+			" · 최저 공기 %d%%" % roundi(min_air * 100.0) if inside > 0 else "", " · 특수현상 징후 %d" % signs if signs > 0 else ""]],
+		[possible and (found > saved or unsearched > 0), "R 구조",
+			"구조대상자 %s · 발견 %d · 구조 %d · 미검색 구획 %d" % ["가능성 있음" if possible else "없음", found, saved, unsearched]],
+		[flashed > 0, "E 외부", "창 화염 분출 가능 %d구획 · 인접 건물 없음" % flashed if flashed > 0 else "징후 없음 · 인접 건물 없음"],
+		[rooms.size() > 1, "C 확산", "연소 확인 구획 %d" % rooms.size()],
+		[rooms.size() > 0, "E 진압", "방수 중 관창 %d" % nozzles],
+		[embers > 0, "O 잔불", "찾은 불씨 %d" % embers],
+	]
+	var lines: PackedStringArray = ["[color=#94a3b8]우선순위 (대원 안전 → RECEO)[/color]"]
+	var marked := false
+	for it: Array in items:
+		var mark := ""
+		var color := "94a3b8"
+		if it[0] and not marked:
+			mark = "▶ "
+			color = "fde68a"
+			marked = true
+		elif it[0]:
+			color = "e2e8f0"
+		lines.append("[color=#%s]%s%s: %s[/color]" % [color, mark, it[1], it[2]])
+	return "\n".join(lines)
 
 
 ## 둘러보기 현황과 현장지휘소 판정 한 줄
@@ -694,6 +863,59 @@ func _build_update() -> void:
 			{"victims": _update_victims.get_item_text(_update_victims.selected), "hazards": hz}))
 		_close(_update)))
 	box.add_child(row)
+
+
+func _build_end() -> void:
+	_end = _dialog()
+	var box: VBoxContainer = _end.get_child(0)
+	box.add_child(_label("활동 종료 선언 (SOP 113-1.1)", 22, Color("fde68a")))
+	var l := _label("활동을 끝내고 디브리핑으로 넘어갑니다. 아직 연소 중이거나 찾지 못한 구조대상자가 있으면 그대로 평가됩니다.", 16, TEXT_COLOR)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size = Vector2(DIALOG_WIDTH - 40, 0)
+	box.add_child(l)
+	_end_status = _label("", 16, TEXT_COLOR)
+	_end_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_end_status.custom_minimum_size = Vector2(DIALOG_WIDTH - 40, 0)
+	box.add_child(_end_status)
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 16)
+	box.add_child(grid)
+	grid.add_child(_label("재발화 감시 (SOP 202-6.5)", 17, DIM_COLOR))
+	_end_watch = OptionButton.new()
+	_end_watch.focus_mode = Control.FOCUS_NONE
+	_end_watch.custom_minimum_size = Vector2(320, 34)
+	grid.add_child(_end_watch)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_END
+	row.add_child(_button("취소", func() -> void: _close(_end)))
+	row.add_child(_button("종료하고 디브리핑", confirm_end))
+	box.add_child(row)
+
+
+## 종료 창: 인원점검 상태(200-4.1)와 감시 보기를 지금 상황으로 채운다
+func _rebuild_end() -> void:
+	var cmd := sim.command
+	var pars := cmd.safety.par_log
+	var inside := 0
+	for ff in sim.units.firefighters:
+		if not sim.building.cell(ff.level, floori(ff.pos.x), floori(ff.pos.y)) in BuildingData.OUTDOOR:
+			inside += 1
+	var par_text := "인원점검: %s" % ("하지 않음 — 무전 패널의 인원점검(P)으로 먼저 확인하세요 (SOP 200-4.1)" if pars.is_empty()
+		else "마지막 %s (%s)" % [_time(pars[-1].tick), "이상 없음" if pars[-1].missing == 0 and pars[-1].indoor == 0 else "건물 안 %d명, 미확인 %d명" % [pars[-1].indoor, pars[-1].missing]])
+	_end_status.text = "%s\n지금 건물 안 대원: %d명" % [par_text, inside]
+	_end_watch.clear()
+	_end_watch.add_item("지정 안 함")
+	_end_watch.add_item("관계자에게 감시 당부")
+	for squad in sim.units.squads:
+		if cmd.resources.on_scene(squad.id):
+			_end_watch.add_item("%s 감시조" % squad.name)
+	_end_watch.select(0)
+
+
+static func _time(tick: int) -> String:
+	var t := int(tick * SimClock.TICK_DT)
+	return "%02d:%02d" % [floori(t / 60.0), t % 60]
 
 
 func _row_auto(grid: GridContainer, title: String, key: String) -> void:

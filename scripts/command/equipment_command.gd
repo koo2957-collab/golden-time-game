@@ -11,6 +11,7 @@ extends RefCounted
 ##   door_open / door_close: 문 개방(잠긴 문은 파괴) / 폐쇄 (crew_ids, target = 문 셀). 창이면 깨서 배연
 ##   search:       인명검색 (crew_ids, target = 방 안 셀)
 ##   rescue / rescue_ff: 요구조자(other = 요구조자 id) / 쓰러진 대원(other = 대원 id) 구조 (crew_ids 중 첫 조)
+##   overhaul:     잔불정리 (crew_ids, target = 방 안 셀, SOP 202-6)
 
 var tick := -1
 var action := ""
@@ -46,22 +47,36 @@ func execute(sim: SimWorld) -> void:
 			for id in crew_ids:
 				sim.doors.cancel(id)
 				sim.rescue.cancel(id)
+				sim.rekindle.cancel(id)
+				sim.tactical.cancel(id)
 				w.start_spray(id, target, other as HoseLine.Pattern, tick)
 		"door_open", "door_close":
 			for id in crew_ids:
 				sim.rescue.cancel(id)
+				sim.rekindle.cancel(id)
+				sim.tactical.cancel(id)
 				sim.doors.request(id, target, action == "door_open", tick)
 		"search":
 			for id in crew_ids:
 				sim.doors.cancel(id)
+				sim.rekindle.cancel(id)
+				sim.tactical.cancel(id)
 				sim.rescue.order_search(id, target, tick)
 		"rescue", "rescue_ff":
 			for id in crew_ids:
 				sim.doors.cancel(id)
+				sim.tactical.cancel(id)
 				if sim.rescue.order_rescue(id, "victim" if action == "rescue" else "ff", other, tick):
 					break
+		"overhaul":
+			for id in crew_ids:
+				sim.doors.cancel(id)
+				sim.tactical.cancel(id)
+				sim.rescue.cancel(id)
+				sim.rekindle.order_overhaul(id, target, tick)
 		"stop":
 			for id in crew_ids:
+				sim.tactical.cancel(id)
 				w.stop_spray(id, tick)
 
 

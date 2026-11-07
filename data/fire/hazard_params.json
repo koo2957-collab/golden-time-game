@@ -23,5 +23,11 @@
   "backdraft_temp_c": {"value": 300, "source": "추정", "note": "고온 상태"},
   "backdraft_sign_gas_pct": {"value": 8, "source": "추정", "note": "이 이상이면 문 앞에서 징후가 느껴진다"},
   "backdraft_blast_range_m": {"value": 3, "source": "추정", "note": "백드래프트 시 문 근처 대원이 다치는 거리"},
-  "fgi_warning_temp_c": {"value": 350, "source": "교재", "note": "SOP 210-10.5.4 열화상 350℃ 이상이면 신속 대피"}
+  "fgi_warning_temp_c": {"value": 350, "source": "교재", "note": "SOP 210-10.5.4 열화상 350℃ 이상이면 신속 대피"},
+
+  "ember_chance": {"value": 0.3, "source": "추정", "note": "물로 끈 셀에 불씨(심부 화재)가 숨을 확률 (SOP 202-6.1 불씨의 잠복)"},
+  "ember_min_fuel_ratio": {"value": 0.25, "source": "추정", "note": "남은 연료가 처음의 이 비율 이상이어야 불씨가 숨는다"},
+  "rekindle_min_s": {"value": 180, "source": "추정", "note": "불씨를 두면 다시 불이 붙기까지 걸리는 시간 (최소)"},
+  "rekindle_max_s": {"value": 480, "source": "추정", "note": "같은 시간 (최대). 사이에서 시드로 정한다"},
+  "overhaul_s": {"value": 45, "source": "추정", "note": "방 하나 잔불정리에 걸리는 시간 (불씨 확인·정확한 주수, SOP 202-6.2)"}
 }

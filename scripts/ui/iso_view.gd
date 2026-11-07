@@ -142,6 +142,11 @@ func _draw() -> void:
 		_draw_smoke()
 	_draw_blasts()
 	_draw_sprays(alpha)
+	for e in sim.rekindle.spotted_cells():
+		if e.z == level:
+			var ep := proj.to_screen(Vector2(e.x, e.y) + Vector2(0.5, 0.5), 0.05)
+			draw_circle(ep, 4.0, PlanStyle.EMBER)
+			draw_arc(ep, 7.0, 0.0, TAU, 16, PlanStyle.EMBER, 1.5)
 	if level == b.levels()[0]:
 		_draw_staging_label()
 

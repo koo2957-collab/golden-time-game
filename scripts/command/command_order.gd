@@ -11,6 +11,10 @@ extends RefCounted
 ##   survey:         지휘관 360° 둘러보기 (건물 둘레 한 바퀴)
 ##   ask:            관계인에게 질문 (value = 관계인 index, answers.questions = 질문 key 배열)
 ##   update_report:  상황 보완 보고 (answers: victims, hazards)
+##   end:            활동 종료 선언 (SOP 113-1.1). answers.watch = 재발화 감시 (202-6.5). 디브리핑으로 넘어간다
+##   evacuate:       긴급탈출 지시 (SSG 9 2.1.7, SOP 109-1.3)
+##   par:            인원점검 (SOP 109-1.3, 200-4.1)
+##   role:           안전 임무 지정 (squad_ids = 조 id, value = SafetySystem.Role: 0 해제 / 1 RIT / 2 현장안전담당)
 
 var tick := -1
 var action := ""
@@ -54,6 +58,16 @@ func execute(sim: SimWorld) -> void:
 			cmd.survey.ask(value, answers.get("questions", []), tick)
 		"update_report":
 			cmd.update_report(answers, tick)
+		"end":
+			cmd.set_watch(str(answers.get("watch", "")), tick)
+			sim.end_activity("활동 종료 선언")
+		"evacuate":
+			cmd.order_evacuation(tick)
+		"par":
+			cmd.order_par(tick)
+		"role":
+			for id in squad_ids:
+				cmd.order_role(id, value, tick)
 
 
 func to_dict() -> Dictionary:

@@ -167,6 +167,42 @@ static func describe_text(e: Dictionary) -> String:
 			text = "현장지휘소 — 관찰 %s%s · 안전 %s (건물에서 %.1fm) · 동선 %s" % [e.observe, " (%s면)" % e.faces if e.faces != "" else "", e.safety, e.distance_m, e.route]
 		"report_updated":
 			text = "상황 보완 보고 (%d/%d 항목 일치)" % [e.correct, e.scored]
+		"ember_spotted":
+			text = "불씨 확인 (열화상) — %s %d곳 — %s" % [e.room, e.count, e.crew]
+		"overhaul_start":
+			text = "잔불정리 시작 — %s: %s" % [e.crew, e.room]
+		"overhaul_done":
+			text = "잔불정리 완료 — %s, 불씨 %d곳 제거 — %s" % [e.room, e.embers, e.crew]
+		"rekindle":
+			text = "재발화 — %s" % e.room
+		"mayday":
+			text = "긴급탈출 선언 — %s %s, %s%s" % [e.crew, e.who, e.where, " (무전 응답 없음)" if e.silent else ""]
+		"emergency_cleared":
+			text = "긴급탈출 상황 해제"
+		"evacuation_ordered":
+			text = "긴급탈출 지시 전파 — 전 대원 탈출"
+		"evacuate":
+			text = "긴급탈출 — %s" % e.crew
+		"par_done":
+			text = "인원점검 — %s" % ("이상 없음" if e.missing == 0 and e.indoor == 0 else "건물 안 %d명, 미확인 %d명" % [e.indoor, e.missing])
+		"role_assigned":
+			text = "%s — %s" % [e.role, e.crew]
+		"role_reserved":
+			text = "%s은 다른 임무를 받지 않음 (SSG 9 1.2.2) — %s" % [e.role, e.crew]
+		"rit_deployed":
+			text = "RIT 투입 — %s (남은 RIT %d조, 추가 지정 필요 SSG 9 3.1.4)" % [e.crew, e.remaining]
+		"officer_warning":
+			text = "현장안전담당 경고 — %s %s 공기 %d%%" % [e.crew, e.who, e.air]
+		"entry_factors":
+			text = "진입 금지 판단 요소 (SOP 102-4.1) — %s: %s" % [e.squad, e.factors]
+		"tactical_start":
+			text = "%s 시작%s — %s" % [e.action, " (%s)" % e.room if e.has("room") else "", e.crew]
+		"tactical_halt":
+			text = "%s — %s" % [e.reason, e.crew]
+		"tactical_done":
+			text = "%s — %s" % [e.text, e.crew]
+		"activity_ended":
+			text = "활동 종료 — %s" % e.reason
 		"span_warning":
 			text = "통솔범위 %s — 직접 지휘 %d개 (적정 %d, 한계 %d). 단위지휘관을 지정하세요 (SOP 105)" % [e.level, e.count, e.ideal, e.max]
 		_:

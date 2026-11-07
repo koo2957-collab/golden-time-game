@@ -1,7 +1,9 @@
 class_name CommandSystem
 extends RefCounted
 ## 현장지휘 계층.
-##   지휘권 선언 + 최초 상황보고 (SOP 101-1.2, 2.1): 9개 항목을 무전으로 송신, 그때 확인할 수 있던 사실과 비교해 기록
+## 근거: 2025 재난현장표준작전절차 (조항 번호는 이 판 기준).
+##   지휘권 선언 + 최초 상황보고 (SOP 101-1.2, 2.1): 8개 항목 + 차량 진입·회차(교재 참고, 채점 안 함)를 무전으로 송신,
+##                                                 그때 확인할 수 있던 사실과 비교해 기록
 ##   진입 명령 (102-5.2): 명령을 받은 출동대만 건물 안으로 들어간다. 지휘관은 혼자 들어가지 않는다
 ##   전략 (106-2): 공격·방어·병행. 바꾸면 무전으로 전파하고, 방어로 바꾸면 내부 대원을 철수시킨다
 ##   대원 보고 (107-1.6): 안전·요구조자·주요 사건을 무전으로 보고 (우선순위 대기열)
@@ -9,6 +11,9 @@ extends RefCounted
 ##   후착대·지원 요청 (103): ResourceSystem. 대기 중인 출동대에 처음 명령하면 투입 무전이 먼저 나간다
 ##   단위대·통솔범위 (105): Organization. 직접 지휘가 적정을 넘으면 명령이 늦게 실행된다
 ##   현장 정보 (101-2.2, 102-2, 202-2)·현장지휘소 (104-1.3): SiteSurvey. 보완 보고로 상황을 다시 전파한다
+##   대원 안전 (108, 109, SSG 9): SafetySystem. 긴급탈출 선언·무선 침묵·긴급탈출 지시·인원점검·RIT·현장안전담당
+##   진입 금지 판단 (102-4.1): 진입 명령 때 해당하는 판단 요소를 알리고 기록한다
+##   주요 의사결정 기록 (111-2.2): 선언·전략·진입·지원·긴급탈출·종료 때 그때 알던 정보를 남긴다 (디브리핑)
 ##   작전망 (107-3.2): 단위대 소속 출동대의 일반 보고·응답은 그 단위대 작전망으로 간다 (안전·구조대상자 보고는 지휘망)
 
 enum Strategy { NONE, OFFENSIVE, DEFENSIVE, COMBINED }
@@ -17,12 +22,11 @@ const COMMANDER := "현장지휘관"
 const DISPATCH_CENTER := "119종합상황실"
 ## 이 사건이 생기면 1배속으로 돌아간다
 const AUTO_SLOW_TYPES: Array[String] = [
-	"ff_down", "air_alarm", "victim_found", "rollover_sign", "backdraft_sign", "backdraft",
-	"fgi_warning", "flashover",
+	"ff_down", "mayday", "air_alarm", "victim_found", "rollover_sign", "backdraft_sign", "backdraft",
+	"fgi_warning", "flashover", "rekindle",
 ]
-## 대원이 무전으로 보고하는 사건과 우선순위 (107-1.3)
+## 대원이 무전으로 보고하는 사건과 우선순위 (107-1.3). 대원 쓰러짐은 SafetySystem의 긴급탈출 선언으로 보고한다
 const REPORT_PRIORITY := {
-	"ff_down": Radio.Priority.SAFETY,
 	"air_alarm": Radio.Priority.SAFETY,
 	"heat_retreat": Radio.Priority.SAFETY,
 	"rollover_sign": Radio.Priority.SAFETY,
@@ -42,6 +46,10 @@ const REPORT_PRIORITY := {
 	"window_vented": Radio.Priority.KEY_FACTOR,
 	"tank_empty": Radio.Priority.KEY_FACTOR,
 	"squad_staged": Radio.Priority.KEY_FACTOR,
+	"ember_spotted": Radio.Priority.KEY_FACTOR,
+	"tactical_halt": Radio.Priority.KEY_FACTOR,
+	"tactical_done": Radio.Priority.TACTICS,
+	"overhaul_done": Radio.Priority.KEY_FACTOR,
 }
 ## 최초 상황보고 보기 (SOP 101-2.1). 연소 상황 보기는 층 수에 따라 fire_options()로 만든다.
 const REPORT_OPTIONS := {
@@ -73,6 +81,13 @@ var radio: Radio
 var resources: ResourceSystem
 var org: Organization
 var survey: SiteSurvey
+var safety: SafetySystem
+## 주요 의사결정과 그때 알던 정보 [{tick, decision, context}] (SOP 111-2.2)
+var decisions: Array[Dictionary] = []
+## 진입 명령 때의 진입 금지 판단 요소 [{tick, squad, factors}] (SOP 102-4.1)
+var entry_checks: Array[Dictionary] = []
+## 활동 종료 때 지정한 감시 (202-6.5): 출동대 이름 / "관계자 감시 당부" / ""
+var watch := ""
 
 ## 진입 명령 규칙을 적용할지 (시나리오 = 적용, 지휘 규칙과 무관한 테스트 = 끔)
 var entry_order_required := false
@@ -176,10 +191,15 @@ func effective_strategy() -> Strategy:
 ## 이동 전: 진입 명령을 받지 않은 대원·지휘관은 건물 입구 앞에서 멈춘다.
 func before_move(tick: int) -> void:
 	_gate(commander)
+	# 투입되지 않은 RIT·현장안전담당은 진입 허가와 상관없이 밖에 머문다
+	for c in units.crews:
+		if safety.reserved(c.id):
+			for ff in c.members():
+				_gate(ff)
 	if not entry_order_required:
 		return
 	for c in units.crews:
-		if entry_allowed.has(c.squad_id):
+		if entry_allowed.has(c.squad_id) or safety.deployed.has(c.id) or safety.reserved(c.id):
 			continue
 		var stopped := false
 		for ff in c.members():
@@ -214,6 +234,7 @@ func step(dt: float, tick: int) -> void:
 			events.add(tick, "auto_slow", {"reason": SimEventLog.describe_text(e)})
 		if REPORT_PRIORITY.has(e.type):
 			_report(e, tick)
+	safety.step(tick)
 	_check_span(tick)
 	radio.step(dt, tick)
 	org.step(dt, tick)
@@ -234,6 +255,8 @@ func gate(commands: Array, tick: int) -> Array:
 	_held = still
 	var direct := direct_count()
 	for cmd in commands:
+		if not _role_allows(cmd, tick):
+			continue
 		var squads := _order_squads(cmd)
 		if squads.is_empty():
 			ready.append(cmd)
@@ -260,6 +283,27 @@ func gate(commands: Array, tick: int) -> Array:
 			continue
 		ready.append(cmd)
 	return ready
+
+
+## RIT·현장안전담당은 다른 임무를 받지 않는다 (SSG 9 1.2.2). 밖에서 자리를 옮기는 이동은 된다.
+## 긴급탈출 상황에서 RIT에 내린 명령은 투입으로 본다.
+func _role_allows(cmd: RefCounted, tick: int) -> bool:
+	var crew_ids: Array[int] = []
+	if cmd is MoveCommand or cmd is EquipmentCommand or cmd is TacticalCommand:
+		crew_ids = cmd.crew_ids
+	for id in crew_ids:
+		var role := safety.role_of(id)
+		if role == SafetySystem.Role.NONE or safety.deployed.has(id):
+			continue
+		if role == SafetySystem.Role.RIT and safety.emergency():
+			safety.deploy(id, tick)
+			_decide(tick, "RIT 투입 — %s" % _crew_name(units.get_crew(id)))
+			continue
+		if cmd is MoveCommand:
+			continue
+		events.add(tick, "role_reserved", {"crew": _crew_name(units.get_crew(id)), "role": SafetySystem.ROLE_NAMES[role]})
+		return false
+	return true
 
 
 ## 현장지휘관이 직접 지휘하는 수 (단위대 + 단위대에 속하지 않은 현장 출동대)
@@ -294,6 +338,7 @@ func declare(answers: Dictionary, tick: int) -> bool:
 	report = grade_report(answers)
 	report["submitted_tick"] = tick
 	report["support_answer"] = str(answers.get("support", ""))
+	_decide(tick, "지휘권 선언, %s 전략" % STRATEGY_NAMES[s])
 	radio.send(Radio.Priority.KEY_FACTOR, COMMANDER, "%s, 각 출동대" % DISPATCH_CENTER, _report_text(answers), tick, _on_declared)
 	return true
 
@@ -309,6 +354,11 @@ func order_entry(squad_id: int, tick: int) -> bool:
 	if entry_allowed.has(squad_id) or _entry_pending.has(squad_id):
 		return false
 	_entry_pending[squad_id] = true
+	var factors := entry_factors(tick)
+	entry_checks.append({"tick": tick, "squad": squad.name, "factors": factors})
+	if not factors.is_empty():
+		events.add(tick, "entry_factors", {"squad": squad.name, "factors": " · ".join(factors)})
+	_decide(tick, "%s 내부 진입 명령" % squad.name)
 	var d := org.division_of(squad_id)
 	if d:
 		radio.send(Radio.Priority.TACTICS, COMMANDER, _division_call(d), "%s 내부 진입하라." % squad.name, tick, _on_entry_received.bind(squad_id))
@@ -322,6 +372,7 @@ func order_strategy(s: Strategy, tick: int) -> bool:
 	if s == Strategy.NONE or s == effective_strategy():
 		return false
 	_pending_strategy = s
+	_decide(tick, "전략 변경 → %s" % STRATEGY_NAMES[s])
 	var body := "전략을 %s(으)로 변경한다." % STRATEGY_NAMES[s]
 	var priority := Radio.Priority.TACTICS
 	if s == Strategy.DEFENSIVE:
@@ -366,8 +417,79 @@ func _on_update_sent(tick: int, entry: Dictionary) -> void:
 func order_support(level: String, tick: int) -> bool:
 	if not resources.support_options().has(level) or resources.support_level == level:
 		return false
+	_decide(tick, "지원 요청 — %s" % level)
 	radio.send(Radio.Priority.KEY_FACTOR, COMMANDER, DISPATCH_CENTER, "%s." % level, tick, _on_support_received.bind(level))
 	return true
+
+
+## 긴급탈출 지시 (SSG 9 2.1.7, SOP 109-1.3): 전 대원 즉시 탈출, 진입 허가 취소
+func order_evacuation(tick: int) -> void:
+	_decide(tick, "긴급탈출 지시")
+	_entry_pending.clear()
+	safety.order_evacuation(COMMANDER, tick)
+
+
+## 인원점검 (SOP 109-1.3, 200-4.1)
+func order_par(tick: int) -> void:
+	safety.order_par(COMMANDER, tick)
+
+
+## 조에 RIT·현장안전담당 임무를 맡기거나 해제한다 (SSG 9, SOP 108-1.4)
+func order_role(crew_id: int, role: int, tick: int) -> bool:
+	if role != SafetySystem.Role.NONE:
+		_decide(tick, "%s 지정 — %s" % [SafetySystem.ROLE_NAMES[role], _crew_name(units.get_crew(crew_id))])
+	return safety.order_role(crew_id, role as SafetySystem.Role, COMMANDER, tick)
+
+
+## 활동 종료 때 감시 지정 (202-6.5)
+func set_watch(value: String, tick: int) -> void:
+	watch = value
+	_decide(tick, "활동 종료 — 재발화 감시: %s" % (value if value != "" else "지정 안 함"))
+
+
+## 진입 금지 판단 요소 중 지금 해당하는 것 (SOP 102-4.1). 진입 명령 때 알리고 기록한다
+func entry_factors(tick: int) -> PackedStringArray:
+	var out: PackedStringArray = []
+	var signs: PackedStringArray = []
+	for t in ["rollover_sign", "backdraft_sign", "fgi_warning"]:
+		for e in events.of_type(t):
+			if tick - int(e.tick) <= safety.factor_recent_ticks and not str(e.room) in signs:
+				signs.append(str(e.room))
+	if not signs.is_empty():
+		out.append("⑧ 특수현상 징후 (%s)" % ", ".join(signs))
+	var b := fire.building
+	var levels := b.levels()
+	for level in levels:
+		if level < levels[-1]:
+			for y in b.height:
+				var found := false
+				for x in b.width:
+					if _seen_burning(level, x, y):
+						found = true
+						break
+				if found:
+					out.append("② 화재 상층부 임무 가능 (%s 화재)" % b.floor_name(level))
+					break
+			if out.size() > 0 and out[-1].begins_with("②"):
+				break
+	if not survey.known_hazards().is_empty():
+		out.append("⑨ 위험 정보 (%s)" % ", ".join(PackedStringArray(survey.known_hazards())))
+	if _victim_truth() == "있음":
+		out.append("⑩ 구조대상자 내부 존재")
+	return out
+
+
+## 주요 의사결정과 그때 알던 정보를 기록한다 (SOP 111-2.2 주요 의사결정 근거)
+func _decide(tick: int, what: String) -> void:
+	var t := observed_truth()
+	var hz: Array = t.hazards
+	decisions.append({
+		"tick": tick,
+		"decision": what,
+		"context": "연소 %s · 구조대상자 %s · 위험 요소 %s · 둘러보기 %d/%d면 · 직접 지휘 %d" % [
+			t.fire, t.victims, ", ".join(PackedStringArray(hz)) if not hz.is_empty() else "없음",
+			survey.faces_seen.size(), survey.face_keys().size(), direct_count()],
+	})
 
 
 ## 단위대 지정 (SOP 105-3.1): 단위지휘관(supervisor 출동대장)·소속 출동대·작전망을 통지한다
@@ -450,7 +572,7 @@ func _on_strategy_received(tick: int, s: Strategy) -> void:
 	if s == Strategy.DEFENSIVE:
 		entry_allowed.clear()
 		_entry_pending.clear()
-		_withdraw_all(tick)
+		safety.withdraw_all(tick)
 	# 직접 지휘하는 출동대는 각자, 단위대는 단위지휘관이 한 번 응답한다
 	for d in org.divisions:
 		radio.send(Radio.Priority.TACTICS, _division_call(d), COMMANDER, "%s 전략 수신, 단위대 전파하겠음." % STRATEGY_NAMES[s], tick)
@@ -513,29 +635,6 @@ func _check_span(tick: int) -> void:
 	_span_level = level
 
 
-## 건물 안의 조를 가장 가까운 열린 외부 문 밖으로 내보낸다 (운반 중인 조는 하던 대로 나온다).
-func _withdraw_all(tick: int) -> void:
-	var exits := rescue.exit_cells()
-	for c in units.crews:
-		if not _indoor(c.leader.level, c.leader.pos) or rescue.task_of_crew(c.id) is RescueSystem.CarryTask:
-			continue
-		doors.cancel(c.id)
-		rescue.cancel(c.id)
-		water.stop_spray(c.id, tick)
-		var best := Vector3i(-1, -1, -1)
-		var best_d := INF
-		for e in exits:
-			var d := c.leader.pos.distance_to(Vector2(e.x, e.y)) + absi(e.z - c.leader.level) * 100.0
-			if d < best_d:
-				best_d = d
-				best = e
-		if best.x < 0:
-			events.add(tick, "exit_blocked", {"crew": _crew_name(c)})
-			continue
-		units.order_move([c.id], best, pathfinder)
-		events.add(tick, "withdraw", {"crew": _crew_name(c)})
-
-
 func _report(e: Dictionary, tick: int) -> void:
 	var sender := str(e.get("crew", e.get("vehicle", e.get("squad", ""))))
 	if sender == "":
@@ -548,6 +647,10 @@ func _report(e: Dictionary, tick: int) -> void:
 	# "… — 진압1 1조"처럼 보낸 쪽 이름으로 끝나는 문장은 이름을 뺀다 (무전 앞에 이미 나온다)
 	var body := SimEventLog.describe_text(e).trim_suffix(" — " + sender)
 	var priority: Radio.Priority = REPORT_PRIORITY[e.type]
+	# 긴급탈출 상황에서는 대원 안전·구조대상자 외의 무전을 멈춘다 (109-1.2.3 무선 침묵)
+	if safety.emergency() and priority > Radio.Priority.VICTIM:
+		safety.suppressed_reports += 1
+		return
 	var d := org.division_of(_squad_of_sender(sender))
 	# 단위대 소속이면 대원 안전·구조대상자 외의 보고는 단위지휘관에게 작전망으로
 	if d and priority > Radio.Priority.VICTIM:
@@ -643,7 +746,8 @@ func grade_report(answers: Dictionary) -> Dictionary:
 	var s := int(answers.get("strategy", Strategy.OFFENSIVE))
 	items.append(_item(7, "전략", STRATEGY_NAMES[s], STRATEGY_NAMES[truth.strategy]))
 	items.append(_item(8, "지원 요청", answers.get("support", ""), null))
-	items.append(_item(9, "차량 진입·회차", answers.get("access", ""), truth.access if truth.access != "" else null))
+	# 2025 SOP 101-2.1은 8개 항목이다. 차량 진입·회차는 교재(이전 판) 항목이라 참고로만 남긴다
+	items.append(_item(9, "차량 진입·회차 (참고)", answers.get("access", ""), null))
 	var correct := 0
 	var scored := 0
 	for it in items:
@@ -688,6 +792,11 @@ func commander_position_text() -> String:
 			best_d = d
 			text = "%s %s 옆" % [face, v.short_name]
 	return text
+
+
+## 구조대상자 가능성 (확인한 정보 기준: 있음 / 없음 / 확인 중)
+func victim_truth() -> String:
+	return _victim_truth()
 
 
 func _victim_truth() -> String:
@@ -761,7 +870,7 @@ func _indoor(level: int, p: Vector2) -> bool:
 func _order_squads(cmd: RefCounted) -> Array[int]:
 	var out: Array[int] = []
 	var crew_ids: Array[int] = []
-	if cmd is MoveCommand:
+	if cmd is MoveCommand or cmd is TacticalCommand:
 		crew_ids = cmd.crew_ids
 	elif cmd is EquipmentCommand:
 		crew_ids = cmd.crew_ids

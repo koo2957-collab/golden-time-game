@@ -62,6 +62,8 @@ static func to_cell(px: Vector2) -> Vector2:
 ## 관계인 (몸·머리), 실내등 켜진 창, 진술로 알려진 방 표시
 const WITNESS_BODY := Color("a78b6b")
 const WITNESS_HEAD := Color("f1d5b0")
+## 열화상으로 찾은 불씨
+const EMBER := Color("ff7a1a")
 const LIT_WINDOW := Color(1.0, 0.85, 0.4, 0.9)
 const REPORTED_ROOM := Color("fb923c")
 ## 대기1단계 장소 표시

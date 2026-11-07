@@ -131,6 +131,31 @@ cmd_info={
 "events": [Object(InputEventKey,"physical_keycode":70)
 ]
 }
+cmd_overhaul={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"physical_keycode":71)
+]
+}
+cmd_par={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"physical_keycode":80)
+]
+}
+cmd_primary={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"physical_keycode":87)
+]
+}
+cmd_secondary={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"physical_keycode":86)
+]
+}
+cmd_withdraw={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"physical_keycode":88)
+]
+}
 cmd_door={
 "deadzone": 0.2,
 "events": [Object(InputEventKey,"physical_keycode":69)

@@ -7,7 +7,10 @@ extends Node2D
 
 enum ViewMode { ISO, PLAN }
 
+## 시작 화면 없이 실행했을 때 쓰는 시나리오
 const SCENARIO_PATH := "res://data/scenarios/dev_house_fire.json"
+## 다시 하기: 한 프레임에 다시 계산하는 틱 수 (화면이 멈추지 않게 나눈다)
+const REPLAY_CHUNK_TICKS := 120
 const SPEED_ACTIONS := {"time_speed_1x": 1.0, "time_speed_2x": 2.0, "time_speed_4x": 4.0}
 const START_ZOOM := {ViewMode.ISO: 0.9, ViewMode.PLAN: 1.4}
 
@@ -31,10 +34,21 @@ var projections := {ViewMode.ISO: IsoProjection.new(), ViewMode.PLAN: PlanProjec
 
 
 func _ready() -> void:
-	sim = SimWorld.from_scenario(SCENARIO_PATH)
+	var path := GameManager.scenario_path if GameManager.scenario_path != "" else SCENARIO_PATH
+	var replay_tick := int(GameManager.replay.get("tick", -1))
+	if replay_tick >= 0:
+		sim = await _run_replay(path)
+	else:
+		# 시나리오 variation.random_seed면 판마다 다른 시드 (구조대상자 위치 등이 바뀐다)
+		var data: Variant = JsonData.load_file(path)
+		var random_seed: bool = data is Dictionary and bool(data.get("variation", {}).get("random_seed", false))
+		sim = SimWorld.from_scenario(path, true, randi() % 1000000 if random_seed else -1)
+		if sim:
+			sim.tactical.set_level(_automation_level(data if data is Dictionary else {}))
 	if sim == null:
-		push_error("시나리오를 불러오지 못했습니다: %s" % SCENARIO_PATH)
+		push_error("시나리오를 불러오지 못했습니다: %s" % path)
 		return
+	sim.play_mode = GameManager.mode
 	floor_view.setup(sim.building)
 	fire_view.setup(sim)
 	selection.setup(sim)
@@ -45,6 +59,9 @@ func _ready() -> void:
 	hud.command_ui.order_issued.connect(sim.issue)
 	hud.command_ui.dialog_changed.connect(_on_dialog_changed)
 	selection.witness_clicked.connect(hud.command_ui.open_witness)
+	hud.hint_ui.setup(sim, GameManager.mode == "교육")
+	hud.hint_ui.dialog_changed.connect(_on_dialog_changed)
+	hud.command_ui.end_dialog_opened.connect(hud.hint_ui.on_end_dialog)
 	EventBus.command_mode_changed.connect(_on_command_mode_changed)
 	camera.setup(projection().bounds(sim.building), START_ZOOM[view_mode])
 	# 지도가 도로 쪽으로 넓으므로 건물을 화면 가운데에 두고 시작한다
@@ -52,16 +69,67 @@ func _ready() -> void:
 	camera.retarget(projection().bounds(sim.building), projection().to_screen(house.get_center() + Vector2(0, 4)))
 	set_view_mode(view_mode)
 	set_view_level(sim.building.levels()[0])
-	hud.command_ui.show_dispatch()
+	hud.debrief.restart_requested.connect(GameManager.restart)
+	hud.debrief.menu_requested.connect(GameManager.back_to_menu)
+	hud.debrief.replay_requested.connect(func(tick: int) -> void: GameManager.request_replay(sim.issued, tick, sim.rng_seed, sim.tactical.level_name))
+	if replay_tick >= 0:
+		sim.clock.paused = true
+		var t := int(replay_tick * SimClock.TICK_DT)
+		hud.show_notice("다시 하기: %02d:%02d 시점입니다. Space로 다시 진행하세요." % [t / 60, t % 60])
+	else:
+		hud.command_ui.show_dispatch()
+
+
+## 자동화 수준: 시작 화면에서 고른 난이도, 없으면 시나리오 난이도 (개발용은 입문)
+func _automation_level(data: Dictionary) -> String:
+	if GameManager.difficulty != "":
+		return GameManager.difficulty
+	var d := str(data.get("meta", {}).get("difficulty", "입문"))
+	return d if TacticalSystem.LEVELS.has(d) else "입문"
+
+
+## 다시 하기: 같은 시나리오를 처음부터 만들어 기록된 명령을 그 시점까지 재생한다 (진행률 표시)
+func _run_replay(path: String) -> SimWorld:
+	var info: Dictionary = GameManager.replay
+	GameManager.replay = {}
+	var entries: Array[Dictionary] = []
+	entries.assign(info.get("entries", []))
+	var r := Replay.begin(path, entries, int(info.get("tick", 0)), int(info.get("seed", -1)), str(info.get("automation", "")))
+	if r == null:
+		return null
+	var label := Label.new()
+	label.add_theme_font_size_override("font_size", 28)
+	label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	$UI.add_child(label)
+	while not r.step(REPLAY_CHUNK_TICKS):
+		label.text = "다시 하기 준비 중… %d%%" % roundi(r.progress() * 100.0)
+		await get_tree().process_frame
+	label.queue_free()
+	return r.sim
 
 
 func _process(delta: float) -> void:
 	if sim:
 		sim.advance(delta)
+		if sim.ended() and not hud.debrief.visible:
+			_show_debrief()
+
+
+## 활동이 끝나면 평가하고 결과를 저장한 뒤 디브리핑을 띄운다 (SOP 113)
+func _show_debrief() -> void:
+	hud.command_ui.close_all()
+	selection.cancel_mode()
+	var report := Evaluator.evaluate(sim)
+	hud.debrief.show_report(report, Evaluator.save(report))
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if sim == null:
+	if sim == null or hud.debrief.visible:
+		return
+	if hud.hint_ui.visible_hint():
+		if event is InputEventKey and event.pressed and event.keycode in [KEY_ENTER, KEY_KP_ENTER]:
+			hud.hint_ui.close_hint()
+			get_viewport().set_input_as_handled()
 		return
 	if hud.command_ui.dispatch_visible():
 		if event is InputEventKey and event.pressed and event.keycode in [KEY_ENTER, KEY_KP_ENTER]:
@@ -74,6 +142,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		hud.command_ui.open_org_dialog()
 	elif event.is_action_pressed("cmd_info"):
 		hud.command_ui.open_info_dialog()
+	elif event.is_action_pressed("cmd_par"):
+		sim.issue(CommandOrder.make("par"))
 	elif event.is_action_pressed("cmd_entry"):
 		_on_command("entry")
 	elif event.is_action_pressed("time_pause"):
@@ -94,8 +164,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		_on_command("door")
 	elif event.is_action_pressed("cmd_search"):
 		_on_command("search")
+	elif event.is_action_pressed("cmd_overhaul"):
+		_on_command("overhaul")
+	elif event.is_action_pressed("cmd_primary"):
+		_on_command("primary")
+	elif event.is_action_pressed("cmd_secondary"):
+		_on_command("secondary")
+	elif event.is_action_pressed("cmd_withdraw"):
+		_on_command("withdraw")
 	elif event.is_action_pressed("debug_info_fog") and OS.is_debug_build():
 		sim.perception.enabled = not sim.perception.enabled
+		sim.replayable = false
 		_update_mode_text()
 	elif event.is_action_pressed("ui_cancel"):
 		selection.cancel_mode()
@@ -161,6 +240,7 @@ func _set_ignite_mode(on: bool) -> void:
 
 func _ignite_at(cell: Vector2i) -> void:
 	sim.fire.ignite(Vector3i(cell.x, cell.y, view_level), sim.clock.tick)
+	sim.replayable = false
 	_set_ignite_mode(false)
 
 
@@ -209,6 +289,24 @@ func _on_command(id: String) -> void:
 			selection.begin_mode(SelectionController.Mode.DOOR)
 		"search":
 			selection.begin_mode(SelectionController.Mode.SEARCH)
+		"overhaul":
+			selection.begin_mode(SelectionController.Mode.OVERHAUL)
+		# 분대 명령칸 (고수준 명령)
+		"primary":
+			selection.begin_mode(SelectionController.Mode.PRIMARY)
+		"attack":
+			selection.begin_mode(SelectionController.Mode.ATTACK)
+		"search_auto":
+			selection.begin_mode(SelectionController.Mode.SEARCH_AUTO)
+		"exterior":
+			selection.begin_mode(SelectionController.Mode.EXTERIOR)
+		"rescue":
+			selection.begin_mode(SelectionController.Mode.RESCUE)
+		"secondary":
+			var first := sim.units.squad_of_crew(selection.selected[0])
+			selection.begin_mode(SelectionController.Mode.RESCUE if first.type == "구조대" else SelectionController.Mode.EXTERIOR)
+		"withdraw":
+			sim.issue(TacticalCommand.make("withdraw", selection.selected))
 
 
 func _update_mode_text() -> void:

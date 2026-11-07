@@ -14,6 +14,8 @@ scripts/
   command/         지휘 계층: command_system.gd(지휘권·상황보고·전략·진입 명령·대원 보고·자동 감속),
                    resource_system.gd(후착대·대기1단계·투입·지원 요청), organization.gd(단위대·통솔범위·작전망),
                    site_survey.gd(둘러보기·물증·진술·현장지휘소), witness.gd(관계인),
+                   safety_system.gd(긴급탈출·무선 침묵·인원점검·RIT·현장안전담당),
+                   tactical_system.gd·tactical_command.gd(분대 명령칸 고수준 명령),
                    radio.gd(무전 채널), 명령 객체(move_command, equipment_command, command_order), command_log.gd
   simulation/      시뮬레이션 코어 (화면과 분리, 고정 틱)
                    sim_world.gd(전체 상태·명령 실행), sim_clock.gd(고정 틱 시계), json_data.gd,
@@ -23,10 +25,11 @@ scripts/
     compartment/   구획(방) 2층 모델: compartment.gd, opening.gd(문·창·계단), compartment_model.gd(계산)
     grid/          건물 도면(building_data.gd), 길찾기(pathfinder.gd), 셀 연소(fuel_grid.gd)
     hazards/       특수현상(hazard_system.gd): 롤오버 징후, 플래시오버 피해, 백드래프트 징후·폭발, 350℃ 경고
+                   잔불정리·재발화(rekindle_system.gd)
     suppression/   물 공급·방수(water_system.gd), 수관(hose_line.gd). 배연은 M4
   units/           대원, 출동대, 차량, 요구조자
-  scenario/        시나리오 로더, 검증기, 이벤트 트리거
-  evaluation/      사건 기록(sim_event_log.gd), SOP 규칙 판정, 채점, 디브리핑
+  scenario/        시나리오 목록·검증(scenario_loader.gd). 이벤트 트리거는 M8
+  evaluation/      사건 기록(sim_event_log.gd), 상태 기록(sim_recorder.gd), SOP 판정·평가·디브리핑 자료(evaluator.gd)
   ui/
 data/
   buildings/       건물 도면 JSON (층별 문자 격자 + 방 목록)
@@ -127,6 +130,63 @@ tests/             단위 테스트(test_*.gd)와 조작 점검(ui_smoke.gd)
 | 현장지휘소 | 30초 이상 머문 곳: 관찰(보이는 면 2개 좋음·1개 보통·0 나쁨), 안전(SOP 205-1.3: 발화층 높이 ½ 안 위험, 건물 높이 안 주의), 동선(차도·대기 장소 위 방해). 고정·이동 시간도 기록 |
 
 수치는 `data/command/survey_params.json`. 검증은 `tests/test_site_survey.gd`.
+
+## 평가·디브리핑 요약 (M6a)
+
+| 요소 | 내용 |
+|---|---|
+| 활동 종료 | 선언 후 C → 활동 종료 선언, 또는 시나리오 `evaluation.time_limit_s`. 종료 후 시뮬레이션은 멈춘다 |
+| 기록 | 사건 기록 + `SimRecorder`(1초마다 연소 칸 수·직접 지휘 수·내부 대원 수, 공기 경보 후 내부 체류 구간) |
+| 규칙 | `data/sop/rules.json`. check 함수(`Evaluator._check_*`)가 0~1 점수와 설명. 해당 없으면 빼고 축 점수를 낸다. 시나리오 `evaluation.rules`가 고르고 `evaluation.params`로 기준값을 덮어쓴다 |
+| 점수 | 축 가중치 대원 안전 25 · 인명구조 25 · 재산 15 · 화재 15 · 지휘 20 (결과 축 80). 등급 S 90 · A 80 · B 70 · C 60 |
+| 등급 상한 | 규칙의 `cap`: 대원 행동 불능(108-1.2), 구조대상자 생존 구조 50% 미만(214-2.1) → 최고 C |
+| 디브리핑 | ① 계획(학습 목표·최초 보고 ✓✗·전략·조직·지원) ② 실제(숨은 정보: 구조대상자 실제 위치, 진술 진위, 면 정보, 불난 구획 + 타임라인) ③ 왜(축별 규칙 점수·설명·조항 원문) ④ 다음에는(잘한 점 최소 1개, 고칠 점 최대 3개와 다음 행동) |
+| 저장 | `user://reports/<시나리오>_<날짜시각>.json` |
+
+검증은 `tests/test_evaluation.gd`.
+
+## 시나리오·다시 하기 요약 (M6b)
+
+| 요소 | 내용 |
+|---|---|
+| 시작 화면 | `scenes/main/menu.tscn`(scenario_menu.gd). `ScenarioLoader.list()`가 res://data/scenarios와 user://scenarios를 읽어 meta.order 순으로 보여 준다. 오류가 있으면 시작 불가 |
+| 검증 | 필수 항목, 도면·편성 파일, 차종, 발화 지점(방 안), 문 좌표, 방 id, 면, 관계인 위치·질문, 대기 차로, 규칙 id, 제한 시간 |
+| 시나리오별 장비 | `vehicles`: 차종 -> 제원 일부. 기본 제원을 덮어쓴다 (차종 단위: 같은 차종 후착대도 같이 바뀐다) |
+| 변형 | `variation.random_seed`면 판마다 시드를 새로 뽑는다. `victims[].rooms` 후보 중 시드로 방을 고른다 |
+| 다시 하기 | `SimWorld.issued`에 명령과 내린 틱을 남긴다. `Replay`가 같은 시나리오·시드로 새로 만들어 그 틱까지 명령을 다시 넣는다(결정론). 개발용 즉시 발화·정보 안개 끄기를 쓰면 불가. 화면에서는 프레임마다 120틱씩 진행하며 진행률 표시. 진입은 GameManager(씬을 다시 불러와도 남는 값) |
+| 잔불정리 | 물로 끈 셀에 연료가 25% 이상 남으면 30% 확률로 불씨(3~8분 뒤 재발화). 열화상 조장이 방에 들어가면 발견, G로 45초 정리. 수치는 hazard_params.json (추정) |
+| 정식 시나리오 | sop214_1(입문, 낮 거실), sop214_2(중급, 새벽 2층 침실, 딸 위치 변형), sop214_3(상급, 저녁 주방·LPG·소형 펌프차·늦은 후착) |
+
+검증은 `tests/test_scenario_loader.gd`, `tests/test_replay.gd`, `tests/test_overhaul.gd`.
+
+## 2025 SOP 정합화 요약 (M6.5)
+
+| 요소 | 내용 |
+|---|---|
+| 근거 | 판정은 2025 재난현장표준작전절차(조항 번호는 교재와 같음), 원리는 소방전술. 규칙마다 `sop`·`text`(원문)와 `tactic`·`tactic_text`(원리 요약). 결과 파일에 `rules_version` 2 |
+| 최초 상황보고 | 2025판 8개 항목. ⑨ 차량 진입·회차는 '참고'로 남기고 채점하지 않음 |
+| 긴급탈출 (109) | 건물 안 대원이 쓰러지면 같은 조가 "긴급탈출" 3회 송신 (조 전원이면 지휘관이 무응답 긴급탈출 전파). 긴급탈출 상황 중에는 대원 안전·구조대상자 외 일반 보고를 멈추고 대기 중인 일반 보고도 비움. 쓰러진 대원이 건물 안에 없으면 해제 |
+| 긴급탈출 지시·인원점검 | 지휘관 지시로 전원 탈출(문 밖 몇 칸까지), 진입 허가 취소. 인원점검(P)은 단위대는 단위지휘관이, 나머지는 출동대가 "인원 N명 이상 없음, 장비 이상 없음" 또는 건물 안·미확인 인원 보고 |
+| RIT (SSG 9) | 조직 창에서 지정. 투입 전에는 밖에 머물고 이동 외 명령은 막힘. 긴급탈출 상황에서 명령하면 투입(진입 제한 해제), 추가 RIT 지정 안내 |
+| 현장안전담당 (108-1.4) | 지정한 조는 밖에 머물며 진입 대원 공기 40% 미만을 경보 전에 무전으로 알림 |
+| 진입 판단 (102-4.1) | 진입 명령 때 ② 화재 상층부 임무, ⑧ 특수현상 징후(최근 2분), ⑨ 위험 정보, ⑩ 구조대상자 내부 존재를 알리고 기록. ⑧ 중 진입 명령은 감점 |
+| 종료 | 종료 창에 인원점검 상태·건물 안 인원, 재발화 감시 지정(관계자 당부·출동대 감시조) |
+| 디브리핑 | ③에 주요 의사결정과 그때 알던 정보(111-2.2), 규칙마다 SOP 원문 + "왜?(소방전술)". 머리에 판정 근거와 '지도·개선 용도로만'(113-3.1.6) |
+
+검증은 `tests/test_safety.gd`.
+
+## 지휘 조작 개편·교육 모드 요약 (M7a)
+
+| 요소 | 내용 |
+|---|---|
+| 명령칸 | `data/units/command_cards.json`. 첫 번째로 선택한 조의 출동대 종류에 맞춰 HUD 위 줄에 표시, 아래 줄은 세부 명령 |
+| 고수준 명령 | `TacticalCommand`(기록·다시 하기 대상) → `TacticalSystem`. 진압: 구획 경로상의 닫힌 문을 차례로 개방 → 분무 방수 → 그 방 연소 셀이 없으면 중지. 수색: 문 개방 → 검색 → 찾은 구조대상자 이송. 외부 방수: 직사. 철수: 그 조만 |
+| SOP 준수 | 백드래프트 징후가 있는 문은 열지 않고 보고(210-4.5). 진입 명령 없으면 입구 대기(102-5.2). 멈추면 `tactical_halt` 무전 보고 |
+| 자동화 수준 | 입문: 잠긴 문까지 자동 파괴, 찾으면 자동 이송, 자동 방수 중지 / 중급: 잠기지 않은 문만, 찾으면 보고 후 대기 / 상급: 문 자동 개방 없음, 방수 중지도 직접. 시나리오 난이도가 기본, 시작 화면에서 바꿈. 다시 하기에도 같은 수준을 쓴다 |
+| RECEO 상태판 | 무전 패널: 안전 / R 구조 / E 외부 / C 확산 / E 진압 / O 잔불. 확인한 정보 기준, 처리되지 않은 첫 줄을 '현재 우선'으로 |
+| 교육 모드 | `HintUi` + `data/sop/hints.json` 13종. 트리거가 처음 성립하면 카드(SOP 조항·원리·권장 행동)를 띄우고 멈춤. 결과 파일에 mode·difficulty 기록 |
+
+검증은 `tests/test_tactical.gd`, `tests/test_hints.gd`.
 
 ## 요구조자·구조·특수현상 요약 (M4b)
 

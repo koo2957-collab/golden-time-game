@@ -15,6 +15,21 @@ func _initialize() -> void:
 func _run() -> void:
 	await process_frame
 	await process_frame
+	# 시작 화면: 시나리오 목록 → 개발용 시나리오 시작
+	var menu = root.get_node("Main/Menu")
+	_check("시작 화면 표시", menu != null, true)
+	var dev := -1
+	for i in menu.scenarios.size():
+		if menu.scenarios[i].path.ends_with("dev_house_fire.json"):
+			dev = i
+	_check("시나리오 목록에 개발용 시나리오", dev >= 0, true)
+	for s in menu.scenarios:
+		_check("시나리오 검증 통과: %s" % s.title, s.errors, PackedStringArray())
+	menu.select(dev)
+	_key(KEY_ENTER)
+	await process_frame
+	await process_frame
+	await process_frame
 	var world = root.get_node("Main/World")
 	_world = world
 	var sim: SimWorld = world.sim
@@ -214,6 +229,46 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	_check("알림 표시", world.hud._notice_label.text.contains("소화전 점령"), true)
+
+	# 분대 명령칸: W(주 임무) → 방 클릭 → 진압대는 진압, 구조대는 수색
+	_click(u.get_crew(1).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
+	await process_frame
+	_check("명령칸 표시 (진압대)", world.hud._card_type, "진압대")
+	_key(KEY_W)
+	_check("W → 주 임무 모드", sel.mode, sel.Mode.PRIMARY)
+	_click(Vector2(24.5, 17.5), MOUSE_BUTTON_LEFT)
+	sim.step_ticks(1)
+	_key(KEY_PAGEUP)
+	_click(u.get_crew(2).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
+	await process_frame
+	_check("명령칸 표시 (구조대)", world.hud._card_type, "구조대")
+	_key(KEY_W)
+	_click(Vector2(24.5, 17.5), MOUSE_BUTTON_LEFT)
+	sim.step_ticks(1)
+	_key(KEY_PAGEDOWN)
+	var tacts := sim.command_log.entries.filter(func(c): return c is TacticalCommand)
+	_check("진압대 → 진압, 구조대 → 수색", tacts.map(func(c): return c.action), ["attack", "search"])
+	_check("RECEO 상태판", cui._receo_label.text.contains("R 구조"), true)
+	# 안전 임무 지정(RIT)·인원점검(P)
+	cui.assign_role(3, SafetySystem.Role.RIT)
+	_key(KEY_P)
+	sim.clock.paused = false
+	sim.step_ticks(300)
+	_check("RIT 지정 (구조1 2조)", sim.command.safety.role_of(3), SafetySystem.Role.RIT)
+	_check("P → 인원점검", sim.command.safety.par_log.size() >= 1, true)
+	# 활동 종료 선언 (감시: 관계자에게 당부) → 디브리핑
+	cui.open_end_confirm()
+	cui.set_end_watch(1)
+	cui.confirm_end()
+	sim.clock.paused = false
+	sim.step_ticks(1)
+	await process_frame
+	await process_frame
+	_check("활동 종료 → 디브리핑 표시", world.hud.debrief.visible, true)
+	_check("디브리핑 4단계 탭", world.hud.debrief.tab_count(), 4)
+	_check("디브리핑 중에는 무전 패널 숨김", cui._radio_panel.visible, false)
+	_check("다시 하기 시점 목록", world.hud.debrief.moment_count() > 3, true)
+	_check("종료 때 감시 지정 기록", sim.command.watch, "관계자에게 감시 당부")
 
 	print("조작 점검: %s" % ("모두 통과" if _failed == 0 else "%d건 실패" % _failed))
 	quit(1 if _failed > 0 else 0)

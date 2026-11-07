@@ -1,0 +1,263 @@
+{
+  "id": "sop214_3_kitchen_lpg",
+  "title": "주택화재 ③ 저녁 · 1층 주방 (LPG)",
+  "note": "정식 시나리오 (M6b). 인물은 모두 가상. 소형 펌프차(vehicles 덮어쓰기) 예시.",
+  "meta": {
+    "order": 3,
+    "sop": "214 주택화재",
+    "difficulty": "상급",
+    "role": "선착대장",
+    "estimated_min": 30,
+    "summary": "저녁 6시 50분, 1층 주방에서 불이 났습니다. 다리가 불편한 할머니가 혼자 삽니다. 주방 뒤(C면)에 LPG 용기가 있지만 도착 위치에서는 보이지 않습니다. 선착 펌프차가 작고(물 2,400L) 후착대는 인접 관할에서 7분 뒤에 옵니다. 위험 요소 확인, 전략 판단, 지원 요청 시점이 핵심입니다."
+  },
+  "building": "res://data/buildings/house_2f.json",
+  "roster": "res://data/units/test_roster.json",
+  "commander": {
+    "name": "서정호",
+    "rank": "소방경",
+    "title": "선착대장",
+    "spawn": [
+      6,
+      26
+    ],
+    "note": "가상 인물"
+  },
+  "entry_order_required": true,
+  "reinforcements": "res://data/units/dev_reinforcements.json",
+  "staging": {
+    "name": "도로 동쪽",
+    "lanes": [
+      {
+        "y": 36,
+        "x_min": 43
+      },
+      {
+        "y": 30,
+        "x_min": 43
+      }
+    ],
+    "gap_cells": 1,
+    "note": "대기1단계 장소 (SOP 103-2.1). 후착 차량은 지도 동쪽 끝에서 서쪽을 보고 들어와 차로(y)의 x_min부터 차례로 선다. 자리가 없으면 진입로에서 기다린다"
+  },
+  "seed": 9152,
+  "vehicles": {
+    "펌프차": {
+      "tank_l": 2400,
+      "note": "소형 펌프차 (시나리오 덮어쓰기)"
+    }
+  },
+  "dispatch": {
+    "title": "출동 지령 — 주택 화재 (가스 우려)",
+    "lines": [
+      "대상: 2층 단독주택 (벽돌조), 주택가 이면도로",
+      "신고 내용(이웃): \"옆집 부엌 쪽에서 불길이 보여요. 할머니 혼자 사시는데 다리가 불편하세요.\"",
+      "시간·날씨: 평일 18:50, 흐림, 남서풍 4m/s",
+      "출동대: 진압1(소형 펌프차·물탱크차), 구조1 (선착) · 후착: 진압2(인접 관할, 약 7분 뒤)",
+      "소화전: 건물 동쪽 보도 지상식 1개소 · 대기1단계 장소: 도로 동쪽"
+    ],
+    "reported_victims": true
+  },
+  "report_truth": {
+    "use": "단독주택",
+    "vehicle_access": "진입 가능, 회차 불가",
+    "hazards": []
+  },
+  "evaluation": {
+    "rules": [
+      "safety.ff_down",
+      "safety.air_exit",
+      "safety.withdraw",
+      "safety.command_post",
+      "safety.rit",
+      "safety.emergency",
+      "safety.officer",
+      "safety.entry_judgment",
+      "rescue.survival",
+      "rescue.time",
+      "rescue.search_order",
+      "property.spread",
+      "property.water",
+      "fire.extinguish",
+      "fire.water_supply",
+      "fire.overhaul",
+      "fire.watch",
+      "command.declare",
+      "command.report",
+      "command.strategy",
+      "command.survey",
+      "command.witness",
+      "command.span",
+      "command.par_end"
+    ],
+    "params": {
+      "rescue.time": {
+        "good_s": 540,
+        "bad_s": 1320
+      }
+    },
+    "time_limit_s": 2700,
+    "objectives": [
+      "위험 요소(LPG) 확인과 보고 — C면 둘러보기나 관계인 진술로 찾고 보완 보고 (SOP 101-2.2, 214-2.2·2.3)",
+      "할머니 생존 구조 (SOP 214-2.1)",
+      "주방 화재를 거실·복도로 번지기 전에 진압 — 물이 적으니 급수 연결 (SOP 214-2.4)",
+      "후착이 늦으므로 필요하면 즉시 지원 요청 (SOP 103-1.2)"
+    ],
+    "end_state": "할머니 생존 구조, 대원 부상 없음, LPG 위험을 확인해 전파, 화재는 주방에서 완진"
+  },
+  "site": {
+    "faces": [
+      {
+        "face": "C",
+        "text": "주방 뒤 LPG 용기 2개, 밸브 열림 — 가스 냄새",
+        "hazard": "위험물(가스 등)"
+      }
+    ],
+    "lights": [
+      "1F_kitchen",
+      "1F_room1"
+    ],
+    "shoes": [
+      {
+        "door": [
+          13,
+          20,
+          1
+        ],
+        "text": "현관에 신발 1켤레 (노인용), 옆에 지팡이"
+      }
+    ],
+    "witnesses": [
+      {
+        "name": "이웃 주민",
+        "source": "신고자",
+        "pos": [
+          2,
+          25
+        ],
+        "arrive_s": 0,
+        "statements": {
+          "victims": {
+            "text": "할머니 혼자 사세요. 다리가 불편해서 늘 방에 계세요.",
+            "reliable": true,
+            "rooms": [
+              "1F_room1"
+            ]
+          },
+          "origin": {
+            "text": "부엌 쪽 창에서 불길이 보였어요.",
+            "reliable": true
+          },
+          "hazards": {
+            "text": "글쎄요, 뒤쪽은 잘 몰라요.",
+            "reliable": true
+          },
+          "doors": {
+            "text": "옆문(D면)은 낮에 늘 열어 두세요.",
+            "reliable": true
+          }
+        }
+      },
+      {
+        "name": "할머니 아들",
+        "source": "가족",
+        "pos": [
+          35,
+          25
+        ],
+        "arrive_s": 200,
+        "statements": {
+          "victims": {
+            "text": "어머니는 저녁엔 거실에서 TV를 보세요.",
+            "reliable": false,
+            "rooms": [
+              "1F_living"
+            ],
+            "note": "할머니는 실제로 1층 방1에 있다 (방1 실내등·이웃 진술과 엇갈림)"
+          },
+          "origin": {
+            "text": "저도 방금 와서 모르겠어요.",
+            "reliable": true
+          },
+          "hazards": {
+            "text": "부엌 뒤에 LPG 통이 두 개 있어요. 밸브를 잠갔는지 모르겠어요.",
+            "reliable": true,
+            "hazard": "위험물(가스 등)"
+          },
+          "doors": {
+            "text": "현관은 번호키예요. 불이 나서 안 열릴 거예요.",
+            "reliable": true
+          }
+        }
+      }
+    ]
+  },
+  "arrivals": [
+    {
+      "squad": "pump2",
+      "time_s": 420
+    }
+  ],
+  "support": {
+    "추가 출동대 요청": {
+      "squads": [
+        "rescue2",
+        "pump3"
+      ],
+      "delay_s": 480
+    },
+    "대응 1단계 발령": {
+      "squads": [
+        "rescue2",
+        "pump3",
+        "pump4"
+      ],
+      "delay_s": 480
+    },
+    "note": "지원 요청(SOP 103-1.2) 후 도착할 출동대와 걸리는 시간 (추정)"
+  },
+  "victims": [
+    {
+      "name": "할머니",
+      "age": 82,
+      "mobility": "거동 불편 (자력 피난 불가)",
+      "level": 1,
+      "room": "1F_room1"
+    }
+  ],
+  "fire": {
+    "ignitions": [
+      {
+        "level": 1,
+        "cell": [
+          15,
+          4
+        ],
+        "time_s": 0,
+        "note": "주방 가스레인지"
+      },
+      {
+        "level": 1,
+        "cell": [
+          12,
+          7
+        ],
+        "time_s": 60,
+        "note": "식탁 위 행주·기름으로 번짐"
+      }
+    ],
+    "doors_closed": [],
+    "doors_open": [],
+    "doors_locked": [
+      [
+        13,
+        20,
+        1
+      ],
+      [
+        12,
+        3,
+        1
+      ]
+    ]
+  }
+}

@@ -13,7 +13,7 @@ extends Node2D
 ## 선택 단위는 조(2인 1조)와 차량이며, 현재 보고 있는 층의 대원만 선택된다.
 ## 좌표 변환은 projection(상황판/입체)을 따른다.
 
-enum Mode { NONE, HOSE, STRAIGHT, FOG, DOOR, SEARCH }
+enum Mode { NONE, HOSE, STRAIGHT, FOG, DOOR, SEARCH, OVERHAUL, PRIMARY, ATTACK, SEARCH_AUTO, EXTERIOR, RESCUE }
 
 ## 관계인을 클릭했을 때 (world가 진술 창을 연다)
 signal witness_clicked(index: int)
@@ -29,6 +29,12 @@ const MODE_HINTS := {
 	Mode.FOG: "분무 방수: 목표 지점을 클릭",
 	Mode.DOOR: "문 개방·폐쇄 / 창 파괴(배연): 문이나 창을 클릭 (잠긴 문은 파괴, 2명 이상 필요)",
 	Mode.SEARCH: "인명검색: 검색할 방을 클릭",
+	Mode.OVERHAUL: "잔불정리: 방을 클릭 (열화상으로 찾은 불씨를 없앤다)",
+	Mode.PRIMARY: "주 임무: 방을 클릭 (진압대는 진압, 구조대는 수색)",
+	Mode.ATTACK: "진압: 방을 클릭 (문 개방·수관 연장·분무 방수, 불이 잡히면 중지)",
+	Mode.SEARCH_AUTO: "수색: 방을 클릭 (문 개방·인명검색·이송)",
+	Mode.EXTERIOR: "외부 방수: 창이나 개구부를 클릭 (밖에서 직사)",
+	Mode.RESCUE: "구조: 발견한 구조대상자나 쓰러진 대원을 클릭",
 }
 ## 요구조자·쓰러진 대원을 클릭으로 고를 때 허용 반경 (px)
 const CASUALTY_PICK_PX := 20.0
@@ -283,6 +289,35 @@ func _complete_mode(world_pos: Vector2) -> void:
 			if not selected.is_empty():
 				var cell := Vector2i(projection.to_cell(world_pos).floor())
 				sim.issue(EquipmentCommand.make("search", selected, -1, -1, Vector3i(cell.x, cell.y, level)))
+		Mode.PRIMARY, Mode.ATTACK, Mode.SEARCH_AUTO, Mode.EXTERIOR:
+			if not selected.is_empty():
+				var cell := Vector2i(projection.to_cell(world_pos).floor())
+				var target := Vector3i(cell.x, cell.y, level)
+				var attack: Array[int] = []
+				var search: Array[int] = []
+				for id in selected:
+					var rescue_squad := sim.units.squad_of_crew(id).type == "구조대"
+					if mode == Mode.SEARCH_AUTO or (mode == Mode.PRIMARY and rescue_squad):
+						search.append(id)
+					else:
+						attack.append(id)
+				if mode == Mode.EXTERIOR:
+					sim.issue(TacticalCommand.make("exterior", selected, target))
+				else:
+					if not attack.is_empty():
+						sim.issue(TacticalCommand.make("attack", attack, target))
+					if not search.is_empty():
+						sim.issue(TacticalCommand.make("search", search, target))
+				_marker_world = projection.to_screen(Vector2(cell) + Vector2(0.5, 0.5))
+				_marker_start_ms = Time.get_ticks_msec()
+		Mode.RESCUE:
+			var casualty := _casualty_at(world_pos)
+			if casualty.x >= 0 and not selected.is_empty():
+				sim.issue(EquipmentCommand.make("rescue" if casualty.x == 0 else "rescue_ff", selected, -1, casualty.y))
+		Mode.OVERHAUL:
+			if not selected.is_empty():
+				var cell := Vector2i(projection.to_cell(world_pos).floor())
+				sim.issue(EquipmentCommand.make("overhaul", selected, -1, -1, Vector3i(cell.x, cell.y, level)))
 		Mode.STRAIGHT, Mode.FOG:
 			if not selected.is_empty():
 				var cell := Vector2i(projection.to_cell(world_pos).floor())

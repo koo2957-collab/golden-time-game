@@ -1,0 +1,8 @@
+{
+  "note": "대원 안전 지휘(SOP 108, 109, SSG 9) 수치. source: 교재 = 2025 재난현장표준작전절차·소방전술 I, 추정 = 현장 검수 필요.",
+
+  "mayday_repeat": {"value": 3, "source": "교재", "note": "\"긴급탈출\" 반복 송신 횟수 (SOP 109-1.2)"},
+  "officer_air_ratio": {"value": 0.4, "source": "추정", "note": "현장안전담당이 건물 안 대원의 공기 잔량이 이 아래로 내려가면 미리 알린다 (SOP 108-2.3.3 대원 상태 확인)"},
+  "officer_check_s": {"value": 5, "source": "추정", "note": "현장안전담당이 진입 대원 상태를 확인하는 간격"},
+  "entry_factor_recent_s": {"value": 120, "source": "추정", "note": "진입 금지 판단 요소(102-4.1 ⑧ 특수현상 징후)를 '지금 있음'으로 보는 시간"}
+}

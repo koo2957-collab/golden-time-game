@@ -56,6 +56,11 @@ func _draw() -> void:
 		if o.level == level:
 			for c in o.cells:
 				draw_rect(Rect2(PlanStyle.to_px(Vector2(c)), Vector2.ONE * PlanStyle.CELL_PX), PlanStyle.LIT_WINDOW)
+	for e in sim.rekindle.spotted_cells():
+		if e.z == level:
+			var ep := PlanStyle.to_px(Vector2(e.x, e.y) + Vector2(0.5, 0.5))
+			draw_circle(ep, 4.0, PlanStyle.EMBER)
+			draw_arc(ep, 7.0, 0.0, TAU, 16, PlanStyle.EMBER, 1.5)
 	for room in sim.building.rooms(level):
 		if sim.command.survey.reported_rooms.has(room.id):
 			var rr: Rect2i = room.rect

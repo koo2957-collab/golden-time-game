@@ -96,7 +96,12 @@ func add_victims(list: Array, rng: RandomNumberGenerator) -> void:
 			var c: Array = data.cell
 			v.pos = Vector2(int(c[0]) + 0.5, int(c[1]) + 0.5)
 		else:
-			var cell := _pick_spot(v.level, str(data.get("room", "")), rng)
+			# rooms: 후보 방 중 시드로 하나를 고른다 (시나리오 변형)
+			var room := str(data.get("room", ""))
+			var candidates: Array = data.get("rooms", [])
+			if not candidates.is_empty():
+				room = str(candidates[rng.randi() % candidates.size()])
+			var cell := _pick_spot(v.level, room, rng)
 			v.pos = Vector2(cell) + Vector2(0.5, 0.5)
 		victims.append(v)
 

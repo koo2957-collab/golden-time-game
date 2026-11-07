@@ -1,0 +1,115 @@
+{
+  "note": "개발용 시나리오의 후착대·지원 출동대 편성. 인물은 모두 가상이다. 차량을 타고 지도 동쪽 끝에서 들어와 대기1단계 장소에 선 뒤 조가 내린다 (spawn 없음). 시나리오의 arrivals·support가 id로 부른다.",
+  "squads": [
+    {
+      "id": "pump2",
+      "name": "진압2",
+      "type": "진압대",
+      "color": "#10B981",
+      "vehicles": [{"type": "펌프차"}],
+      "crews": [
+        {
+          "thermal_camera": true,
+          "members": [
+            {"name": "오세훈", "rank": "소방위", "role": "진압대장"},
+            {"name": "임재석", "rank": "소방교", "role": "관창수"}
+          ]
+        },
+        {
+          "members": [
+            {"name": "서동욱", "rank": "소방장", "role": "관창보조"},
+            {"name": "문태양", "rank": "소방사", "role": "관창보조"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pump3",
+      "name": "진압3",
+      "type": "진압대",
+      "color": "#8B5CF6",
+      "vehicles": [{"type": "펌프차"}, {"type": "물탱크차"}],
+      "crews": [
+        {
+          "thermal_camera": true,
+          "members": [
+            {"name": "배준영", "rank": "소방위", "role": "진압대장"},
+            {"name": "송하늘", "rank": "소방장", "role": "관창수"}
+          ]
+        },
+        {
+          "members": [
+            {"name": "권민석", "rank": "소방교", "role": "관창보조"},
+            {"name": "남궁현", "rank": "소방사", "role": "관창보조"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pump4",
+      "name": "진압4",
+      "type": "진압대",
+      "color": "#EC4899",
+      "vehicles": [{"type": "펌프차"}],
+      "crews": [
+        {
+          "thermal_camera": true,
+          "members": [
+            {"name": "유상철", "rank": "소방위", "role": "진압대장"},
+            {"name": "황보선", "rank": "소방교", "role": "관창수"}
+          ]
+        },
+        {
+          "members": [
+            {"name": "장기훈", "rank": "소방장", "role": "관창보조"},
+            {"name": "노을빈", "rank": "소방사", "role": "관창보조"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "rescue2",
+      "name": "구조2",
+      "type": "구조대",
+      "color": "#14B8A6",
+      "vehicles": [{"type": "구조공작차"}],
+      "crews": [
+        {
+          "thermal_camera": true,
+          "members": [
+            {"name": "탁영호", "rank": "소방위", "role": "구조대장"},
+            {"name": "모정훈", "rank": "소방장", "role": "구조대원"}
+          ]
+        },
+        {
+          "members": [
+            {"name": "편주원", "rank": "소방교", "role": "구조대원"},
+            {"name": "어진우", "rank": "소방사", "role": "구조대원"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pump5",
+      "name": "진압5",
+      "type": "진압대",
+      "color": "#A3E635",
+      "vehicles": [{"type": "펌프차"}],
+      "crews": [
+        {
+          "thermal_camera": true,
+          "members": [
+            {"name": "길성수", "rank": "소방위", "role": "진압대장"},
+            {"name": "봉민호", "rank": "소방교", "role": "관창수"}
+          ]
+        },
+        {
+          "members": [
+            {"name": "제갈윤", "rank": "소방장", "role": "관창보조"},
+            {"name": "선우진", "rank": "소방사", "role": "관창보조"}
+          ]
+        }
+      ]
+    }
+  ]
+}

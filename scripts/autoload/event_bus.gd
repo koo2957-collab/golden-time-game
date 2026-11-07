@@ -11,3 +11,5 @@ signal vehicle_selection_changed(vehicle_ids: Array[int])
 signal view_floor_changed(level: int)
 ## 대상 지정 명령(수관 연장·방수 등)이 시작·종료되었을 때. 끝나면 빈 문자열.
 signal command_mode_changed(hint: String)
+## 현장지휘관 선택이 바뀌었을 때
+signal commander_selection_changed(selected: bool)

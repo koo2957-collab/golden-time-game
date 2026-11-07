@@ -12,52 +12,87 @@ var walk_speed_cells := 2.4
 
 
 ## vehicle_stats: data/units/vehicles.json (차종 -> 제원)
-static func from_roster(roster: Dictionary, speed_cells: float, vehicle_stats: Dictionary = {}, cell_size_m := 0.5) -> UnitSystem:
+var vehicle_stats: Dictionary = {}
+var cell_size_m := 0.5
+
+
+static func from_roster(roster: Dictionary, speed_cells: float, p_vehicle_stats: Dictionary = {}, p_cell_size_m := 0.5) -> UnitSystem:
 	var units := UnitSystem.new()
 	units.walk_speed_cells = speed_cells
+	units.vehicle_stats = p_vehicle_stats
+	units.cell_size_m = p_cell_size_m
 	for squad_data: Dictionary in roster.get("squads", []):
-		var squad := Squad.new()
-		squad.id = units.squads.size()
-		squad.key = str(squad_data.get("id", ""))
-		squad.name = str(squad_data.get("name", ""))
-		squad.type = str(squad_data.get("type", ""))
-		squad.color = Color.html(str(squad_data.get("color", "#FFFFFF")))
-		for crew_data: Dictionary in squad_data.get("crews", []):
-			var crew := Crew.new()
-			crew.id = units.crews.size()
-			crew.squad_id = squad.id
-			crew.number = squad.crews.size() + 1
-			crew.thermal_camera = bool(crew_data.get("thermal_camera", false))
-			var spawn: Array = crew_data.get("spawn", [0, 0])
-			var level := int(crew_data.get("level", 1))
-			var members: Array = crew_data.get("members", [])
-			for i in members.size():
-				var ff := Firefighter.new()
-				ff.id = units.firefighters.size()
-				ff.name = str(members[i].get("name", ""))
-				ff.rank = str(members[i].get("rank", ""))
-				ff.role = str(members[i].get("role", ""))
-				ff.squad_id = squad.id
-				ff.crew_id = crew.id
-				ff.pos = Vector2(int(spawn[0]) + i + 0.5, int(spawn[1]) + 0.5)
-				ff.prev_pos = ff.pos
-				ff.level = level
-				ff.prev_level = level
-				units.firefighters.append(ff)
-				if i == 0:
-					crew.leader = ff
-				else:
-					crew.partner = ff
-			squad.crews.append(crew)
-			units.crews.append(crew)
-		for v_data: Dictionary in squad_data.get("vehicles", []):
-			var type := str(v_data.get("type", ""))
-			if not vehicle_stats.has(type):
-				push_error("차량 제원에 '%s'가 없습니다." % type)
-				continue
-			units.vehicles.append(_make_vehicle(units.vehicles.size(), squad.id, type, vehicle_stats[type], v_data, cell_size_m))
-		units.squads.append(squad)
+		units.add_squad(squad_data)
 	return units
+
+
+## 출동대를 추가한다 (편성 형식은 data/units/test_roster.json).
+## with_crews가 false면 조는 나중에 add_crew로 내린다 (차량을 타고 도착하는 후착대).
+func add_squad(squad_data: Dictionary, with_crews := true) -> Squad:
+	var squad := Squad.new()
+	squad.id = squads.size()
+	squad.key = str(squad_data.get("id", ""))
+	squad.name = str(squad_data.get("name", ""))
+	squad.type = str(squad_data.get("type", ""))
+	squad.color = Color.html(str(squad_data.get("color", "#FFFFFF")))
+	squads.append(squad)
+	if with_crews:
+		for crew_data: Dictionary in squad_data.get("crews", []):
+			var spawn: Array = crew_data.get("spawn", [0, 0])
+			add_crew(squad, crew_data, Vector2i(int(spawn[0]), int(spawn[1])), int(crew_data.get("level", 1)))
+	for v_data: Dictionary in squad_data.get("vehicles", []):
+		var type := str(v_data.get("type", ""))
+		if not vehicle_stats.has(type):
+			push_error("차량 제원에 '%s'가 없습니다." % type)
+			continue
+		var v := _make_vehicle(vehicles.size(), squad.id, type, vehicle_stats[type], v_data, cell_size_m)
+		vehicles.append(v)
+	return squad
+
+
+## 조를 추가한다. 조장은 spawn 셀, 짝은 오른쪽 옆 셀에 선다.
+func add_crew(squad: Squad, crew_data: Dictionary, spawn: Vector2i, level := 1) -> Crew:
+	var crew := Crew.new()
+	crew.id = crews.size()
+	crew.squad_id = squad.id
+	crew.number = squad.crews.size() + 1
+	crew.thermal_camera = bool(crew_data.get("thermal_camera", false))
+	var members: Array = crew_data.get("members", [])
+	for i in members.size():
+		var ff := Firefighter.new()
+		ff.id = firefighters.size()
+		ff.name = str(members[i].get("name", ""))
+		ff.rank = str(members[i].get("rank", ""))
+		ff.role = str(members[i].get("role", ""))
+		ff.squad_id = squad.id
+		ff.crew_id = crew.id
+		ff.pos = Vector2(spawn.x + i + 0.5, spawn.y + 0.5)
+		ff.prev_pos = ff.pos
+		ff.level = level
+		ff.prev_level = level
+		firefighters.append(ff)
+		if i == 0:
+			crew.leader = ff
+		else:
+			crew.partner = ff
+	squad.crews.append(crew)
+	crews.append(crew)
+	return crew
+
+
+func vehicles_of_squad(squad_id: int) -> Array[Vehicle]:
+	var out: Array[Vehicle] = []
+	for v in vehicles:
+		if v.squad_id == squad_id:
+			out.append(v)
+	return out
+
+
+func squad_by_key(key: String) -> Squad:
+	for s in squads:
+		if s.key == key:
+			return s
+	return null
 
 
 static func _make_vehicle(id: int, squad_id: int, type: String, stats: Dictionary, v_data: Dictionary, cell_size_m: float) -> Vehicle:

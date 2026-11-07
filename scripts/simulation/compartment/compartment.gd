@@ -63,6 +63,10 @@ var flashed := false
 var flashover_tick := -1
 var ever_burned := false
 var smoke_logged := false
+## 인명검색을 마친 틱 (-1: 안 함) (SOP 212-2.1 검색 완료 표시)
+var searched_tick := -1
+## 롤오버 징후 (플래시오버 임박)
+var rollover := false
 var stage := Stage.NONE
 
 

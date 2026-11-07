@@ -106,6 +106,26 @@ cmd_stop={
 "events": [Object(InputEventKey,"physical_keycode":68)
 ]
 }
+cmd_search={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"physical_keycode":81)
+]
+}
+cmd_entry={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"physical_keycode":82)
+]
+}
+cmd_report={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"physical_keycode":67)
+]
+}
+cmd_org={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"physical_keycode":79)
+]
+}
 cmd_door={
 "deadzone": 0.2,
 "events": [Object(InputEventKey,"physical_keycode":69)

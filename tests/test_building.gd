@@ -6,7 +6,7 @@ func test_load_house() -> void:
 	assert_true(b != null, "주택 도면 로드")
 	if b == null:
 		return
-	assert_eq(b.width, 40, "가로 셀 수")
+	assert_eq(b.width, 72, "가로 셀 수 (동쪽 도로 = 대기1단계 장소)")
 	assert_eq(b.height, 40, "세로 셀 수")
 	assert_eq(b.road_rows(1), Vector2i(28, 39), "차도 12셀(6m)")
 	assert_eq(b.cell(1, 5, 26), BuildingData.Cell.SIDEWALK, "보도")

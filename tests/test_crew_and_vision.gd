@@ -3,7 +3,7 @@ extends TestSuite
 
 
 func _sim() -> SimWorld:
-	return SimWorld.from_scenario(DEV_SCENARIO_PATH)
+	return SimWorld.from_scenario(DEV_SCENARIO_PATH, false)
 
 
 func _place(sim: SimWorld, crew_id: int, at: Vector2, level := 1) -> Crew:

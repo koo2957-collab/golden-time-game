@@ -5,7 +5,7 @@ const MINUTE_TICKS := 600
 
 
 func _open_run() -> SimWorld:
-	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH)
+	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)
 	return sim
 
 

@@ -5,6 +5,46 @@
   "building": "res://data/buildings/house_2f.json",
   "roster": "res://data/units/test_roster.json",
   "seed": 2026,
+  "dispatch": {
+    "title": "출동 지령 — 주택 화재",
+    "lines": [
+      "대상: 2층 단독주택 (벽돌조), 주택가 이면도로",
+      "신고 내용(이웃): \"옆집 1층 창문에서 검은 연기가 나요. 할머니랑 손자가 사는 집인데 나온 사람이 안 보여요.\"",
+      "시간·날씨: 평일 14:20, 맑음, 북서풍 2m/s",
+      "출동대: 진압1(펌프차·물탱크차), 구조1 (선착) · 후착: 진압2(펌프차, 약 3분 뒤), 진압3(펌프차·물탱크차, 약 5분 뒤)",
+      "소화전: 건물 동쪽 보도 지상식 1개소 · 대기1단계 장소: 도로 동쪽"
+    ],
+    "reported_victims": true,
+    "note": "reported_victims: 신고로 구조대상자 가능성이 알려져 있으면 최초 상황보고의 '구조대상자 있음'이 정답"
+  },
+  "commander": {"name": "서정호", "rank": "소방경", "title": "선착대장", "spawn": [6, 26], "note": "가상 인물"},
+  "report_truth": {
+    "use": "단독주택",
+    "vehicle_access": "진입 가능, 회차 불가",
+    "hazards": [],
+    "note": "최초 상황보고(SOP 101-2.1) 정답 중 도면으로 알 수 없는 것. 층수·구조는 건물 파일, 연소 상황·구조대상자·특수현상 징후는 그때까지 확인한 사실로 판정한다"
+  },
+  "entry_order_required": true,
+  "reinforcements": "res://data/units/dev_reinforcements.json",
+  "arrivals": [
+    {"squad": "pump2", "time_s": 180},
+    {"squad": "pump3", "time_s": 300}
+  ],
+  "support": {
+    "추가 출동대 요청": {"squads": ["pump4", "rescue2"], "delay_s": 360},
+    "대응 1단계 발령": {"squads": ["pump4", "rescue2", "pump5"], "delay_s": 360},
+    "note": "지원 요청(SOP 103-1.2) 후 도착할 출동대와 걸리는 시간 (추정)"
+  },
+  "staging": {
+    "name": "도로 동쪽",
+    "lanes": [{"y": 36, "x_min": 43}, {"y": 30, "x_min": 43}],
+    "gap_cells": 1,
+    "note": "대기1단계 장소 (SOP 103-2.1). 후착 차량은 지도 동쪽 끝에서 서쪽을 보고 들어와 차로(y)의 x_min부터 차례로 선다. 자리가 없으면 진입로에서 기다린다"
+  },
+  "victims": [
+    {"name": "노인", "age": 78, "mobility": "자력 피난 불가", "level": 2, "room": "2F_room3", "note": "가상 인물. 위치는 방 안 인명검색 중점지역 중 시드로 정한다 (SOP 202-4)"},
+    {"name": "아이", "age": 7, "mobility": "자력 피난 불가", "level": 1, "room": "1F_room1"}
+  ],
   "fire": {
     "ignitions": [
       {"level": 1, "cell": [12, 17], "time_s": 0, "note": "거실 소파"}

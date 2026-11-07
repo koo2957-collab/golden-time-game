@@ -4,13 +4,15 @@ extends Node2D
 ## - 좌클릭: 조·차량 선택 / Shift+좌클릭: 추가·해제 / 드래그: 범위 선택
 ## - 더블클릭: 같은 출동대 전체 선택
 ## - 우클릭(조): 이동 (방수 중이면 방수를 멈추고 이동) / 펌프차 우클릭: 그 펌프차에서 수관 연장
+##              발견한 요구조자·쓰러진 대원 우클릭: 구조 / 닫힌 문 우클릭: 개방(잠긴 문은 파괴)
 ## - 우클릭(차량): 이동, 소화전 점령(소화전 우클릭), 급수(물탱크차로 펌프차 우클릭)
+## - 현장지휘관 클릭: 지휘관 선택 → 우클릭: 이동 (건물 안으로는 들어가지 않는다)
 ## - Ctrl+숫자: 부대 지정 / 숫자: 부대 호출
 ## - 대상 지정 명령(begin_mode): 수관 연장(펌프차 클릭), 직사·분무 방수(목표 클릭). 우클릭·Esc로 취소
 ## 선택 단위는 조(2인 1조)와 차량이며, 현재 보고 있는 층의 대원만 선택된다.
 ## 좌표 변환은 projection(상황판/입체)을 따른다.
 
-enum Mode { NONE, HOSE, STRAIGHT, FOG, DOOR }
+enum Mode { NONE, HOSE, STRAIGHT, FOG, DOOR, SEARCH }
 
 const DRAG_THRESHOLD_PX := 6.0
 const MARKER_DURATION_MS := 500.0
@@ -21,8 +23,11 @@ const MODE_HINTS := {
 	Mode.HOSE: "수관 연장: 펌프차를 클릭",
 	Mode.STRAIGHT: "직사 방수: 목표 지점을 클릭",
 	Mode.FOG: "분무 방수: 목표 지점을 클릭",
-	Mode.DOOR: "문 개방·폐쇄: 문을 클릭 (잠긴 문은 파괴, 2명 이상 필요)",
+	Mode.DOOR: "문 개방·폐쇄 / 창 파괴(배연): 문이나 창을 클릭 (잠긴 문은 파괴, 2명 이상 필요)",
+	Mode.SEARCH: "인명검색: 검색할 방을 클릭",
 }
+## 요구조자·쓰러진 대원을 클릭으로 고를 때 허용 반경 (px)
+const CASUALTY_PICK_PX := 20.0
 ## 입체 화면에서 닫힌 문 블록을 클릭했는지 볼 때 함께 확인하는 높이 (m)
 const DOOR_PICK_HEIGHT_M := 0.3
 
@@ -31,6 +36,7 @@ var level := 1
 var projection: ViewProjection = PlanProjection.new()
 var selected: Array[int] = []
 var selected_vehicles: Array[int] = []
+var commander_selected := false
 var mode := Mode.NONE
 ## 설정되어 있으면 좌클릭을 선택 대신 이 함수로 넘긴다 (셀 좌표 Vector2i). 개발용 발화 모드 등에 쓴다.
 var click_override := Callable()
@@ -158,6 +164,9 @@ func _handle_group_key(event: InputEventKey) -> void:
 
 
 func _click_select(world_pos: Vector2, add: bool) -> void:
+	if not add and _commander_at(world_pos):
+		_set_selection([], [], true)
+		return
 	var crew_id := _crew_at(world_pos)
 	var vehicle_id := -1 if crew_id >= 0 else _vehicle_at(world_pos)
 	if crew_id < 0 and vehicle_id < 0:
@@ -196,11 +205,16 @@ func _box_select(add: bool) -> void:
 
 
 func _issue_right_click(world_pos: Vector2) -> void:
-	if selected.is_empty() and selected_vehicles.is_empty():
-		return
 	var cell_f := projection.to_cell(world_pos)
 	var cell := Vector2i(cell_f.floor())
 	var marker_cell := Vector2(cell) + Vector2(0.5, 0.5)
+	if commander_selected:
+		sim.issue(CommandOrder.make("commander_move", [], 0, Vector3i(cell.x, cell.y, level)))
+		_marker_world = projection.to_screen(marker_cell)
+		_marker_start_ms = Time.get_ticks_msec()
+		return
+	if selected.is_empty() and selected_vehicles.is_empty():
+		return
 	if not selected_vehicles.is_empty():
 		var hydrant := sim.water.hydrant_near(cell_f, 1.5)
 		if hydrant < 0:
@@ -222,7 +236,10 @@ func _issue_right_click(world_pos: Vector2) -> void:
 			if sim.water.hose_of_crew(id) == null:
 				without_hose.append(id)
 		var door := _door_at(world_pos)
-		if door and not door.is_open:
+		var casualty := _casualty_at(world_pos)
+		if casualty.x >= 0:
+			sim.issue(EquipmentCommand.make("rescue" if casualty.x == 0 else "rescue_ff", selected, -1, casualty.y))
+		elif door and not door.is_open:
 			# 닫힌 문 우클릭: 문 개방 (잠긴 문은 파괴)
 			sim.issue(EquipmentCommand.make("door_open", selected, -1, -1, Vector3i(door.cells[0].x, door.cells[0].y, level)))
 			marker_cell = Vector2(door.cells[0]) + Vector2(0.5, 0.5)
@@ -250,10 +267,14 @@ func _complete_mode(world_pos: Vector2) -> void:
 			if vid >= 0 and sim.units.get_vehicle(vid).is_pump() and not selected.is_empty():
 				sim.issue(EquipmentCommand.make("hose", selected, vid))
 		Mode.DOOR:
-			var door := _door_at(world_pos)
+			var door := _door_at(world_pos, true)
 			if door and not selected.is_empty():
-				var action := "door_close" if door.is_open else "door_open"
+				var action := "door_close" if door.is_open and door.kind == Opening.Kind.DOOR else "door_open"
 				sim.issue(EquipmentCommand.make(action, selected, -1, -1, Vector3i(door.cells[0].x, door.cells[0].y, level)))
+		Mode.SEARCH:
+			if not selected.is_empty():
+				var cell := Vector2i(projection.to_cell(world_pos).floor())
+				sim.issue(EquipmentCommand.make("search", selected, -1, -1, Vector3i(cell.x, cell.y, level)))
 		Mode.STRAIGHT, Mode.FOG:
 			if not selected.is_empty():
 				var cell := Vector2i(projection.to_cell(world_pos).floor())
@@ -282,14 +303,40 @@ func _crew_at(world_pos: Vector2) -> int:
 	return best
 
 
-## world_pos 아래(현재 층)의 문. 입체 화면에서 닫힌 문 블록을 누른 경우도 잡는다. 없으면 null.
-func _door_at(world_pos: Vector2) -> Opening:
-	for h in [0.0, DOOR_PICK_HEIGHT_M, 1.0]:
+## world_pos 아래에 현장지휘관이 있는지
+func _commander_at(world_pos: Vector2) -> bool:
+	var c := sim.command.commander
+	return c.level == level and projection.to_screen(c.pos, projection.pick_height_m).distance_to(world_pos) < projection.pick_radius_px
+
+
+## world_pos 아래(현재 층)의 문 (with_windows면 창도). 입체 화면에서 닫힌 문 블록을 누른 경우도 잡는다. 없으면 null.
+func _door_at(world_pos: Vector2, with_windows := false) -> Opening:
+	for h in [0.0, DOOR_PICK_HEIGHT_M, 1.0, 1.5]:
 		var c := Vector2i(projection.to_cell_at(world_pos, h).floor())
-		var o := sim.doors.door_at(Vector3i(c.x, c.y, level))
+		var cell := Vector3i(c.x, c.y, level)
+		var o := sim.doors.target_at(cell) if with_windows else sim.doors.door_at(cell)
 		if o:
 			return o
 	return null
+
+
+## world_pos 아래의 구조 대상: (0, 요구조자 id) / (1, 대원 id) / 없으면 (-1, -1)
+func _casualty_at(world_pos: Vector2) -> Vector2i:
+	var best := Vector2i(-1, -1)
+	var best_d := CASUALTY_PICK_PX
+	for v in sim.rescue.victims:
+		if v.discovered and v.level == level and v.alive() and v.carried_by < 0:
+			var d := projection.to_screen(v.pos, 0.2).distance_to(world_pos)
+			if d < best_d:
+				best_d = d
+				best = Vector2i(0, v.id)
+	for ff in sim.units.firefighters:
+		if ff.incapacitated and ff.level == level:
+			var d := projection.to_screen(ff.pos, 0.2).distance_to(world_pos)
+			if d < best_d:
+				best_d = d
+				best = Vector2i(1, ff.id)
+	return best
 
 
 ## world_pos 아래의 차량 id. 바닥면과 차체 중간 높이 둘 다 확인한다. 없으면 -1.
@@ -325,7 +372,10 @@ static func _toggle(ids: Array, id: int) -> void:
 		ids.append(id)
 
 
-func _set_selection(ids: Array[int], vehicle_ids: Array[int] = []) -> void:
+func _set_selection(ids: Array[int], vehicle_ids: Array[int] = [], with_commander := false) -> void:
+	if commander_selected != with_commander:
+		commander_selected = with_commander
+		EventBus.commander_selection_changed.emit(with_commander)
 	selected = ids
 	selected.sort()
 	selected_vehicles = vehicle_ids

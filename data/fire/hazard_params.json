@@ -1,0 +1,27 @@
+{
+  "note": "요구조자 생존(노출량)·인명검색·구조·특수현상 수치. source: 교재 = 소방전술 I, 공학식 = 화재공학 상관식(ISO 13571 등), 추정 = 현장 검수 필요.",
+
+  "co_per_soot": {"value": 1.5, "source": "추정", "note": "연기 속 CO 질량 / 그을음 질량"},
+  "fed_co_divisor": {"value": 35000, "source": "공학식", "note": "독성 노출량(FED) 증가율 = CO(ppm)^1.036 / 35000 (분당)"},
+  "heat_incap_a": {"value": 5.1849, "source": "공학식", "note": "열 노출 무력화 시간(분) = exp(a - b × 온도℃)"},
+  "heat_incap_b": {"value": 0.0273, "source": "공학식"},
+  "heat_exposure_min_c": {"value": 40, "source": "추정", "note": "이 온도 이하는 열 노출로 보지 않는다"},
+  "fed_unconscious": {"value": 1.0, "source": "공학식", "note": "노출량 합이 이 값이면 의식 잃음"},
+  "fed_death": {"value": 3.0, "source": "추정", "note": "노출량 합이 이 값이면 사망"},
+  "lying_breath_height_m": {"value": 0.3, "source": "추정", "note": "쓰러져 있는 요구조자의 호흡 높이"},
+  "carried_breath_height_m": {"value": 1.2, "source": "추정", "note": "업혀 있는 요구조자의 호흡 높이"},
+  "lower_layer_exposure_ratio": {"value": 0.1, "source": "추정", "note": "연기층 아래(하부층)의 연기 농도 비율"},
+
+  "voice_range_m": {"value": 3, "source": "추정", "note": "의식 있는 요구조자가 부르는 소리를 듣는 거리 (벽 너머 포함)"},
+  "carry_speed_factor": {"value": 0.5, "source": "추정", "note": "2인 운반 시 이동 속도 비율"},
+  "window_break_s": {"value": 5, "source": "추정", "note": "창 파괴(배연)에 걸리는 시간 (1명)"},
+
+  "rollover_margin_c": {"value": 100, "source": "추정", "note": "상부층이 플래시오버 온도보다 이만큼 낮아지면 롤오버 징후 (교재: 롤오버는 플래시오버의 전조)"},
+  "rollover_min_layer_m": {"value": 0.5, "source": "추정", "note": "천장 부근에 고온 가스층이 이 이상 있어야 롤오버가 보인다"},
+  "backdraft_gas_pct": {"value": 12.5, "source": "교재", "note": "CO 폭발범위 하한 12.5%"},
+  "backdraft_o2_max_pct": {"value": 15, "source": "추정", "note": "산소 부족 상태"},
+  "backdraft_temp_c": {"value": 300, "source": "추정", "note": "고온 상태"},
+  "backdraft_sign_gas_pct": {"value": 8, "source": "추정", "note": "이 이상이면 문 앞에서 징후가 느껴진다"},
+  "backdraft_blast_range_m": {"value": 3, "source": "추정", "note": "백드래프트 시 문 근처 대원이 다치는 거리"},
+  "fgi_warning_temp_c": {"value": 350, "source": "교재", "note": "SOP 210-10.5.4 열화상 350℃ 이상이면 신속 대피"}
+}

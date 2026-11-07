@@ -1,20 +1,27 @@
 class_name Hud
 extends Control
 ## 화면 정보: 게임 시계·배속·모드, 층 탭, 선택 정보, 명령 패널, 조작 안내,
-## 열화상 범례, 개발용 화재 정보 패널.
+## 열화상 범례, 개발용 화재 정보 패널. 지휘 화면(무전·상황보고·전략)은 command_ui.gd.
 
-## 명령 패널 버튼을 눌렀을 때 (id: "hose" / "straight" / "fog" / "stop")
+## 명령 패널 버튼을 눌렀을 때 (id: "entry" / "search" / "door" / "hose" / "straight" / "fog" / "stop")
 signal command_pressed(id: String)
 
 const DEBUG_REFRESH_S := 0.25
 const SELECTION_REFRESH_S := 0.25
-## 화면 위쪽에 알림으로 띄우는 사건 (지휘관이 현장에서 바로 알 수 있는 장비 상황만)
+## 화면 위쪽에 알림으로 띄우는 사건. 대원이 무전으로 보고하는 사건(CommandSystem.REPORT_PRIORITY)은
+## 무전 송신이 끝났을 때 무전 기록에 나오고, 대원 안전·구조대상자 무전은 알림으로도 띄운다.
 const NOTICE_TYPES: Array[String] = [
 	"hydrant_connected", "hydrant_disconnected", "supply_connected", "hose_laid", "hose_too_short",
 	"hose_limit", "tank_empty", "vehicle_locked", "vehicle_blocked", "spray_unreachable",
 	"door_opened", "door_closed", "door_forced", "door_cannot_close", "door_unreachable",
 	"heat_blocked", "heat_retreat", "air_alarm", "scba_swapped", "ff_down",
+	"victim_found", "victim_state", "victim_rescued", "victim_recovered", "ff_rescued", "rescue_pickup",
+	"rescue_hose_crew", "exit_blocked", "search_done", "rollover_sign", "backdraft_sign", "backdraft",
+	"fgi_warning", "window_vented", "entry_wait", "entry_rejected", "withdraw", "auto_slow",
+	"squad_dispatched", "staging_full", "order_en_route", "span_warning", "division_set", "division_cleared",
 ]
+## 알림으로도 띄우는 무전 우선순위
+const NOTICE_RADIO_PRIORITIES: Array[String] = ["대원 안전", "구조대상자"]
 const NOTICE_SECONDS := 4.0
 const NOTICE_MAX := 3
 const DEBUG_EVENT_LINES := 8
@@ -35,11 +42,14 @@ var _debug_timer := 0.0
 var _crew_ids: Array[int] = []
 var _vehicle_ids: Array[int] = []
 var _selection_timer := 0.0
+var _victim_label: Label
 var _command_panel: HBoxContainer
 var _command_buttons: Dictionary = {}  # id -> Button
 var _notice_label: Label
 var _notices: Array[Array] = []  # [문장, 남은 시간(실제 초)]
 var _events_seen := 0
+var _commander_selected := false
+var command_ui: CommandUi
 
 
 func setup(p_sim: SimWorld, on_floor_selected: Callable) -> void:
@@ -61,7 +71,12 @@ func setup(p_sim: SimWorld, on_floor_selected: Callable) -> void:
 	_build_debug_panel()
 	_build_command_panel()
 	_build_notice_label()
+	_build_victim_panel()
+	command_ui = CommandUi.new()
+	add_child(command_ui)
+	command_ui.setup(sim)
 	EventBus.selection_changed.connect(_on_selection_changed)
+	EventBus.commander_selection_changed.connect(_on_commander_selection_changed)
 	EventBus.vehicle_selection_changed.connect(_on_vehicle_selection_changed)
 	EventBus.view_floor_changed.connect(_on_view_floor_changed)
 	_on_selection_changed([])
@@ -77,6 +92,7 @@ func is_debug_visible() -> bool:
 
 func set_debug_visible(on: bool) -> void:
 	_debug_panel.visible = on
+	command_ui.set_radio_visible(not on)
 	_debug_timer = 0.0
 
 
@@ -95,6 +111,7 @@ func _process(delta: float) -> void:
 	if _selection_timer <= 0.0:
 		_selection_timer = SELECTION_REFRESH_S
 		_refresh_selection()
+		_refresh_victims()
 	if _debug_panel.visible:
 		_debug_timer -= delta
 		if _debug_timer <= 0.0:
@@ -113,9 +130,47 @@ func _on_selection_changed(crew_ids: Array[int]) -> void:
 	_refresh_selection()
 
 
+func _on_commander_selection_changed(selected: bool) -> void:
+	_commander_selected = selected
+	_refresh_selection()
+
+
 func _on_vehicle_selection_changed(vehicle_ids: Array[int]) -> void:
 	_vehicle_ids = vehicle_ids
 	_refresh_selection()
+
+
+func _refresh_victims() -> void:
+	var lines: PackedStringArray = []
+	for v in sim.rescue.victims:
+		if not v.discovered:
+			continue
+		var room := sim.fire.compartment_at(v.level, floori(v.pos.x), floori(v.pos.y))
+		var where := room.display_name() if room else ("바깥" if v.carried_by < 0 else "이송 중")
+		if v.carried_by >= 0:
+			where = "이송 중"
+		var t := int(v.discovered_tick * SimClock.TICK_DT)
+		lines.append("%s · %s · %s · 발견 %02d:%02d" % [v.label(), where, v.state_name(), floori(t / 60.0), t % 60])
+	_victim_label.text = "요구조자 현황
+" + "
+".join(lines) if not lines.is_empty() else ""
+	_victim_label.get_parent().visible = not lines.is_empty()
+
+
+func _build_victim_panel() -> void:
+	var panel := PanelContainer.new()
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	panel.offset_left = -436
+	panel.offset_right = -16
+	panel.offset_top = 150
+	panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_victim_label = Label.new()
+	_victim_label.add_theme_font_size_override("font_size", 16)
+	_victim_label.add_theme_color_override("font_color", Color("ffe082"))
+	panel.add_child(_victim_label)
+	add_child(panel)
+	panel.visible = false
 
 
 func _refresh_selection() -> void:
@@ -128,6 +183,7 @@ func _refresh_selection() -> void:
 		for ff in crew.members():
 			names.append("%s %s" % [ff.name, ff.rank])
 		var line := "[%s] %d조 — %s (%s)" % [squad.name, crew.number, " · ".join(names), sim.building.floor_name(crew.leader.level)]
+		line += _squad_state(squad.id)
 		line += _crew_status(crew)
 		var hose := sim.water.hose_of_crew(crew_id)
 		if hose:
@@ -144,9 +200,24 @@ func _refresh_selection() -> void:
 		lines.append(line)
 	for vid in _vehicle_ids:
 		lines.append(_vehicle_line(sim.units.get_vehicle(vid)))
+	if _commander_selected:
+		var cmd := sim.command
+		lines.append("현장지휘관 %s %s (%s) — 지휘 위치: %s
+    우클릭: 이동 (건물 안으로는 혼자 들어가지 않음) · C: 지휘권 선언·전략" % [
+			cmd.commander.name, cmd.commander.rank, cmd.commander_title, cmd.commander_position_text()])
 	selection_label.text = "\n".join(lines) if not lines.is_empty() else "선택 없음"
 	_command_panel.visible = not _crew_ids.is_empty()
 	_command_buttons["stop"].disabled = not any_flowing
+	var entry := _command_buttons["entry"] as Button
+	var need := false
+	var pending := false
+	for crew_id in _crew_ids:
+		var squad_id := sim.units.get_crew(crew_id).squad_id
+		if not sim.command.can_enter(squad_id):
+			need = true
+			pending = pending or sim.command.entry_pending(squad_id)
+	entry.disabled = not need or pending
+	entry.text = "진입 명령 송신 중" if pending else ("진입 명령 (R)" if need else "진입 허가됨")
 
 
 ## 조 상태 요약: 공기 잔량(낮은 쪽), 복사열, 열 스트레스, 자세, 행동 불능, 열화상카메라, 문 작업
@@ -179,9 +250,24 @@ func _crew_status(crew: Crew) -> String:
 	return "\n    " + " · ".join(parts)
 
 
+## 출동대 상태: 접근 중 / 대기1단계 / 단위대 소속
+func _squad_state(squad_id: int) -> String:
+	var cmd := sim.command
+	var parts: PackedStringArray = []
+	if cmd.resources.is_en_route(squad_id):
+		parts.append("현장 접근 중")
+	elif cmd.resources.is_staged(squad_id):
+		parts.append("투입 무전 송신 중" if cmd.commit_pending(squad_id) else "대기1단계 — 명령하면 투입 무전 후 실행")
+	var d := cmd.org.division_of(squad_id)
+	if d:
+		parts.append("%s 단위대%s" % [d.name, " 지휘" if d.supervisor == squad_id else ""])
+	return "  · " + " · ".join(parts) if not parts.is_empty() else ""
+
+
 func _vehicle_line(v: Vehicle) -> String:
 	var squad := sim.units.squads[v.squad_id]
-	var line := "[%s] %s — 물 %s / %sL" % [squad.name, v.type, _thousands(v.tank_l), _thousands(v.tank_capacity)]
+	var water := " — 물 %s / %sL" % [_thousands(v.tank_l), _thousands(v.tank_capacity)] if v.tank_capacity > 0.0 else ""
+	var line := "[%s] %s%s%s" % [squad.name, v.type, water, _squad_state(v.squad_id)]
 	if v.hydrant >= 0:
 		line += " · 소화전 연결"
 	if v.supply_to >= 0:
@@ -208,7 +294,9 @@ func _update_notices(delta: float) -> void:
 	while _events_seen < entries.size():
 		var e := entries[_events_seen]
 		_events_seen += 1
-		if e.type in NOTICE_TYPES:
+		if e.type in NOTICE_TYPES and not CommandSystem.REPORT_PRIORITY.has(e.type):
+			_notices.append([SimEventLog.describe(e), NOTICE_SECONDS])
+		elif e.type == "radio" and e.priority in NOTICE_RADIO_PRIORITIES:
 			_notices.append([SimEventLog.describe(e), NOTICE_SECONDS])
 	for n in _notices:
 		n[1] -= delta
@@ -242,14 +330,14 @@ func _build_notice_label() -> void:
 func _build_command_panel() -> void:
 	_command_panel = HBoxContainer.new()
 	_command_panel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	_command_panel.offset_left = -860
+	_command_panel.offset_left = -1190
 	_command_panel.offset_right = -16
 	_command_panel.offset_top = -112
 	_command_panel.offset_bottom = -64
 	_command_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	_command_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_command_panel.alignment = BoxContainer.ALIGNMENT_END
-	for spec in [["door", "문 (E)"], ["hose", "수관 연장 (H)"], ["straight", "직사 방수 (A)"], ["fog", "분무 방수 (S)"], ["stop", "방수 중지 (D)"]]:
+	for spec in [["entry", "진입 명령 (R)"], ["search", "검색 (Q)"], ["door", "문·창 (E)"], ["hose", "수관 연장 (H)"], ["straight", "직사 방수 (A)"], ["fog", "분무 방수 (S)"], ["stop", "방수 중지 (D)"]]:
 		var b := Button.new()
 		b.text = spec[1]
 		b.focus_mode = Control.FOCUS_NONE

@@ -20,6 +20,8 @@ var speed_factor := 1.0
 ## 자세 (연기층이 내려오면 낮은 자세: 느려지고 시선이 낮아진다)
 var crouched := false
 var crouch_factor := 1.0
+## 요구조자·쓰러진 대원을 업고 있으면 느려진다
+var carry_factor := 1.0
 
 ## 공기호흡기 잔량 / 용량 (L)
 var air_l := 2040.0
@@ -58,7 +60,7 @@ func step(dt: float, speed_cells: float) -> void:
 	if incapacitated:
 		path.clear()
 		return
-	var budget := speed_cells * speed_factor * crouch_factor * dt
+	var budget := speed_cells * speed_factor * crouch_factor * carry_factor * dt
 	while budget > 0.0 and not path.is_empty():
 		var wp := path[0]
 		if wp.z != level:

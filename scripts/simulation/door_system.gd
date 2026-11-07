@@ -6,6 +6,7 @@ extends RefCounted
 ## - 잠긴 문: 파괴(강제 개방). 문 앞에 forcible_entry_min_people 명 이상이 있을 때만 진행, forcible_entry_s 초.
 ##   파괴된 문은 다시 닫을 수 없다 (SOP 202-3.3: 진입구 파괴는 현장지휘관 명령으로).
 ## 문 상태가 바뀌면 구획 모델의 환기 조건과 길찾기가 즉시 바뀐다.
+## 창: 깨서 여는 것만 가능 (배연·상부 개방, 1명, window_break_s 초). 깨진 창은 열린 개구부가 된다.
 
 ## 문 앞에 있다고 보는 거리 (셀, 약 1.2m). 조장 바로 뒤에 선 짝도 포함되도록 잡는다.
 const AT_DOOR_CELLS := 2.3
@@ -24,6 +25,10 @@ var units: UnitSystem
 var pathfinder: Pathfinder
 var events: SimEventLog
 var tasks: Array[Task] = []
+## (Opening, tick) : 문이 열렸을 때 (백드래프트 판정) / 닫힌 문 앞 작업을 시작할 때 (징후)
+var on_door_opened := Callable()
+var on_door_approach := Callable()
+var window_break_s := 5.0
 
 var _open_s: float
 var _force_s: float
@@ -54,6 +59,12 @@ func door_at(cell: Vector3i) -> Opening:
 	return o if o and o.kind == Opening.Kind.DOOR else null
 
 
+## 문 또는 창 (작업 대상)
+func target_at(cell: Vector3i) -> Opening:
+	var o := fire.opening_at(cell)
+	return o if o and o.kind != Opening.Kind.STAIR else null
+
+
 func task_of(o: Opening) -> Task:
 	for t in tasks:
 		if t.opening == o:
@@ -70,9 +81,11 @@ func task_of_crew(crew_id: int) -> Task:
 
 ## 조에게 문을 열거나(open=true) 닫게 한다. 같은 문에 이미 작업이 있으면 그 작업을 돕는다.
 func request(crew_id: int, door_cell: Vector3i, open: bool, tick: int) -> bool:
-	var o := door_at(door_cell)
+	var o := target_at(door_cell)
 	var c := units.get_crew(crew_id)
 	if o == null or c == null:
+		return false
+	if o.kind == Opening.Kind.WINDOW and (not open or o.broken):
 		return false
 	if o.is_open == open and task_of(o) == null:
 		return false
@@ -85,8 +98,13 @@ func request(crew_id: int, door_cell: Vector3i, open: bool, tick: int) -> bool:
 		t = Task.new()
 		t.opening = o
 		t.open = open
-		t.required = (_force_s if o.locked else _open_s) if open else _open_s
+		if o.kind == Opening.Kind.WINDOW:
+			t.required = window_break_s
+		else:
+			t.required = (_force_s if o.locked else _open_s) if open else _open_s
 		tasks.append(t)
+		if open and o.kind == Opening.Kind.DOOR and on_door_approach.is_valid():
+			on_door_approach.call(o, tick)
 	t.crews.append(crew_id)
 	var spot := _work_spot(c, o)
 	if spot == Pathfinder.NO_CELL:
@@ -120,6 +138,12 @@ func step(dt: float, tick: int) -> void:
 
 func _finish(t: Task, tick: int) -> void:
 	var o := t.opening
+	if o.kind == Opening.Kind.WINDOW:
+		o.broken = true
+		o.is_open = true
+		events.add(tick, "window_vented", {"room": _door_name(o)})
+		tasks.erase(t)
+		return
 	if t.open:
 		if o.locked:
 			o.locked = false
@@ -128,6 +152,8 @@ func _finish(t: Task, tick: int) -> void:
 		else:
 			events.add(tick, "door_opened", {"opening": o.index, "kind": o.kind_name(), "room": _door_name(o)})
 		o.is_open = true
+		if on_door_opened.is_valid():
+			on_door_opened.call(o, tick)
 	else:
 		if _someone_in_doorway(o):
 			events.add(tick, "door_cannot_close", {"crew": _crew_name(units.get_crew(t.crews[0]))})

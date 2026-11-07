@@ -27,6 +27,9 @@ const TANK_FILL := Color("4fc3f7")
 const AIR_OK := Color("e0e0e0")
 const AIR_LOW := Color("ff5252")
 const SMOKE_PLUME := Color(0.18, 0.18, 0.2, 0.55)
+const SEARCHED := Color("81c784")
+## 요구조자 상태별 색 (Victim.State 순서: 의식 있음, 의식 잃음, 사망, 구조됨)
+const VICTIM_COLORS := [Color("ffd54f"), Color("ff8a65"), Color("9e9e9e"), Color("81c784")]
 const FURNITURE_FILL := Color("bcc4cd")
 const FURNITURE_LINE := Color("8a949f")
 ## 다른 층을 비춰 보일 때의 불투명도
@@ -54,3 +57,9 @@ static func to_px(cell_pos: Vector2) -> Vector2:
 
 static func to_cell(px: Vector2) -> Vector2:
 	return px / CELL_PX
+
+## 현장지휘관 (흰 몸체, 빨간 안전모)
+## 대기1단계 장소 표시
+const STAGING_COLOR := Color(0.99, 0.83, 0.3, 0.55)
+const COMMANDER_BODY := Color("e5e7eb")
+const COMMANDER_HELMET := Color("ef4444")

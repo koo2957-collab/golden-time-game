@@ -15,6 +15,7 @@ func _init(p_crew_ids: Array[int], p_target: Vector3i) -> void:
 func execute(sim: SimWorld) -> void:
 	for id in crew_ids:
 		sim.doors.cancel(id)
+		sim.rescue.cancel(id)
 	sim.units.order_move(crew_ids, target, sim.pathfinder)
 
 

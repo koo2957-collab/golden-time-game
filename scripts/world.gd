@@ -17,6 +17,8 @@ var view_mode := ViewMode.ISO
 var thermal := false
 var ignite_mode := false
 var command_hint := ""
+## 창(출동 지령·상황보고 등)을 열기 전의 일시정지 상태
+var _paused_before_dialog := false
 var projections := {ViewMode.ISO: IsoProjection.new(), ViewMode.PLAN: PlanProjection.new()}
 
 @onready var floor_view: FloorPlanView = $Map/FloorPlanView
@@ -40,10 +42,16 @@ func _ready() -> void:
 	iso_view.setup(sim, selection, projections[ViewMode.ISO])
 	hud.setup(sim, set_view_level)
 	hud.command_pressed.connect(_on_command)
+	hud.command_ui.order_issued.connect(sim.issue)
+	hud.command_ui.dialog_changed.connect(_on_dialog_changed)
 	EventBus.command_mode_changed.connect(_on_command_mode_changed)
 	camera.setup(projection().bounds(sim.building), START_ZOOM[view_mode])
+	# 지도가 도로 쪽으로 넓으므로 건물을 화면 가운데에 두고 시작한다
+	var house := Rect2(sim.building.footprint(sim.building.levels()[0]))
+	camera.retarget(projection().bounds(sim.building), projection().to_screen(house.get_center() + Vector2(0, 4)))
 	set_view_mode(view_mode)
 	set_view_level(sim.building.levels()[0])
+	hud.command_ui.show_dispatch()
 
 
 func _process(delta: float) -> void:
@@ -54,7 +62,18 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if sim == null:
 		return
-	if event.is_action_pressed("time_pause"):
+	if hud.command_ui.dispatch_visible():
+		if event is InputEventKey and event.pressed and event.keycode in [KEY_ENTER, KEY_KP_ENTER]:
+			hud.command_ui.close_dispatch()
+			get_viewport().set_input_as_handled()
+		return
+	if event.is_action_pressed("cmd_report"):
+		hud.command_ui.open_command_dialog()
+	elif event.is_action_pressed("cmd_org"):
+		hud.command_ui.open_org_dialog()
+	elif event.is_action_pressed("cmd_entry"):
+		_on_command("entry")
+	elif event.is_action_pressed("time_pause"):
 		sim.clock.paused = not sim.clock.paused
 	elif event.is_action_pressed("floor_up"):
 		_step_level(1)
@@ -70,6 +89,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_on_command("stop")
 	elif event.is_action_pressed("cmd_door"):
 		_on_command("door")
+	elif event.is_action_pressed("cmd_search"):
+		_on_command("search")
 	elif event.is_action_pressed("debug_info_fog") and OS.is_debug_build():
 		sim.perception.enabled = not sim.perception.enabled
 		_update_mode_text()
@@ -145,11 +166,32 @@ func _on_command_mode_changed(hint: String) -> void:
 	_update_mode_text()
 
 
-## 명령 패널 버튼 / 단축키 (H 수관 연장, A 직사 방수, S 분무 방수, D 방수 중지)
+## 창이 열려 있는 동안 게임 시간을 멈춘다
+func _on_dialog_changed(open: bool) -> void:
+	if open:
+		_paused_before_dialog = sim.clock.paused
+		sim.clock.paused = true
+	else:
+		sim.clock.paused = _paused_before_dialog
+
+
+## 명령 패널 버튼 / 단축키 (R 진입 명령, H 수관 연장, A 직사 방수, S 분무 방수, D 방수 중지)
 func _on_command(id: String) -> void:
 	if selection.selected.is_empty():
 		return
 	match id:
+		"entry":
+			var squads: Array[int] = []
+			for crew_id in selection.selected:
+				var squad_id := sim.units.get_crew(crew_id).squad_id
+				if not squad_id in squads and not sim.command.can_enter(squad_id):
+					squads.append(squad_id)
+			if squads.is_empty():
+				return
+			if sim.command.effective_strategy() == CommandSystem.Strategy.DEFENSIVE:
+				hud.command_ui.confirm_defensive_entry(squads)
+			else:
+				sim.issue(CommandOrder.make("entry", squads))
 		"hose":
 			selection.begin_mode(SelectionController.Mode.HOSE)
 		"straight":
@@ -162,6 +204,8 @@ func _on_command(id: String) -> void:
 				sim.issue(EquipmentCommand.make("stop", spraying))
 		"door":
 			selection.begin_mode(SelectionController.Mode.DOOR)
+		"search":
+			selection.begin_mode(SelectionController.Mode.SEARCH)
 
 
 func _update_mode_text() -> void:

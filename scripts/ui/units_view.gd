@@ -32,19 +32,70 @@ func _draw() -> void:
 			draw_circle(c, 7.0, PlanStyle.HYDRANT_COLOR)
 			draw_arc(c, 7.0, 0.0, TAU, 16, Color.WHITE, 1.5)
 			draw_string(PlanStyle.font(), c + Vector2(-30, -12), "소화전", HORIZONTAL_ALIGNMENT_CENTER, 60, 12, PlanStyle.HYDRANT_COLOR.lightened(0.4))
+		var rects := sim.command.resources.staging_rects()
+		for r in rects:
+			var px := Rect2(PlanStyle.to_px(r.position), PlanStyle.to_px(r.end) - PlanStyle.to_px(r.position))
+			var corners := [px.position, Vector2(px.end.x, px.position.y), px.end, Vector2(px.position.x, px.end.y)]
+			for k in 4:
+				draw_dashed_line(corners[k], corners[(k + 1) % 4], PlanStyle.STAGING_COLOR, 2.0, 8.0)
+		if not rects.is_empty():
+			draw_string(PlanStyle.font(), PlanStyle.to_px(Vector2(rects[0].position.x + 0.5, rects[0].end.y + 0.8)),
+				"대기1단계 장소 (%s)" % sim.command.resources.staging_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, PlanStyle.STAGING_COLOR.lightened(0.3))
 		for v in sim.units.vehicles:
 			_draw_vehicle(v, alpha)
 		for line in supply_lines(sim):
 			draw_line(PlanStyle.to_px(line[0]), PlanStyle.to_px(line[1]), PlanStyle.SUPPLY_LINE, 4.0)
 	for crew_id in selection.selected:
 		_draw_path(sim.units.get_crew(crew_id).leader, alpha)
+	if selection.commander_selected:
+		_draw_path(sim.command.commander, alpha)
 	# 다른 층 대원을 먼저 그려 현재 층 대원이 위에 오게 한다
 	for pass_current in [false, true]:
 		for ff in sim.units.firefighters:
 			if (ff.level == level) == pass_current:
 				_draw_unit(ff, alpha)
+	_draw_commander(alpha)
+	_draw_victims()
+	_draw_room_marks()
 	_draw_sprays(alpha)
 	_draw_smoke_plumes()
+	_draw_blasts()
+
+
+## 발견한 요구조자: 상태별 색 마름모 + 이름표
+func _draw_victims() -> void:
+	for v in sim.rescue.victims:
+		if not v.discovered or v.level != level or v.state == Victim.State.RESCUED:
+			continue
+		var c := PlanStyle.to_px(v.pos)
+		var r := 8.0 if v.carried_by < 0 else 5.0
+		var color: Color = PlanStyle.VICTIM_COLORS[v.state]
+		draw_colored_polygon(PackedVector2Array([c + Vector2(0, -r), c + Vector2(r, 0), c + Vector2(0, r), c + Vector2(-r, 0)]), color)
+		if v.carried_by < 0:
+			draw_string(PlanStyle.font(), c + Vector2(-50, -12), "%s · %s" % [v.label(), v.state_name()], HORIZONTAL_ALIGNMENT_CENTER, 100, 12, color.lightened(0.4))
+
+
+## 방별 표시: 검색 완료, 롤오버 징후(보이는 방만)
+func _draw_room_marks() -> void:
+	var px := PlanStyle.CELL_PX
+	for c in sim.fire.comps:
+		if c.level != level:
+			continue
+		var rect := Rect2(Vector2(c.rect.position) * px, Vector2(c.rect.size) * px)
+		if c.searched_tick >= 0:
+			draw_string(PlanStyle.font(), Vector2(rect.position.x, rect.get_center().y + 22), "[검색 완료]", HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 12, PlanStyle.SEARCHED)
+		if c.rollover and sim.perception.room_visible(c):
+			var t := Time.get_ticks_msec() / 1000.0
+			draw_rect(rect.grow(-2.0), Color(1.0, 0.45, 0.1, 0.6 + 0.3 * sin(t * 8.0)), false, 3.0)
+
+
+func _draw_blasts() -> void:
+	for blast in sim.hazards.blasts:
+		if int(blast[1]) != level:
+			continue
+		var age := float(sim.clock.tick - int(blast[2])) / HazardSystem.BLAST_SHOW_TICKS
+		var at := PlanStyle.to_px(blast[0])
+		draw_circle(at, 12.0 + age * 60.0, Color(1.0, 0.5, 0.1, 0.6 * (1.0 - age)))
 
 
 ## 문 상태: 열림(바닥색 + 문틀 선) / 닫힘(문 색) / 잠김·파괴 표시 / 작업 진행 막대
@@ -175,6 +226,21 @@ func _draw_unit(ff: Firefighter, alpha: float) -> void:
 	draw_rect(bar, PlanStyle.TANK_BG)
 	var f := ff.air_ratio()
 	draw_rect(Rect2(bar.position, Vector2(bar.size.x * f, bar.size.y)), PlanStyle.AIR_LOW if f < 0.18 else PlanStyle.AIR_OK)
+
+
+## 현장지휘관: 흰 사각형·빨간 테두리, "지휘" 표시
+func _draw_commander(alpha: float) -> void:
+	var c := sim.command.commander
+	if c.level != level:
+		return
+	var center := PlanStyle.to_px(display_pos(c, alpha))
+	var r := RADIUS_CELLS * PlanStyle.CELL_PX
+	if selection.commander_selected:
+		draw_arc(center, r + 5.0, 0.0, TAU, 32, PlanStyle.SELECTION, 2.5)
+	var box := Rect2(center - Vector2(r, r), Vector2(r, r) * 2.0)
+	draw_rect(box, PlanStyle.COMMANDER_BODY)
+	draw_rect(box, PlanStyle.COMMANDER_HELMET, false, 2.5)
+	draw_string(PlanStyle.font(), center + Vector2(-20, -r - 4.0), "지휘", HORIZONTAL_ALIGNMENT_CENTER, 40, FONT_SIZE, Color.WHITE)
 
 
 func _draw_path(ff: Firefighter, alpha: float) -> void:

@@ -22,6 +22,14 @@ func _run() -> void:
 	# (-s 실행 시 autoload 등록 전에 컴파일되어 실패하기 때문)
 	var sel = world.selection
 	var u := sim.units
+	var cui = world.hud.command_ui
+
+	# 출동 지령 창 → Enter로 현장 도착
+	_check("출동 지령 창 표시", cui.dispatch_visible(), true)
+	_check("지령 창이 떠 있는 동안 일시정지", sim.clock.paused, true)
+	_key(KEY_ENTER)
+	_check("Enter → 현장 도착", cui.dispatch_visible(), false)
+	_check("지령 창을 닫으면 시간 진행", sim.clock.paused, false)
 
 	_check("기본 화면은 입체", world.view_mode, world.ViewMode.ISO)
 	_key(KEY_TAB)
@@ -41,6 +49,40 @@ func _run() -> void:
 	sim.units.get_crew(3).partner.path.clear()
 	sim.units.get_crew(3).leader.pos = Vector2(20.5, 23.5)
 	sim.units.get_crew(3).partner.pos = Vector2(21.5, 23.5)
+
+	# 진입 명령 전: 건물 안으로 이동 명령 → 입구 앞에서 멈춤
+	var lead0 := u.get_crew(0).leader
+	_click(lead0.pos, MOUSE_BUTTON_LEFT, false, false, true)
+	_click(Vector2(13.5, 15.5), MOUSE_BUTTON_RIGHT)
+	sim.step_ticks(150)
+	_check("진입 명령 전에는 입구 앞에서 멈춤", sim.building.cell(1, floori(lead0.pos.x), floori(lead0.pos.y)) in BuildingData.OUTDOOR, true)
+	# 현장지휘관 선택·이동
+	_click(sim.command.commander.pos, MOUSE_BUTTON_LEFT, false, false, true)
+	_check("현장지휘관 클릭 선택", sel.commander_selected, true)
+	_click(Vector2(8.5, 26.5), MOUSE_BUTTON_RIGHT)
+	sim.step_ticks(1)
+	_check("지휘관 우클릭 이동", sim.command_log.entries[-1] is CommandOrder, true)
+	# C → 지휘권 선언·최초 상황보고 양식
+	_key(KEY_C)
+	_check("C → 상황보고 양식", cui._report.visible, true)
+	_check("양식이 떠 있는 동안 일시정지", sim.clock.paused, true)
+	for choice in [["fire", "연기만 확인"], ["victims", "있음"], ["use", "단독주택"], ["floors", "2층"],
+			["structure", "벽돌조"], ["strategy", "공격"], ["support", "불필요"], ["access", "진입 가능, 회차 불가"]]:
+		cui.set_report_choice(choice[0], choice[1])
+	cui.submit_report()
+	_check("송신하면 양식 닫힘·시간 진행", [cui._report.visible, sim.clock.paused], [false, false])
+	sim.step_ticks(400)
+	_check("지휘권 선언", sim.command.declared(), true)
+	# R → 선택한 조의 출동대에 진입 명령
+	_click(lead0.pos, MOUSE_BUTTON_LEFT, false, false, true)
+	_click(u.get_crew(2).leader.pos, MOUSE_BUTTON_LEFT, false, true, true)
+	_key(KEY_R)
+	sim.step_ticks(300)
+	_check("R → 진압1·구조1 진입 허가", [sim.command.can_enter(0), sim.command.can_enter(1)], [true, true])
+	for ff in u.get_crew(0).members():
+		ff.path.clear()
+	lead0.pos = Vector2(10.5, 23.5)
+	u.get_crew(0).partner.pos = Vector2(11.5, 23.5)
 
 	# 상황판 화면
 	_click(u.get_crew(0).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
@@ -69,7 +111,7 @@ func _run() -> void:
 	_click(Vector2(13.5, 15.5), MOUSE_BUTTON_RIGHT)
 	await process_frame
 	sim.step_ticks(700)
-	_check("이동 명령 2건 기록", sim.command_log.entries.filter(func(c): return c is MoveCommand).size(), 2)
+	_check("이동 명령 3건 기록 (진입 점검 1건 포함)", sim.command_log.entries.filter(func(c): return c is MoveCommand).size(), 3)
 	_check("구조1 1조장 2층 도착", u.get_crew(2).leader.level, 2)
 	var c0 := u.get_crew(0).leader.cell3()
 	_check("진압1 1조장 거실 도착", sim.building.room_at(1, c0.x, c0.y).get("name"), "거실")
@@ -109,6 +151,21 @@ func _run() -> void:
 	_click(sim.units.vehicles[0].pos, MOUSE_BUTTON_RIGHT)
 	sim.step_ticks(1)
 	_check("물탱크차 → 펌프차 우클릭 → 급수", sim.units.vehicles[1].supply_to, 0)
+
+	_click(u.get_crew(1).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)  # 1층 거실의 진압1 2조
+	_key(KEY_Q)
+	_check("Q → 인명검색 모드", sel.mode, sel.Mode.SEARCH)
+	_click(Vector2(24.5, 17.5), MOUSE_BUTTON_LEFT)
+	sim.step_ticks(1)
+	_check("방 클릭 → 검색 시작", sim.rescue.searches.size(), 1)
+
+	# O → 조직·지원 창, 단위대 지정
+	_key(KEY_O)
+	_check("O → 조직·지원 창", [cui.org_visible(), sim.clock.paused], [true, true])
+	cui.assign_division("A면", 0, [1] as Array[int])
+	_check("단위대 지정하면 창 닫힘", [cui.org_visible(), sim.clock.paused], [false, false])
+	sim.step_ticks(200)
+	_check("A면 단위대 지정 (진압1 대장, 구조1)", sim.command.org.division_named("A면").squads if sim.command.org.division_named("A면") else [], [0, 1])
 
 	_key(KEY_F2)
 	_check("F2 → 2배속", sim.clock.speed, 2.0)

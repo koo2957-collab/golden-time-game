@@ -36,6 +36,7 @@ var _air_work: float
 var _air_heat: float
 var _swap_s: float
 var _swap_range: float
+var _air_full := 0.0
 var _heat_event_tick: Dictionary = {}  # "종류:조" -> tick
 
 
@@ -60,10 +61,15 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, stats
 	_air_heat = stats.value("air_use_heat_lpm")
 	_swap_s = stats.value("scba_swap_s")
 	_swap_range = stats.value("scba_swap_range_m") / _cell_m
-	var air := stats.value("scba_air_l")
+	_air_full = stats.value("scba_air_l")
 	for ff in units.firefighters:
-		ff.air_capacity = air
-		ff.air_l = air
+		init_member(ff)
+
+
+## 새로 도착한 대원의 공기호흡기를 채운다
+func init_member(ff: Firefighter) -> void:
+	ff.air_capacity = _air_full
+	ff.air_l = _air_full
 
 
 func hazard_kw_m2() -> float:

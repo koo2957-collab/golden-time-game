@@ -1,0 +1,13 @@
+{
+  "note": "무선 통신(SOP 107)·지휘 수치. source: 교재 = 소방전술 I, 추정 = 현장 검수 필요.",
+
+  "call_s": {"value": 1.5, "source": "추정", "note": "호출과 응답 확인에 드는 기본 시간 (송신마다)"},
+  "per_char_s": {"value": 0.12, "source": "추정", "note": "본문 한 글자당 송신 시간 (보통 말 속도, 107-3.1②)"},
+  "max_message_s": {"value": 30, "source": "추정", "note": "한 번 송신의 최대 시간 (최초 상황보고 등 긴 송신)"},
+  "gap_s": {"value": 0.5, "source": "추정", "note": "송신과 송신 사이 채널이 비는 시간"},
+  "report_repeat_s": {"value": 20, "source": "추정", "note": "같은 조가 같은 내용을 이 시간 안에 다시 보고하지 않는다"},
+  "entry_wait_repeat_s": {"value": 30, "source": "추정", "note": "진입 명령 대기 알림을 같은 조에 다시 띄우는 간격"},
+  "span_ideal": {"value": 5, "source": "교재", "note": "통솔범위 적정 수 (용어 정의: 통상 3~7, 1명에 5명이 적절)"},
+  "span_max": {"value": 7, "source": "교재", "note": "통솔범위 한계"},
+  "span_delay_per_excess_s": {"value": 5, "source": "추정", "note": "적정을 넘은 수 하나당 직접 지휘하는 출동대 명령이 늦어지는 시간 (관리 과부하)"}
+}

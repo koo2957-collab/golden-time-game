@@ -92,8 +92,11 @@ func _draw() -> void:
 	_draw_room_labels()
 	if level == b.levels()[0]:
 		_draw_face_labels()
+		_draw_staging()
 	for crew_id in selection.selected:
 		_draw_path(sim.units.get_crew(crew_id).leader, alpha)
+	if selection.commander_selected:
+		_draw_path(sim.command.commander, alpha)
 	_draw_hoses()
 	if level == b.levels()[0]:
 		for line in UnitsView.supply_lines(sim):
@@ -106,6 +109,12 @@ func _draw() -> void:
 	if level == b.levels()[0]:
 		for v in sim.units.vehicles:
 			_bucket(buckets, v.prev_pos.lerp(v.pos, alpha), v)
+	for victim in sim.rescue.victims:
+		if victim.discovered and victim.level == level:
+			_bucket(buckets, victim.pos, victim)
+	var commander := sim.command.commander
+	if commander.level == level:
+		_bucket(buckets, UnitsView.display_pos(commander, alpha), commander)
 	for d in range(0, b.width + b.height - 1):
 		for x in range(maxi(0, d - b.height + 1), mini(d, b.width - 1) + 1):
 			_draw_cell_objects(x, d - x)
@@ -113,13 +122,20 @@ func _draw() -> void:
 			var group: Array = buckets[d]
 			group.sort_custom(func(a: Array, c: Array) -> bool: return a[0] < c[0])
 			for item: Array in group:
-				if item[1] is Firefighter:
+				if item[1] == commander:
+					_draw_commander(alpha)
+				elif item[1] is Firefighter:
 					_draw_unit(item[1], alpha)
+				elif item[1] is Victim:
+					_draw_victim(item[1])
 				else:
 					_draw_vehicle(item[1], alpha)
 	if not thermal:
 		_draw_smoke()
+	_draw_blasts()
 	_draw_sprays(alpha)
+	if level == b.levels()[0]:
+		_draw_staging_label()
 
 
 func _bucket(buckets: Dictionary, p: Vector2, obj: Object) -> void:
@@ -170,6 +186,24 @@ func _draw_ground() -> void:
 		_draw_lane_line()
 
 
+## 대기1단계 장소: 차로 바닥에 점선 테두리와 이름
+func _draw_staging() -> void:
+	var rects := sim.command.resources.staging_rects()
+	for r in rects:
+		var corners := [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]
+		for k in 4:
+			draw_dashed_line(proj.to_screen(corners[k], 0.02), proj.to_screen(corners[(k + 1) % 4], 0.02), PlanStyle.STAGING_COLOR, 2.0, 8.0)
+
+
+
+## 대기1단계 장소 이름: 차량에 가리지 않게 맨 위에 그린다
+func _draw_staging_label() -> void:
+	var rects := sim.command.resources.staging_rects()
+	if not rects.is_empty():
+		var p := proj.to_screen(Vector2(rects[0].position.x + 0.5, rects[0].end.y + 0.8), 0.02)
+		draw_string(PlanStyle.font(), p, "대기1단계 장소 (%s)" % sim.command.resources.staging_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, PlanStyle.STAGING_COLOR.lightened(0.3))
+
+
 func _draw_lane_line() -> void:
 	if level != sim.building.levels()[0]:
 		return
@@ -206,6 +240,8 @@ func _draw_room_labels() -> void:
 		var r: Rect2i = room.rect
 		var center := proj.to_screen(Vector2(r.position) + Vector2(r.size) * 0.5)
 		draw_string(font, center + Vector2(-60, LABEL_FONT_SIZE * 0.35), room.name, HORIZONTAL_ALIGNMENT_CENTER, 120, LABEL_FONT_SIZE, PlanStyle.ROOM_LABEL)
+		if _room_searched(room.id):
+			draw_string(font, center + Vector2(-60, LABEL_FONT_SIZE * 1.6), "[검색 완료]", HORIZONTAL_ALIGNMENT_CENTER, 120, LABEL_FONT_SIZE, PlanStyle.SEARCHED)
 
 
 func _draw_face_labels() -> void:
@@ -360,6 +396,25 @@ func _draw_unit(ff: Firefighter, alpha: float) -> void:
 	_draw_air_bar(label + Vector2(0, 4), ff)
 
 
+## 현장지휘관: 흰 몸체·빨간 안전모, "지휘" 표시
+func _draw_commander(alpha: float) -> void:
+	var c := sim.command.commander
+	var p := UnitsView.display_pos(c, alpha)
+	var feet := proj.to_screen(p, 0.0)
+	draw_colored_polygon(_ellipse(feet, 10, 5), Color(0, 0, 0, 0.3))
+	if selection.commander_selected:
+		draw_polyline(_ellipse(feet, 13, 6.5, true), PlanStyle.SELECTION, 2.0)
+	var top := proj.to_screen(p, UNIT_BODY_M)
+	var body := Rect2(feet.x - UNIT_HALF_W, top.y, UNIT_HALF_W * 2.0, feet.y - top.y)
+	draw_rect(body, PlanStyle.COMMANDER_BODY)
+	draw_rect(body, PlanStyle.UNIT_OUTLINE, false, 1.0)
+	var head := proj.to_screen(p, UNIT_HEAD_M)
+	draw_circle(head, UNIT_HEAD_R, PlanStyle.COMMANDER_HELMET)
+	draw_arc(head, UNIT_HEAD_R, 0.0, TAU, 16, PlanStyle.UNIT_OUTLINE, 1.0)
+	var label := proj.to_screen(p, UNIT_LABEL_M)
+	draw_string(PlanStyle.font(), label + Vector2(-30, 0), "지휘", HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color.WHITE)
+
+
 ## 공기호흡기 잔량 막대 (경보 이하면 빨강)
 func _draw_air_bar(at: Vector2, ff: Firefighter) -> void:
 	var r := Rect2(at.x - 11.0, at.y, 22.0, 4.0)
@@ -497,7 +552,55 @@ func _draw_smoke() -> void:
 		draw_colored_polygon(plane, Color(FireView.SMOKE_COLOR, a))
 		plane.append(plane[0])
 		draw_polyline(plane, Color(FireView.SMOKE_COLOR.darkened(0.3), minf(1.0, a + 0.15)), 1.5)
+		if c.rollover and p.room_visible(c):
+			_draw_rollover(r, h)
 	_draw_smoke_plumes()
+
+
+func _room_searched(room_id: String) -> bool:
+	for c in sim.fire.comps:
+		if c.level == level and c.id == room_id:
+			return c.searched_tick >= 0
+	return false
+
+
+## 롤오버 징후: 연기층 위로 굽이치는 화염 (플래시오버 임박)
+func _draw_rollover(r: Rect2i, h: float) -> void:
+	var t := Time.get_ticks_msec() / 1000.0
+	for k in 4:
+		var f := (k + 0.5) / 4.0
+		var pts := PackedVector2Array()
+		for j in 13:
+			var u := j / 12.0
+			var wave := sin(u * 10.0 + t * 6.0 + k) * 0.25
+			pts.append(proj.to_screen(Vector2(lerpf(r.position.x, r.end.x, u), lerpf(r.position.y, r.end.y, f) + wave), h + 0.05))
+		draw_polyline(pts, Color(1.0, 0.45 + 0.2 * sin(t * 9.0 + k), 0.1, 0.75), 2.5)
+
+
+func _draw_blasts() -> void:
+	for blast in sim.hazards.blasts:
+		if int(blast[1]) != level:
+			continue
+		var age := float(sim.clock.tick - int(blast[2])) / HazardSystem.BLAST_SHOW_TICKS
+		var at := proj.to_screen(blast[0], 1.0)
+		draw_circle(at, 20.0 + age * 90.0, Color(1.0, 0.5, 0.1, 0.6 * (1.0 - age)))
+		draw_circle(at, 10.0 + age * 50.0, Color(1.0, 0.9, 0.4, 0.8 * (1.0 - age)))
+
+
+## 요구조자: 누운 모습, 상태별 색, 이름표. 업혀 있으면 대원 어깨 위에 작게
+func _draw_victim(v: Victim) -> void:
+	var color: Color = PlanStyle.VICTIM_COLORS[v.state]
+	if v.carried_by >= 0:
+		var at := proj.to_screen(v.pos, 1.5)
+		draw_colored_polygon(_ellipse(at, 12, 4), color)
+		return
+	if v.state == Victim.State.RESCUED:
+		return
+	var feet := proj.to_screen(v.pos, 0.05)
+	draw_colored_polygon(_ellipse(feet, 15, 6), Color(0, 0, 0, 0.35))
+	draw_colored_polygon(_ellipse(feet + Vector2(0, -3), 13, 5), color)
+	draw_circle(feet + Vector2(12, -5), 5.0, color.lightened(0.3))
+	draw_string(PlanStyle.font(), feet + Vector2(-50, -14), "%s · %s" % [v.label(), v.state_name()], HORIZONTAL_ALIGNMENT_CENTER, 100, 12, color.lightened(0.4))
 
 
 ## 바깥으로 연기가 뿜어져 나오는 창·문 (밖에서 늘 보이는 상황 판단 단서)

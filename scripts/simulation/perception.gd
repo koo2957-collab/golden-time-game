@@ -31,6 +31,8 @@ var building: BuildingData
 
 ## 칸별 (fire.grid.index 기준)
 var visible_now: PackedByteArray
+## 대원이 직접 본 칸 (창 밖에서 들여다본 것은 제외). 요구조자 발견에 쓴다
+var crew_visible_now: PackedByteArray
 var thermal_now: PackedByteArray
 var seen_tick: PackedInt32Array
 var seen_burning: PackedByteArray
@@ -82,6 +84,7 @@ func _init(p_fire: FireSim, p_units: UnitSystem, stats: ParamTable) -> void:
 	_per_level = building.width * building.height
 	var total := _per_level * building.levels().size()
 	visible_now.resize(total)
+	crew_visible_now.resize(total)
 	thermal_now.resize(total)
 	seen_tick.resize(total)
 	seen_tick.fill(-1)
@@ -128,6 +131,13 @@ func is_seen(level: int, x: int, y: int) -> bool:
 	return seen_tick[fire.grid.index(level, x, y)] >= 0
 
 
+## 대원이 직접(눈·손) 확인하고 있는 칸인지
+func is_crew_visible(level: int, x: int, y: int) -> bool:
+	if not enabled:
+		return true
+	return crew_visible_now[fire.grid.index(level, x, y)] == 1
+
+
 func is_thermal_visible(level: int, x: int, y: int) -> bool:
 	if not enabled:
 		return true
@@ -152,7 +162,8 @@ func update(tick: int) -> void:
 			_cast(ff.level, ff.pos, eye, RAYS, _max_sight, false)
 		if c.thermal_camera and not c.leader.incapacitated and _should_cast(c.leader):
 			_cast(c.leader.level, c.leader.pos, _eye_stand, RAYS, _tic_range, true)
-	# 밖에서 창·열린 문으로 들여다보기 (지휘관·바깥 대원)
+	crew_visible_now = visible_now.duplicate()
+	# 밖에서 창·열린 문으로 들여다보기 (지휘관·바깥 대원). 화염·연기는 보이지만 바닥에 쓰러진 사람은 보이지 않는다
 	for o in _exterior:
 		if o.kind == Opening.Kind.DOOR and not o.is_open:
 			continue

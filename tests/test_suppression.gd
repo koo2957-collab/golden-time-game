@@ -9,7 +9,7 @@ const TANKER := 1
 
 ## 개발 시나리오 + 옆문(D면)만 열어 진입로를 만든다 (현관문은 닫힌 채: 화재 보정 조건 유지)
 func _sim() -> SimWorld:
-	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH)
+	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)
 	sim.fire.opening_at(Vector3i(31, 12, 1)).is_open = true
 	sim.doors.sync_blocking()
 	return sim

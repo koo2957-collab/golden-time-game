@@ -11,14 +11,14 @@
         {
           "thermal_camera": true,
           "members": [
-            {"name": "오세훈", "rank": "소방위", "role": "진압대장"},
+            {"name": "오세훈", "rank": "소방위", "role": "진압대장", "traits": ["베테랑"]},
             {"name": "임재석", "rank": "소방교", "role": "관창수"}
           ]
         },
         {
           "members": [
             {"name": "서동욱", "rank": "소방장", "role": "관창보조"},
-            {"name": "문태양", "rank": "소방사", "role": "관창보조"}
+            {"name": "문태양", "rank": "소방사", "role": "관창보조", "traits": ["신참"]}
           ]
         }
       ]
@@ -34,13 +34,13 @@
           "thermal_camera": true,
           "members": [
             {"name": "배준영", "rank": "소방위", "role": "진압대장"},
-            {"name": "송하늘", "rank": "소방장", "role": "관창수"}
+            {"name": "송하늘", "rank": "소방장", "role": "관창수", "traits": ["체력 좋음"]}
           ]
         },
         {
           "members": [
             {"name": "권민석", "rank": "소방교", "role": "관창보조"},
-            {"name": "남궁현", "rank": "소방사", "role": "관창보조"}
+            {"name": "남궁현", "rank": "소방사", "role": "관창보조", "traits": ["열 민감"]}
           ]
         }
       ]
@@ -56,7 +56,7 @@
           "thermal_camera": true,
           "members": [
             {"name": "유상철", "rank": "소방위", "role": "진압대장"},
-            {"name": "황보선", "rank": "소방교", "role": "관창수"}
+            {"name": "황보선", "rank": "소방교", "role": "관창수", "traits": ["신참"]}
           ]
         },
         {
@@ -83,7 +83,7 @@
         },
         {
           "members": [
-            {"name": "편주원", "rank": "소방교", "role": "구조대원"},
+            {"name": "편주원", "rank": "소방교", "role": "구조대원", "traits": ["체력 좋음"]},
             {"name": "어진우", "rank": "소방사", "role": "구조대원"}
           ]
         }
@@ -98,7 +98,7 @@
       "crews": [
         {
           "members": [
-            {"name": "하은수", "rank": "소방장", "role": "구급대장 (1급 응급구조사)"},
+            {"name": "하은수", "rank": "소방장", "role": "구급대장 (1급 응급구조사)", "traits": ["베테랑"]},
             {"name": "도윤아", "rank": "소방사", "role": "구급대원 (간호사)"}
           ]
         }

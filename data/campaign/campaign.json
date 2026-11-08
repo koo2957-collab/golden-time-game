@@ -1,0 +1,48 @@
+{
+  "note": "캠페인 뼈대 (M7c-3). 장마다 시나리오를 묶고, 앞 장의 시나리오를 min_grade 이상으로 끝내면 다음 장이 열린다. 기록은 내 기록(결과 파일)에서 읽는다. 자유 연습은 잠김과 상관없이 시작 화면에서 고를 수 있다.",
+  "chapters": [
+    {
+      "id": "basics",
+      "title": "1장 · 기본 지휘 흐름",
+      "text": "튜토리얼로 선언부터 종료까지 한 번 해 본다.",
+      "scenarios": [
+        "tutorial_basics"
+      ],
+      "min_grade": "D"
+    },
+    {
+      "id": "house_day",
+      "title": "2장 · 주택화재 — 낮",
+      "text": "선착대장으로 인명검색과 내부 진압을 지휘한다 (SOP 214).",
+      "scenarios": [
+        "sop214_1_day_living"
+      ],
+      "min_grade": "C"
+    },
+    {
+      "id": "house_night",
+      "title": "3장 · 주택화재 — 새벽 2층",
+      "text": "상층 구조와 연소 확대, 인접 건물 경계 (SOP 214-2.4).",
+      "scenarios": [
+        "sop214_2_night_upstairs"
+      ],
+      "min_grade": "C"
+    },
+    {
+      "id": "house_gas",
+      "title": "4장 · 주택화재 — 가스·고립 위험",
+      "text": "LPG 확인·차단, 물 부족과 지원 요청 (SOP 214-2.2, 103).",
+      "scenarios": [
+        "sop214_3_kitchen_lpg"
+      ],
+      "min_grade": "C"
+    },
+    {
+      "id": "apartment",
+      "title": "5장 · 공동주택 (준비 중)",
+      "text": "M8에서 공동주택·일반건축물 시나리오를 추가한다.",
+      "scenarios": [],
+      "min_grade": "C"
+    }
+  ]
+}

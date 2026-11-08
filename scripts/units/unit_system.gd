@@ -3,6 +3,9 @@ extends RefCounted
 ## 현장의 모든 출동대·조·대원을 관리하고 이동 명령을 처리한다.
 ## 각 객체는 id를 배열 인덱스로 쓴다.
 
+const TRAITS_PATH := "res://data/units/traits.json"
+static var _traits: Dictionary = {}
+
 var squads: Array[Squad] = []
 var crews: Array[Crew] = []
 var firefighters: Array[Firefighter] = []
@@ -51,6 +54,14 @@ func add_squad(squad_data: Dictionary, with_crews := true) -> Squad:
 
 
 ## 조를 추가한다. 조장은 spawn 셀, 짝은 오른쪽 옆 셀에 선다.
+## 대원 개성 표 (한 번 읽어 둔다)
+static func traits() -> Dictionary:
+	if _traits.is_empty():
+		var data: Variant = JsonData.load_file(TRAITS_PATH)
+		_traits = data.get("traits", {}) if data is Dictionary else {}
+	return _traits
+
+
 func add_crew(squad: Squad, crew_data: Dictionary, spawn: Vector2i, level := 1) -> Crew:
 	var crew := Crew.new()
 	crew.id = crews.size()
@@ -64,6 +75,15 @@ func add_crew(squad: Squad, crew_data: Dictionary, spawn: Vector2i, level := 1) 
 		ff.name = str(members[i].get("name", ""))
 		ff.rank = str(members[i].get("rank", ""))
 		ff.role = str(members[i].get("role", ""))
+		for t in members[i].get("traits", []):
+			var spec: Dictionary = traits().get(str(t), {})
+			if spec.is_empty():
+				push_error("대원 개성 '%s'가 traits.json에 없습니다." % t)
+				continue
+			ff.traits.append(str(t))
+			ff.air_factor *= float(spec.get("air", 1.0))
+			ff.trait_speed *= float(spec.get("speed", 1.0))
+			ff.heat_factor *= float(spec.get("heat", 1.0))
 		ff.squad_id = squad.id
 		ff.crew_id = crew.id
 		ff.pos = Vector2(spawn.x + i + 0.5, spawn.y + 0.5)

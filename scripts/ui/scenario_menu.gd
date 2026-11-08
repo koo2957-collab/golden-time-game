@@ -64,7 +64,7 @@ func _ready() -> void:
 	var buttons := HBoxContainer.new()
 	buttons.alignment = BoxContainer.ALIGNMENT_END
 	buttons.add_theme_constant_override("separation", 12)
-	for spec in [["내 기록", open_history], ["교관 설정", open_instructor]]:
+	for spec in [["캠페인", open_campaign], ["내 기록", open_history], ["교관 설정", open_instructor]]:
 		var b := Button.new()
 		b.text = spec[0]
 		b.focus_mode = Control.FOCUS_NONE
@@ -124,6 +124,19 @@ func select(i: int) -> void:
 func selected_path() -> String:
 	var sel := _list.get_selected_items()
 	return scenarios[sel[0]].path if not sel.is_empty() else ""
+
+
+func open_campaign() -> void:
+	var ui := CampaignUi.new()
+	ui.scenario_chosen.connect(select_id)
+	_open(ui)
+
+
+## 시나리오 id로 목록에서 고른다
+func select_id(id: String) -> void:
+	for i in scenarios.size():
+		if str(scenarios[i].id) == id:
+			select(i)
 
 
 func open_history() -> void:

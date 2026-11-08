@@ -188,6 +188,15 @@ tests/             단위 테스트(test_*.gd)와 조작 점검(ui_smoke.gd)
 
 검증은 `tests/test_tactical.gd`, `tests/test_hints.gd`.
 
+## 대원 개성·캠페인 요약 (M7c-3)
+
+| 요소 | 내용 |
+|---|---|
+| 개성 | `data/units/traits.json` (air·speed·heat 배율). 편성 members[].traits → `Firefighter.traits/air_factor/trait_speed/heat_factor`. 공기 소모(crew_condition_system)·이동(firefighter.step)·열 스트레스에 반영. HUD 조 상태 "개성: 이름 개성" |
+| 캠페인 | `data/campaign/campaign.json` (장: scenarios, min_grade), `scripts/scenario/campaign.gd` (`Campaign.progress`), 화면 `scripts/ui/campaign_ui.gd`. 시작 화면 '캠페인' 버튼 → 도전 가능한 시나리오를 누르면 목록에서 고른다 |
+
+검증은 `tests/test_campaign.gd`.
+
 ## 내 기록·교관 설정 요약 (M7c-2)
 
 | 요소 | 내용 |

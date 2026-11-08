@@ -158,7 +158,7 @@ func after_move(dt: float, tick: int) -> void:
 
 func _update_heat_stress(ff: Firefighter, dt: float) -> void:
 	if ff.heat_flux > _routine:
-		ff.heat_stress += dt * (ff.heat_flux - _routine) / (_hazard - _routine) / _stress_s
+		ff.heat_stress += dt * ff.heat_factor * (ff.heat_flux - _routine) / (_hazard - _routine) / _stress_s
 	else:
 		ff.heat_stress = maxf(0.0, ff.heat_stress - dt / _recovery_s)
 
@@ -170,7 +170,7 @@ func _update_air(ff: Firefighter, inside: bool, dt: float, tick: int) -> void:
 			lpm = _air_heat
 		elif ff.is_moving():
 			lpm = _air_work
-		ff.air_l = maxf(0.0, ff.air_l - lpm / 60.0 * dt)
+		ff.air_l = maxf(0.0, ff.air_l - lpm * ff.air_factor / 60.0 * dt)
 		ff.swap_timer = 0.0
 		if ff.air_ratio() < _air_alarm and not ff.air_alarm_logged:
 			ff.air_alarm_logged = true

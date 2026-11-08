@@ -32,6 +32,11 @@ var heat_stress := 0.0
 var heat_flux := 0.0
 ## 행동 불능 (공기 소진·열 스트레스 한계)
 var incapacitated := false
+## 개성 (data/units/traits.json): 공기 소모·걷는 속도·열 스트레스 배율
+var traits: Array[String] = []
+var air_factor := 1.0
+var trait_speed := 1.0
+var heat_factor := 1.0
 ## 구급차에 타고 현장을 떠나 있음 (화면·선택에서 빠진다)
 var aboard := false
 var air_alarm_logged := false
@@ -62,7 +67,7 @@ func step(dt: float, speed_cells: float) -> void:
 	if incapacitated:
 		path.clear()
 		return
-	var budget := speed_cells * speed_factor * crouch_factor * carry_factor * dt
+	var budget := speed_cells * speed_factor * trait_speed * crouch_factor * carry_factor * dt
 	while budget > 0.0 and not path.is_empty():
 		var wp := path[0]
 		if wp.z != level:

@@ -286,6 +286,12 @@ func _crew_status(crew: Crew) -> String:
 		if ff.incapacitated:
 			down += 1
 	var parts: PackedStringArray = ["공기 %d%%" % roundi(air * 100.0)]
+	var traits: PackedStringArray = []
+	for ff in crew.members():
+		for t in ff.traits:
+			traits.append("%s %s" % [ff.name, t])
+	if not traits.is_empty():
+		parts.append("개성: " + ", ".join(traits))
 	if flux >= 0.5:
 		parts.append("복사열 %.1fkW/㎡" % flux)
 	if stress >= 0.05:

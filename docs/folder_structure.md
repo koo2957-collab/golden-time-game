@@ -188,6 +188,15 @@ tests/             단위 테스트(test_*.gd)와 조작 점검(ui_smoke.gd)
 
 검증은 `tests/test_tactical.gd`, `tests/test_hints.gd`.
 
+## 시나리오 편집기 요약 (M9d)
+
+| 요소 | 내용 |
+|---|---|
+| 데이터 | `scripts/scenario/scenario_draft.gd` (`ScenarioDraft.from_base/open/add_ignition/add_victim/move_witness/remove_near/save`). 기본 제공 파일은 건드리지 않고 user://scenarios/custom_날짜.json으로 저장, `ScenarioLoader.validate` 결과를 돌려준다 |
+| 화면 | `scripts/ui/editor_ui.gd` (`ScenarioEditorUi`, 안쪽 `MapPreview`). 시작 화면 '시나리오 편집기' 버튼 |
+
+검증은 `tests/test_editor.gd`.
+
 ## 골목 안 주택 요약 (M9c)
 
 | 요소 | 내용 |

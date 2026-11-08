@@ -14,6 +14,8 @@ var mode := "평가"
 var difficulty := ""
 ## 다시 하기 요청 {entries: [{tick, command}], tick, seed, automation}. 비어 있으면 처음부터
 var replay: Dictionary = {}
+## 교관 설정의 시작 화면 기본값을 한 번 적용했는가
+var defaults_applied := false
 
 
 func change_state(new_state: GameState) -> void:

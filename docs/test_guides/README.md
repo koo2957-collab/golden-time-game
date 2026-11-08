@@ -28,3 +28,4 @@
 | M7b-1 인접 건물·가스·붕괴·후착대 | [M7b1_exposure.md](M7b1_exposure.md) |
 | M7b-2 구급대·운전원 | [M7b2_ems.md](M7b2_ems.md) |
 | M7c-1 튜토리얼 | [M7c1_tutorial.md](M7c1_tutorial.md) |
+| M7c-2 내 기록·교관 설정 | [M7c2_history_instructor.md](M7c2_history_instructor.md) |

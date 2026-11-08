@@ -34,6 +34,7 @@ var projections := {ViewMode.ISO: IsoProjection.new(), ViewMode.PLAN: PlanProjec
 
 
 func _ready() -> void:
+	InstructorSettings.active = true
 	var path := GameManager.scenario_path if GameManager.scenario_path != "" else SCENARIO_PATH
 	var replay_tick := int(GameManager.replay.get("tick", -1))
 	if replay_tick >= 0:

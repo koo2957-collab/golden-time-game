@@ -188,6 +188,17 @@ tests/             단위 테스트(test_*.gd)와 조작 점검(ui_smoke.gd)
 
 검증은 `tests/test_tactical.gd`, `tests/test_hints.gd`.
 
+## 내 기록·교관 설정 요약 (M7c-2)
+
+| 요소 | 내용 |
+|---|---|
+| 내 기록 | `scripts/evaluation/play_history.gd` (`PlayHistory.entries/growth/aggregate/export_aggregate`), 화면 `scripts/ui/history_ui.gd`. 결과 파일(user://reports)을 읽는다. 결과 파일에 `saved_at`·`instructor_params` 추가 |
+| 익명 집계 | 시나리오별 판 수·등급 분포·평균 점수·축 평균·자주 나온 고칠 점. 이름·날짜별 개인 기록 없음. user://export/aggregate_날짜.json·.csv |
+| 교관 설정 | `scripts/scenario/instructor_settings.gd` (user://instructor.json), 화면 `scripts/ui/instructor_ui.gd`. weekly(이번 주 훈련), defaults(시작 화면 모드·자동화), params(hazard·ems·safety 표 덮어쓰기). `InstructorSettings.active`는 게임 화면(world)에서만 켜므로 자동 테스트는 늘 기본 수치 |
+| 시작 화면 | 버튼 '내 기록'·'교관 설정', 이번 주 훈련 시나리오에 ★ 표시와 안내 문구 |
+
+검증은 `tests/test_history.gd`.
+
 ## 튜토리얼 요약 (M7c-1)
 
 | 요소 | 내용 |

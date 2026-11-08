@@ -12,9 +12,16 @@ var _detail: RichTextLabel
 var _start: Button
 var _mode: OptionButton
 var _difficulty: OptionButton
+## 열려 있는 내 기록·교관 설정 화면
+var overlay: Control
 
 
 func _ready() -> void:
+	if not GameManager.defaults_applied:
+		GameManager.defaults_applied = true
+		var defs: Dictionary = InstructorSettings.load_settings().get("defaults", {})
+		GameManager.mode = str(defs.get("mode", GameManager.mode))
+		GameManager.difficulty = str(defs.get("difficulty", GameManager.difficulty))
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var bg := ColorRect.new()
 	bg.color = BG
@@ -57,6 +64,13 @@ func _ready() -> void:
 	var buttons := HBoxContainer.new()
 	buttons.alignment = BoxContainer.ALIGNMENT_END
 	buttons.add_theme_constant_override("separation", 12)
+	for spec in [["내 기록", open_history], ["교관 설정", open_instructor]]:
+		var b := Button.new()
+		b.text = spec[0]
+		b.focus_mode = Control.FOCUS_NONE
+		b.custom_minimum_size = Vector2(140, 48)
+		b.pressed.connect(spec[1])
+		buttons.add_child(b)
 	_mode = OptionButton.new()
 	_mode.focus_mode = Control.FOCUS_NONE
 	_mode.custom_minimum_size = Vector2(330, 48)
@@ -84,9 +98,10 @@ func _ready() -> void:
 func reload() -> void:
 	scenarios = ScenarioLoader.list()
 	_list.clear()
+	var weekly := str(InstructorSettings.weekly().get("scenario", ""))
 	for s in scenarios:
 		var meta: Dictionary = s.meta
-		var label := "%s%s" % [s.title, "  [%s]" % meta.difficulty if meta.has("difficulty") else ""]
+		var label := "%s%s%s" % ["★ 이번 주 훈련 — " if str(s.id) == weekly and weekly != "" else "", s.title, "  [%s]" % meta.difficulty if meta.has("difficulty") else ""]
 		if not s.errors.is_empty():
 			label += "  ⚠ 오류"
 		if s.source == "추가":
@@ -111,7 +126,26 @@ func selected_path() -> String:
 	return scenarios[sel[0]].path if not sel.is_empty() else ""
 
 
+func open_history() -> void:
+	_open(HistoryUi.new())
+
+
+func open_instructor() -> void:
+	var ui := InstructorUi.new()
+	ui.saved.connect(reload)
+	_open(ui)
+
+
+func _open(ui: Control) -> void:
+	if is_instance_valid(overlay):
+		overlay.queue_free()
+	overlay = ui
+	add_child(ui)
+
+
 func _unhandled_key_input(event: InputEvent) -> void:
+	if is_instance_valid(overlay) and not overlay.is_queued_for_deletion():
+		return
 	if event is InputEventKey and event.pressed and event.keycode in [KEY_ENTER, KEY_KP_ENTER]:
 		get_viewport().set_input_as_handled()
 		_on_start()
@@ -128,6 +162,9 @@ func _show(i: int) -> void:
 			facts.append("%s %s" % [pair[1], str(int(value)) if value is float else str(value)])
 	if not facts.is_empty():
 		lines.append("[color=#94a3b8]%s[/color]" % "  ·  ".join(facts))
+	var weekly := InstructorSettings.weekly()
+	if str(weekly.get("scenario", "")) == str(s.id) and str(s.id) != "":
+		lines.append("[color=#fbbf24]★ 이번 주 훈련%s[/color]" % (" — " + str(weekly.note) if str(weekly.get("note", "")) != "" else ""))
 	if m.has("summary"):
 		lines.append("")
 		lines.append(str(m.summary))

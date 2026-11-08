@@ -42,6 +42,7 @@ static func save(report: Dictionary) -> String:
 	DirAccess.make_dir_recursive_absolute(REPORT_DIR)
 	var stamp := Time.get_datetime_string_from_system(false, true).replace(":", "").replace("-", "").replace(" ", "_")
 	var path := "%s/%s_%s.json" % [REPORT_DIR, report.get("scenario_id", "scenario"), stamp]
+	report["saved_at"] = Time.get_datetime_string_from_system(false, true)
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f == null:
 		return ""
@@ -128,6 +129,7 @@ func _run() -> Dictionary:
 		"decisions": _decisions(),
 		"timeline_ticks": _timeline_ticks(),
 		"replayable": sim.replayable,
+		"instructor_params": InstructorSettings.changed_params(),
 		"hidden": _hidden(),
 		"strengths": _strengths(results),
 		"weaknesses": _weaknesses(results),

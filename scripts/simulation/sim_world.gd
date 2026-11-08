@@ -68,10 +68,16 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	var stats_data: Variant = JsonData.load_file(unit_stats_path)
 	var vehicle_stats: Variant = JsonData.load_file(VEHICLES_PATH)
 	var hazard_data: Variant = JsonData.load_file(HAZARD_PARAMS_PATH)
+	if hazard_data is Dictionary:
+		hazard_data = InstructorSettings.apply("hazard", hazard_data)
 	var radio_data: Variant = JsonData.load_file(RADIO_PARAMS_PATH)
 	var survey_data: Variant = JsonData.load_file(SURVEY_PARAMS_PATH)
 	var safety_data: Variant = JsonData.load_file(SAFETY_PARAMS_PATH)
 	var ems_data: Variant = JsonData.load_file(EMS_PARAMS_PATH)
+	if safety_data is Dictionary:
+		safety_data = InstructorSettings.apply("safety", safety_data)
+	if ems_data is Dictionary:
+		ems_data = InstructorSettings.apply("ems", ems_data)
 	var fire_config := FireConfig.load_files(FIRE_PARAMS_PATH, MATERIALS_PATH)
 	if building == null or not roster is Dictionary or not stats_data is Dictionary or not vehicle_stats is Dictionary or not hazard_data is Dictionary or not radio_data is Dictionary or not survey_data is Dictionary or not safety_data is Dictionary or not ems_data is Dictionary or fire_config == null:
 		return null

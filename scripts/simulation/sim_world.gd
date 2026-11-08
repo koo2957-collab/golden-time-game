@@ -148,6 +148,10 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim._card_training_factor = ParamTable.from_dict(card_params).value("training_time_factor")
 	sim.cards.sim = sim
 	sim.perception.commander = sim.command.commander
+	# 호흡량 4단계·긴장 배율·출구까지 필요 공기 (R9, 기획안 5-6)
+	sim.conditions.activity_of = sim.activity_level
+	sim.conditions.emergency = func() -> bool: return sim.command.safety.emergency()
+	sim.conditions.exits = sim.rescue.exit_cells
 	sim.plan = PlanIntel.new(sim.fire, sim.units, sim.perception, sim.command.interior, sim.events)
 	var building_data: Variant = JsonData.load_file(building_path)
 	if building_data is Dictionary:
@@ -220,6 +224,18 @@ func apply_realism(name: String) -> void:
 				shuttle.source_name = "원거리 소화전 (악조건)"
 				shuttle.round_trip_s = pp.value("harsh_shuttle_round_trip_s")
 	events.add(clock.tick, "realism", {"name": name})
+
+
+## 대원의 활동 단계 (호흡량): 0 대기·보행 40 / 1 수색·호스 전개 55 / 2 방수·파괴 65 / 3 구조·계단 80 ℓ/분 (기획안 5-6)
+func activity_level(ff: Firefighter) -> int:
+	if rescue.task_of_crew(ff.crew_id) is RescueSystem.CarryTask:
+		return 3
+	if ff.is_moving() and building.cell(ff.level, floori(ff.pos.x), floori(ff.pos.y)) == BuildingData.Cell.STAIRS:
+		return 3
+	var h := water.hose_of_crew(ff.crew_id)
+	if (h and h.flowing) or doors.task_of_crew(ff.crew_id) != null:
+		return 2
+	return 1 if ff.is_moving() else 0
 
 
 func ended() -> bool:

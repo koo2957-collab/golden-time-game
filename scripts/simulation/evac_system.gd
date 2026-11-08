@@ -21,6 +21,9 @@ var _alert_ticks: int
 var _clear_m: float
 var _hot_c: float
 var _speed: float
+var _o2_slow := 18.0
+var _o2_stop := 10.0
+var _o2_factor := 0.5
 
 
 func _init(p_fire: FireSim, p_rescue: RescueSystem, p_pathfinder: Pathfinder, params: ParamTable, walk_speed_cells: float, p_events: SimEventLog) -> void:
@@ -32,6 +35,9 @@ func _init(p_fire: FireSim, p_rescue: RescueSystem, p_pathfinder: Pathfinder, pa
 	_clear_m = params.value("evac_clear_m")
 	_hot_c = params.value("evac_hot_c")
 	_speed = walk_speed_cells * params.value("evac_speed_factor")
+	_o2_slow = params.value("o2_slow_pct")
+	_o2_stop = params.value("o2_immobile_pct")
+	_o2_factor = params.value("o2_slow_factor")
 
 
 func step(dt: float, tick: int) -> void:
@@ -58,7 +64,11 @@ func step(dt: float, tick: int) -> void:
 
 func _walk(v: Victim, dt: float, tick: int) -> void:
 	var path: Array = paths[v.id]
-	var budget := _speed * dt
+	# 산소가 부족하면 느려지고, 10% 이하면 스스로 움직이지 못한다 (교재 화재2 산소농도별 영향)
+	var o2 := o2_percent(v)
+	if o2 <= _o2_stop:
+		return
+	var budget := _speed * dt * (_o2_factor if o2 < _o2_slow else 1.0)
 	while budget > 0.0 and not path.is_empty():
 		var wp: Vector3i = path[0]
 		if not _passable(wp):
@@ -126,3 +136,11 @@ func _outside_of(o: Opening) -> Vector2i:
 		if fire.building.cell(o.level, n.x, n.y) in BuildingData.OUTDOOR and pathfinder.passable(o.level, n.x, n.y):
 			return n
 	return Pathfinder.NO_CELL
+
+
+## 요구조자가 있는 방의 산소 농도(부피 %, 연기층 안이면 상부층 기준 — 질량분율을 대기 20.9%에 비례해 바꾼다)
+func o2_percent(v: Victim) -> float:
+	var c := fire.compartment_at(v.level, floori(v.pos.x), floori(v.pos.y))
+	if c == null:
+		return 20.9
+	return 20.9 * c.y_o2 / Compartment.O2_AMBIENT_MASS

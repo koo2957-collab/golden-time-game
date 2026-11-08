@@ -49,6 +49,8 @@ var _cell_m: float
 var _co_per_soot: float
 var _fed_div: float
 var _heat_a: float
+## CO 농도별 사망 시간 표 [[ppm, 분]…] (교재 화재2 표 4-11)
+var _co_table: Array = []
 var _heat_b: float
 var _heat_min: float
 var _fed_unconscious: float
@@ -69,6 +71,7 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, p_per
 	_cell_m = fire.building.cell_size_m
 	_co_per_soot = params.value("co_per_soot")
 	_fed_div = params.value("fed_co_divisor")
+	_co_table = params.params.get("co_death_table", {}).get("value", [])
 	_heat_a = params.value("heat_incap_a")
 	_heat_b = params.value("heat_incap_b")
 	_heat_min = params.value("heat_exposure_min_c")
@@ -457,7 +460,8 @@ func _expose(v: Victim, dt: float, tick: int) -> void:
 		conc *= _lower_ratio
 	var co_ppm := conc * _co_per_soot / 1.145 * 1e6
 	if co_ppm > 1.0:
-		v.fed_toxic += pow(co_ppm, 1.036) / _fed_div * dt / 60.0
+		# 노출시간 / 그 농도의 사망시간을 더한다 (교재 표, 기획안 5-5). fed_death에 이르면 사망
+		v.fed_toxic += _fed_death * dt / 60.0 / co_death_minutes(co_ppm, _co_table)
 	var temp := c.t_upper if in_layer else c.t_lower
 	if temp > _heat_min:
 		v.fed_heat += dt / 60.0 / exp(_heat_a - _heat_b * temp)
@@ -546,3 +550,27 @@ func _is_outdoor(level: int, cell: Vector2i) -> bool:
 
 func _crew_name(c: Crew) -> String:
 	return "%s %d조" % [units.squads[c.squad_id].name, c.number]
+
+
+## CO 농도(ppm)에서 사망까지 걸리는 시간(분). 표 사이는 로그-로그 보간, 양 끝 밖은 끝 구간 기울기로 늘린다
+static func co_death_minutes(ppm: float, table: Array) -> float:
+	if table.size() < 2:
+		return 120.0
+	var p := maxf(ppm, 1.0)
+	var i := 0
+	if p > float(table[-1][0]):
+		i = table.size() - 2
+	else:
+		while i < table.size() - 2 and p > float(table[i + 1][0]):
+			i += 1
+	var x0 := log(float(table[i][0]))
+	var x1 := log(float(table[i + 1][0]))
+	var y0 := log(float(table[i][1]))
+	var y1 := log(float(table[i + 1][1]))
+	var y := y0 + (y1 - y0) * (log(p) - x0) / (x1 - x0)
+	return clampf(exp(y), 0.5, 100000.0)
+
+
+## 비교용: R9 전 공학식(ISO 13571 Purser)의 분당 독성 노출량
+static func purser_rate(ppm: float, divisor: float) -> float:
+	return pow(ppm, 1.036) / divisor

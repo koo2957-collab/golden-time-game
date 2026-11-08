@@ -23,7 +23,7 @@ const NOTICE_TYPES: Array[String] = [
 	"face_seen", "site_info_found", "clue_found", "witness_arrived", "statement", "ask_too_far", "ask_cancelled",
 	"command_post", "report_updated", "overhaul_start", "rekindle",
 	"emergency_cleared", "evacuation_ordered", "par_done", "role_assigned", "role_reserved", "rit_deployed",
-	"entry_factors", "order_unseen", "plan_acquired", "panel_fire_floor", "plan_diff_found",
+	"entry_factors", "order_unseen", "exit_air_low", "plan_acquired", "panel_fire_floor", "plan_diff_found",
 ]
 ## 알림으로도 띄우는 무전 우선순위
 const NOTICE_RADIO_PRIORITIES: Array[String] = ["대원 안전", "구조대상자"]
@@ -329,7 +329,12 @@ func _crew_status(crew: Crew) -> String:
 		flux = maxf(flux, ff.heat_flux)
 		if ff.incapacitated:
 			down += 1
-	var parts: PackedStringArray = ["공기 %d%%" % roundi(air * 100.0)]
+	var need := 0.0
+	for ff in crew.members():
+		need = maxf(need, ff.exit_air_l / maxf(1.0, ff.air_capacity))
+	var parts: PackedStringArray = ["잔압 %dbar (%d%%)" % [roundi(air * 300.0), roundi(air * 100.0)]]
+	if need > 0.0:
+		parts.append("출구까지 필요 %dbar · 호흡 %dℓ/분" % [maxi(1, roundi(need * 300.0)), roundi(sim.conditions.air_rate(crew.leader))])
 	var traits: PackedStringArray = []
 	for ff in crew.members():
 		for t in ff.traits:

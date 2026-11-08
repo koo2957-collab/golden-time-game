@@ -199,6 +199,8 @@ static func describe_text(e: Dictionary) -> String:
 			text = "%s 시작%s — %s" % [e.action, " (%s)" % e.room if e.has("room") else "", e.crew]
 		"tactical_halt":
 			text = "%s — %s" % [e.reason, e.crew]
+		"exit_air_low":
+			text = "출구까지 공기 약 %dbar 필요, 잔압 %dbar — 퇴각 건의" % [int(e.need_bar), int(e.air_bar)]
 		"plan_acquired":
 			text = "도면 확보 — %s" % e.source
 		"panel_fire_floor":

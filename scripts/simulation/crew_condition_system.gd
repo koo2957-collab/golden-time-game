@@ -32,8 +32,20 @@ var _recovery_s: float
 var _radiant: float
 var _air_alarm: float
 var _air_rest: float
+var _air_search: float
 var _air_work: float
-var _air_heat: float
+var _air_heavy: float
+var _air_tension: float
+var _air_control: float
+var _detour: float
+var _walk_cells: float
+## 대원의 활동 단계 (0 대기·보행, 1 수색·호스 전개, 2 방수·파괴, 3 구조·계단). SimWorld가 넣는다
+var activity_of := Callable()
+## 긴급탈출 상황인가 (긴장 배율). SimWorld가 넣는다
+var emergency := Callable()
+## 출구 칸 목록 (출구까지 필요 공기). SimWorld가 넣는다
+var exits := Callable()
+var _exits_now: Array = []
 var _swap_s: float
 var _swap_range: float
 var _air_full := 0.0
@@ -57,8 +69,14 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, stats
 	_radiant = stats.value("flame_radiant_fraction")
 	_air_alarm = stats.value("scba_alarm_ratio")
 	_air_rest = stats.value("air_use_rest_lpm")
+	_air_search = stats.value("air_use_search_lpm")
 	_air_work = stats.value("air_use_work_lpm")
-	_air_heat = stats.value("air_use_heat_lpm")
+	_air_heavy = stats.value("air_use_heavy_lpm")
+	_air_tension = stats.value("air_tension_factor")
+	_air_control = stats.value("air_control_factor")
+	_detour = stats.value("exit_detour_factor")
+	# (_cell_m은 위에서 읽었다)
+	_walk_cells = stats.value("walk_speed_mps") / _cell_m
 	_swap_s = stats.value("scba_swap_s")
 	_swap_range = stats.value("scba_swap_range_m") / _cell_m
 	_air_full = stats.value("scba_air_l")
@@ -140,6 +158,7 @@ func before_move(tick: int) -> void:
 
 ## 이동 후: 자세·복사열·열 스트레스·공기호흡기·용기 교체·행동 불능
 func after_move(dt: float, tick: int) -> void:
+	_exits_now = exits.call() if exits.is_valid() else []
 	for ff in units.firefighters:
 		if ff.incapacitated:
 			continue
@@ -165,18 +184,17 @@ func _update_heat_stress(ff: Firefighter, dt: float) -> void:
 
 func _update_air(ff: Firefighter, inside: bool, dt: float, tick: int) -> void:
 	if inside:
-		var lpm := _air_rest
-		if ff.heat_flux >= _hazard * 0.5:
-			lpm = _air_heat
-		elif ff.is_moving():
-			lpm = _air_work
+		var lpm := air_rate(ff)
 		ff.air_l = maxf(0.0, ff.air_l - lpm * ff.air_factor / 60.0 * dt)
+		_update_exit_air(ff, lpm, tick)
 		ff.swap_timer = 0.0
 		if ff.air_ratio() < _air_alarm and not ff.air_alarm_logged:
 			ff.air_alarm_logged = true
 			events.add(tick, "air_alarm", {"crew": _ff_name(ff), "crew_id": ff.crew_id})
 		return
-	# 바깥: 차량 근처에 멈춰 있으면 용기 교체
+	# 바깥: 출구 공기 계산을 끄고, 차량 근처에 멈춰 있으면 용기 교체
+	ff.exit_air_l = 0.0
+	ff.exit_air_logged = false
 	if ff.air_ratio() >= 0.95 or ff.is_moving() or not _near_vehicle(ff.pos):
 		ff.swap_timer = 0.0
 		return
@@ -277,3 +295,34 @@ func _crew_name(c: Crew) -> String:
 
 func _ff_name(ff: Firefighter) -> String:
 	return "%s %d조 %s" % [units.squads[ff.squad_id].name, units.get_crew(ff.crew_id).number, ff.name]
+
+
+# --- 호흡량·출구까지 필요 공기 (R9, 기획안 5-6) ---
+
+## 분당 호흡량: 활동 4단계 × 긴장(고열·긴급탈출) × 호흡조절(경보 뒤)
+func air_rate(ff: Firefighter) -> float:
+	var level := int(activity_of.call(ff)) if activity_of.is_valid() else (1 if ff.is_moving() else 0)
+	var lpm: float = [_air_rest, _air_search, _air_work, _air_heavy][clampi(level, 0, 3)]
+	if ff.heat_flux >= _hazard * 0.5 or (emergency.is_valid() and bool(emergency.call())):
+		lpm *= _air_tension
+	if ff.air_alarm_logged:
+		lpm *= _air_control
+	return lpm
+
+
+## 출구까지 필요 공기(ℓ): 가장 가까운 출구까지(직선 × 우회 배율, 층마다 계단 6칸) 지금 호흡량으로 걸어 나가는 동안 쓰는 양.
+## 남은 공기에서 이만큼 쓰면 경보 압력 아래로 내려가면 "퇴각 건의"를 보고한다 (기획안 5-6, 교재: 탈출경로가 길면 경보 전에 나와야)
+func _update_exit_air(ff: Firefighter, lpm: float, tick: int) -> void:
+	var best := INF
+	for e: Vector3i in _exits_now:
+		var d := ff.pos.distance_to(Vector2(e.x + 0.5, e.y + 0.5)) * _detour + absi(e.z - ff.level) * 6.0
+		best = minf(best, d)
+	if best == INF:
+		return
+	var seconds := best / maxf(0.1, _walk_cells * ff.crouch_factor)
+	ff.exit_air_l = lpm * seconds / 60.0
+	var alarm_l := ff.air_capacity * _air_alarm
+	if not ff.exit_air_logged and not ff.air_alarm_logged and ff.air_l - ff.exit_air_l <= alarm_l:
+		ff.exit_air_logged = true
+		events.add(tick, "exit_air_low", {"crew": _ff_name(ff), "crew_id": ff.crew_id,
+			"need_bar": roundi(ff.exit_air_l / ff.air_capacity * 300.0), "air_bar": roundi(ff.air_ratio() * 300.0)})

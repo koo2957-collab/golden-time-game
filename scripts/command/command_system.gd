@@ -77,6 +77,7 @@ const REPORT_PRIORITY := {
 	"tactical_done": Radio.Priority.TACTICS,
 	"fire_found": Radio.Priority.KEY_FACTOR,
 	"plan_acquired": Radio.Priority.KEY_FACTOR,
+	"exit_air_low": Radio.Priority.SAFETY,
 	"panel_fire_floor": Radio.Priority.KEY_FACTOR,
 	"plan_diff_found": Radio.Priority.KEY_FACTOR,
 	"mission_withdraw": Radio.Priority.SAFETY,

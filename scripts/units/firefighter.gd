@@ -40,6 +40,10 @@ var heat_factor := 1.0
 ## 구급차에 타고 현장을 떠나 있음 (화면·선택에서 빠진다)
 var aboard := false
 var air_alarm_logged := false
+## 출구까지 필요 공기(ℓ) — 건물 안에서만 계산 (R9)
+var exit_air_l := 0.0
+## "퇴각 건의"를 보고했는가 (밖에 나오면 다시 false)
+var exit_air_logged := false
 ## 공기호흡기 교체 진행 시간 (초)
 var swap_timer := 0.0
 

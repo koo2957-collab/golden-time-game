@@ -1296,9 +1296,12 @@ func team_text(crew_id: int) -> String:
 		parts[2] = "쓰러짐"
 	if inside:
 		var air := 1.0
+		var need := 0.0
 		for ff in c.members():
 			air = minf(air, ff.air_ratio())
-		parts.append("공기 %d%%" % roundi(air * 100.0))
+			need = maxf(need, ff.exit_air_l / maxf(1.0, ff.air_capacity))
+		# 잔압(bar)과 출구까지 필요한 공기 (기획안 5-6, R9)
+		parts.append("잔압 %dbar (출구 %dbar)" % [roundi(air * 300.0), maxi(1, roundi(need * 300.0))])
 		var last := int(sim.command.last_report_tick.get(name, -1))
 		parts.append("보고 %d초 전" % roundi((sim.clock.tick - last) * SimClock.TICK_DT) if last >= 0 else "보고 없음")
 	var cond := sim.tactical.condition_text(crew_id)

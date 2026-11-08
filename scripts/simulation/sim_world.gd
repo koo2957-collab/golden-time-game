@@ -139,6 +139,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.tactical = TacticalSystem.new(sim.fire, sim.units, sim.water, sim.doors, sim.rescue, sim.events)
 	sim.tactical.safety = safety
 	sim.tactical.perception = sim.perception
+	sim.command.tactical = sim.tactical
 	sim.tactical.ems = sim.ems
 	sim.cards = CardSystem.new(sim.units, sim.tactical, sim.doors, sim.rescue, sim.rekindle, sim.water, sim.fire,
 		ParamTable.from_dict(card_params), card_data, sim.events, p_seed)

@@ -172,3 +172,32 @@ func test_floor_order_text() -> void:
 	var sim := _sim()
 	assert_eq(sim.command.interior.order_text(TacticalCommand.make("search_floor", [2] as Array[int], Vector3i(0, 0, 2))), "2층 검색하라.", "층 검색 무전")
 	assert_eq(sim.command.interior.ack_text(TacticalCommand.make("attack_floor", [0] as Array[int], Vector3i(0, 0, 1))), "1층 진압하겠음.", "층 진압 복명복창")
+
+
+func test_hold_stops_task() -> void:
+	var sim := _sim("입문")
+	_put(sim, 2, Vector2(14.5, 22.5))
+	sim.issue(TacticalCommand.make("search_floor", [2] as Array[int], Vector3i(0, 0, 1)))
+	sim.step_ticks(5)
+	assert_true(sim.tactical.mission_text(2).begins_with("층 검색"), "임무 이름 (%s)" % sim.tactical.mission_text(2))
+	sim.issue(TacticalCommand.make("hold", [2] as Array[int]))
+	sim.step_ticks(2)
+	assert_eq(sim.tactical.task_of_crew(2), null, "대기: 임무를 멈춘다")
+	assert_eq(sim.tactical.mission_text(2), "", "임무 없음")
+	assert_eq(sim.events.of_type("crew_hold").size(), 1, "대기 기록")
+	assert_eq(sim.command.interior.order_text(TacticalCommand.make("hold", [2] as Array[int])), "현 위치 대기하라.", "대기 무전")
+
+
+func test_report_request() -> void:
+	var sim := _sim("입문")
+	_put(sim, 0, Vector2(11.5, 16.5))
+	sim.issue(CommandOrder.make("report_request", [], 0, Vector3i.ZERO, {"crews": [0]}))
+	var got := _step_until(sim, func() -> bool: return not sim.events.of_type("crew_report").is_empty(), 20.0)
+	assert_true(got, "요청이 전달되면 조가 보고")
+	if not got:
+		return
+	var text := str(sim.events.of_type("crew_report")[0].text)
+	assert_true(text.contains("거실") and text.contains("공기"), "위치·공기 (%s)" % text)
+	assert_true(sim.command.last_report_tick.has("진압1 1조"), "마지막 보고 시각 기록")
+	_step_until(sim, func() -> bool: return sim.command.radio.history.any(func(m: Radio.Message) -> bool: return m.sender == "진압1 1조" and m.body.contains("공기")), 20.0)
+	assert_true(sim.command.radio.history.any(func(m: Radio.Message) -> bool: return m.sender == "진압1 1조" and m.body.contains("공기")), "무전으로 보고")

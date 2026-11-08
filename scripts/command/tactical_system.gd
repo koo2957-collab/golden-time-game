@@ -13,7 +13,7 @@ extends RefCounted
 
 enum Phase { DOORS, ACT, WORKING, DONE }
 const ACTIONS := {"attack": "진압", "exterior": "외부 방수", "search": "수색", "withdraw": "철수",
-	"search_floor": "층 검색", "attack_floor": "층 진압"}
+	"search_floor": "층 검색", "attack_floor": "층 진압", "hold": "대기"}
 const MISSION_PATH := "res://data/command/mission_params.json"
 ## 난이도별 자동화 수준
 const LEVELS := {
@@ -105,6 +105,11 @@ func order(action: String, crew_id: int, target: Vector3i, tick: int) -> bool:
 	if action == "withdraw":
 		water.stop_spray(crew_id, tick)
 		safety.withdraw_crew(c, tick, "withdraw")
+		return true
+	if action == "hold":
+		water.stop_spray(crew_id, tick)
+		units.order_move([crew_id] as Array[int], Vector3i(floori(c.leader.pos.x), floori(c.leader.pos.y), c.leader.level), safety.pathfinder)
+		events.add(tick, "crew_hold", {"crew": _crew_name(c)})
 		return true
 	if action == "exterior":
 		events.add(tick, "tactical_start", {"crew": _crew_name(c), "action": ACTIONS[action]})
@@ -509,3 +514,12 @@ func _check_fire_found(t: Task, c: Crew, tick: int) -> void:
 			"room_cell": [p.x, p.y, lv], "has_hose": water.hose_of_crew(c.id) != null,
 			"action": t.floor_action if t.floor >= 0 else t.action, "target": [t.target.x, t.target.y, t.target.z]})
 		return
+
+
+## 팀 카드·상황 보고용 임무 이름: "층 검색 (2층 방1)" / "진압 (1층 거실)" / ""
+func mission_text(crew_id: int) -> String:
+	var t := task_of_crew(crew_id)
+	if t == null:
+		return ""
+	var room := fire.comps[t.room].display_name() if t.room >= 0 else ""
+	return "%s%s" % [ACTIONS.get(t.floor_action if t.floor >= 0 else t.action, t.action), " (%s)" % room if room != "" else ""]

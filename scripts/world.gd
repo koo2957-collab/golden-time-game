@@ -20,6 +20,8 @@ var view_mode := ViewMode.ISO
 var thermal := false
 var ignite_mode := false
 var command_hint := ""
+## 원형 메뉴·임무 창 (R7c)
+var mission_ui: MissionUi
 ## 창(출동 지령·상황보고 등)을 열기 전의 일시정지 상태
 var _paused_before_dialog := false
 var projections := {ViewMode.ISO: IsoProjection.new(), ViewMode.PLAN: PlanProjection.new()}
@@ -64,6 +66,16 @@ func _ready() -> void:
 	hud.command_ui.dialog_changed.connect(_on_dialog_changed)
 	selection.witness_clicked.connect(hud.command_ui.open_witness)
 	selection.notice.connect(hud.show_notice)
+	# 임무형 내부 지휘: 원형 메뉴·팀 카드 끌어다 놓기 (R7c)
+	mission_ui = MissionUi.new()
+	hud.add_child(mission_ui)
+	mission_ui.setup(sim, selection, screen_to_cell)
+	mission_ui.order_issued.connect(sim.issue)
+	mission_ui.notice.connect(hud.show_notice)
+	selection.crew_menu.connect(mission_ui.open_crew_menu)
+	hud.command_ui.team_drag_started.connect(mission_ui.begin_drag)
+	hud.command_ui.team_dropped.connect(mission_ui.drop_crew)
+	hud.command_ui.team_selected.connect(_on_team_selected)
 	var tutorial := str(sim.scenario.get("tutorial", ""))
 	# 튜토리얼은 안내판이 순서를 알려 주므로 멈추는 힌트 카드는 끈다
 	hud.hint_ui.setup(sim, GameManager.mode == "교육" and tutorial == "")
@@ -395,3 +407,20 @@ func confine_mouse(on: bool) -> void:
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE and sim and not sim.ended():
 		confine_mouse(true)
+
+
+# --- 임무형 내부 지휘 (R7c) ---
+
+## 화면 좌표 → 칸 (지금 보는 층)
+func screen_to_cell(screen_pos: Vector2) -> Vector3i:
+	var c := projection().to_cell(selection._to_world(screen_pos))
+	return Vector3i(floori(c.x), floori(c.y), selection.level)
+
+
+## 팀 카드 클릭: 그 조 선택, 더블클릭이면 그 조가 있는 곳으로 화면 이동
+func _on_team_selected(crew_id: int, focus: bool) -> void:
+	selection._set_selection([crew_id] as Array[int])
+	if focus:
+		var c := sim.units.get_crew(crew_id)
+		set_view_level(c.leader.level)
+		camera.retarget(projection().bounds(sim.building), projection().to_screen(c.leader.pos))

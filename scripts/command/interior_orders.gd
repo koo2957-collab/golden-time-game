@@ -128,6 +128,8 @@ func _verb(cmd: RefCounted) -> String:
 				return "%s 진압" % fire.building.floor_name(cmd.target.z)
 			"withdraw":
 				return "즉시 철수"
+			"hold":
+				return "현 위치 대기"
 			"exterior":
 				return "외부 방수"
 	if cmd is EquipmentCommand:

@@ -32,6 +32,16 @@ var _refresh := 0.0
 var _radio_panel: PanelContainer
 var _radio_label: Label
 var _entry_label: Label
+## 팀 카드 (조마다 한 줄: 위치·임무·공기·마지막 보고). 클릭 = 선택, 더블클릭 = 화면 이동, 끌어다 놓기 = 임무 (R7c)
+var _team_box: VBoxContainer
+var _team_buttons: Dictionary = {}  # 조 id -> Button
+var _team_press := -1
+var _team_press_pos := Vector2.ZERO
+var _team_dragging := false
+## 팀 카드 클릭 (선택)·더블클릭(화면 이동)·끌기 시작·놓기
+signal team_selected(crew_id: int, focus: bool)
+signal team_drag_started(crew_id: int)
+signal team_dropped(crew_id: int, screen_pos: Vector2)
 var _dispatch: PanelContainer
 ## 출동 지령 창의 선착 차량 배치 보기 (시나리오 approach가 있을 때)
 var _placement: OptionButton
@@ -49,6 +59,10 @@ var _receo_label: RichTextLabel
 var _todo_label: Label
 var _board_title: Label
 var _board_body: VBoxContainer
+## 상황판 내용이 하단 콘솔에 닿지 않게 스크롤 (R7c)
+var _board_scroll: ScrollContainer
+## 상황판이 내려갈 수 있는 화면 y (HUD가 하단 콘솔 위로 맞춘다. 0이면 화면 끝)
+var board_bottom := 0.0
 var _fold_button: Button
 ## 지휘관 명령 버튼 줄 (HUD 하단 콘솔이 가져간다, R6b)
 var command_rows: Array[HBoxContainer] = []
@@ -119,10 +133,8 @@ func _process(delta: float) -> void:
 ## 전술상황판 접기·펴기 (Tab). 접으면 제목(확인 필요 수)과 지휘 버튼만 남는다
 func toggle_board() -> void:
 	board_folded = not board_folded
-	for i in _board_body.get_child_count():
-		var c := _board_body.get_child(i)
-		# 버튼 줄은 남긴다
-		c.visible = not board_folded or c is HBoxContainer
+	# 지휘 버튼은 하단 콘솔로 옮겼으므로(R6b) 접으면 제목만 남는다
+	_board_scroll.visible = not board_folded
 	_fold_button.text = "◀ 펴기 (Tab)" if board_folded else "▶ 접기 (Tab)"
 	_radio_panel.reset_size()
 
@@ -368,6 +380,9 @@ func _update_submit() -> void:
 
 
 func _refresh_radio() -> void:
+	var bottom := board_bottom if board_bottom > 0.0 else size.y - 16.0
+	var room := maxf(160.0, bottom - 64.0 - 60.0)
+	_board_scroll.custom_minimum_size = Vector2(RADIO_WIDTH, minf(_board_body.get_combined_minimum_size().y, room))
 	_radio_panel.reset_size()
 	_radio_panel.position = Vector2(size.x - _radio_panel.size.x - 16.0, 64.0)
 	var radio := sim.command.radio
@@ -397,6 +412,7 @@ func _refresh_radio() -> void:
 		lines.append("[%s · %s] %s" % [r.channel, d.name, last])
 	_radio_label.text = "\n".join(lines)
 	_entry_label.text = _entry_text()
+	_refresh_team_cards()
 	var cmd := sim.command
 	var n := cmd.direct_count()
 	var span := "직접 지휘 %d (적정 %d, 한계 %d)" % [n, cmd.org.span_ideal, cmd.org.span_max]
@@ -441,7 +457,8 @@ func _entry_text() -> String:
 			if not sim.building.cell(c.leader.level, floori(c.leader.pos.x), floori(c.leader.pos.y)) in BuildingData.OUTDOOR:
 				var air := minf(c.leader.air_ratio(), c.partner.air_ratio() if c.partner else 1.0)
 				inside.append("%d조 %s 공기 %d%%" % [c.number, sim.building.floor_name(c.leader.level), roundi(air * 100.0)])
-		lines.append("%s: %s%s" % [squad.name, state, ("  · 내부 " + ", ".join(inside)) if not inside.is_empty() else ""])
+		# 조별 위치·공기는 아래 팀 카드에 (R7c)
+		lines.append("%s: %s%s" % [squad.name, state, "  · 내부 %d조" % inside.size() if not inside.is_empty() else ""])
 	for u in res.upcoming(sim.clock.tick):
 		var eta := roundi(u.eta_s)
 		lines.append("%s: %s 출동 중 — %s" % [u.name, u.reason,
@@ -471,7 +488,10 @@ func _build_radio_panel() -> void:
 	outer.add_child(head)
 	var box := VBoxContainer.new()
 	_board_body = box
-	outer.add_child(box)
+	_board_scroll = ScrollContainer.new()
+	_board_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_board_scroll.add_child(box)
+	outer.add_child(_board_scroll)
 	_receo_label = RichTextLabel.new()
 	_receo_label.bbcode_enabled = true
 	_receo_label.fit_content = true
@@ -482,6 +502,9 @@ func _build_radio_panel() -> void:
 	box.add_child(_label("팀 현황", 15, Color("fdba74")))
 	_entry_label = _label("", 14, TEXT_COLOR)
 	box.add_child(_entry_label)
+	_team_box = VBoxContainer.new()
+	_team_box.add_theme_constant_override("separation", 2)
+	box.add_child(_team_box)
 	_todo_label = _label("", 15, WARN_COLOR)
 	_todo_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_todo_label.custom_minimum_size = Vector2(RADIO_WIDTH - 16, 0)
@@ -1229,3 +1252,96 @@ func _button(text: String, on_press: Callable) -> Button:
 	b.custom_minimum_size = Vector2(160, 42)
 	b.pressed.connect(on_press)
 	return b
+
+
+# --- 팀 카드 (기획안 9-2 ②, R7c) ---
+
+const TEAM_REPORT_STALE_S := 90.0
+
+
+## 현장에 있는 조마다 한 줄. 출동대가 새로 도착하면 카드를 더한다
+func _refresh_team_cards() -> void:
+	if _team_box == null:
+		return
+	for c in sim.units.crews:
+		var on_scene := not sim.command.resources.is_en_route(c.squad_id)
+		if on_scene and not _team_buttons.has(c.id):
+			var b := Button.new()
+			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			b.focus_mode = Control.FOCUS_NONE
+			b.add_theme_font_size_override("font_size", 13)
+			b.custom_minimum_size = Vector2(RADIO_WIDTH - 16, 0)
+			b.mouse_filter = Control.MOUSE_FILTER_STOP
+			b.tooltip_text = "클릭: 선택 · 더블클릭: 화면 이동 · 끌어서 지도의 방·층에 놓기: 임무와 임무 조건"
+			b.gui_input.connect(_on_team_input.bind(c.id, b))
+			_team_box.add_child(b)
+			_team_buttons[c.id] = b
+		if _team_buttons.has(c.id):
+			var b: Button = _team_buttons[c.id]
+			b.text = team_text(c.id)
+			b.add_theme_color_override("font_color", _team_color(c.id))
+
+
+## "진압1 1조 · 1층 거실 · 층 진압 (1층 거실) · 공기 72% · 보고 12초 전" (판단 요청 대기 중이면 앞에 ?)
+func team_text(crew_id: int) -> String:
+	var c := sim.units.get_crew(crew_id)
+	var squad := sim.units.squads[c.squad_id]
+	var name := "%s %d조" % [squad.name, c.number]
+	var inside := sim.command.interior.crew_inside(crew_id)
+	var room := sim.fire.compartment_at(c.leader.level, floori(c.leader.pos.x), floori(c.leader.pos.y))
+	var where := (room.display_name() if room else sim.building.floor_name(c.leader.level)) if inside else "밖"
+	var task := sim.tactical.mission_text(crew_id)
+	var parts: PackedStringArray = [name, where, task if task != "" else "임무 없음"]
+	if c.leader.incapacitated:
+		parts[2] = "쓰러짐"
+	if inside:
+		var air := 1.0
+		for ff in c.members():
+			air = minf(air, ff.air_ratio())
+		parts.append("공기 %d%%" % roundi(air * 100.0))
+		var last := int(sim.command.last_report_tick.get(name, -1))
+		parts.append("보고 %d초 전" % roundi((sim.clock.tick - last) * SimClock.TICK_DT) if last >= 0 else "보고 없음")
+	var cond := sim.tactical.condition_text(crew_id)
+	var waiting := sim.cards.queue.any(func(q: CardSystem.Card) -> bool: return q.crew_id == crew_id)
+	return ("? " if waiting else "") + " · ".join(parts) + ("\n    조건: " + cond if cond != "" else "")
+
+
+## 쓰러짐·공기 부족 = 빨강, 보고가 오래됨 = 노랑 (기획안 9-2)
+func _team_color(crew_id: int) -> Color:
+	var c := sim.units.get_crew(crew_id)
+	if c.leader.incapacitated:
+		return Color("f87171")
+	if not sim.command.interior.crew_inside(crew_id):
+		return DIM_COLOR
+	var air := 1.0
+	for ff in c.members():
+		air = minf(air, ff.air_ratio())
+	if air < 0.3:
+		return Color("f87171")
+	var name := "%s %d조" % [sim.units.squads[c.squad_id].name, c.number]
+	var last := int(sim.command.last_report_tick.get(name, -1))
+	if last < 0 or (sim.clock.tick - last) * SimClock.TICK_DT > TEAM_REPORT_STALE_S:
+		return WARN_COLOR
+	return TEXT_COLOR
+
+
+func _on_team_input(event: InputEvent, crew_id: int, b: Button) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			_team_press = crew_id
+			_team_press_pos = event.global_position
+			_team_dragging = false
+			if event.double_click:
+				team_selected.emit(crew_id, true)
+				_team_press = -1
+		elif _team_press == crew_id:
+			if _team_dragging:
+				team_dropped.emit(crew_id, event.global_position)
+			elif b.get_global_rect().has_point(event.global_position):
+				team_selected.emit(crew_id, false)
+			_team_press = -1
+			_team_dragging = false
+	elif event is InputEventMouseMotion and _team_press == crew_id and not _team_dragging:
+		if event.global_position.distance_to(_team_press_pos) > 10.0:
+			_team_dragging = true
+			team_drag_started.emit(crew_id)

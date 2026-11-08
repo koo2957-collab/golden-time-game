@@ -816,6 +816,7 @@ func _layout_console() -> void:
 		return
 	var h := maxf(CONSOLE_MIN_H, size.y * 0.18)
 	console.position = Vector2(8.0, size.y - h - 8.0)
+	command_ui.board_bottom = console.position.y - 8.0
 	console.size = Vector2(size.x - 16.0, h)
 	var y := floor_tabs.position.y + floor_tabs.size.y + 8.0
 	if _victim_panel:

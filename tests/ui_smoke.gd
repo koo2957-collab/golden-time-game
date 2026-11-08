@@ -325,6 +325,70 @@ func _run() -> void:
 			var lt = sim.command_log.entries.filter(func(c): return c is TacticalCommand)
 			_check("본 적 없는 방 W → 층 진압", lt[-1].action if not lt.is_empty() else "", "attack_floor")
 			world.set_view_level(1)
+	# R7c 원형 메뉴: 건물 안 조 우클릭 → 메뉴 → 보고 요청·대기
+	var mui = world.mission_ui
+	if inside_id >= 0:
+		var lv2 := u.get_crew(inside_id).leader.level
+		world.set_view_level(lv2)
+		var here2 := u.get_crew(inside_id).leader.pos
+		world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(here2))
+		await process_frame
+		_click(here2, MOUSE_BUTTON_RIGHT, false, false, true)
+		await process_frame
+		_check("건물 안 조 우클릭 → 원형 메뉴", mui.radial.visible, true)
+		_check("원형 메뉴 6항목", mui.radial.items.size(), 6)
+		# 항목을 실제로 클릭 (보고 요청 = 5번째)
+		var e2 := InputEventMouseButton.new()
+		e2.button_index = MOUSE_BUTTON_LEFT
+		e2.pressed = true
+		e2.position = mui.radial.item_position(4)
+		root.push_input(e2, true)
+		await process_frame
+		_check("메뉴 클릭 → 닫힘", mui.radial.visible, false)
+		sim.step_ticks(1)
+		var asked := sim.command.radio.queue.any(func(m): return m.body.contains("상황 보고하라")) or (sim.command.radio.current != null and sim.command.radio.current.body.contains("상황 보고하라"))
+		_check("보고 요청 무전", asked, true)
+		mui.open_crew_menu(inside_id, Vector2(600, 400))
+		mui.radial.pick("hold")
+		var held := sim.issued.filter(func(x): return x.command is TacticalCommand and x.command.action == "hold")
+		_check("대기 지시", held.size(), 1)
+	# R7c 팀 카드: 상황판에 조마다 카드, 끌어다 지도에 놓기 → 임무 창 → 인명 검색 + 임무 조건
+	_check("팀 카드", cui._team_buttons.size() >= 4, true)
+	var card_id := 2
+	var card_btn: Button = cui._team_buttons.get(card_id)
+	var room1 := sim.fire.compartment_at(1, 24, 17)
+	if card_btn and room1:
+		world.set_view_level(1)
+		var drop := Vector2(room1.cells[room1.cells.size() / 2]) + Vector2(0.5, 0.5)
+		world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(drop))
+		await process_frame
+		var from := card_btn.get_global_rect().get_center()
+		var to := _screen(drop)
+		var pr := InputEventMouseButton.new()
+		pr.button_index = MOUSE_BUTTON_LEFT
+		pr.pressed = true
+		pr.position = from
+		pr.global_position = from
+		root.push_input(pr, true)
+		var mv := InputEventMouseMotion.new()
+		mv.position = to
+		mv.global_position = to
+		mv.button_mask = MOUSE_BUTTON_MASK_LEFT
+		root.push_input(mv, true)
+		var rl: InputEventMouseButton = pr.duplicate()
+		rl.pressed = false
+		rl.position = to
+		rl.global_position = to
+		root.push_input(rl, true)
+		await process_frame
+		_check("팀 카드 끌어다 놓기 → 임무 창", mui.panel.visible, true)
+		mui._opts["on_victim"].select(1)
+		mui.assign("search")
+		var conds := sim.issued.filter(func(x): return x.command is CommandOrder and x.command.action == "mission_conditions")
+		var miss := sim.issued.filter(func(x): return x.command is TacticalCommand and x.command.action.begins_with("search") and x.command.crew_ids == [card_id])
+		_check("임무 조건 + 인명 검색", [conds.size() >= 1, miss.size() >= 1], [true, true])
+		sim.step_ticks(1)
+		_check("조건 기록", sim.tactical.condition_text(card_id).contains("즉시 구조"), true)
 	sim.command.interior.enabled = false
 	# 활동 단계 표시줄·남은 시간 (R1)
 	_check("단계 표시줄", world.hud.phase_bar.text.contains("완진 선언"), true)

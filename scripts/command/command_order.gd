@@ -51,6 +51,8 @@ func execute(sim: SimWorld) -> void:
 			sim.cards.set_preorder(str(answers.get("key", "")), value == 1, tick)
 		"mission_conditions":
 			sim.tactical.set_conditions(answers.get("crews", []), answers, tick)
+		"report_request":
+			sim.command.request_report(answers.get("crews", []), tick)
 		"declare":
 			cmd.declare(answers, tick)
 		"entry":

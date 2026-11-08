@@ -98,6 +98,8 @@ const NEAR_VEHICLE_CELLS := 8.0
 var fire: FireSim
 var units: UnitSystem
 var pathfinder: Pathfinder
+## 임무 이름 (보고 요청 답에 쓴다)
+var tactical: TacticalSystem
 var rescue: RescueSystem
 var water: WaterSystem
 var doors: DoorSystem
@@ -150,6 +152,8 @@ var _entry_pending: Dictionary = {}  # squad id -> true
 var _declaring := false
 var _inside: Dictionary = {}  # crew id -> 건물 안에 있었는지
 var _last_report: Dictionary = {}  # "종류:보낸 쪽" -> tick
+## 조가 마지막으로 무전 보고한 틱 {조 이름: tick} (팀 카드 "마지막 보고 후 경과", 기획안 9-2)
+var last_report_tick: Dictionary = {}
 var _entry_wait_tick: Dictionary = {}  # crew id -> tick
 var _held: Array[Dictionary] = []  # 실행을 미룬 명령 {cmd, wait: 투입을 기다리는 출동대, release: 실행 틱}
 var _commit_pending: Dictionary = {}  # squad id -> true (투입 무전 송신 중)
@@ -701,6 +705,7 @@ func _report(e: Dictionary, tick: int) -> void:
 	if tick - last < _report_repeat_ticks:
 		return
 	_last_report[key] = tick
+	last_report_tick[sender] = tick
 	# "… — 진압1 1조"처럼 보낸 쪽 이름으로 끝나는 문장은 이름을 뺀다 (무전 앞에 이미 나온다)
 	var body := SimEventLog.describe_text(e).trim_suffix(" — " + sender)
 	var priority: Radio.Priority = REPORT_PRIORITY[e.type]
@@ -958,3 +963,33 @@ func _division_call(d: Organization.Division) -> String:
 
 func _crew_name(c: Crew) -> String:
 	return "%s %d조" % [units.squads[c.squad_id].name, c.number]
+
+
+# --- 보고 요청 (원형 메뉴, R7c) ---
+
+## 지휘관이 조에게 상황 보고를 요청한다 (SOP 107-1.6). 요청이 전달되면 조가 위치·임무·공기를 보고한다
+func request_report(crew_ids: Array, tick: int) -> void:
+	for id in crew_ids:
+		var c := units.get_crew(int(id))
+		if c == null or c.leader.incapacitated:
+			continue
+		radio.send(Radio.Priority.TACTICS, COMMANDER, _crew_name(c), "현재 위치와 상황 보고하라.", tick, _on_report_requested.bind(c.id))
+
+
+func _on_report_requested(tick: int, crew_id: int) -> void:
+	var c := units.get_crew(crew_id)
+	if c == null or c.leader.incapacitated:
+		return
+	var name := _crew_name(c)
+	var room := fire.compartment_at(c.leader.level, floori(c.leader.pos.x), floori(c.leader.pos.y))
+	var where := room.display_name() if room else ("%s 외부" % fire.building.floor_name(c.leader.level) if c.leader.level > 1 else "건물 밖")
+	var air := 1.0
+	for ff in c.members():
+		air = minf(air, ff.air_ratio())
+	var task := tactical.mission_text(crew_id) if tactical else ""
+	var parts: PackedStringArray = ["현재 %s" % where, "임무 %s" % (task if task != "" else "없음(대기)"), "공기 %d%%" % roundi(air * 100.0)]
+	if room and room.soot / maxf(room.layer_volume(), 0.05 * room.volume) > 0.02:
+		parts.append("짙은 연기")
+	last_report_tick[name] = tick
+	radio.send(Radio.Priority.TACTICS, name, COMMANDER, ", ".join(parts) + ".", tick)
+	events.add(tick, "crew_report", {"crew": name, "text": ", ".join(parts)})

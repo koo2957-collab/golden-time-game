@@ -13,12 +13,14 @@ extends Node2D
 ## 선택 단위는 조(2인 1조)와 차량이며, 현재 보고 있는 층의 대원만 선택된다.
 ## 좌표 변환은 projection(상황판/입체)을 따른다.
 
-enum Mode { NONE, HOSE, STRAIGHT, FOG, DOOR, SEARCH, OVERHAUL, PRIMARY, ATTACK, SEARCH_AUTO, EXTERIOR, RESCUE, TREAT, TRANSPORT, AIR_MAT }
+enum Mode { NONE, HOSE, STRAIGHT, FOG, DOOR, SEARCH, OVERHAUL, PRIMARY, ATTACK, SEARCH_AUTO, EXTERIOR, RESCUE, TREAT, TRANSPORT, AIR_MAT, WAYPOINT }
 
 ## 관계인을 클릭했을 때 (world가 진술 창을 연다)
 signal witness_clicked(index: int)
 ## 화면 알림 요청 (HUD가 띄운다)
 signal notice(text: String)
+## 건물 안 조를 우클릭함 → 원형 메뉴 (기획안 9-1, R7c)
+signal crew_menu(crew_id: int, screen_pos: Vector2)
 
 const DRAG_THRESHOLD_PX := 6.0
 const MARKER_DURATION_MS := 500.0
@@ -40,6 +42,7 @@ const MODE_HINTS := {
 	Mode.TREAT: "처치: 구조된 환자를 클릭 (구급대가 가서 응급처치)",
 	Mode.TRANSPORT: "이송: 처치한 환자를 클릭 (들것으로 구급차에 태워 병원으로)",
 	Mode.AIR_MAT: "공기안전매트: 창 아래 바닥(1층 바깥)을 클릭 — 구조대가 가서 설치",
+	Mode.WAYPOINT: "경유지: 본 적 있는 곳을 클릭 (건물 안 조에게는 무전으로 전달)",
 }
 ## 요구조자·쓰러진 대원을 클릭으로 고를 때 허용 반경 (px)
 const CASUALTY_PICK_PX := 20.0
@@ -159,7 +162,14 @@ func _handle_button(event: InputEventMouseButton) -> void:
 		queue_redraw()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("command"):
-		_issue_right_click(world_pos)
+		# 건물 안 조를 우클릭하면 원형 메뉴 (임무형 내부 지휘)
+		var menu_crew := _crew_at(world_pos)
+		if menu_crew >= 0 and sim.command.interior.enabled and sim.command.interior.crew_inside(menu_crew) \
+				and not sim.units.get_crew(menu_crew).leader.incapacitated:
+			_set_selection([menu_crew] as Array[int])
+			crew_menu.emit(menu_crew, event.position)
+		else:
+			_issue_right_click(world_pos)
 		get_viewport().set_input_as_handled()
 
 
@@ -336,6 +346,14 @@ func _complete_mode(world_pos: Vector2) -> void:
 						sim.issue(TacticalCommand.make("search_floor" if by_floor else "search", search, target))
 				_marker_world = projection.to_screen(Vector2(cell) + Vector2(0.5, 0.5))
 				_marker_start_ms = Time.get_ticks_msec()
+		Mode.WAYPOINT:
+			if not selected.is_empty():
+				var cell := Vector2i(projection.to_cell(world_pos).floor())
+				var target := sim.pathfinder.nearest_walkable(level, cell)
+				if target != Pathfinder.NO_CELL:
+					sim.issue(MoveCommand.new(selected, Vector3i(target.x, target.y, level)))
+					_marker_world = projection.to_screen(Vector2(target) + Vector2(0.5, 0.5))
+					_marker_start_ms = Time.get_ticks_msec()
 		Mode.AIR_MAT:
 			if not selected.is_empty():
 				var cell := Vector2i(projection.to_cell(world_pos).floor())

@@ -209,6 +209,10 @@ static func describe_text(e: Dictionary) -> String:
 			text = "다음 방 %s — %s" % [e.room, e.crew]
 		"card_condition":
 			text = "임무 조건으로 처리: %s → %s — %s" % [e.title, e.option, e.crew]
+		"crew_hold":
+			text = "현 위치 대기 — %s" % e.crew
+		"crew_report":
+			text = "상황 보고: %s — %s" % [e.text, e.crew]
 		"order_unseen":
 			text = "%s (%s)" % [e.reason, e.crew]
 		"tactical_done":

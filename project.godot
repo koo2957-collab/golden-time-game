@@ -101,6 +101,11 @@ cmd_fog={
 "events": [Object(InputEventKey,"physical_keycode":83)
 ]
 }
+perf_overlay={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"physical_keycode":4194343)
+]
+}
 cmd_pencil={
 "deadzone": 0.2,
 "events": [Object(InputEventKey,"physical_keycode":90)

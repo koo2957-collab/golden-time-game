@@ -26,6 +26,8 @@ var mission_ui: MissionUi
 var _view_entries: Array[Dictionary] = []
 var _view_next := 0
 var _last_report: Dictionary = {}
+## 성능 표시 (F12, R15): 프레임마다 시뮬레이션에 쓴 시간(ms, 이동 평균)
+var _sim_ms := 0.0
 ## 창(출동 지령·상황보고 등)을 열기 전의 일시정지 상태
 var _paused_before_dialog := false
 var projections := {ViewMode.ISO: IsoProjection.new(), ViewMode.PLAN: PlanProjection.new()}
@@ -159,6 +161,14 @@ func _run_replay(path: String) -> SimWorld:
 
 
 func _process(delta: float) -> void:
+	var t0 := Time.get_ticks_usec()
+	_process_sim(delta)
+	if hud.perf_visible():
+		_sim_ms = lerpf(_sim_ms, (Time.get_ticks_usec() - t0) / 1000.0, 0.1)
+		hud.update_perf(_sim_ms)
+
+
+func _process_sim(delta: float) -> void:
 	if sim and sim.view_only:
 		# 리플레이 보기: 한 틱씩 진행하며 기록된 명령을 그 틱에 넣는다
 		for i in sim.clock.consume(delta):
@@ -225,6 +235,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_on_command("straight")
 	elif event.is_action_pressed("cmd_fog"):
 		_on_command("fog")
+	elif event.is_action_pressed("perf_overlay"):
+		hud.toggle_perf()
 	elif event.is_action_pressed("cmd_pencil"):
 		_on_command("pencil")
 	elif event.is_action_pressed("cmd_cover"):

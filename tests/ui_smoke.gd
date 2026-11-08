@@ -389,6 +389,12 @@ func _run() -> void:
 		_check("임무 조건 + 인명 검색", [conds.size() >= 1, miss.size() >= 1], [true, true])
 		sim.step_ticks(1)
 		_check("조건 기록", sim.tactical.condition_text(card_id).contains("즉시 구조"), true)
+	# R15 성능 표시 (F12)
+	_key(KEY_F12)
+	await process_frame
+	await process_frame
+	_check("F12 → 성능 표시", world.hud.perf_visible() and world.hud._perf.text.contains("fps"), true)
+	_key(KEY_F12)
 	# R8 미니맵: 도면 전에는 잠김, 얻으면 열리고 클릭하면 그곳으로 이동
 	var mm = world.hud.minimap
 	_check("미니맵 잠김 (도면 없음)", mm.unlocked(), false)

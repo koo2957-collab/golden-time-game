@@ -5,3 +5,7 @@
 # 근거 자료 PDF는 docs/references/에 올린다(공개 자료). 저장소 루트에 둔 PDF와 PC별 편집기 설정은 올리지 않는다
 /*.pdf
 .vscode/
+
+# 배포용 실행 파일(실행파일_만들기.bat 결과)과 함께 넣는 Godot 실행 파일
+/build/
+/godot/

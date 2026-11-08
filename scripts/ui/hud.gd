@@ -830,3 +830,34 @@ func _layout_console() -> void:
 			y += _victim_panel.size.y + 8.0
 	if _legend:
 		_legend.position = Vector2(16.0, y)
+
+
+# --- 성능 표시 (F12, 기획안 P14, R15) ---
+
+var _perf: Label
+
+
+func toggle_perf() -> void:
+	if _perf == null:
+		_perf = Label.new()
+		_perf.add_theme_font_size_override("font_size", 14)
+		_perf.add_theme_color_override("font_color", Color("a7f3d0"))
+		_perf.add_theme_color_override("font_outline_color", Color.BLACK)
+		_perf.add_theme_constant_override("outline_size", 4)
+		_perf.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_perf.position = Vector2(16, 64)
+		add_child(_perf)
+		_perf.visible = false
+	_perf.visible = not _perf.visible
+
+
+func perf_visible() -> bool:
+	return _perf != null and _perf.visible
+
+
+## fps · 프레임 ms · 시뮬레이션 ms · 그리기 호출 · 메모리
+func update_perf(sim_ms: float) -> void:
+	var fps := Engine.get_frames_per_second()
+	_perf.text = "성능 (F12)  %d fps · 프레임 %.1fms · 시뮬레이션 %.1fms · 그리기 %d · 메모리 %dMB" % [fps,
+		1000.0 / maxf(1.0, fps), sim_ms, int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)),
+		int(Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0)]

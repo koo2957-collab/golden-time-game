@@ -12,7 +12,7 @@ const SCENARIO_PATH := "res://data/scenarios/dev_house_fire.json"
 ## 다시 하기: 한 프레임에 다시 계산하는 틱 수 (화면이 멈추지 않게 나눈다)
 const REPLAY_CHUNK_TICKS := 120
 const SPEED_ACTIONS := {"time_speed_1x": 1.0, "time_speed_2x": 2.0, "time_speed_4x": 4.0}
-const START_ZOOM := {ViewMode.ISO: 0.9, ViewMode.PLAN: 1.4}
+const START_ZOOM := {ViewMode.ISO: 0.75, ViewMode.PLAN: 1.4}
 
 var sim: SimWorld
 var view_level := 1

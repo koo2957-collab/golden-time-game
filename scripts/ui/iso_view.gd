@@ -12,12 +12,19 @@ const WALL_CUT_M := 0.45
 const WINDOW_SILL_M := 0.9
 const WINDOW_TOP_M := 2.1
 const DOOR_TOP_M := 2.0
-const UNIT_BODY_M := 1.35
-const UNIT_HEAD_M := 1.55
-const UNIT_LABEL_M := 1.95
+## 사람 비율 (방화복·공기호흡기 착용): 어깨 높이, 머리 중심, 이름표 높이 (m)
+const UNIT_BODY_M := 1.38
+const UNIT_HIP_M := 0.85
+const UNIT_HEAD_M := 1.6
+const UNIT_LABEL_M := 2.05
 ## 장비 착용 대원 폭 약 0.5m
-const UNIT_HALF_W := 11.0
-const UNIT_HEAD_R := 7.0
+## 어깨 절반 폭(px, 약 0.45m), 발 절반 폭, 머리(안전모) 반지름
+const UNIT_HALF_W := 17.0
+const UNIT_FOOT_HALF_W := 11.0
+const UNIT_HEAD_R := 9.0
+const REFLECTIVE := Color(0.95, 0.95, 0.7)
+## 바닥 위 타원(그림자·선택 고리 등)의 세로 비율 보정 (바닥 비율 / 2:1)
+const GROUND_RATIO := IsoProjection.HALF_H / IsoProjection.HALF_W / 0.5
 const LABEL_FONT_SIZE := 13
 const FACE_FONT_SIZE := 18
 const SOUTH_SHADE := 0.22
@@ -34,7 +41,8 @@ const FURNITURE_HEIGHTS := {
 }
 const DEFAULT_FURNITURE_M := 0.8
 const HYDRANT_M := 0.8
-const VEHICLE_CUT_M := 1.3
+## 차량을 그리는 최대 높이. 약 50° 부감이라 실제 높이로 그려도 건물을 거의 가리지 않는다
+const VEHICLE_CUT_M := 3.0
 const VEHICLE_ALPHA := 0.9
 const NOZZLE_M := 1.1
 const IMPACT_M := 0.4
@@ -415,14 +423,8 @@ func _draw_unit(ff: Firefighter, alpha: float) -> void:
 		draw_string(PlanStyle.font(), warn + Vector2(-40, 0), "행동 불능", HORIZONTAL_ALIGNMENT_CENTER, 80, 13, Color("ff6b6b"))
 		return
 	var scale := CROUCH_SCALE if ff.crouched else 1.0
-	var top := proj.to_screen(p, UNIT_BODY_M * scale)
-	var body := Rect2(feet.x - UNIT_HALF_W, top.y, UNIT_HALF_W * 2.0, feet.y - top.y)
-	draw_rect(body, body_color)
-	draw_rect(body, PlanStyle.UNIT_OUTLINE, false, 1.0)
-	var head := proj.to_screen(p, UNIT_HEAD_M * scale)
 	var helmet := Color.WHITE if ff == crew.leader else squad.color.lightened(0.45)
-	draw_circle(head, UNIT_HEAD_R, helmet)
-	draw_arc(head, UNIT_HEAD_R, 0.0, TAU, 16, PlanStyle.UNIT_OUTLINE, 1.0)
+	_draw_figure(p, scale, body_color, helmet)
 	var label := proj.to_screen(p, UNIT_LABEL_M * scale)
 	draw_string(PlanStyle.font(), label + Vector2(-20, 0), str(crew.number), HORIZONTAL_ALIGNMENT_CENTER, 40, 12, Color.WHITE)
 	_draw_air_bar(label + Vector2(0, 4), ff)
@@ -436,13 +438,7 @@ func _draw_commander(alpha: float) -> void:
 	draw_colored_polygon(_ellipse(feet, 10, 5), Color(0, 0, 0, 0.3))
 	if selection.commander_selected:
 		draw_polyline(_ellipse(feet, 13, 6.5, true), PlanStyle.SELECTION, 2.0)
-	var top := proj.to_screen(p, UNIT_BODY_M)
-	var body := Rect2(feet.x - UNIT_HALF_W, top.y, UNIT_HALF_W * 2.0, feet.y - top.y)
-	draw_rect(body, PlanStyle.COMMANDER_BODY)
-	draw_rect(body, PlanStyle.UNIT_OUTLINE, false, 1.0)
-	var head := proj.to_screen(p, UNIT_HEAD_M)
-	draw_circle(head, UNIT_HEAD_R, PlanStyle.COMMANDER_HELMET)
-	draw_arc(head, UNIT_HEAD_R, 0.0, TAU, 16, PlanStyle.UNIT_OUTLINE, 1.0)
+	_draw_figure(p, 1.0, PlanStyle.COMMANDER_BODY, PlanStyle.COMMANDER_HELMET)
 	var label := proj.to_screen(p, UNIT_LABEL_M)
 	draw_string(PlanStyle.font(), label + Vector2(-30, 0), "지휘", HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color.WHITE)
 
@@ -451,13 +447,7 @@ func _draw_commander(alpha: float) -> void:
 func _draw_witness(w: Witness) -> void:
 	var feet := proj.to_screen(w.pos, 0.0)
 	draw_colored_polygon(_ellipse(feet, 10, 5), Color(0, 0, 0, 0.3))
-	var top := proj.to_screen(w.pos, UNIT_BODY_M)
-	var body := Rect2(feet.x - UNIT_HALF_W, top.y, UNIT_HALF_W * 2.0, feet.y - top.y)
-	draw_rect(body, PlanStyle.WITNESS_BODY)
-	draw_rect(body, PlanStyle.UNIT_OUTLINE, false, 1.0)
-	var head := proj.to_screen(w.pos, UNIT_HEAD_M)
-	draw_circle(head, UNIT_HEAD_R, PlanStyle.WITNESS_HEAD)
-	draw_arc(head, UNIT_HEAD_R, 0.0, TAU, 16, PlanStyle.UNIT_OUTLINE, 1.0)
+	_draw_figure(w.pos, 1.0, PlanStyle.WITNESS_BODY, PlanStyle.WITNESS_HEAD, false)
 	var label := proj.to_screen(w.pos, UNIT_LABEL_M)
 	draw_string(PlanStyle.font(), label + Vector2(-60, 0), "관계인 · %s" % w.name, HORIZONTAL_ALIGNMENT_CENTER, 120, 12, PlanStyle.WITNESS_HEAD)
 
@@ -489,7 +479,6 @@ func _draw_hoses() -> void:
 func _draw_vehicle(v: Vehicle, alpha: float) -> void:
 	var center := v.prev_pos.lerp(v.pos, alpha)
 	var fp := v.footprint(center)
-	# 도로가 화면 앞쪽이라 실제 높이로 그리면 건물을 가린다: 앞쪽 벽처럼 낮게 자르고 약간 투명하게
 	var h := minf(v.height_m, VEHICLE_CUT_M)
 	var color := THERMAL_FURNITURE if thermal else v.color
 	color.a = VEHICLE_ALPHA
@@ -510,6 +499,8 @@ func _draw_vehicle(v: Vehicle, alpha: float) -> void:
 	draw_rect(Rect2(gauge.position, Vector2(gauge.size.x * f, gauge.size.y)), PlanStyle.TANK_FILL)
 
 
+	if not thermal:
+		_vehicle_details(v, fp, h)
 func _draw_sprays(alpha: float) -> void:
 	var t := Time.get_ticks_msec() / 1000.0
 	for h in sim.water.hoses:
@@ -523,6 +514,34 @@ func _draw_sprays(alpha: float) -> void:
 		if h.pattern == HoseLine.Pattern.STRAIGHT:
 			# 포물선을 그리며 날아가는 물방울
 			var arc := PackedVector2Array()
+## 차량 세부: 보이는 옆면의 바퀴·반사띠, 앞면 유리창, 지붕 경광등
+func _vehicle_details(v: Vehicle, fp: PackedVector2Array, h: float) -> void:
+	# fp = [뒤 왼쪽, 앞 왼쪽, 앞 오른쪽, 뒤 오른쪽]. 화면 앞쪽(x + y가 큰 쪽) 옆면만 보인다
+	var left := [fp[0], fp[1]]
+	var right := [fp[3], fp[2]]
+	var side: Array = right if (right[0] + right[1]).dot(Vector2.ONE) > (left[0] + left[1]).dot(Vector2.ONE) else left
+	var stripe_color := Color.WHITE if v.color.get_luminance() < 0.6 else Color("ef4444")
+	var band := PackedVector2Array([proj.to_screen(side[0], h * 0.38), proj.to_screen(side[1], h * 0.38),
+		proj.to_screen(side[1], h * 0.46), proj.to_screen(side[0], h * 0.46)])
+	draw_colored_polygon(band, Color(stripe_color, 0.9))
+	for f in [0.18, 0.78]:
+		var wp := proj.to_screen(side[0].lerp(side[1], f), 0.45)
+		draw_circle(wp, 0.45 * IsoProjection.PX_PER_M, Color(0.08, 0.08, 0.1))
+		draw_circle(wp, 0.2 * IsoProjection.PX_PER_M, Color(0.5, 0.5, 0.55))
+	# 앞면(fp[1] → fp[2])이 보이면 유리창
+	if ((fp[1] + fp[2]) * 0.5 - (fp[0] + fp[3]) * 0.5).dot(Vector2.ONE) > 0.0:
+		var glass := PackedVector2Array([proj.to_screen(fp[1], h * 0.62), proj.to_screen(fp[2], h * 0.62),
+			proj.to_screen(fp[2], h * 0.92), proj.to_screen(fp[1], h * 0.92)])
+		draw_colored_polygon(glass, Color(0.15, 0.25, 0.35, 0.95))
+	# 지붕 경광등 (운전석 위, 빨강·파랑 깜빡임)
+	var t := Time.get_ticks_msec() / 1000.0
+	var on := int(t * 3.0) % 2 == 0
+	var bar_a := fp[1].lerp(fp[0], 0.12).lerp(fp[2].lerp(fp[3], 0.12), 0.3)
+	var bar_b := fp[1].lerp(fp[0], 0.12).lerp(fp[2].lerp(fp[3], 0.12), 0.7)
+	draw_circle(proj.to_screen(bar_a, h + 0.1), 5.0, Color("ef4444") if on else Color("7f1d1d"))
+	draw_circle(proj.to_screen(bar_b, h + 0.1), 5.0, Color("3b82f6") if not on else Color("1e3a8a"))
+
+
 			for k in 13:
 				var f := k / 12.0
 				arc.append(from.lerp(to, f) + Vector2(0, -sin(f * PI) * 16.0))
@@ -752,7 +771,7 @@ static func _ellipse(center: Vector2, rx: float, ry: float, closed := false) -> 
 	var n := 16
 	for k in n + (1 if closed else 0):
 		var a := TAU * k / n
-		pts.append(center + Vector2(cos(a) * rx, sin(a) * ry))
+		pts.append(center + Vector2(cos(a) * rx, sin(a) * ry * GROUND_RATIO))
 	return pts
 
 
@@ -768,6 +787,34 @@ func _furniture_height(x: int, y: int) -> float:
 	if heights[y * sim.building.width + x] <= 0.0 or _cell_burnt(x, y):
 		return 0.0
 	return heights[y * sim.building.width + x]
+
+## 사람 모양: 발 → 엉덩이 → 어깨로 넓어지는 몸통, 반사띠, 머리(안전모). 키 약 1.75m
+func _draw_figure(p: Vector2, scale: float, body: Color, helmet: Color, stripes := true) -> void:
+	var feet := proj.to_screen(p, 0.0)
+	var hip := proj.to_screen(p, UNIT_HIP_M * scale).y
+	var shoulder := proj.to_screen(p, UNIT_BODY_M * scale).y
+	var w := UNIT_HALF_W
+	var poly := PackedVector2Array([
+		Vector2(feet.x - UNIT_FOOT_HALF_W, feet.y), Vector2(feet.x + UNIT_FOOT_HALF_W, feet.y),
+		Vector2(feet.x + w * 0.8, hip), Vector2(feet.x + w, shoulder + 3.0), Vector2(feet.x + w * 0.7, shoulder),
+		Vector2(feet.x - w * 0.7, shoulder), Vector2(feet.x - w, shoulder + 3.0), Vector2(feet.x - w * 0.8, hip)])
+	draw_colored_polygon(poly, body)
+	# 장화·다리 사이
+	draw_rect(Rect2(feet.x - UNIT_FOOT_HALF_W, feet.y - 5.0, UNIT_FOOT_HALF_W * 2.0, 5.0), body.darkened(0.55))
+	draw_line(Vector2(feet.x, feet.y), Vector2(feet.x, lerpf(feet.y, hip, 0.85)), body.darkened(0.45), 1.5)
+	if stripes:
+		for h in [0.35, 1.05]:
+			var y := proj.to_screen(p, h * scale).y
+			var half := lerpf(UNIT_FOOT_HALF_W, w * 0.8, clampf(h / UNIT_HIP_M, 0.0, 1.0)) if h < UNIT_HIP_M else w * 0.85
+			draw_line(Vector2(feet.x - half, y), Vector2(feet.x + half, y), REFLECTIVE, 2.5)
+	poly.append(poly[0])
+	draw_polyline(poly, PlanStyle.UNIT_OUTLINE, 1.0)
+	var head := proj.to_screen(p, UNIT_HEAD_M * scale)
+	draw_circle(head + Vector2(0, 2), UNIT_HEAD_R * 0.8, Color(0.93, 0.78, 0.65))
+	draw_colored_polygon(_ellipse(head + Vector2(0, 1), UNIT_HEAD_R * 1.25, UNIT_HEAD_R * 0.3), helmet.darkened(0.15))
+	draw_circle(head - Vector2(0, 2), UNIT_HEAD_R * 0.9, helmet)
+	draw_arc(head - Vector2(0, 2), UNIT_HEAD_R * 0.9, PI, TAU, 10, PlanStyle.UNIT_OUTLINE, 1.0)
+
 
 
 func _furniture_color(x: int, y: int) -> Color:

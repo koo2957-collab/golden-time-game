@@ -32,7 +32,7 @@ func test_card_set() -> void:
 	assert_true(data.cards.size() >= 28, "카드 %d장 (기획안 7-3 아파트 약 30장)" % data.cards.size())
 	assert_true(data.preorders.size() >= 12, "선제지시 %d종" % data.preorders.size())
 	var sim := _sim(APT)
-	var known := ["halt_locked", "halt_closed", "halt_backdraft", "halt_victim", "air_alarm", "knockdown", "arrival", "rollover_sign",
+	var known := ["halt_locked", "halt_closed", "halt_backdraft", "halt_victim", "fire_found", "air_alarm", "knockdown", "arrival", "rollover_sign",
 		"jump_risk", "exposure_heating", "shaft", "sign_warning", "debris_zone", "hydrant_out", "tank_empty", "mayday", "gas_found",
 		"victim_trapped", "triage_urgent", "stair_smoke", "attack_upper", "victims_many", "first_search", "search_mark", "end_suggested"]
 	for spec: Dictionary in data.cards:

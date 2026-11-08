@@ -138,6 +138,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.command.safety = safety
 	sim.tactical = TacticalSystem.new(sim.fire, sim.units, sim.water, sim.doors, sim.rescue, sim.events)
 	sim.tactical.safety = safety
+	sim.tactical.perception = sim.perception
 	sim.tactical.ems = sim.ems
 	sim.cards = CardSystem.new(sim.units, sim.tactical, sim.doors, sim.rescue, sim.rekindle, sim.water, sim.fire,
 		ParamTable.from_dict(card_params), card_data, sim.events, p_seed)
@@ -191,6 +192,8 @@ static func from_scenario(path: String, command_rules := true, seed_override := 
 ## 난이도 적용 (시나리오를 불러온 직후, 진행 전에). 다시 하기도 같은 값으로 부른다
 func apply_realism(name: String) -> void:
 	realism = name
+	# 임무형 내부 지휘는 모든 난이도에 적용 (R7, 2026-11-08 사용자 결정)
+	command.interior.enabled = true
 	var pp := _phase_params
 	match name:
 		"훈련":

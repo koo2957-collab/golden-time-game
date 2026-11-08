@@ -75,6 +75,8 @@ const REPORT_PRIORITY := {
 	"victim_trapped": Radio.Priority.KEY_FACTOR,
 	"victim_self_evac": Radio.Priority.KEY_FACTOR,
 	"tactical_done": Radio.Priority.TACTICS,
+	"fire_found": Radio.Priority.KEY_FACTOR,
+	"mission_withdraw": Radio.Priority.SAFETY,
 	"overhaul_done": Radio.Priority.KEY_FACTOR,
 }
 ## 최초 상황보고 보기 (SOP 101-2.1). 연소 상황 보기는 층 수에 따라 fire_options()로 만든다.
@@ -108,6 +110,8 @@ var resources: ResourceSystem
 var org: Organization
 var survey: SiteSurvey
 var safety: SafetySystem
+## 임무형 내부 지휘: 건물 안 조에게는 무전으로, 경유지는 본 곳에만 (기획안 9-1, R7)
+var interior: InteriorOrders
 ## 주요 의사결정과 그때 알던 정보 [{tick, decision, context}] (SOP 111-2.2)
 var decisions: Array[Dictionary] = []
 ## 진입 명령 때의 진입 금지 판단 요소 [{tick, squad, factors}] (SOP 102-4.1)
@@ -164,6 +168,7 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, p_res
 	events = p_events
 	radio = Radio.new(params, p_events)
 	org = Organization.new(params, p_events)
+	interior = InteriorOrders.new(p_fire, p_units, p_perception)
 	_report_repeat_ticks = roundi(params.value("report_repeat_s") / SimClock.TICK_DT)
 	_entry_wait_ticks = roundi(params.value("entry_wait_repeat_s") / SimClock.TICK_DT)
 	commander.id = -1
@@ -276,7 +281,7 @@ func gate(commands: Array, tick: int) -> Array:
 	var ready: Array = []
 	var still: Array[Dictionary] = []
 	for h in _held:
-		if h.wait.is_empty() and tick >= h.release:
+		if h.wait.is_empty() and tick >= h.release and not h.get("radio", false):
 			ready.append(h.cmd)
 		else:
 			still.append(h)
@@ -284,6 +289,11 @@ func gate(commands: Array, tick: int) -> Array:
 	var direct := direct_count()
 	for cmd in commands:
 		if not _role_allows(cmd, tick):
+			continue
+		var why := interior.reject_reason(cmd)
+		if why != "":
+			interior.rejected += 1
+			events.add(tick, "order_unseen", {"crew": interior.receiver_of(cmd), "reason": why})
 			continue
 		var squads := _order_squads(cmd)
 		if squads.is_empty():
@@ -307,10 +317,24 @@ func gate(commands: Array, tick: int) -> Array:
 		var delay := org.order_delay_s(squads, direct)
 		if delay > 0.0:
 			org.delayed_orders += 1
+		if interior.needs_radio(cmd):
+			# 건물 안 조: 지휘망으로 지시가 전달된 뒤 실행 (교신·복명복창, 기획안 9-1)
+			var h := {"cmd": cmd, "wait": [] as Array[int], "release": tick + roundi(delay / SimClock.TICK_DT), "radio": true}
+			_held.append(h)
+			interior.relayed += 1
+			radio.send(interior.priority_of(cmd), COMMANDER, interior.receiver_of(cmd), interior.order_text(cmd), tick, _on_interior_received.bind(h))
+			continue
+		if delay > 0.0:
 			_held.append({"cmd": cmd, "wait": [] as Array[int], "release": tick + roundi(delay / SimClock.TICK_DT)})
 			continue
 		ready.append(cmd)
 	return ready
+
+
+## 내부 지시가 전달됨: 다음 틱에 실행하고 조가 복명복창한다
+func _on_interior_received(tick: int, h: Dictionary) -> void:
+	h.radio = false
+	radio.send(interior.priority_of(h.cmd), interior.receiver_of(h.cmd), COMMANDER, interior.ack_text(h.cmd), tick)
 
 
 ## RIT·현장안전담당은 다른 임무를 받지 않는다 (SSG 9 1.2.2). 밖에서 자리를 옮기는 이동은 된다.

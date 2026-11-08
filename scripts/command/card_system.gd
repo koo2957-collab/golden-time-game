@@ -169,6 +169,8 @@ func _trigger_of(e: Dictionary) -> String:
 			return "attack_upper" if _upper_attack(e) else ""
 		"search_done":
 			return "search_mark"
+		"fire_found":
+			return "fire_found"
 		"phase":
 			return "arrival" if int(e.get("index", -1)) == 1 else ""
 	return ""
@@ -204,6 +206,15 @@ func _raise(spec: Dictionary, e: Dictionary, tick: int) -> void:
 	c.text = c.text.format(c.ctx)
 	c.options = _shuffled(opts, c.uid)
 	c.asked_tick = tick
+	# 임무 조건 (R7): 진입구에서 정한 조건이 있으면 카드 없이 그 행동 (등급은 같은 행동의 선택지)
+	var ce := tactical.condition_effect(c.crew_id, c.id)
+	if ce != "":
+		for o: Dictionary in opts:
+			if str(o.get("effect", "")) == ce:
+				_log(c, tick, o, "condition")
+				events.add(tick, "card_condition", {"crew": _crew_name(c.crew_id), "title": str(spec.get("title", c.id)), "option": str(o.get("text", ""))})
+				_apply(ce, c, tick)
+				return
 	# 선제지시: 카드 없이 최선 선택을 바로 실행
 	var pre := str(spec.get("skip_if_preordered", ""))
 	if pre != "" and preorders.has(pre):
@@ -324,6 +335,19 @@ func _apply(effect: String, c: Card, tick: int) -> void:
 		"resume":
 			if action != "":
 				tactical.order(action, c.crew_id, target, tick)
+		"close_then_resume":
+			# 화재실 문을 닫고(210-3.5) 닫히면 하던 검색을 이어 간다
+			var fr := _room_named(str(c.ctx.get("room", "")))
+			var fd := _door_of(fr, crew) if fr else null
+			if fd:
+				tactical.cancel(c.crew_id)
+				doors.request(c.crew_id, Vector3i(fd.cells[0].x, fd.cells[0].y, fd.level), false, tick)
+				_followups.append({"kind": "closed", "crew": c.crew_id, "door": fd.index, "action": action, "target": target})
+		"attack_found":
+			tactical.order("attack", c.crew_id, _cell(c.ctx.get("room_cell", [])), tick)
+		"halt_here":
+			tactical.cancel(c.crew_id)
+			rescue.cancel(c.crew_id)
 		"withdraw":
 			tactical.order("withdraw", c.crew_id, Vector3i.ZERO, tick)
 		"overhaul":
@@ -427,6 +451,13 @@ func _step_followups(tick: int) -> void:
 			_delayed.erase(d)
 			_apply(str(d.effect), d.card, tick)
 	for f in _followups.duplicate():
+		if str(f.get("kind", "")) == "closed":
+			var fd: Opening = fire.openings[int(f.door)]
+			if not fd.is_open or doors.task_of_crew(int(f.crew)) == null:
+				_followups.erase(f)
+				if str(f.action) != "":
+					tactical.order(str(f.action), int(f.crew), f.target, tick)
+			continue
 		var win: Opening = fire.openings[int(f.window)]
 		if win.broken or win.is_open:
 			_followups.erase(f)

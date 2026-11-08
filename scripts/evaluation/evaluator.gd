@@ -258,20 +258,24 @@ func _check_cards() -> Dictionary:
 	if lg.is_empty():
 		return {}
 	var sum := 0.0
+	var cond := 0
 	var counts := {}
 	for e in lg:
-		var key: String = e.grade if e.result in ["answered", "preordered"] else ("미응답" if e.result == "timeout" else "대기 밀림")
+		var key: String = e.grade if e.result in ["answered", "preordered", "condition"] else ("미응답" if e.result == "timeout" else "대기 밀림")
 		if e.result == "preordered":
 			key = "선제지시"
 		counts[key] = int(counts.get(key, 0)) + 1
-		if e.result in ["answered", "preordered"]:
+		if e.result in ["answered", "preordered", "condition"]:
 			sum += float(CardSystem.GRADE_SCORE.get(e.grade, 0.0))
+		if e.result == "condition":
+			cond += 1
 	var parts: PackedStringArray = []
 	for k in ["최선", "선제지시", "허용", "오답", "치명", "미응답", "대기 밀림"]:
 		if counts.has(k):
 			parts.append("%s %d" % [k, counts[k]])
 	var pre := int(counts.get("선제지시", 0))
-	return {"score": sum / lg.size(), "detail": "판단 요청 %d건 — %s%s" % [lg.size(), ", ".join(parts), " · 선제지시로 질문 %d건 줄임" % pre if pre > 0 else ""]}
+	return {"score": sum / lg.size(), "detail": "판단 요청 %d건 — %s%s%s" % [lg.size(), ", ".join(parts), " · 선제지시로 질문 %d건 줄임" % pre if pre > 0 else "",
+		" · 임무 조건으로 %d건 처리" % cond if cond > 0 else ""]}
 
 
 ## 완진 선언의 정확성 (소방전술 I 8단계 ⑥, SOP 202-6): 활동을 끝냈을 때만
@@ -876,6 +880,8 @@ func _card_lines() -> Array:
 		var result := str(e.get("result", ""))
 		var what := "미응답 (지시 대기)" if result == "timeout" else ("대기 중 밀림" if result == "overflow" else str(e.get("option", "")))
 		var grade := "선제지시" if result == "preordered" else (str(e.get("grade", "")) if str(e.get("grade", "")) != "" else "—")
+		if result == "condition":
+			grade += "·임무 조건"
 		out.append("%s [%s] %s → %s (%s) — %s" % [_t(int(e.get("asked_tick", 0))), grade, e.get("title", ""), what, e.get("sop", ""), e.get("debrief", "")])
 	return out
 

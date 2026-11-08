@@ -23,7 +23,7 @@ const NOTICE_TYPES: Array[String] = [
 	"face_seen", "site_info_found", "clue_found", "witness_arrived", "statement", "ask_too_far", "ask_cancelled",
 	"command_post", "report_updated", "overhaul_start", "rekindle",
 	"emergency_cleared", "evacuation_ordered", "par_done", "role_assigned", "role_reserved", "rit_deployed",
-	"entry_factors",
+	"entry_factors", "order_unseen",
 ]
 ## 알림으로도 띄우는 무전 우선순위
 const NOTICE_RADIO_PRIORITIES: Array[String] = ["대원 안전", "구조대상자"]

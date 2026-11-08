@@ -37,6 +37,8 @@ func _run() -> void:
 	# 실제 마우스 위치가 화면 가장자리면 카메라가 흘러가므로 조작 점검에서는 끈다
 	world.camera.edge_scroll = false
 	world.confine_mouse(false)
+	# 앞부분 조작 점검은 직접 지휘 규칙으로 본다. 임무형 내부 지휘(R7)는 뒤에서 따로 점검
+	world.sim.command.interior.enabled = false
 	var sim: SimWorld = world.sim
 	# EventBus(autoload)를 쓰는 UI 스크립트는 타입으로 참조하지 않는다
 	# (-s 실행 시 autoload 등록 전에 컴파일되어 실패하기 때문)
@@ -264,6 +266,66 @@ func _run() -> void:
 	sim.step_ticks(300)
 	_check("RIT 지정 (구조1 2조)", sim.command.safety.role_of(3), SafetySystem.Role.RIT)
 	_check("P → 인원점검", sim.command.safety.par_log.size() >= 1, true)
+	# R7a 임무형 내부 지휘: 건물 안 조는 본 곳에만 경유지, 지시는 무전으로 전달
+	sim.command.interior.enabled = true
+	var inside_id := -1
+	for c in u.crews:
+		if sim.command.interior.crew_inside(c.id) and not c.leader.incapacitated:
+			inside_id = c.id
+			break
+	_check("건물 안 조가 있다", inside_id >= 0, true)
+	if inside_id >= 0:
+		sel._set_selection([inside_id] as Array[int])
+		var unseen := Vector2(-1, -1)
+		var lv := u.get_crew(inside_id).leader.level
+		for y in sim.building.height:
+			for x in sim.building.width:
+				if unseen.x < 0 and sim.command.interior.indoor(lv, Vector2(x, y)) and not sim.perception.is_seen(lv, x, y) 						and sim.pathfinder.nearest_walkable(lv, Vector2i(x, y)) == Vector2i(x, y):
+					unseen = Vector2(x + 0.5, y + 0.5)
+		world.set_view_level(lv)
+		if unseen.x >= 0:
+			world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(unseen))
+			await process_frame
+			var moves_before := sim.command_log.entries.filter(func(c): return c is MoveCommand).size()
+			_click(unseen, MOUSE_BUTTON_RIGHT)
+			sim.step_ticks(2)
+			await process_frame
+			await process_frame
+			_check("내부 조: 본 적 없는 곳 우클릭 → 거절", sim.command_log.entries.filter(func(c): return c is MoveCommand).size(), moves_before)
+			_check("거절 알림", world.hud._notice_label.text.contains("본 적 없는"), true)
+		var here := u.get_crew(inside_id).leader.pos
+		world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(here))
+		await process_frame
+		_click(here, MOUSE_BUTTON_RIGHT)
+		sim.step_ticks(1)
+		var radio := sim.command.radio
+		var sent := radio.queue.any(func(m): return m.body.ends_with("이동하라.")) or (radio.current != null and radio.current.body.ends_with("이동하라."))
+		_check("내부 조: 본 곳 우클릭 → 무전 지시", sent, true)
+	# 본 적 없는 방에 W(주 임무) → 층 단위 임무로 바뀐다
+	var room2: Compartment = null
+	for room in sim.fire.comps:
+		if room.level == 2 and room.cells.size() >= 4 and sim.perception.room_seen[room.index] == 0:
+			room2 = room
+			break
+	if room2:
+		var out_id := -1
+		for c in u.crews:
+			if not sim.command.interior.crew_inside(c.id) and not c.leader.incapacitated and sim.units.squad_of_crew(c.id).type == "진압대":
+				out_id = c.id
+				break
+		if out_id >= 0:
+			sel._set_selection([out_id] as Array[int])
+			world.set_view_level(2)
+			var rc := Vector2(room2.cells[room2.cells.size() / 2]) + Vector2(0.5, 0.5)
+			world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(rc))
+			await process_frame
+			_key(KEY_W)
+			_click(rc, MOUSE_BUTTON_LEFT)
+			sim.step_ticks(1)
+			var lt = sim.command_log.entries.filter(func(c): return c is TacticalCommand)
+			_check("본 적 없는 방 W → 층 진압", lt[-1].action if not lt.is_empty() else "", "attack_floor")
+			world.set_view_level(1)
+	sim.command.interior.enabled = false
 	# 활동 단계 표시줄·남은 시간 (R1)
 	_check("단계 표시줄", world.hud.phase_bar.text.contains("완진 선언"), true)
 	_check("남은 시간 표시", world.hud.clock_label.text.contains("남은"), true)

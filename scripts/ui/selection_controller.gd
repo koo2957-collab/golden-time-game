@@ -17,6 +17,8 @@ enum Mode { NONE, HOSE, STRAIGHT, FOG, DOOR, SEARCH, OVERHAUL, PRIMARY, ATTACK, 
 
 ## 관계인을 클릭했을 때 (world가 진술 창을 연다)
 signal witness_clicked(index: int)
+## 화면 알림 요청 (HUD가 띄운다)
+signal notice(text: String)
 
 const DRAG_THRESHOLD_PX := 6.0
 const MARKER_DURATION_MS := 500.0
@@ -306,7 +308,11 @@ func _complete_mode(world_pos: Vector2) -> void:
 		Mode.SEARCH:
 			if not selected.is_empty():
 				var cell := Vector2i(projection.to_cell(world_pos).floor())
-				sim.issue(EquipmentCommand.make("search", selected, -1, -1, Vector3i(cell.x, cell.y, level)))
+				var target := Vector3i(cell.x, cell.y, level)
+				if _floor_only(target):
+					sim.issue(TacticalCommand.make("search_floor", selected, target))
+				else:
+					sim.issue(EquipmentCommand.make("search", selected, -1, -1, target))
 		Mode.PRIMARY, Mode.ATTACK, Mode.SEARCH_AUTO, Mode.EXTERIOR:
 			if not selected.is_empty():
 				var cell := Vector2i(projection.to_cell(world_pos).floor())
@@ -322,10 +328,12 @@ func _complete_mode(world_pos: Vector2) -> void:
 				if mode == Mode.EXTERIOR:
 					sim.issue(TacticalCommand.make("exterior", selected, target))
 				else:
+					# 본 적 없는 방은 층 단위 임무로 (기획안 9-1, R7 — 도면을 얻으면 방 단위)
+					var by_floor := _floor_only(target)
 					if not attack.is_empty():
-						sim.issue(TacticalCommand.make("attack", attack, target))
+						sim.issue(TacticalCommand.make("attack_floor" if by_floor else "attack", attack, target))
 					if not search.is_empty():
-						sim.issue(TacticalCommand.make("search", search, target))
+						sim.issue(TacticalCommand.make("search_floor" if by_floor else "search", search, target))
 				_marker_world = projection.to_screen(Vector2(cell) + Vector2(0.5, 0.5))
 				_marker_start_ms = Time.get_ticks_msec()
 		Mode.AIR_MAT:
@@ -353,6 +361,16 @@ func _complete_mode(world_pos: Vector2) -> void:
 				sim.issue(EquipmentCommand.make("spray", selected, -1, pattern, Vector3i(cell.x, cell.y, level)))
 				_marker_world = projection.to_screen(Vector2(cell) + Vector2(0.5, 0.5))
 				_marker_start_ms = Time.get_ticks_msec()
+
+
+## 본 적 없는 방이라 층 단위로만 맡길 수 있는가 (알림도 띄운다)
+func _floor_only(target: Vector3i) -> bool:
+	var interior := sim.command.interior
+	var room := sim.fire.compartment_at(target.z, target.x, target.y)
+	if not interior.enabled or room == null or interior.room_known(target):
+		return false
+	notice.emit("본 적 없는 방 → %s 단위 임무로 지시 (방이 보이거나 도면을 얻으면 방 단위)" % sim.building.floor_name(target.z))
+	return true
 
 
 ## 이벤트의 화면 좌표를 월드 좌표로 바꾼다 (카메라 이동·줌 반영).

@@ -199,6 +199,18 @@ static func describe_text(e: Dictionary) -> String:
 			text = "%s 시작%s — %s" % [e.action, " (%s)" % e.room if e.has("room") else "", e.crew]
 		"tactical_halt":
 			text = "%s — %s" % [e.reason, e.crew]
+		"fire_found":
+			text = "화점 발견 — %s" % e.room
+		"mission_withdraw":
+			text = "공기 %d%% — 임무 조건에 따라 철수" % int(e.percent)
+		"mission_conditions":
+			text = "임무 조건: %s — %s" % [e.text, e.crew]
+		"tactical_next":
+			text = "다음 방 %s — %s" % [e.room, e.crew]
+		"card_condition":
+			text = "임무 조건으로 처리: %s → %s — %s" % [e.title, e.option, e.crew]
+		"order_unseen":
+			text = "%s (%s)" % [e.reason, e.crew]
 		"tactical_done":
 			text = "%s — %s" % [e.text, e.crew]
 		"exposure_heating":

@@ -5,11 +5,16 @@ extends RefCounted
 ##   외부 방수 (exterior): 밖에서 직사로 연소 확대 저지
 ##   수색 (search): 길의 닫힌 문 개방 → 인명검색 → 찾은 구조대상자 이송 (자동화 수준에 따라)
 ##   철수 (withdraw): 그 조만 가장 가까운 문 밖으로
+##   층 검색·층 진압 (search_floor·attack_floor, R7): 본 적 없는 곳은 층 단위로 맡긴다 (기획안 9-1).
+##     층 검색은 아직 검색하지 않은 방을 가까운 곳부터 차례로, 층 진압은 그 층에서 타는 방을 찾아 차례로 진압
+##   임무 조건 (R7): 철수 잔압·화점 발견 시·요구조자 발견 시. 정해 두면 그 질문 카드 없이 그대로 한다
 ## 자동 행동도 SOP 안에서만 움직인다: 백드래프트 징후가 있는 문은 열지 않고 멈춰 보고한다 (210-4.5),
 ## 진입 명령이 없으면 입구에서 기다린다 (102-5.2). 자동화 수준은 난이도에 따라 다르다.
 
 enum Phase { DOORS, ACT, WORKING, DONE }
-const ACTIONS := {"attack": "진압", "exterior": "외부 방수", "search": "수색", "withdraw": "철수"}
+const ACTIONS := {"attack": "진압", "exterior": "외부 방수", "search": "수색", "withdraw": "철수",
+	"search_floor": "층 검색", "attack_floor": "층 진압"}
+const MISSION_PATH := "res://data/command/mission_params.json"
 ## 난이도별 자동화 수준
 const LEVELS := {
 	"입문": {"doors": "all", "auto_rescue": true, "auto_stop": true},
@@ -27,6 +32,11 @@ class Task:
 	var doors: Array[Opening] = []
 	var door_requested := false
 	var phase := Phase.DOORS
+	## 층 단위 임무면 그 층 (-1 = 방 하나)
+	var floor := -1
+	var floor_action := ""
+	## 멈춰 지시를 기다리는가 (층 임무는 이어 가지 않는다)
+	var halted := false
 
 
 var fire: FireSim
@@ -44,6 +54,14 @@ var level_name := "입문"
 var level: Dictionary = LEVELS["입문"]
 ## 구급 처치 후 자동 이송 여부를 자동화 수준에 맞춘다
 var ems: EmsSystem
+## 화점 발견 판정에 쓰는 시야
+var perception: Perception
+## 임무 조건 {조 id: {on_fire, on_victim, withdraw_air}} (키는 data/command/mission_params.json)
+var conditions: Dictionary = {}
+var mission_data: Dictionary = {}
+var _fire_radius := 5.0
+var _fire_seen: Dictionary = {}  # "조:방" -> true
+var _air_withdrawn: Dictionary = {}  # 조 id -> true (철수 잔압으로 철수함)
 
 
 func _init(p_fire: FireSim, p_units: UnitSystem, p_water: WaterSystem, p_doors: DoorSystem, p_rescue: RescueSystem, p_events: SimEventLog) -> void:
@@ -53,6 +71,9 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_water: WaterSystem, p_doors: 
 	doors_sys = p_doors
 	rescue = p_rescue
 	events = p_events
+	var data: Variant = JsonData.load_file(MISSION_PATH)
+	mission_data = data if data is Dictionary else {}
+	_fire_radius = float(mission_data.get("fire_found_radius_m", {}).get("value", 5.0))
 
 
 func set_level(name: String) -> void:
@@ -88,6 +109,8 @@ func order(action: String, crew_id: int, target: Vector3i, tick: int) -> bool:
 	if action == "exterior":
 		events.add(tick, "tactical_start", {"crew": _crew_name(c), "action": ACTIONS[action]})
 		return water.start_spray(crew_id, target, HoseLine.Pattern.STRAIGHT, tick)
+	if action in ["search_floor", "attack_floor"]:
+		return _order_floor(action, c, target.z, tick, true)
 	var room := fire.compartment_at(target.z, target.x, target.y)
 	if room == null:
 		return false
@@ -115,7 +138,17 @@ func step(tick: int) -> void:
 				_act(t, c, tick)
 			Phase.WORKING:
 				_step_working(t, c, tick)
+		if t.action == "search" and t.phase != Phase.DONE:
+			_check_fire_found(t, c, tick)
+	# 층 임무: 방 하나를 마치면 다음 방으로 (멈췄거나 구조대상자를 옮기는 중이면 이어 가지 않는다)
+	var next: Array[Task] = []
+	for t in tasks:
+		if t.phase == Phase.DONE and t.floor >= 0 and not t.halted and rescue.task_of_crew(t.crew_id) == null:
+			next.append(t)
 	tasks = tasks.filter(func(t: Task) -> bool: return t.phase != Phase.DONE)
+	for t in next:
+		_order_floor(t.floor_action, units.get_crew(t.crew_id), t.floor, tick, false)
+	_check_air(tick)
 
 
 # --- 단계 ---
@@ -278,8 +311,10 @@ func _victim_in_room(room: int) -> Victim:
 ## 멈춤: 무전 보고와 함께 종류(kind)·문맥을 남긴다 — 질문 카드(CardSystem)가 이 사건으로 카드를 만든다
 func _halt(t: Task, c: Crew, tick: int, reason: String, safety_issue := false, kind := "", ctx: Dictionary = {}) -> void:
 	t.phase = Phase.DONE
+	t.halted = true
+	# 층 임무면 카드 답(다시 진행)이 층 임무를 이어 가도록 층 행동을 남긴다
 	var e := {"crew": _crew_name(c), "reason": reason, "safety": safety_issue, "kind": kind, "crew_id": c.id,
-		"action": t.action, "target": [t.target.x, t.target.y, t.target.z]}
+		"action": t.floor_action if t.floor >= 0 else t.action, "target": [t.target.x, t.target.y, t.target.z]}
 	e.merge(ctx)
 	events.add(tick, "tactical_halt", e)
 
@@ -309,3 +344,168 @@ func _door_name(o: Opening) -> String:
 
 func _crew_name(c: Crew) -> String:
 	return "%s %d조" % [units.squads[c.squad_id].name, c.number]
+
+
+# --- 층 단위 임무 (R7) ---
+
+## 층 임무의 다음 방을 맡긴다. first: 처음 받은 명령 (아니면 방 하나를 마친 뒤)
+func _order_floor(action: String, c: Crew, lv: int, tick: int, first: bool) -> bool:
+	var floor_name := fire.building.floor_name(lv)
+	var room := _next_floor_room(c, action, lv)
+	if room == null:
+		if action == "attack_floor" and first:
+			events.add(tick, "tactical_halt", {"crew": _crew_name(c), "reason": "%s 화점을 찾지 못함 — 지시 바람" % floor_name,
+				"safety": false, "kind": "no_fire", "crew_id": c.id, "action": action, "target": [0, 0, lv]})
+		else:
+			events.add(tick, "tactical_done", {"crew": _crew_name(c),
+				"text": "%s %s 완료" % [floor_name, "검색" if action == "search_floor" else "화점 진압"]})
+		return not first or action == "search_floor"
+	var t := Task.new()
+	t.crew_id = c.id
+	t.action = "search" if action == "search_floor" else "attack"
+	t.floor = lv
+	t.floor_action = action
+	t.room = room.index
+	t.target = _room_cell(room)
+	t.doors = _closed_doors_to(c, room)
+	tasks.append(t)
+	if first:
+		# 카드 트리거(첫 검색·상층 진압)가 방 하나 명령과 같게 보도록 행동 이름은 수색·진압
+		events.add(tick, "tactical_start", {"crew": _crew_name(c), "action": ACTIONS[t.action], "room": room.display_name(),
+			"floor": floor_name})
+	else:
+		events.add(tick, "tactical_next", {"crew": _crew_name(c), "room": room.display_name()})
+	return true
+
+
+## 층 검색: 아직 검색하지 않은 방 / 층 진압: 타는 방 — 조에게서 가까운 곳부터
+func _next_floor_room(c: Crew, action: String, lv: int) -> Compartment:
+	var best: Compartment = null
+	var best_d := INF
+	for room in fire.comps:
+		if room.level != lv or room.cells.is_empty():
+			continue
+		if action == "search_floor" and room.searched_tick >= 0:
+			continue
+		if action == "attack_floor" and not _room_burning(room.index):
+			continue
+		var d := c.leader.pos.distance_to(Vector2(room.rect.get_center())) + absi(lv - c.leader.level) * 8.0
+		if d < best_d:
+			best_d = d
+			best = room
+	return best
+
+
+## 방 가운데에 가까운 칸
+func _room_cell(room: Compartment) -> Vector3i:
+	var center := Vector2(room.rect.get_center())
+	var best: Vector2i = room.cells[0]
+	for cell in room.cells:
+		if Vector2(cell).distance_to(center) < Vector2(best).distance_to(center):
+			best = cell
+	return Vector3i(best.x, best.y, room.level)
+
+
+# --- 임무 조건 (R7) ---
+
+## 조건 지정 (CommandOrder "mission_conditions"). 빈 값은 그 항목을 바꾸지 않는다
+func set_conditions(crew_ids: Array, cond: Dictionary, tick: int) -> void:
+	for id in crew_ids:
+		var c := units.get_crew(int(id))
+		if c == null:
+			continue
+		var cur: Dictionary = conditions.get(c.id, {"on_fire": "ask", "on_victim": "ask", "withdraw_air": "alarm"})
+		for k in ["on_fire", "on_victim", "withdraw_air"]:
+			if str(cond.get(k, "")) != "":
+				cur[k] = str(cond[k])
+		conditions[c.id] = cur
+		events.add(tick, "mission_conditions", {"crew": _crew_name(c), "text": condition_text(c.id)})
+
+
+## "경보 울리면 철수 · 화점: 문 닫고 보고 · 요구조자: 즉시 구조"
+func condition_text(crew_id: int) -> String:
+	var cur: Dictionary = conditions.get(crew_id, {})
+	if cur.is_empty():
+		return ""
+	var parts: PackedStringArray = []
+	for pair in [["withdraw_air_options", "withdraw_air"], ["on_fire_options", "on_fire"], ["on_victim_options", "on_victim"]]:
+		var o := _option(pair[0], str(cur.get(pair[1], "")))
+		if not o.is_empty() and str(o.get("key", "")) != "ask":
+			parts.append(str(o.get("label", "")))
+	return " · ".join(parts)
+
+
+func _option(group: String, key: String) -> Dictionary:
+	for o: Dictionary in mission_data.get(group, []):
+		if str(o.get("key", "")) == key:
+			return o
+	return {}
+
+
+## 이 조의 임무 조건이 이 카드에 정한 행동 ("" = 카드로 묻는다)
+func condition_effect(crew_id: int, card_id: String) -> String:
+	var cur: Dictionary = conditions.get(crew_id, {})
+	if cur.is_empty():
+		return ""
+	match card_id:
+		"VICTIM-FOUND-01":
+			return str(_option("on_victim_options", str(cur.get("on_victim", "ask"))).get("effect", ""))
+		"FIRE-FOUND-01":
+			return str(_option("on_fire_options", str(cur.get("on_fire", "ask"))).get("effect", ""))
+		"AIR-ALARM-01":
+			# 철수 잔압을 정해 두었으면 경보에는 바로 철수 (201-3.7)
+			return "withdraw"
+	return ""
+
+
+func _withdraw_ratio(crew_id: int) -> float:
+	var cur: Dictionary = conditions.get(crew_id, {})
+	return float(_option("withdraw_air_options", str(cur.get("withdraw_air", "alarm"))).get("ratio", 0.0))
+
+
+## 철수 잔압: 건물 안에서 조의 가장 낮은 공기가 기준 아래로 내려가면 질문 없이 철수
+func _check_air(tick: int) -> void:
+	for id: int in conditions:
+		var ratio := _withdraw_ratio(id)
+		var c := units.get_crew(id)
+		if ratio <= 0.0 or c == null or c.leader.incapacitated:
+			continue
+		var inside := not fire.building.cell(c.leader.level, floori(c.leader.pos.x), floori(c.leader.pos.y)) in BuildingData.OUTDOOR
+		if _air_withdrawn.has(id):
+			if not inside:
+				_air_withdrawn.erase(id)
+			continue
+		var low := 1.0
+		for ff in c.members():
+			low = minf(low, ff.air_ratio())
+		if inside and low <= ratio:
+			_air_withdrawn[id] = true
+			cancel(id)
+			water.stop_spray(id, tick)
+			safety.withdraw_crew(c, tick, "withdraw")
+			events.add(tick, "mission_withdraw", {"crew": _crew_name(c), "crew_id": id, "percent": roundi(low * 100.0)})
+
+
+## 검색 중인 조가 가까이에서 타는 칸을 보면 화점 발견 보고 (방마다 한 번). 질문 카드 FIRE-FOUND-01
+func _check_fire_found(t: Task, c: Crew, tick: int) -> void:
+	if perception == null:
+		return
+	var grid := fire.grid
+	var lv := c.leader.level
+	for i in grid.burning:
+		var p := grid.cell_of(i)
+		if p.z != lv or Vector2(p.x + 0.5, p.y + 0.5).distance_to(c.leader.pos) > _fire_radius:
+			continue
+		if not perception.is_visible(lv, p.x, p.y):
+			continue
+		var room := fire.compartment_at(lv, p.x, p.y)
+		if room == null:
+			continue
+		var key := "%d:%d" % [c.id, room.index]
+		if _fire_seen.has(key):
+			continue
+		_fire_seen[key] = true
+		events.add(tick, "fire_found", {"crew": _crew_name(c), "crew_id": c.id, "room": room.display_name(),
+			"room_cell": [p.x, p.y, lv], "has_hose": water.hose_of_crew(c.id) != null,
+			"action": t.floor_action if t.floor >= 0 else t.action, "target": [t.target.x, t.target.y, t.target.z]})
+		return

@@ -1109,6 +1109,10 @@ func _draw_monitors_and_fans() -> void:
 			pts.append(a.lerp(mid, t).lerp(mid.lerp(b, t), t))
 		draw_polyline(pts, Color(0.55, 0.8, 1.0, 0.85), 5.0, true)
 		draw_string(PlanStyle.font(), b + Vector2(-40, -18), "방수포", HORIZONTAL_ALIGNMENT_CENTER, 80, 13, Color("bae6fd"))
+	if sim.elevator.available():
+		var ec := Vector2(sim.elevator.cell) + Vector2(0.5, 0.5)
+		_box(ec - Vector2(0.45, 0.45), ec + Vector2(0.45, 0.45), 0.0, 2.2, Color("475569"), Color("334155"), Color("94a3b8"))
+		draw_string(PlanStyle.font(), proj.to_screen(ec, 2.6) + Vector2(-60, 0), sim.elevator.name, HORIZONTAL_ALIGNMENT_CENTER, 120, 13, Color("e2e8f0"))
 	var vent := sim.vent
 	if vent.opening >= 0:
 		var op: Opening = sim.fire.openings[vent.opening]

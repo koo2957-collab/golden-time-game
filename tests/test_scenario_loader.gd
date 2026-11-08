@@ -11,7 +11,7 @@ func test_list_and_validate_builtin() -> void:
 		if s.source == "기본":
 			ids.append(s.id)
 			assert_eq(s.errors, PackedStringArray(), "검증 통과: %s" % s.title)
-	assert_eq(ids, ["tutorial_basics", "sop214_1_day_living", "sop214_2_night_upstairs", "sop214_3_kitchen_lpg", "sop214_4_alley", "sop213_1_apartment_3f", "sop213_2_apartment_night", "sop212_1_commercial_kitchen", "sop213_3_15f_day_low", "sop213_4_15f_night_mid", "sop213_5_15f_winter_high", "dev_house_fire"] as Array[String], "meta.order 순서 (튜토리얼이 맨 위)")
+	assert_eq(ids, ["tutorial_basics", "sop214_1_day_living", "sop214_2_night_upstairs", "sop214_3_kitchen_lpg", "sop214_4_alley", "sop213_1_apartment_3f", "sop213_2_apartment_night", "sop212_1_commercial_kitchen", "sop213_3_15f_day_low", "sop213_4_15f_night_mid", "sop213_5_15f_winter_high", "sop222_1_highrise_25f", "dev_house_fire"] as Array[String], "meta.order 순서 (튜토리얼이 맨 위)")
 	assert_eq(str(list[0].meta.difficulty), "튜토리얼", "튜토리얼 표시")
 	assert_eq(str(list[1].meta.difficulty), "입문", "난이도 표시")
 	assert_true(list[1].objectives.size() >= 3, "학습 목표")

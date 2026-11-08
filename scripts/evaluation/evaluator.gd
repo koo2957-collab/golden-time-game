@@ -265,13 +265,16 @@ func _check_cards() -> Dictionary:
 		var key: String = e.grade if e.result in ["answered", "preordered", "condition"] else ("미응답" if e.result == "timeout" else "대기 밀림")
 		if e.result == "preordered":
 			key = "선제지시"
+		elif e.result == "delegated":
+			key = "단위지휘관 대리"
+			sum += float(CardSystem.GRADE_SCORE.get(e.grade, 0.0))
 		counts[key] = int(counts.get(key, 0)) + 1
 		if e.result in ["answered", "preordered", "condition"]:
 			sum += float(CardSystem.GRADE_SCORE.get(e.grade, 0.0))
 		if e.result == "condition":
 			cond += 1
 	var parts: PackedStringArray = []
-	for k in ["최선", "선제지시", "허용", "오답", "치명", "미응답", "대기 밀림"]:
+	for k in ["최선", "선제지시", "단위지휘관 대리", "허용", "오답", "치명", "미응답", "대기 밀림"]:
 		if counts.has(k):
 			parts.append("%s %d" % [k, counts[k]])
 	var pre := int(counts.get("선제지시", 0))
@@ -397,6 +400,34 @@ func _check_debris() -> Dictionary:
 		return {}
 	var s := f.zone_seconds
 	return {"score": _linear(s, _params.good_s, _params.bad_s), "detail": "낙하물 위험구역 %d곳, 구역 안 대원 체류 합계 %d초 (기준 %d초 이하)" % [f.zones.size(), roundi(s), int(_params.good_s)]}
+
+
+## 지휘권 이양 (SOP 112, R13): 지휘대가 도착한 시나리오만. 브리핑 정확도 60% + 이양까지 걸린 시간 40%
+func _check_transfer() -> Dictionary:
+	var t := sim.transfer
+	if t == null or not t.arrived():
+		return {}
+	if not t.transferred():
+		return {"score": 0.0, "detail": "지휘대가 도착했지만 지휘권을 이양하지 않음"}
+	var delay := (t.transferred_tick - t.arrived_tick) * SimClock.TICK_DT
+	var score := 0.6 * t.accuracy + 0.4 * _linear(delay, _params.good_s, _params.bad_s)
+	var wrong: PackedStringArray = []
+	for b in t.briefing:
+		if not b.correct:
+			wrong.append(b.item)
+	return {"score": score, "detail": "브리핑 정확도 %d%% · 도착 %d초 뒤 이양%s" % [roundi(t.accuracy * 100.0), roundi(delay),
+		" · 틀린 항목: %s" % ", ".join(wrong) if not wrong.is_empty() else ""]}
+
+
+## 비상용승강기 운행 범위 (SOP 222, R13): 승강기를 탔을 때만
+func _check_elevator() -> Dictionary:
+	var e := sim.elevator
+	var rides := sim.events.of_type("elevator_ride").size()
+	if e == null or rides == 0:
+		return {}
+	if e.violations == 0:
+		return {"score": 1.0, "detail": "승강기 %d회 — 모두 화재층 2개층 아래까지" % rides}
+	return {"score": 0.0, "detail": "화재층 2개층 아래보다 높이 승강기 운행 %d회 (SOP 222 위반)" % e.violations}
 
 
 ## 방수포와 진입대원 (SOP 207-1.1, R11): 방수포를 썼을 때만
@@ -894,6 +925,8 @@ func _card_lines() -> Array:
 		var grade := "선제지시" if result == "preordered" else (str(e.get("grade", "")) if str(e.get("grade", "")) != "" else "—")
 		if result == "condition":
 			grade += "·임무 조건"
+		elif result == "delegated":
+			grade = "단위지휘관 대리"
 		out.append("%s [%s] %s → %s (%s) — %s" % [_t(int(e.get("asked_tick", 0))), grade, e.get("title", ""), what, e.get("sop", ""), e.get("debrief", "")])
 	return out
 

@@ -403,6 +403,11 @@ func _on_command(id: String) -> void:
 			else:
 				selection.monitor_vehicle = pump
 				selection.begin_mode(SelectionController.Mode.MONITOR)
+		"elevator":
+			if not sim.elevator.available():
+				hud.show_notice("이 건물에는 비상용승강기가 없습니다")
+			else:
+				selection.begin_mode(SelectionController.Mode.ELEVATOR)
 		"ppv":
 			if sim.vent.crew_id in selection.selected:
 				sim.issue(EquipmentCommand.make("ppv_stop", [sim.vent.crew_id] as Array[int]))

@@ -20,6 +20,7 @@ extends RefCounted
 ##   ems_treat:    구급대 응급처치 (crew_ids 중 첫 조, other = 요구조자 id, SOP 400-3.2)
 ##   ems_transport: 처치한 환자 이송 (crew_ids 중 첫 조, other = 요구조자 id, SOP 400-3.3)
 ##   monitor:      방수포 (vehicle_id = 펌프차, target = 바깥 창·문 칸, SOP 207-1.1) / monitor_stop: 방수포 중지
+##   elevator:     비상용승강기 (crew_ids, other = 내릴 층, SOP 222)
 ##   ppv:          송풍기 양압배연 (crew_ids 중 첫 조, target = 바깥 문 칸) / ppv_stop: 송풍기 끄기
 
 var tick := -1
@@ -56,6 +57,10 @@ func execute(sim: SimWorld) -> void:
 			w.connect_fdc(vehicle_id, tick)
 		"shuttle":
 			sim.shuttle.toggle(vehicle_id, tick)
+		"elevator":
+			for id in crew_ids:
+				sim.tactical.cancel(id)
+				sim.elevator.ride(id, other, tick)
 		"monitor":
 			sim.monitors.start(vehicle_id, target, tick)
 		"monitor_stop":

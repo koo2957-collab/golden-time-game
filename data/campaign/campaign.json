@@ -67,6 +67,15 @@
         "sop213_5_15f_winter_high"
       ],
       "min_grade": "C"
+    },
+    {
+      "id": "chief",
+      "title": "8장 · 지휘권 이양 (스테이지 2-2)",
+      "text": "25층 고층 아파트: 지휘대 도착 → 브리핑·이양 → 지휘대장, 비상용승강기·활동거점, 단위지휘관 위임 (SOP 112·222).",
+      "scenarios": [
+        "sop222_1_highrise_25f"
+      ],
+      "min_grade": "C"
     }
   ]
 }

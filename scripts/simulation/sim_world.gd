@@ -50,6 +50,9 @@ var plan: PlanIntel
 ## 방수포·송풍기 양압배연 (R11)
 var monitors: MonitorSystem
 var vent: VentSystem
+## 지휘권 이양·비상용승강기 (R13)
+var transfer: CommandTransfer
+var elevator: ElevatorSystem
 ## 난이도 (기획안 8장): "훈련" 제한시간 2배·일시정지·배속 / "실전" 1배속 고정 / "악조건" 실전 + 강풍·후착대 지연·소화전 고장.
 ## 빈 문자열이면 시나리오 그대로 (자동 테스트). 화면의 시간 규칙(배속·일시정지)은 world가 이 값을 보고 정한다
 var realism := ""
@@ -162,6 +165,10 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	var building_data: Variant = JsonData.load_file(building_path)
 	if building_data is Dictionary:
 		sim.plan.apply_building(building_data)
+	sim.transfer = CommandTransfer.new(sim)
+	sim.elevator = ElevatorSystem.new(sim.fire, sim.units, sim.pathfinder, sim.events)
+	if building_data is Dictionary:
+		sim.elevator.apply_building(building_data)
 	sim.command.survey = SiteSurvey.new(sim.fire, sim.units, sim.pathfinder, sim.command.resources, sim.command.commander, ParamTable.from_dict(survey_data), sim.events)
 	sim.water.safe_cell = sim.conditions.safe_to_enter
 	sim.rescue.water = sim.water
@@ -198,6 +205,7 @@ static func from_scenario(path: String, command_rules := true, seed_override := 
 		sim.gas.apply_scenario(data)
 		sim.ems.apply_scenario(data)
 		sim.shuttle.apply_scenario(data)
+		sim.transfer.apply_scenario(data)
 		if not command_rules:
 			sim.command.entry_order_required = false
 			sim.command.auto_slow = false
@@ -369,6 +377,8 @@ func _step() -> void:
 	shafts.step(dt, clock.tick)
 	plan.step(dt, clock.tick)
 	monitors.step(dt, clock.tick)
+	transfer.step(clock.tick)
+	elevator.step(clock.tick)
 	vent.step(dt, clock.tick)
 	evac.step(dt, clock.tick)
 	falls.step(dt, clock.tick)

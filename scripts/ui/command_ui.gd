@@ -130,6 +130,13 @@ func _process(delta: float) -> void:
 	if _refresh <= 0.0:
 		_refresh = REFRESH_S
 		_refresh_radio()
+		# 지휘대 도착: 이양 버튼을 보이고, 처음 한 번은 브리핑 창을 연다 (R13)
+		var t := sim.transfer
+		if _transfer_button:
+			_transfer_button.visible = t.arrived() and not t.transferred()
+		if t.arrived() and not t.transferred() and not _transfer_prompted and not any_dialog_open():
+			_transfer_prompted = true
+			open_transfer_dialog()
 
 
 ## 전술상황판 접기·펴기 (Tab). 접으면 제목(확인 필요 수)과 지휘 버튼만 남는다
@@ -154,6 +161,8 @@ func todo_items() -> Array[String]:
 	var cmd := sim.command
 	if cmd.safety.emergency():
 		out.append("긴급탈출 상황 — 쓰러진 대원 구출 (RIT)")
+	if sim.transfer.arrived() and not sim.transfer.transferred():
+		out.append("지휘대 도착 — 지휘권 이양 브리핑 (SOP 112)")
 	var waiting := sim.cards.queue.size()
 	if waiting > 0:
 		out.append("대원 판단 요청 %d건 대기" % waiting)
@@ -265,8 +274,9 @@ func info_visible() -> bool:
 
 ## 열린 창을 모두 닫는다 (디브리핑으로 넘어갈 때)
 func close_all() -> void:
-	for p in [_dispatch, _report, _strategy, _confirm, _org, _witness, _info, _update, _end]:
-		_close(p)
+	for p in [_dispatch, _report, _strategy, _confirm, _org, _witness, _info, _update, _end, _transfer]:
+		if p:
+			_close(p)
 	_radio_panel.visible = false
 
 
@@ -541,7 +551,11 @@ func _build_radio_panel() -> void:
 	var clear := _button("완진 선언", open_all_clear)
 	var pre := _button("선제지시", open_preorder)
 	var end := _button("활동 종료", open_end_confirm)
-	for b in [evac, par, pre, clear, end]:
+	# 지휘대가 도착하면 보이는 지휘권 이양 버튼 (SOP 112, R13)
+	_transfer_button = _button("지휘권 이양", open_transfer_dialog)
+	_transfer_button.add_theme_color_override("font_color", Color("fde68a"))
+	_transfer_button.visible = false
+	for b in [evac, par, pre, clear, end, _transfer_button]:
 		b.custom_minimum_size = Vector2(150, 34)
 		row2.add_child(b)
 	box.add_child(row2)
@@ -1391,3 +1405,75 @@ func loadout_selection() -> Array:
 		if (_loadout_checks[k] as CheckBox).button_pressed:
 			out.append(k)
 	return out
+
+
+# --- 지휘권 이양 (SOP 112, R13) ---
+
+var _transfer: PanelContainer
+var _transfer_button: Button
+var _transfer_prompted := false
+var _transfer_opts: Dictionary = {}  # 항목 -> OptionButton
+
+
+## 지휘권 이양 브리핑 창: 항목마다 지금 아는 사실을 고른다 (보기는 판 시드로 섞는다)
+func open_transfer_dialog() -> void:
+	var t := sim.transfer
+	if not t.arrived() or t.transferred() or any_dialog_open():
+		return
+	if _transfer:
+		_transfer.queue_free()
+	_transfer = _dialog()
+	var box: VBoxContainer = _transfer.get_child(0)
+	box.add_child(_label("지휘권 이양 브리핑 (SOP 112) — %s 도착" % str(t.unit.get("name", "지휘대")), 22, Color("fde68a")))
+	box.add_child(_label("항목마다 지금까지 확인한 사실을 고르세요. 모르는 것은 '확인 중'이 맞습니다.", 15, DIM_COLOR))
+	var opts := t.options()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = sim.rng_seed + 112
+	_transfer_opts.clear()
+	var grid := GridContainer.new()
+	grid.columns = 2
+	for k: String in CommandTransfer.ITEMS:
+		grid.add_child(_label(CommandTransfer.ITEM_NAMES[k], 16, TEXT_COLOR))
+		var ob := OptionButton.new()
+		ob.focus_mode = Control.FOCUS_NONE
+		ob.custom_minimum_size = Vector2(DIALOG_WIDTH - 220, 0)
+		var list: Array = (opts[k] as Array).duplicate()
+		for i in range(list.size() - 1, 0, -1):
+			var j := rng.randi_range(0, i)
+			var tmp = list[i]
+			list[i] = list[j]
+			list[j] = tmp
+		for o in list:
+			ob.add_item(str(o))
+		grid.add_child(ob)
+		_transfer_opts[k] = ob
+	box.add_child(grid)
+	var row := HBoxContainer.new()
+	row.add_child(_button("브리핑하고 이양", confirm_transfer))
+	row.add_child(_button("나중에", func() -> void: _close(_transfer)))
+	box.add_child(row)
+	_open(_transfer)
+
+
+func transfer_visible() -> bool:
+	return _transfer != null and _transfer.visible
+
+
+## 고른 내용으로 이양 (CommandOrder "transfer" — 다시 하기 기록)
+func confirm_transfer() -> void:
+	var answers := {}
+	for k: String in _transfer_opts:
+		var ob: OptionButton = _transfer_opts[k]
+		answers[k] = ob.get_item_text(ob.selected) if ob.selected >= 0 else ""
+	order_issued.emit(CommandOrder.make("transfer", [], 0, Vector3i.ZERO, answers))
+	_close(_transfer)
+
+
+## 조작 점검용: 항목마다 첫 번째(사실) 보기를 고른다
+func pick_transfer_truth() -> void:
+	var truth := sim.transfer.options()
+	for k: String in _transfer_opts:
+		var ob: OptionButton = _transfer_opts[k]
+		for i in ob.item_count:
+			if ob.get_item_text(i) == str(truth[k][0]):
+				ob.select(i)

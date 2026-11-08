@@ -13,7 +13,7 @@ extends Node2D
 ## 선택 단위는 조(2인 1조)와 차량이며, 현재 보고 있는 층의 대원만 선택된다.
 ## 좌표 변환은 projection(상황판/입체)을 따른다.
 
-enum Mode { NONE, HOSE, STRAIGHT, FOG, DOOR, SEARCH, OVERHAUL, PRIMARY, ATTACK, SEARCH_AUTO, EXTERIOR, RESCUE, TREAT, TRANSPORT, AIR_MAT, WAYPOINT, PENCIL, COVER, MONITOR, PPV }
+enum Mode { NONE, HOSE, STRAIGHT, FOG, DOOR, SEARCH, OVERHAUL, PRIMARY, ATTACK, SEARCH_AUTO, EXTERIOR, RESCUE, TREAT, TRANSPORT, AIR_MAT, WAYPOINT, PENCIL, COVER, MONITOR, PPV, ELEVATOR }
 
 ## 관계인을 클릭했을 때 (world가 진술 창을 연다)
 signal witness_clicked(index: int)
@@ -47,6 +47,7 @@ const MODE_HINTS := {
 	Mode.COVER: "엄호 주수: 앞을 클릭 — 넓은 분무 막으로 옆 대원의 복사열을 줄인다 (SOP 203-2.1)",
 	Mode.MONITOR: "방수포: 바깥 창·문을 클릭 — 진입대원이 있는 방에는 쓰지 않는다 (SOP 207-1.1)",
 	Mode.PPV: "송풍기 양압배연: 바깥 출입문을 클릭 — 먼저 반대편 창(배출구)을 확보한다",
+	Mode.ELEVATOR: "비상용승강기: 내릴 층으로 화면을 옮긴 뒤(층 막대·PgUp/PgDn) 지도를 클릭 — 화재층 2개층 아래까지 (SOP 222)",
 }
 ## 요구조자·쓰러진 대원을 클릭으로 고를 때 허용 반경 (px)
 const CASUALTY_PICK_PX := 20.0
@@ -378,6 +379,9 @@ func _complete_mode(world_pos: Vector2) -> void:
 			if not selected.is_empty():
 				var cell := Vector2i(projection.to_cell(world_pos).floor())
 				sim.issue(EquipmentCommand.make("overhaul", selected, -1, -1, Vector3i(cell.x, cell.y, level)))
+		Mode.ELEVATOR:
+			if not selected.is_empty():
+				sim.issue(EquipmentCommand.make("elevator", selected, -1, level))
 		Mode.MONITOR:
 			var win := _door_at(world_pos, true)
 			if win and monitor_vehicle >= 0:

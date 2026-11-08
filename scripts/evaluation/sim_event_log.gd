@@ -201,6 +201,20 @@ static func describe_text(e: Dictionary) -> String:
 			text = "%s — %s" % [e.reason, e.crew]
 		"loadout":
 			text = "출동 준비 — 적재 장비: %s" % (e.items if str(e.items) != "" else "기본 장비만")
+		"command_unit_arrived":
+			text = "%s 도착 — 지휘권 이양 브리핑 바람 (SOP 112)" % e.unit
+		"command_transferred":
+			text = "지휘권 이양 완료 — 지금부터 %s 지휘 (브리핑 정확도 %d%%)" % [e.crew, int(e.accuracy)]
+		"card_delegated":
+			text = "%s 대리 처리: %s" % [e.by, e.title]
+		"elevator_ride":
+			text = "비상용승강기 — %s로 (약 %d초)" % [e.floor, int(e.seconds)]
+		"elevator_arrived":
+			text = "승강기 도착 — %s" % e.floor
+		"elevator_far":
+			text = "승강장(계단실 옆)으로 먼저 가야 승강기를 탈 수 있다"
+		"elevator_too_high":
+			text = "%s까지 승강기 운행 — 화재층(%s) 2개층 아래까지만 (SOP 222)" % [e.floor, e.fire_floor]
 		"monitor_start":
 			text = "방수포 방수 — %s (%s)" % [e.room, e.vehicle]
 		"monitor_stop":

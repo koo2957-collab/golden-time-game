@@ -411,6 +411,21 @@ func _run() -> void:
 	root.push_input(mc, true)
 	await process_frame
 	_check("미니맵 클릭 → 화면 이동", world.camera.position != cam_before, true)
+	# R13 지휘권 이양: 지휘대 도착 → 브리핑 창 → 이양 → 지휘대장
+	sim.transfer.unit = {"name": "점검용 지휘대", "chief": {"name": "한도윤", "rank": "소방령", "title": "지휘대장"}}
+	sim.transfer.arrive_tick = sim.clock.tick + 1
+	sim.step_ticks(2)
+	for i in 30:
+		await process_frame
+		if cui.transfer_visible():
+			break
+	_check("지휘대 도착 → 이양 브리핑 창", cui.transfer_visible(), true)
+	if cui.transfer_visible():
+		cui.pick_transfer_truth()
+		cui.confirm_transfer()
+		sim.step_ticks(2)
+		_check("이양 → 지휘대장", [sim.transfer.transferred(), sim.command.commander_title], [true, "지휘대장"])
+		_check("브리핑 정확도 100%", sim.transfer.accuracy, 1.0)
 	sim.command.interior.enabled = false
 	# 활동 단계 표시줄·남은 시간 (R1)
 	_check("단계 표시줄", world.hud.phase_bar.text.contains("완진 선언"), true)

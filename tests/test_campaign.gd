@@ -50,7 +50,7 @@ func test_campaign_progress() -> void:
 	for ch: Dictionary in p:
 		if ch.chapter.scenarios.is_empty():
 			assert_eq(ch.status, Campaign.Status.SOON, "시나리오 없는 장은 준비 중")
-	assert_eq(p.size(), 7, "7장 (고층 아파트 포함)")
+	assert_eq(p.size(), 8, "8장 (고층 아파트·지휘권 이양 포함)")
 	var ids := {}
 	for s in ScenarioLoader.list():
 		ids[str(s.id)] = true

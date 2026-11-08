@@ -206,6 +206,18 @@ func _raise(spec: Dictionary, e: Dictionary, tick: int) -> void:
 	c.text = c.text.format(c.ctx)
 	c.options = _shuffled(opts, c.uid)
 	c.asked_tick = tick
+	# 지휘권 이양 뒤 단위대에 묶인 출동대: 단위지휘관이 대신 처리한다 (기획안 3-3, R13)
+	var by := sim.transfer.delegates(c.crew_id) if sim and sim.transfer else ""
+	if by != "":
+		var pick: Dictionary = {}
+		for o: Dictionary in opts:
+			if str(o.get("grade", "")) == "최선":
+				pick = o
+		_log(c, tick, pick, "delegated")
+		events.add(tick, "card_delegated", {"crew": _crew_name(c.crew_id), "title": str(spec.get("title", c.id)), "by": by})
+		if not pick.is_empty():
+			_apply(str(pick.get("effect", "")), c, tick)
+		return
 	# 임무 조건 (R7): 진입구에서 정한 조건이 있으면 카드 없이 그 행동 (등급은 같은 행동의 선택지)
 	var ce := tactical.condition_effect(c.crew_id, c.id)
 	if ce != "":

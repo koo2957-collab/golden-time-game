@@ -389,6 +389,28 @@ func _run() -> void:
 		_check("임무 조건 + 인명 검색", [conds.size() >= 1, miss.size() >= 1], [true, true])
 		sim.step_ticks(1)
 		_check("조건 기록", sim.tactical.condition_text(card_id).contains("즉시 구조"), true)
+	# R8 미니맵: 도면 전에는 잠김, 얻으면 열리고 클릭하면 그곳으로 이동
+	var mm = world.hud.minimap
+	_check("미니맵 잠김 (도면 없음)", mm.unlocked(), false)
+	await process_frame
+	root.get_texture().get_image().save_png("C:/Users/koo29/AppData/Local/Temp/claude/9c1a2eec3fcfbc58/49e9c22c-41eb-477e-bb53-a6386426224b/scratchpad/r8_noplan.png")
+	sim.plan.acquire("상황실", sim.clock.tick)
+	_check("도면 → 미니맵 열림", mm.unlocked(), true)
+	_check("도면 → 방 단위 임무", sim.command.interior.plan_known, true)
+	mm.queue_redraw()
+	world.hud.command_ui.toggle_board()
+	await process_frame
+	await process_frame
+	root.get_texture().get_image().save_png("C:/Users/koo29/AppData/Local/Temp/claude/9c1a2eec3fcfbc58/49e9c22c-41eb-477e-bb53-a6386426224b/scratchpad/r8_plan.png")
+	world.hud.command_ui.toggle_board()
+	var cam_before: Vector2 = world.camera.position
+	var mc := InputEventMouseButton.new()
+	mc.button_index = MOUSE_BUTTON_LEFT
+	mc.pressed = true
+	mc.position = mm.get_global_rect().position + mm.size * Vector2(0.8, 0.5)
+	root.push_input(mc, true)
+	await process_frame
+	_check("미니맵 클릭 → 화면 이동", world.camera.position != cam_before, true)
 	sim.command.interior.enabled = false
 	# 활동 단계 표시줄·남은 시간 (R1)
 	_check("단계 표시줄", world.hud.phase_bar.text.contains("완진 선언"), true)

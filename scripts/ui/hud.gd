@@ -23,7 +23,7 @@ const NOTICE_TYPES: Array[String] = [
 	"face_seen", "site_info_found", "clue_found", "witness_arrived", "statement", "ask_too_far", "ask_cancelled",
 	"command_post", "report_updated", "overhaul_start", "rekindle",
 	"emergency_cleared", "evacuation_ordered", "par_done", "role_assigned", "role_reserved", "rit_deployed",
-	"entry_factors", "order_unseen",
+	"entry_factors", "order_unseen", "plan_acquired", "panel_fire_floor", "plan_diff_found",
 ]
 ## 알림으로도 띄우는 무전 우선순위
 const NOTICE_RADIO_PRIORITIES: Array[String] = ["대원 안전", "구조대상자"]
@@ -735,7 +735,8 @@ func _draw_vignette() -> void:
 const CONSOLE_MIN_H := 150.0
 var console: PanelContainer
 var _commander_box: VBoxContainer
-var _minimap_label: Label
+var minimap: MinimapView
+var _minimap_ms := 0
 
 
 ## 화면 아래 반투명 띠: 왼쪽 미니맵 자리 · 가운데 선택 정보 · 오른쪽 명령 버튼 (선택 대상에 따라)
@@ -749,18 +750,12 @@ func _build_console() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	console.add_child(row)
-	# 미니맵: 도면을 얻기 전에는 잠김 (R8)
-	var mini := PanelContainer.new()
-	mini.custom_minimum_size = Vector2(200, 0)
-	_minimap_label = Label.new()
-	_minimap_label.text = "미니맵\n도면 수신 대기"
-	_minimap_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_minimap_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_minimap_label.add_theme_color_override("font_color", Color("64748b"))
-	_minimap_label.tooltip_text = "도면은 방재실 방문·지휘대 도착 때 얻습니다 (R8 예정)"
-	_minimap_label.mouse_filter = Control.MOUSE_FILTER_STOP
-	mini.add_child(_minimap_label)
-	row.add_child(mini)
+	# 미니맵: 도면을 얻기 전에는 잠김, 얻으면 평면·대원·확인한 불 (R8)
+	minimap = MinimapView.new()
+	minimap.setup(sim)
+	minimap.custom_minimum_size = Vector2(240, 0)
+	minimap.tooltip_text = "도면은 관리사무소·방재실에 조를 보내거나 지휘대가 도착하면 얻습니다. 얻은 뒤에는 클릭하면 그곳으로 이동"
+	row.add_child(minimap)
 	# 선택 정보
 	var info := ScrollContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -817,6 +812,9 @@ func _layout_console() -> void:
 	var h := maxf(CONSOLE_MIN_H, size.y * 0.18)
 	console.position = Vector2(8.0, size.y - h - 8.0)
 	command_ui.board_bottom = console.position.y - 8.0
+	if minimap and Time.get_ticks_msec() - _minimap_ms > 250:
+		_minimap_ms = Time.get_ticks_msec()
+		minimap.queue_redraw()
 	console.size = Vector2(size.x - 16.0, h)
 	var y := floor_tabs.position.y + floor_tabs.size.y + 8.0
 	if _victim_panel:

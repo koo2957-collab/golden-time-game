@@ -140,6 +140,7 @@ func _run() -> Dictionary:
 		"timeline": _timeline(),
 		"decisions": _decisions(),
 		"card_lines": _card_lines(),
+		"intel_lines": _intel_lines(),
 		"timeline_ticks": _timeline_ticks(),
 		"replayable": sim.replayable,
 		"instructor_params": InstructorSettings.changed_params(),
@@ -883,6 +884,23 @@ func _card_lines() -> Array:
 		if result == "condition":
 			grade += "·임무 조건"
 		out.append("%s [%s] %s → %s (%s) — %s" % [_t(int(e.get("asked_tick", 0))), grade, e.get("title", ""), what, e.get("sop", ""), e.get("debrief", "")])
+	return out
+
+
+## 도면과 구조 정보 (기획안 9-1, R8): 언제 어디서 얻었는가, 도면과 실제가 다른 곳을 확인했는가
+func _intel_lines() -> Array:
+	var out: Array = []
+	var pl := sim.plan
+	if pl == null or (pl.office.is_empty() and not pl.known and pl.diffs.is_empty()):
+		return out
+	if pl.known:
+		out.append("%s 도면 확보 — %s%s" % [_t(pl.acquired_tick), pl.source,
+			" · 수신반 화재 신호 %s" % pl.panel_floors if pl.panel_floors != "" else ""])
+	elif not pl.office.is_empty():
+		out.append("도면 없이 진행 — %s에 조를 보내면 평면도와 수신반 발화층을 얻을 수 있었다 (SOP 235)" % pl.office.name)
+	for i in pl.diffs.size():
+		var d: Dictionary = pl.diffs[i]
+		out.append("%s · %s %s" % ["대원이 확인함" if i in pl.found_diffs else "확인 못 함", sim.building.floor_name(int(d.level)), d.note])
 	return out
 
 

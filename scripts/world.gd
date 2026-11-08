@@ -76,6 +76,10 @@ func _ready() -> void:
 	hud.command_ui.team_drag_started.connect(mission_ui.begin_drag)
 	hud.command_ui.team_dropped.connect(mission_ui.drop_crew)
 	hud.command_ui.team_selected.connect(_on_team_selected)
+	# 미니맵 클릭: 그곳으로 화면 이동 (도면을 얻은 뒤, R8)
+	hud.minimap.jump.connect(func(cell: Vector2, lv: int) -> void:
+		set_view_level(lv)
+		camera.retarget(projection().bounds(sim.building), projection().to_screen(cell)))
 	var tutorial := str(sim.scenario.get("tutorial", ""))
 	# 튜토리얼은 안내판이 순서를 알려 주므로 멈추는 힌트 카드는 끈다
 	hud.hint_ui.setup(sim, GameManager.mode == "교육" and tutorial == "")
@@ -270,6 +274,8 @@ func set_view_level(level: int) -> void:
 	units_view.level = level
 	iso_view.level = level
 	selection.level = level
+	if hud.minimap:
+		hud.minimap.level = level
 	EventBus.view_floor_changed.emit(level)
 
 

@@ -50,6 +50,11 @@ const IMPACT_M := 0.4
 const FOG_COLOR := Color(0.04, 0.05, 0.07)
 const FOG_UNKNOWN_ALPHA := 0.82
 const FOG_SEEN_ALPHA := 0.4
+## 도면도 없고 본 적도 없는 실내: 구조가 거의 보이지 않게 (기획안 9-1 "구조는 직접 밝힌다", R8)
+const FOG_NO_PLAN_ALPHA := 0.95
+## 도면으로만 아는 벽·문·창 (흐린 선)
+const PLAN_LINE := Color(0.55, 0.72, 0.95, 0.35)
+const PLAN_DOOR := Color(0.95, 0.85, 0.45, 0.4)
 const THERMAL_UNKNOWN := Color(0.03, 0.03, 0.05)
 ## 낮은 자세 대원의 키 비율
 const CROUCH_SCALE := 0.62
@@ -153,10 +158,12 @@ func _build_static_objects(lv: int) -> void:
 			var t := b.cell(lv, x, y)
 			var has := t in [BuildingData.Cell.WALL, BuildingData.Cell.WINDOW, BuildingData.Cell.DOOR] \
 				or heights[y * b.width + x] > 0.0 \
-				or Vector3i(x, y, lv) in b.outlets
+				or Vector3i(x, y, lv) in b.outlets \
+				or sim.plan.plan_cell(lv, x, y) != t
 			if lv == _first_level:
 				var c := Vector2i(x, y)
 				has = has or c in b.hydrants or c == b.fdc or c == sim.gas.valve
+				has = has or (not sim.plan.office.is_empty() and c == sim.plan.office.cell)
 			if has:
 				_add_object(by_diag, x, y)
 	_static_objects[lv] = by_diag
@@ -327,7 +334,7 @@ func _draw_ground() -> void:
 ## 정보 안개는 원래 바닥 위에 반투명 마름모를 한 번 더 그리던 것을, 불투명한 바닥 색에 미리 섞어 같은 색을 낸다.
 ## 계단선도 안개에 덮이던 색이 그대로 나오도록 같은 비율로 섞는다.
 func _update_ground_colors() -> void:
-	var key := [sim.clock.tick, level, thermal, sim.perception.enabled]
+	var key := [sim.clock.tick, level, thermal, sim.perception.enabled, sim.plan.known]
 	if key == _ground_key:
 		return
 	_ground_key = key
@@ -359,8 +366,11 @@ func _update_ground_colors() -> void:
 			# 그을린 칸 (탄 칸은 가구 높이가 0이 되므로 _furniture_height 조건은 늘 참)
 			if burnt:
 				color = color.lerp(FireView.CHAR_COLOR, 0.8)
-			if not structure and not vis:
-				var fog := FOG_SEEN_ALPHA if seen else FOG_UNKNOWN_ALPHA
+			# 벽 바닥도 모르는 곳이면 덮는다 (외벽은 밖에서 보이므로 그대로)
+			@warning_ignore("integer_division")
+			var hidden_wall := structure and p.enabled and not sim.plan.structure_seen(level, k % b.width, k / b.width)
+			if (not structure and not vis) or hidden_wall:
+				var fog := FOG_SEEN_ALPHA if seen else (FOG_UNKNOWN_ALPHA if sim.plan.known else FOG_NO_PLAN_ALPHA)
 				color = color.lerp(FOG_COLOR, fog)
 				fog_of[k] = fog
 		for j in 4:
@@ -433,6 +443,8 @@ func _draw_room_labels() -> void:
 		return
 	var font := PlanStyle.font()
 	for room in sim.building.rooms(level):
+		if not _room_known(room.id):
+			continue
 		var r: Rect2i = room.rect
 		var center := proj.to_screen(Vector2(r.position) + Vector2(r.size) * 0.5)
 		draw_string(font, center + Vector2(-60, LABEL_FONT_SIZE * 0.35), room.name, HORIZONTAL_ALIGNMENT_CENTER, 120, LABEL_FONT_SIZE, PlanStyle.ROOM_LABEL)
@@ -476,6 +488,11 @@ func _draw_path(ff: Firefighter, alpha: float) -> void:
 
 func _draw_cell_objects(x: int, y: int) -> void:
 	var t := sim.building.cell(level, x, y)
+	# 모르는 실내 구조는 그리지 않는다. 도면이 있으면 흐린 선만 (R8)
+	if not t in BuildingData.OUTDOOR and not sim.plan.structure_seen(level, x, y):
+		if sim.plan.known:
+			_draw_plan_cell(x, y)
+		return
 	match t:
 		BuildingData.Cell.WALL:
 			_block(x, y, 0.0, _wall_height(x, y), _structure_color(PlanStyle.CELL_COLORS[t]))
@@ -513,6 +530,8 @@ func _draw_cell_objects(x: int, y: int) -> void:
 		_box(Vector2(x + 0.25, y + 0.25), Vector2(x + 0.75, y + 0.75), 0.0, 0.9, gc, gc)
 		var gl := proj.to_screen(Vector2(x + 0.5, y + 0.5), 1.3)
 		draw_string(PlanStyle.font(), gl + Vector2(-60, 0), "%s%s" % [sim.gas.valve_text, "" if sim.gas.open else " (차단)"], HORIZONTAL_ALIGNMENT_CENTER, 120, 13, gc.lightened(0.4))
+	if level == _first_level and not sim.plan.office.is_empty() and Vector2i(x, y) == sim.plan.office.cell:
+		_draw_office(x, y)
 	var fh := _furniture_height(x, y)
 	if fh > 0.0:
 		var color := THERMAL_FURNITURE if thermal else _furniture_color(x, y)
@@ -1035,3 +1054,39 @@ func _cell_temperature(x: int, y: int) -> float:
 	if fire.grid.state[i] == FuelGrid.State.BURNING:
 		temp = maxf(temp, 400.0 + 500.0 * fire.grid.hrr[i] / maxf(fire.grid.peak_kw(i), 1.0))
 	return temp
+
+
+# --- 도면 (R8) ---
+
+## 도면으로만 아는 칸: 벽·창은 낮은 흐린 선, 문은 노란 흐린 선
+func _draw_plan_cell(x: int, y: int) -> void:
+	var t := sim.plan.plan_cell(level, x, y)
+	if t == BuildingData.Cell.WALL or t == BuildingData.Cell.WINDOW:
+		_block(x, y, 0.0, 0.12, PLAN_LINE)
+	elif t == BuildingData.Cell.DOOR:
+		_block(x, y, 0.0, 0.06, PLAN_DOOR)
+
+
+## 방 이름을 보여도 되는가: 대원이 그 방을 봤거나 도면이 있다
+func _room_known(room_id: String) -> bool:
+	if not sim.perception.enabled or sim.plan.known:
+		return true
+	for c in sim.fire.comps:
+		if c.id == room_id:
+			return sim.perception.room_seen[c.index] != 0
+	return true
+
+
+## 관리사무소·방재실: 조를 보내 머물게 하면 도면을 얻는다 (R8)
+func _draw_office(x: int, y: int) -> void:
+	var oc := Color("a78bfa")
+	_box(Vector2(x - 0.4, y - 0.4), Vector2(x + 1.4, y + 1.4), 0.0, 1.6, oc.darkened(0.3), oc.darkened(0.5), oc)
+	var at := proj.to_screen(Vector2(x + 0.5, y + 0.5), 2.2)
+	var label := str(sim.plan.office.name)
+	if sim.plan.known:
+		label += " — 도면 확보"
+	elif sim.plan.dwell_progress() > 0.0:
+		label += " — 도면 확인 중 %d%%" % roundi(sim.plan.dwell_progress() * 100.0)
+	else:
+		label += " (조를 보내면 도면)"
+	draw_string(PlanStyle.font(), at + Vector2(-110, 0), label, HORIZONTAL_ALIGNMENT_CENTER, 220, 13, oc.lightened(0.4))

@@ -159,6 +159,12 @@ func _why_text() -> String:
 		lines.append("[b]판단 요청 해설 — 내 지시 · SOP · 해설 (기획안 8-1 ②)[/b]")
 		for l in card_lines:
 			lines.append("  " + str(l))
+	var intel: Array = report.get("intel_lines", [])
+	if not intel.is_empty():
+		lines.append("[b]도면과 구조 정보 (기획안 9-1)[/b]")
+		for l in intel:
+			lines.append("  " + str(l))
+		lines.append("")
 	var decisions: Array = report.get("decisions", [])
 	if not decisions.is_empty():
 		lines.append("[b]주요 의사결정과 그때 알던 정보 (SOP 111-2.2)[/b]")

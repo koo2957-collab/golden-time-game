@@ -19,6 +19,8 @@ const TOUCH_CELLS := 1
 ## 창·열린 문으로 밖에서 들여다볼 때 시선 수와 최대 거리 (셀)
 const WINDOW_RAYS := 20
 const WINDOW_RANGE_CELLS := 12.0
+## 밖에서 창을 들여다볼 수 있는 거리 (칸). 그 창이 향한 쪽에 지휘관이나 바깥 대원이 있어야 한다 (R8 — 보이는 면만)
+const WINDOW_VIEW_CELLS := 40.0
 ## 바깥 대원은 건물에서 이 거리(셀) 안에 있을 때만 시선을 계산한다 (바깥은 늘 보이므로)
 const OUTDOOR_CAST_MARGIN := 3
 const OUTDOOR_VISIBILITY_M := 30.0
@@ -64,6 +66,9 @@ var _vis_upper: PackedFloat32Array
 var _vis_lower: PackedFloat32Array
 var _cast_area: Dictionary = {}  # level -> Rect2i (바깥 대원이 시선을 계산하는 범위)
 var _exterior: Array[Opening] = []
+var _normal: Dictionary = {}  # 개구부 index -> 바깥쪽 방향
+## 현장지휘관 (밖에서 창을 들여다보는 사람). SimWorld가 넣는다
+var commander: Firefighter
 
 
 func _init(p_fire: FireSim, p_units: UnitSystem, stats: ParamTable) -> void:
@@ -109,6 +114,7 @@ func _init(p_fire: FireSim, p_units: UnitSystem, stats: ParamTable) -> void:
 				_opening[fire.grid.index(o.level, c.x, c.y)] = o.index
 		if o.room_b == Opening.OUTSIDE and o.kind != Opening.Kind.STAIR:
 			_exterior.append(o)
+			_normal[o.index] = _outward(o)
 	var n := fire.comps.size()
 	room_visible_now.resize(n)
 	room_seen.resize(n)
@@ -164,13 +170,24 @@ func update(tick: int) -> void:
 			_cast(c.leader.level, c.leader.pos, _eye_stand, RAYS, _tic_range, true)
 	crew_visible_now = visible_now.duplicate()
 	# 밖에서 창·열린 문으로 들여다보기 (지휘관·바깥 대원). 화염·연기는 보이지만 바닥에 쓰러진 사람은 보이지 않는다
+	var watchers := _outside_watchers()
 	for o in _exterior:
 		if o.kind == Opening.Kind.DOOR and not o.is_open:
 			continue
 		var center := Vector2.ZERO
 		for cell in o.cells:
 			center += Vector2(cell) + Vector2(0.5, 0.5)
-		_cast(o.level, center / o.cells.size(), _eye_stand, WINDOW_RAYS, WINDOW_RANGE_CELLS, false)
+		center /= o.cells.size()
+		# 그 창이 향한 쪽에 보는 사람이 있어야 들여다볼 수 있다 (반대편 면은 둘러봐야 안다)
+		var n: Vector2 = _normal.get(o.index, Vector2.ZERO)
+		var watched := watchers.is_empty() and commander == null
+		for w: Vector2 in watchers:
+			var d := w - center
+			if d.length() <= WINDOW_VIEW_CELLS and (n == Vector2.ZERO or d.dot(n) > 0.5):
+				watched = true
+				break
+		if watched:
+			_cast(o.level, center, _eye_stand, WINDOW_RAYS, WINDOW_RANGE_CELLS, false)
 	_fill_gaps()
 	_record(tick)
 
@@ -307,3 +324,28 @@ func _cast(level: int, origin: Vector2, eye: float, rays: int, max_cells: float,
 			if oi >= 0 and not openings[oi].is_open:
 				if type == BuildingData.Cell.DOOR or thermal:
 					break
+
+
+## 밖에서 보는 사람: 현장지휘관 + 건물 밖에 내린 대원
+func _outside_watchers() -> Array[Vector2]:
+	var out: Array[Vector2] = []
+	if commander:
+		out.append(commander.pos)
+	for ff in units.firefighters:
+		if ff.incapacitated or ff.aboard:
+			continue
+		if building.cell(ff.level, floori(ff.pos.x), floori(ff.pos.y)) in BuildingData.OUTDOOR:
+			out.append(ff.pos)
+	return out
+
+
+## 바깥쪽 방향: 개구부 칸 옆에서 밖(빈 공간·마당·도로)인 쪽
+func _outward(o: Opening) -> Vector2:
+	var sum := Vector2.ZERO
+	for c in o.cells:
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var nx: int = c.x + d.x
+			var ny: int = c.y + d.y
+			if not building.in_bounds(nx, ny) or building.cell(o.level, nx, ny) in BuildingData.OUTDOOR:
+				sum += Vector2(d)
+	return sum.normalized()

@@ -10,6 +10,7 @@ const CHAR_COLOR := Color(0.12, 0.1, 0.09, 0.8)
 const FOG_COLOR := Color(0.04, 0.05, 0.07)
 const FOG_UNKNOWN_ALPHA := 0.8
 const FOG_SEEN_ALPHA := 0.38
+const FOG_NO_PLAN_ALPHA := 0.95
 const THERMAL_MAX_C := 900.0
 ## 열화상 팔레트 (0 = 외기 온도, 1 = THERMAL_MAX_C)
 const THERMAL_STOPS: Array[Array] = [
@@ -72,6 +73,7 @@ func _draw_fire_and_smoke() -> void:
 		if a > 0.01:
 			draw_rect(Rect2(Vector2(c.rect.position) * px, Vector2(c.rect.size) * px), Color(SMOKE_COLOR, a))
 	_draw_fog()
+	_draw_office()
 	# 화염: 연기 속에서도 불빛은 비쳐 보이도록 연기 위에 그린다
 	for i in grid.fuel_cells:
 		var cell := grid.cell_of(i)
@@ -167,12 +169,23 @@ func _draw_fog() -> void:
 	for y in b.height:
 		for x in b.width:
 			var t := b.cell(level, x, y)
-			if t in BuildingData.OUTDOOR or t == BuildingData.Cell.WALL or t == BuildingData.Cell.WINDOW:
+			if t in BuildingData.OUTDOOR:
 				continue
-			if p.is_visible(level, x, y):
+			var structure := t == BuildingData.Cell.WALL or t == BuildingData.Cell.WINDOW
+			# 벽·창은 본 적 있거나 외벽이면 그대로, 모르면 덮는다 (구조는 직접 밝힌다, R8)
+			if structure and sim.plan.structure_seen(level, x, y):
 				continue
-			var a := FOG_SEEN_ALPHA if p.is_seen(level, x, y) else FOG_UNKNOWN_ALPHA
+			if not structure and p.is_visible(level, x, y):
+				continue
+			var a := FOG_SEEN_ALPHA if p.is_seen(level, x, y) else (FOG_UNKNOWN_ALPHA if sim.plan.known else FOG_NO_PLAN_ALPHA)
 			draw_rect(Rect2(x * px, y * px, px, px), Color(FOG_COLOR, a))
+			# 도면으로만 아는 벽·문 (흐린 선)
+			if sim.plan.known and not p.is_seen(level, x, y):
+				var pt := sim.plan.plan_cell(level, x, y)
+				if pt == BuildingData.Cell.WALL or pt == BuildingData.Cell.WINDOW:
+					draw_rect(Rect2(x * px + 2, y * px + 2, px - 4, px - 4), Color(0.55, 0.72, 0.95, 0.45), false, 1.5)
+				elif pt == BuildingData.Cell.DOOR:
+					draw_rect(Rect2(x * px + 3, y * px + 3, px - 6, px - 6), Color(0.95, 0.85, 0.45, 0.5), false, 1.5)
 
 
 func _seen_smoke_alpha(c: Compartment) -> float:
@@ -186,3 +199,16 @@ func _smoke_alpha(c: Compartment) -> float:
 	var depth_f := clampf(c.layer_depth / c.height, 0.0, 1.0)
 	var density := 1.0 - clampf(sim.fire.visibility_m(c) / 10.0, 0.0, 1.0)
 	return SMOKE_MAX_ALPHA * depth_f * density
+
+
+## 평면 화면의 관리사무소·방재실 표시 (R8)
+func _draw_office() -> void:
+	var o := sim.plan.office
+	if o.is_empty() or level != int(o.level):
+		return
+	var px := PlanStyle.CELL_PX
+	var c: Vector2i = o.cell
+	var r := Rect2(Vector2(c) * px - Vector2(px, px) * 0.4, Vector2(px, px) * 1.8)
+	draw_rect(r, Color(0.65, 0.55, 0.98, 0.85))
+	var label := str(o.name) + (" — 도면 확보" if sim.plan.known else (" — 확인 중 %d%%" % roundi(sim.plan.dwell_progress() * 100.0) if sim.plan.dwell_progress() > 0.0 else ""))
+	draw_string(PlanStyle.font(), r.position + Vector2(-80, -6), label, HORIZONTAL_ALIGNMENT_CENTER, r.size.x + 160, 13, Color("ddd6fe"))

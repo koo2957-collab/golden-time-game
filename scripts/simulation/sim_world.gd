@@ -45,6 +45,8 @@ var evac: EvacSystem
 var shuttle: ShuttleSystem
 var phases: PhaseSystem
 var cards: CardSystem
+## 도면·구조 정보 (R8)
+var plan: PlanIntel
 ## 난이도 (기획안 8장): "훈련" 제한시간 2배·일시정지·배속 / "실전" 1배속 고정 / "악조건" 실전 + 강풍·후착대 지연·소화전 고장.
 ## 빈 문자열이면 시나리오 그대로 (자동 테스트). 화면의 시간 규칙(배속·일시정지)은 world가 이 값을 보고 정한다
 var realism := ""
@@ -145,6 +147,11 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 		ParamTable.from_dict(card_params), card_data, sim.events, p_seed)
 	sim._card_training_factor = ParamTable.from_dict(card_params).value("training_time_factor")
 	sim.cards.sim = sim
+	sim.perception.commander = sim.command.commander
+	sim.plan = PlanIntel.new(sim.fire, sim.units, sim.perception, sim.command.interior, sim.events)
+	var building_data: Variant = JsonData.load_file(building_path)
+	if building_data is Dictionary:
+		sim.plan.apply_building(building_data)
 	sim.command.survey = SiteSurvey.new(sim.fire, sim.units, sim.pathfinder, sim.command.resources, sim.command.commander, ParamTable.from_dict(survey_data), sim.events)
 	sim.water.safe_cell = sim.conditions.safe_to_enter
 	sim.rescue.water = sim.water
@@ -274,6 +281,7 @@ func _step() -> void:
 	phases.step(dt, clock.tick, command.declared(), time_limit_tick)
 	cards.step(dt, clock.tick)
 	shafts.step(dt, clock.tick)
+	plan.step(dt, clock.tick)
 	evac.step(dt, clock.tick)
 	falls.step(dt, clock.tick)
 	ems.step(dt, clock.tick)

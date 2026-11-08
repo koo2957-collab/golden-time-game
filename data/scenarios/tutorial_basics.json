@@ -1,0 +1,275 @@
+{
+  "id": "tutorial_basics",
+  "title": "튜토리얼 · 기본 지휘 흐름",
+  "note": "튜토리얼 (M7c). 주택화재 ①과 같은 집, 구조대상자는 1층 아이 한 명. 인물은 모두 가상.",
+  "building": "res://data/buildings/house_2f.json",
+  "roster": "res://data/units/test_roster.json",
+  "seed": 2026,
+  "dispatch": {
+    "title": "출동 지령 — 주택 화재",
+    "lines": [
+      "대상: 2층 단독주택 (벽돌조), 주택가 이면도로 · 동쪽 약 2m에 단층 이웃집",
+      "신고 내용(이웃): \"옆집 1층 창문에서 검은 연기가 나요. 아이 혼자 낮잠 자는 집인데 나온 사람이 안 보여요.\"",
+      "시간·날씨: 평일 14:20, 맑음, 북서풍 2m/s",
+      "출동대: 진압1(펌프차·물탱크차), 구조1 (선착) · 구급1(약 4분 뒤) · 후착: 진압2(펌프차, 약 3분 뒤), 진압3(펌프차·물탱크차, 약 5분 뒤)",
+      "소화전: 건물 동쪽 보도 지상식 1개소 · 대기1단계 장소: 도로 동쪽"
+    ],
+    "reported_victims": true,
+    "note": "reported_victims: 신고로 구조대상자 가능성이 알려져 있으면 최초 상황보고의 '구조대상자 있음'이 정답"
+  },
+  "wind": {
+    "from_deg": 315,
+    "speed_mps": 2,
+    "note": "바람이 불어오는 방향(북=0, 시계방향)과 풍속. 인접 건물 가열에 영향 (SOP 214-2.4.4)"
+  },
+  "commander": {
+    "name": "서정호",
+    "rank": "소방경",
+    "title": "선착대장",
+    "spawn": [
+      6,
+      26
+    ],
+    "note": "가상 인물"
+  },
+  "report_truth": {
+    "use": "단독주택",
+    "vehicle_access": "진입 가능, 회차 불가",
+    "hazards": [],
+    "note": "최초 상황보고(SOP 101-2.1) 정답 중 도면으로 알 수 없는 것. 층수·구조는 건물 파일, 연소 상황·구조대상자·특수현상 징후는 그때까지 확인한 사실로 판정한다"
+  },
+  "entry_order_required": true,
+  "evaluation": {
+    "rules": [
+      "safety.ff_down",
+      "safety.air_exit",
+      "safety.withdraw",
+      "safety.collapse",
+      "safety.command_post",
+      "safety.rit",
+      "safety.emergency",
+      "safety.officer",
+      "safety.entry_judgment",
+      "rescue.survival",
+      "rescue.time",
+      "rescue.search_order",
+      "rescue.ems_treat",
+      "rescue.ems_transport",
+      "property.spread",
+      "property.exposure",
+      "property.water",
+      "fire.extinguish",
+      "fire.water_supply",
+      "fire.overhaul",
+      "fire.watch",
+      "command.declare",
+      "command.report",
+      "command.strategy",
+      "command.survey",
+      "command.witness",
+      "command.span",
+      "command.par_end"
+    ],
+    "params": {},
+    "time_limit_s": 3600,
+    "objectives": [
+      "안내판의 순서대로 기본 지휘 흐름을 한 번 해 보기",
+      "아이 생존 구조와 구급대 처치",
+      "대원 부상 없이 완진, 인원점검 후 종료"
+    ],
+    "end_state": "아이 생존 구조·처치, 대원 부상 없음, 완진 후 인원점검",
+    "note": "rules: data/sop/rules.json의 id. params: 규칙 id -> 기준값 덮어쓰기. time_limit_s가 지나면 활동이 자동 종료된다 (추정)"
+  },
+  "site": {
+    "note": "현장 정보 (SOP 101-2.2, 102-2.2, 202-2). 면 정보는 지휘관이 그 면을 봐야 알 수 있다. hazard가 있으면 상황보고 ④ 정답에 들어간다",
+    "faces": [
+      {
+        "face": "C",
+        "text": "뒷마당 LPG 용기 2개 (C면 담장 옆)",
+        "hazard": "위험물(가스 등)"
+      }
+    ],
+    "lights": [
+      "2F_room3"
+    ],
+    "note_lights": "실내등이 켜진 방. 그 방의 창이 있는 면을 보면 창 불빛이 보인다 (SOP 202-2.3.1)",
+    "shoes": [
+      {
+        "door": [
+          13,
+          20,
+          1
+        ],
+        "text": "현관에 신발 2켤레 (노인용 실내화, 아동용 운동화)"
+      }
+    ],
+    "witnesses": [
+      {
+        "name": "이웃 주민",
+        "source": "신고자",
+        "pos": [
+          2,
+          25
+        ],
+        "arrive_s": 0,
+        "statements": {
+          "victims": {
+            "text": "손자가 1층 작은방에서 낮잠 자고 있을 거예요. 할머니는 경로당에 가셨어요.",
+            "reliable": true,
+            "rooms": [
+              "1F_room1"
+            ]
+          },
+          "origin": {
+            "text": "1층 거실 쪽 창문에서 검은 연기가 먼저 났어요.",
+            "reliable": true
+          },
+          "hazards": {
+            "text": "뒤쪽은 잘 몰라요.",
+            "reliable": true
+          },
+          "doors": {
+            "text": "현관은 늘 잠가 두세요.",
+            "reliable": true
+          }
+        }
+      },
+      {
+        "name": "할머니 딸",
+        "source": "가족",
+        "pos": [
+          35,
+          25
+        ],
+        "arrive_s": 150,
+        "statements": {
+          "victims": {
+            "text": "손자가 1층 작은방에서 낮잠 자고 있을 거예요. 할머니는 경로당에 가셨어요.",
+            "reliable": true,
+            "rooms": [
+              "1F_room1"
+            ]
+          },
+          "origin": {
+            "text": "모르겠어요, 저도 방금 왔어요.",
+            "reliable": true
+          },
+          "hazards": {
+            "text": "뒷마당에 LPG 통이 있어요.",
+            "reliable": true,
+            "hazard": "위험물(가스 등)"
+          },
+          "doors": {
+            "text": "옆문(D면)은 안 잠가요. 현관이랑 뒷문은 잠겨 있어요.",
+            "reliable": true
+          }
+        }
+      }
+    ]
+  },
+  "reinforcements": "res://data/units/dev_reinforcements.json",
+  "arrivals": [
+    {
+      "squad": "pump2",
+      "time_s": 180
+    },
+    {
+      "squad": "pump3",
+      "time_s": 300
+    },
+    {
+      "squad": "ems1",
+      "time_s": 240
+    }
+  ],
+  "support": {
+    "추가 출동대 요청": {
+      "squads": [
+        "pump4",
+        "rescue2",
+        "ems2"
+      ],
+      "delay_s": 360
+    },
+    "대응 1단계 발령": {
+      "squads": [
+        "pump4",
+        "rescue2",
+        "pump5",
+        "ems2"
+      ],
+      "delay_s": 360
+    },
+    "note": "지원 요청(SOP 103-1.2) 후 도착할 출동대와 걸리는 시간 (추정)"
+  },
+  "staging": {
+    "name": "도로 동쪽",
+    "lanes": [
+      {
+        "y": 36,
+        "x_min": 43
+      },
+      {
+        "y": 30,
+        "x_min": 43
+      }
+    ],
+    "gap_cells": 1,
+    "note": "대기1단계 장소 (SOP 103-2.1). 후착 차량은 지도 동쪽 끝에서 서쪽을 보고 들어와 차로(y)의 x_min부터 차례로 선다. 자리가 없으면 진입로에서 기다린다"
+  },
+  "victims": [
+    {
+      "name": "아이",
+      "age": 7,
+      "mobility": "자력 피난 불가",
+      "level": 1,
+      "room": "1F_room1",
+      "cell": [
+        29,
+        18
+      ],
+      "note": "튜토리얼: 침대 옆 고정 위치 (창 밖에서 보이지 않게 — 인명검색을 해 봐야 찾는다)"
+    }
+  ],
+  "fire": {
+    "ignitions": [
+      {
+        "level": 1,
+        "cell": [
+          12,
+          17
+        ],
+        "time_s": 0,
+        "note": "거실 소파"
+      }
+    ],
+    "doors_closed": [],
+    "doors_open": [],
+    "doors_locked": [
+      [
+        13,
+        20,
+        1
+      ],
+      [
+        12,
+        3,
+        1
+      ]
+    ],
+    "note_doors": "현관문(A면)·뒷문(C면)은 잠김, 옆문(D면)은 닫혀 있지만 잠기지 않음"
+  },
+  "meta": {
+    "order": 0,
+    "sop": "100~214 기본 흐름",
+    "difficulty": "튜토리얼",
+    "role": "선착대장",
+    "estimated_min": 20,
+    "summary": "처음이라면 여기서 시작하세요. 화면 오른쪽 위 안내판이 지휘 순서(출동 지령 → 지휘권 선언 → 둘러보기 → RIT → 진입 → 진압·검색 → 구조 → 처치 → 완진 → 인원점검 → 종료)를 하나씩 알려 줍니다. 안내를 따라 하면 다음 단계로 넘어갑니다."
+  },
+  "ems": {
+    "hospital": "○○병원 응급실 (가상)",
+    "note": "이송 병원 (SOP 400-3.2.4). 인물·기관은 가상"
+  },
+  "tutorial": "res://data/tutorial/basics.json"
+}

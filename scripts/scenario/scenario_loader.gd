@@ -71,6 +71,10 @@ static func validate(path: String) -> PackedStringArray:
 	else:
 		for s: Dictionary in roster.squads:
 			_check_squad(e, b, s, vehicle_stats, true)
+	if d.has("tutorial"):
+		var t: Variant = JsonData.load_file(str(d.tutorial))
+		if not t is Dictionary or not t.get("steps", null) is Array:
+			e.append("튜토리얼 단계 파일을 불러올 수 없습니다: %s" % d.tutorial)
 	var reinf := {}
 	if d.has("reinforcements"):
 		var r: Variant = JsonData.load_file(str(d.reinforcements))

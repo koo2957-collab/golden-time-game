@@ -61,6 +61,8 @@ var _commander_selected := false
 var command_ui: CommandUi
 var debrief: DebriefUi
 var hint_ui: HintUi
+## 튜토리얼 시나리오에서만 만든다
+var tutorial_ui: TutorialUi
 
 
 func setup(p_sim: SimWorld, on_floor_selected: Callable) -> void:

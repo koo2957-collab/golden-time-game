@@ -59,7 +59,13 @@ func _ready() -> void:
 	hud.command_ui.order_issued.connect(sim.issue)
 	hud.command_ui.dialog_changed.connect(_on_dialog_changed)
 	selection.witness_clicked.connect(hud.command_ui.open_witness)
-	hud.hint_ui.setup(sim, GameManager.mode == "교육")
+	var tutorial := str(sim.scenario.get("tutorial", ""))
+	# 튜토리얼은 안내판이 순서를 알려 주므로 멈추는 힌트 카드는 끈다
+	hud.hint_ui.setup(sim, GameManager.mode == "교육" and tutorial == "")
+	if tutorial != "":
+		hud.tutorial_ui = TutorialUi.new()
+		hud.add_child(hud.tutorial_ui)
+		hud.tutorial_ui.setup(sim, selection, tutorial)
 	hud.hint_ui.dialog_changed.connect(_on_dialog_changed)
 	hud.command_ui.end_dialog_opened.connect(hud.hint_ui.on_end_dialog)
 	EventBus.command_mode_changed.connect(_on_command_mode_changed)

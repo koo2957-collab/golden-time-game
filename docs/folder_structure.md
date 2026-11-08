@@ -188,6 +188,16 @@ tests/             단위 테스트(test_*.gd)와 조작 점검(ui_smoke.gd)
 
 검증은 `tests/test_tactical.gd`, `tests/test_hints.gd`.
 
+## 튜토리얼 요약 (M7c-1)
+
+| 요소 | 내용 |
+|---|---|
+| 시나리오 | `data/scenarios/tutorial_basics.json` (meta.order 0, 난이도 "튜토리얼"). `tutorial` 키가 단계 파일을 가리킨다. 검증기가 단계 파일을 확인 |
+| 단계 | `data/tutorial/basics.json`. check: time / declared / selected / faces / rit / event / knockdown / ended. 교관이 문구·순서를 고칠 수 있다 |
+| 화면 | `scripts/ui/tutorial_ui.gd` (HUD 자식, 오른쪽 위). 게임을 멈추지 않고, 시뮬레이션은 읽기만 한다. 튜토리얼에서는 멈추는 힌트 카드를 끈다 |
+
+검증은 `tests/test_tutorial.gd`.
+
 ## 구급대·운전원 요약 (M7b-2)
 
 | 요소 | 내용 |

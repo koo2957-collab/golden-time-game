@@ -45,6 +45,8 @@ signal team_dropped(crew_id: int, screen_pos: Vector2)
 var _dispatch: PanelContainer
 ## 출동 지령 창의 선착 차량 배치 보기 (시나리오 approach가 있을 때)
 var _placement: OptionButton
+## 출동 준비: 적재 장비 체크 (R10)
+var _loadout_checks: Dictionary = {}  # key -> CheckBox
 var _report: PanelContainer
 var _strategy: PanelContainer
 var _confirm: PanelContainer
@@ -573,12 +575,15 @@ func _build_dispatch() -> void:
 		desc.text = str(opts[_placement.selected].get("text", ""))
 		_placement.item_selected.connect(func(i: int) -> void: desc.text = str(opts[i].get("text", "")))
 		box.add_child(desc)
+	_build_loadout(box)
 	var go := _button("현장 도착 (Enter)", _arrive)
 	box.add_child(go)
 
 
 ## 현장 도착: 고른 배치를 명령으로 내린다 (기록·다시 하기 대상)
 func _arrive() -> void:
+	if not _loadout_checks.is_empty() and sim.loadout.is_empty() and sim.clock.tick <= Placement.MAX_TICK:
+		order_issued.emit(CommandOrder.make("loadout", [], 0, Vector3i.ZERO, {"items": loadout_selection()}))
 	if _placement and sim.command.placement.is_empty() and sim.clock.tick <= Placement.MAX_TICK:
 		order_issued.emit(CommandOrder.make("placement", [], _placement.selected))
 	_close(_dispatch)
@@ -1348,3 +1353,41 @@ func _on_team_input(event: InputEvent, crew_id: int, b: Button) -> void:
 		if event.global_position.distance_to(_team_press_pos) > 10.0:
 			_team_dragging = true
 			team_drag_started.emit(crew_id)
+
+
+# --- 출동 준비: 적재 장비 선택 (기획안 P9, R10) ---
+
+func _build_loadout(box: VBoxContainer) -> void:
+	var data: Variant = JsonData.load_file("res://data/units/equipment.json")
+	if not data is Dictionary:
+		return
+	var cap := int(data.get("capacity", 3))
+	box.add_child(_label("출동 준비 — 기본 장비 외에 %d개까지 더 싣는다 (현장 상황을 생각해 고르세요)" % cap, 17, Color("fde68a")))
+	var grid := GridContainer.new()
+	grid.columns = 2
+	for it: Dictionary in data.get("items", []):
+		var cb := CheckBox.new()
+		cb.text = str(it.get("label", ""))
+		cb.tooltip_text = "%s (SOP %s)" % [it.get("note", ""), it.get("sop", "")]
+		cb.focus_mode = Control.FOCUS_NONE
+		cb.add_theme_font_size_override("font_size", 15)
+		cb.toggled.connect(func(_on: bool) -> void: _limit_loadout(cap))
+		grid.add_child(cb)
+		_loadout_checks[str(it.key)] = cb
+	box.add_child(grid)
+
+
+## 정한 개수를 넘으면 나머지 체크를 막는다
+func _limit_loadout(cap: int) -> void:
+	var n := loadout_selection().size()
+	for k: String in _loadout_checks:
+		var cb: CheckBox = _loadout_checks[k]
+		cb.disabled = n >= cap and not cb.button_pressed
+
+
+func loadout_selection() -> Array:
+	var out: Array = []
+	for k: String in _loadout_checks:
+		if (_loadout_checks[k] as CheckBox).button_pressed:
+			out.append(k)
+	return out

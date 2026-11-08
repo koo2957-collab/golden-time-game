@@ -56,6 +56,17 @@
         "sop212_1_commercial_kitchen"
       ],
       "min_grade": "C"
+    },
+    {
+      "id": "highrise",
+      "title": "7장 · 고층 아파트 (스테이지 2-1)",
+      "text": "15층 아파트: 옥내소화전·연결송수관, 늦은 신고와 백드래프트 조건, 강풍 속 발코니 구조 (SOP 213·235).",
+      "scenarios": [
+        "sop213_3_15f_day_low",
+        "sop213_4_15f_night_mid",
+        "sop213_5_15f_winter_high"
+      ],
+      "min_grade": "C"
     }
   ]
 }

@@ -152,7 +152,7 @@ static func describe_text(e: Dictionary) -> String:
 		"face_seen":
 			text = "%s면 확인 (둘러보기 %d/%d)" % [e.face, e.count, e.total]
 		"site_info_found":
-			text = "%s면에서 확인 — %s" % [e.face, e.text]
+			text = ("%s면에서 확인 — %s" % [e.face, e.text]) if e.has("face") else "확인 — %s (%s)" % [e.text, e.get("crew", "")]
 		"clue_found":
 			text = "물증 — %s" % e.text
 		"witness_arrived":
@@ -199,6 +199,8 @@ static func describe_text(e: Dictionary) -> String:
 			text = "%s 시작%s — %s" % [e.action, " (%s)" % e.room if e.has("room") else "", e.crew]
 		"tactical_halt":
 			text = "%s — %s" % [e.reason, e.crew]
+		"loadout":
+			text = "출동 준비 — 적재 장비: %s" % (e.items if str(e.items) != "" else "기본 장비만")
 		"exit_air_low":
 			text = "출구까지 공기 약 %dbar 필요, 잔압 %dbar — 퇴각 건의" % [int(e.need_bar), int(e.air_bar)]
 		"plan_acquired":
@@ -246,7 +248,9 @@ static func describe_text(e: Dictionary) -> String:
 		"fdc_not_connected":
 			text = "송수구 미연결 — 방수구 사용 불가 (%s)" % e.crew
 		"hose_outlet_laid":
-			text = "방수구에서 수관 연장 — %s (%s)" % [e.crew, e.level]
+			text = "%s에서 수관 연장 — %s (%s)" % ["옥내소화전" if e.get("indoor", false) else "방수구", e.crew, e.level]
+		"indoor_hydrant_empty":
+			text = "옥내소화전 수조 소진 — 송수구에 펌프차를 연결해야 방수 계속"
 		"card_asked":
 			text = "판단 요청 [%s] — %s" % [e.urgency, e.title]
 		"card_answered":

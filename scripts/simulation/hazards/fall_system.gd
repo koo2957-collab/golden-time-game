@@ -38,6 +38,8 @@ var _sign_ticks: int
 var _sign_radius: float
 var _burning_since: Dictionary = {}  # 요구조자 id -> 그 방에 불이 붙은 tick
 var _setup_s: float
+## 공기안전매트를 선적재했으면 0.5 (출동 준비, R10)
+var setup_scale := 1.0
 var _mat_radius: float
 var _cell_m: float
 var _zoned: Dictionary = {}  # opening index -> true
@@ -75,7 +77,7 @@ func order_mat(crew_id: int, cell: Vector2i, tick: int) -> bool:
 	var spot := pathfinder.nearest_walkable(1, cell)
 	if spot == Pathfinder.NO_CELL or not fire.building.cell(1, spot.x, spot.y) in BuildingData.OUTDOOR:
 		return false
-	setups[crew_id] = {"cell": spot, "left": _setup_s}
+	setups[crew_id] = {"cell": spot, "left": _setup_s * setup_scale}
 	units.order_move([crew_id] as Array[int], Vector3i(spot.x, spot.y, 1), pathfinder)
 	events.add(tick, "air_mat_start", {"crew": _crew_name(c)})
 	return true

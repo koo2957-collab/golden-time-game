@@ -78,6 +78,7 @@ const REPORT_PRIORITY := {
 	"fire_found": Radio.Priority.KEY_FACTOR,
 	"plan_acquired": Radio.Priority.KEY_FACTOR,
 	"exit_air_low": Radio.Priority.SAFETY,
+	"indoor_hydrant_empty": Radio.Priority.KEY_FACTOR,
 	"panel_fire_floor": Radio.Priority.KEY_FACTOR,
 	"plan_diff_found": Radio.Priority.KEY_FACTOR,
 	"mission_withdraw": Radio.Priority.SAFETY,

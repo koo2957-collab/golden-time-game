@@ -27,6 +27,11 @@ var hoses: Array[HoseLine] = []
 var hydrants_out: Array[int] = []
 ## 송수구에 연결한 펌프차 id (-1: 없음). 연결되면 층별 방수구에서 수관을 연장할 수 있다 (SOP 200-3.3.1)
 var fdc_vehicle := -1
+## 옥내소화전 수조에 남은 물 (ℓ). 송수구가 연결되면 펌프차 물을 쓴다 (R10)
+var indoor_tank_l := 0.0
+## 옥내소화전 물을 쓰는 수관의 vehicle_id
+const INDOOR := -2
+var _indoor_empty_logged := false
 ## (level, cell) -> 들어가도 되는 칸인지. 방수 위치를 고를 때 열기가 심한 칸을 피한다.
 var safe_cell := Callable()
 
@@ -55,6 +60,7 @@ func _init(p_building: BuildingData, p_units: UnitSystem, p_pathfinder: Pathfind
 	_hydrant_range = config.value("hydrant_range_m") / _cell_m
 	_supply_range = config.value("supply_range_m") / _cell_m
 	_drag_factor = config.value("hose_drag_speed_factor")
+	indoor_tank_l = p_building.indoor_tank_l
 	_damage_temp = config.value("water_damage_temp_c")
 	_range[HoseLine.Pattern.STRAIGHT] = config.value("straight_range_m") / _cell_m
 	_range[HoseLine.Pattern.FOG] = config.value("fog_range_m") / _cell_m
@@ -204,7 +210,9 @@ func lay_hose_outlet(crew_id: int, outlet: int, tick: int, report := true) -> bo
 	var c := units.get_crew(crew_id)
 	if c == null or outlet < 0 or outlet >= building.outlets.size() or hose_of_crew(crew_id) != null:
 		return false
-	if fdc_vehicle < 0:
+	# 송수구가 연결되지 않았어도 옥내소화전 수조에 물이 있으면 쓴다 (SOP 235)
+	var indoor := fdc_vehicle < 0 and building.indoor_lpm > 0.0 and indoor_tank_l > 0.0
+	if fdc_vehicle < 0 and not indoor:
 		if report:
 			events.add(tick, "fdc_not_connected", {"crew": _crew_name(c)})
 		return false
@@ -215,7 +223,7 @@ func lay_hose_outlet(crew_id: int, outlet: int, tick: int, report := true) -> bo
 		return false
 	var h := HoseLine.new()
 	h.id = hoses.size()
-	h.vehicle_id = fdc_vehicle
+	h.vehicle_id = INDOOR if indoor else fdc_vehicle
 	h.crew_id = crew_id
 	h.outlet = outlet
 	h.max_cells = building.outlet_hose_m / _cell_m
@@ -227,7 +235,7 @@ func lay_hose_outlet(crew_id: int, outlet: int, tick: int, report := true) -> bo
 	hoses.append(h)
 	for ff in c.members():
 		ff.speed_factor = _drag_factor
-	events.add(tick, "hose_outlet_laid", {"crew": _crew_name(c), "level": building.floor_name(o.z)})
+	events.add(tick, "hose_outlet_laid", {"crew": _crew_name(c), "level": building.floor_name(o.z), "indoor": indoor})
 	return true
 
 
@@ -266,7 +274,8 @@ func start_spray(crew_id: int, target: Vector3i, pattern: HoseLine.Pattern, tick
 	var h := hose_of_crew(crew_id)
 	if h == null:
 		# 연결송수관이 살아 있고 목표 층에 방수구가 있으면 방수구에서, 아니면 가장 가까운 펌프차에서
-		var outlet := building.outlet_on(target.z) if fdc_vehicle >= 0 and target.z > 1 else -1
+		var standpipe_ok := fdc_vehicle >= 0 or (building.indoor_lpm > 0.0 and indoor_tank_l > 0.0)
+		var outlet := building.outlet_on(target.z) if standpipe_ok and target.z > 1 else -1
 		if outlet < 0 or not lay_hose_outlet(crew_id, outlet, tick, false):
 			var pump := _nearest_pump(c.leader.pos)
 			if pump < 0 or not lay_hose(crew_id, pump, tick):
@@ -461,6 +470,7 @@ func _update_supply(dt: float, tick: int) -> void:
 			events.add(tick, "tank_empty", {"vehicle": _name(v)})
 		elif v.tank_l > EMPTY_TANK_L * 100.0:
 			v.tank_empty_logged = false
+	_update_indoor(minutes, tick)
 
 
 func _apply_sprays(dt: float, tick: int) -> void:
@@ -487,7 +497,8 @@ func _apply_sprays(dt: float, tick: int) -> void:
 		h.impact = trace.impact
 		h.blocked = trace.blocked
 		var v := units.get_vehicle(h.vehicle_id)
-		var liters := v.nozzle_lpm / 60.0 * dt * h.flow_fraction
+		var lpm := v.nozzle_lpm if v else building.indoor_lpm
+		var liters := lpm / 60.0 * dt * h.flow_fraction
 		var impact_cell := Vector2i(h.impact.floor())
 		var comp := fire.compartment_at(leader.level, impact_cell.x, impact_cell.y)
 		if comp:
@@ -609,3 +620,26 @@ func _name(v: Vehicle) -> String:
 
 func _crew_name(c: Crew) -> String:
 	return "%s %d조" % [units.squads[c.squad_id].name, c.number]
+
+
+## 옥내소화전 수관: 건물 수조에서 물을 쓴다. 송수구가 연결되면 그 펌프차로 옮겨 탄다 (SOP 235, R10)
+func _update_indoor(minutes: float, tick: int) -> void:
+	var flowing: Array[HoseLine] = []
+	for h in hoses:
+		if h.vehicle_id != INDOOR:
+			continue
+		if fdc_vehicle >= 0:
+			h.vehicle_id = fdc_vehicle
+			continue
+		if h.flowing and not h.approaching:
+			flowing.append(h)
+	if flowing.is_empty():
+		return
+	var demand := building.indoor_lpm * minutes * flowing.size()
+	var used := minf(demand, indoor_tank_l)
+	indoor_tank_l -= used
+	for h in flowing:
+		h.flow_fraction = used / demand
+	if indoor_tank_l <= EMPTY_TANK_L and not _indoor_empty_logged:
+		_indoor_empty_logged = true
+		events.add(tick, "indoor_hydrant_empty", {"crew": _crew_name(units.get_crew(flowing[0].crew_id))})

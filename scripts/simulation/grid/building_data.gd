@@ -45,6 +45,9 @@ var structures: Array[Dictionary] = []
 var fdc := Vector2i(-1, -1)
 var outlets: Array[Vector3i] = []
 var outlet_hose_m := 30.0
+## 옥내소화전 (SOP 235): 송수구 연결 없이 건물 수조 물로 방수구를 쓴다. 0이면 없음
+var indoor_lpm := 0.0
+var indoor_tank_l := 0.0
 ## 현관 방화문 칸 (모든 층). 잠겨 있으면 파괴에 더 오래 걸린다 (SOP 213-2.3)
 var fire_doors: Array[Vector2i] = []
 ## 같은 건물 아래층 창 → 위층 창 연소 확대 (SOP 213-1.1)
@@ -177,6 +180,9 @@ func _parse(data: Dictionary) -> void:
 		for o: Array in sp.get("outlets", []):
 			outlets.append(Vector3i(int(o[0]), int(o[1]), int(o[2])))
 		outlet_hose_m = float(sp.get("outlet_hose_m", outlet_hose_m))
+	var ih: Dictionary = data.get("indoor_hydrant", {})
+	indoor_lpm = float(ih.get("lpm", 0.0))
+	indoor_tank_l = float(ih.get("tank_l", 0.0))
 	for d: Array in data.get("fire_doors", []):
 		fire_doors.append(Vector2i(int(d[0]), int(d[1])))
 	vertical_exposure = bool(data.get("vertical_exposure", false))

@@ -410,6 +410,14 @@ func _inside_room(o: Opening) -> Compartment:
 	return fire.comps[i] if i >= 0 and i < fire.comps.size() else null
 
 
+## 장비(가스측정기 등)로 위험물을 확인함 (R10)
+func add_hazard(h: String, tick: int) -> void:
+	if h in _found_hazards:
+		return
+	_add_hazard(h)
+	events.add(tick, "site_info_found", {"text": h, "crew": "가스측정기"})
+
+
 func _add_hazard(h: String) -> void:
 	if h != "" and not h in _found_hazards:
 		_found_hazards.append(h)

@@ -47,6 +47,8 @@ var emergency := Callable()
 var exits := Callable()
 var _exits_now: Array = []
 var _swap_s: float
+## 예비 공기용기를 실었으면 0.5 (출동 준비, R10)
+var swap_scale := 1.0
 var _swap_range: float
 var _air_full := 0.0
 var _heat_event_tick: Dictionary = {}  # "종류:조" -> tick
@@ -199,7 +201,7 @@ func _update_air(ff: Firefighter, inside: bool, dt: float, tick: int) -> void:
 		ff.swap_timer = 0.0
 		return
 	ff.swap_timer += dt
-	if ff.swap_timer >= _swap_s:
+	if ff.swap_timer >= _swap_s * swap_scale:
 		ff.air_l = ff.air_capacity
 		ff.air_alarm_logged = false
 		ff.swap_timer = 0.0

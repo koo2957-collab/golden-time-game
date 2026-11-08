@@ -197,6 +197,10 @@ static func from_scenario(path: String, command_rules := true, seed_override := 
 			sim.command.auto_slow = false
 			sim.command.resources.clear_schedule()
 		sim.doors.sync_blocking()
+		# 늦게 신고된 화재: 출동 전에 불만 먼저 진행시킨다 (시나리오 fire.preburn_s, R10). 다시 하기도 같다
+		var pre := float(data.get("fire", {}).get("preburn_s", 0.0))
+		for i in roundi(pre / SimClock.TICK_DT):
+			sim.fire.step(SimClock.TICK_DT, 0)
 		sim.perception.update(0)
 	return sim
 
@@ -224,6 +228,39 @@ func apply_realism(name: String) -> void:
 				shuttle.source_name = "원거리 소화전 (악조건)"
 				shuttle.round_trip_s = pp.value("harsh_shuttle_round_trip_s")
 	events.add(clock.tick, "realism", {"name": name})
+
+
+## 출동 준비: 고른 적재 장비를 적용한다 (CommandOrder "loadout", 기획안 P9). 한 번만
+var loadout: Array = []
+
+
+func apply_loadout(items: Array, tick: int) -> void:
+	if not loadout.is_empty():
+		return
+	var data: Variant = JsonData.load_file("res://data/units/equipment.json")
+	var cap := int(data.get("capacity", 3)) if data is Dictionary else 3
+	for key in items:
+		if loadout.size() >= cap or str(key) in loadout:
+			continue
+		loadout.append(str(key))
+		match str(key):
+			"thermal_extra":
+				for c in units.crews:
+					if not c.thermal_camera and not ems.is_ems_crew(c.id):
+						c.thermal_camera = true
+						break
+			"fire_door_breaker":
+				doors.fire_door_factor_scale = 0.5
+			"spare_cylinders":
+				conditions.swap_scale = 0.5
+			"gas_detector":
+				if gas.has_gas():
+					command.survey.add_hazard("가스 누출 (가스측정기 감지)", tick)
+			"air_mat":
+				falls.setup_scale = 0.5
+			"high_rise_pack":
+				building.outlet_hose_m += 15.0
+	events.add(tick, "loadout", {"items": ", ".join(PackedStringArray(loadout))})
 
 
 ## 대원의 활동 단계 (호흡량): 0 대기·보행 40 / 1 수색·호스 전개 55 / 2 방수·파괴 65 / 3 구조·계단 80 ℓ/분 (기획안 5-6)

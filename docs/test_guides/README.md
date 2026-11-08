@@ -49,4 +49,5 @@
 | R7c 임무형 내부 지휘 ② (원형 메뉴·팀 카드 끌어다 놓기) | [R7c_radial.md](R7c_radial.md) |
 | R8 도면·미니맵 (구조는 직접 밝힌다) | [R8_plan.md](R8_plan.md) |
 | R9 수치 정비 (CO 교재 표·호흡량·산소·출구 공기·편성) | [R9_numbers.md](R9_numbers.md) |
+| R10 스테이지 2-1 (15층 아파트·옥내소화전·출동 준비) | [R10_highrise.md](R10_highrise.md) |
 | **R1~R5 빠른 점검 (한 판으로 확인)** | [R1-R5_빠른점검.md](R1-R5_빠른점검.md) |

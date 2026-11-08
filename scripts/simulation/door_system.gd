@@ -34,6 +34,8 @@ var _open_s: float
 var _force_s: float
 var _force_people: int
 var _fire_door_factor: float
+## 방화문 파괴기를 실었으면 0.5 (출동 준비, R10)
+var fire_door_factor_scale := 1.0
 
 
 func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, stats: ParamTable, p_events: SimEventLog) -> void:
@@ -105,7 +107,7 @@ func request(crew_id: int, door_cell: Vector3i, open: bool, tick: int) -> bool:
 		else:
 			t.required = (_force_s if o.locked else _open_s) if open else _open_s
 			if open and o.locked and fire.building.is_fire_door(o.cells[0]):
-				t.required *= _fire_door_factor  # 방화문: 파괴기·동력절단기로 더 오래 (SOP 213-2.3)
+				t.required *= _fire_door_factor * fire_door_factor_scale  # 방화문: 파괴기·동력절단기로 더 오래 (SOP 213-2.3)
 		tasks.append(t)
 		if open and o.kind == Opening.Kind.DOOR and on_door_approach.is_valid():
 			on_door_approach.call(o, tick)

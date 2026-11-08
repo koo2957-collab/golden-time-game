@@ -57,6 +57,7 @@
       "safety.officer",
       "safety.entry_judgment",
       "safety.debris",
+      "safety.monitor",
       "rescue.survival",
       "rescue.time",
       "rescue.search_order",

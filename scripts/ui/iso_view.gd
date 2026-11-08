@@ -302,6 +302,7 @@ func _draw() -> void:
 		_draw_smoke()
 	_draw_blasts()
 	_draw_sprays(alpha)
+	_draw_monitors_and_fans()
 	for e in sim.rekindle.spotted_cells():
 		if e.z == level:
 			var ep := proj.to_screen(Vector2(e.x, e.y) + Vector2(0.5, 0.5), 0.05)
@@ -1090,3 +1091,29 @@ func _draw_office(x: int, y: int) -> void:
 	else:
 		label += " (조를 보내면 도면)"
 	draw_string(PlanStyle.font(), at + Vector2(-110, 0), label, HORIZONTAL_ALIGNMENT_CENTER, 220, 13, oc.lightened(0.4))
+
+
+## 방수포 물줄기(펌프차 → 창)와 송풍기 표시 (R11). 지금 층의 창만 그린다
+func _draw_monitors_and_fans() -> void:
+	for st in sim.monitors.streams:
+		var v := sim.units.get_vehicle(st.vehicle_id)
+		var o: Opening = sim.fire.openings[st.opening]
+		if v == null or o.level != level:
+			continue
+		var a := proj.to_screen(v.pos, v.height_m + 0.6)
+		var b := proj.to_screen(Vector2(o.cells[0]) + Vector2(0.5, 0.5), 1.2)
+		var mid := (a + b) * 0.5 + Vector2(0, -60)
+		var pts := PackedVector2Array()
+		for k in 17:
+			var t := k / 16.0
+			pts.append(a.lerp(mid, t).lerp(mid.lerp(b, t), t))
+		draw_polyline(pts, Color(0.55, 0.8, 1.0, 0.85), 5.0, true)
+		draw_string(PlanStyle.font(), b + Vector2(-40, -18), "방수포", HORIZONTAL_ALIGNMENT_CENTER, 80, 13, Color("bae6fd"))
+	var vent := sim.vent
+	if vent.opening >= 0:
+		var op: Opening = sim.fire.openings[vent.opening]
+		if op.level == level:
+			var spot := Vector2(vent._outside_cell(op)) + Vector2(0.5, 0.5)
+			_box(spot - Vector2(0.4, 0.4), spot + Vector2(0.4, 0.4), 0.0, 0.8, Color("94a3b8"), Color("64748b"), Color("cbd5e1"))
+			var label := "송풍기" + (" — 가동" if vent.active else " — 설치 중")
+			draw_string(PlanStyle.font(), proj.to_screen(spot, 1.3) + Vector2(-50, 0), label, HORIZONTAL_ALIGNMENT_CENTER, 100, 13, Color("e2e8f0"))

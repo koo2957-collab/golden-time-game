@@ -340,7 +340,7 @@ func _complete(t: CarryTask, c: Crew, tick: int) -> void:
 			v.state_at_rescue = v.state
 			v.state = Victim.State.RESCUED
 			v.rescued_tick = tick
-			events.add(tick, "victim_rescued", {"who": v.label(), "state": Victim.STATE_NAMES[v.state_at_rescue]})
+			events.add(tick, "victim_rescued", {"who": v.label(), "state": Victim.STATE_NAMES[v.state_at_rescue], "by": _crew_name(c)})
 		else:
 			events.add(tick, "victim_recovered", {"who": v.label()})
 	else:

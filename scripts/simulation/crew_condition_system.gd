@@ -45,6 +45,9 @@ var activity_of := Callable()
 var emergency := Callable()
 ## 출구 칸 목록 (출구까지 필요 공기). SimWorld가 넣는다
 var exits := Callable()
+## 엄호 주수 안인가 (level, pos) -> bool. SimWorld가 넣는다 (R11)
+var covered := Callable()
+var _cover_factor := 0.5
 var _exits_now: Array = []
 var _swap_s: float
 ## 예비 공기용기를 실었으면 0.5 (출동 준비, R10)
@@ -77,6 +80,7 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, stats
 	_air_tension = stats.value("air_tension_factor")
 	_air_control = stats.value("air_control_factor")
 	_detour = stats.value("exit_detour_factor")
+	_cover_factor = stats.value("cover_heat_factor")
 	# (_cell_m은 위에서 읽었다)
 	_walk_cells = stats.value("walk_speed_mps") / _cell_m
 	_swap_s = stats.value("scba_swap_s")
@@ -169,6 +173,8 @@ func after_move(dt: float, tick: int) -> void:
 		ff.crouched = room != null and room.layer_depth > room.height - _eye_stand
 		ff.crouch_factor = _crouch_speed if ff.crouched else 1.0
 		ff.heat_flux = heat_at(ff.level, cell, ff.crouched)
+		if covered.is_valid() and ff.heat_flux > 0.0 and bool(covered.call(ff.level, ff.pos)):
+			ff.heat_flux *= _cover_factor
 		_update_heat_stress(ff, dt)
 		_update_air(ff, room != null, dt, tick)
 		if ff.heat_stress >= 1.0:

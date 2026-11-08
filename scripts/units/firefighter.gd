@@ -42,6 +42,8 @@ var aboard := false
 var air_alarm_logged := false
 ## 출구까지 필요 공기(ℓ) — 건물 안에서만 계산 (R9)
 var exit_air_l := 0.0
+## 성장 단계 (신임·일반·숙련·고참, R12). 빈 문자열이면 성장 기록 없음
+var grade := ""
 ## "퇴각 건의"를 보고했는가 (밖에 나오면 다시 false)
 var exit_air_logged := false
 ## 공기호흡기 교체 진행 시간 (초)

@@ -10,6 +10,10 @@ signal restart_requested
 signal menu_requested
 ## tick 시점(그 사건 직전)부터 다시 하기
 signal replay_requested(tick: int)
+## 리플레이 보기 (명령 없이 기록대로, R12)
+signal view_requested(tick: int)
+## 인쇄용 보고서·CSV 저장 (R12)
+signal export_requested
 
 const BG := Color(0.05, 0.07, 0.1, 0.97)
 const TEXT := "e2e8f0"
@@ -72,6 +76,13 @@ func show_report(p_report: Dictionary, saved_path: String) -> void:
 	if not report.get("replayable", true):
 		replay.tooltip_text = "개발용 기능(즉시 발화·정보 안개 끄기)을 쓴 판은 다시 하기를 할 수 없습니다."
 	row.add_child(replay)
+	var view := _button("이 시점부터 리플레이 보기", func() -> void:
+		if _moments.selected >= 0:
+			view_requested.emit(int(_moments.get_item_metadata(_moments.selected))))
+	view.disabled = not can_replay
+	view.tooltip_text = "명령 없이 기록대로 다시 봅니다. T로 열화상(온도), 연기는 화면에 그대로 보입니다"
+	row.add_child(view)
+	row.add_child(_button("보고서 저장 (인쇄·CSV)", func() -> void: export_requested.emit()))
 	row.add_child(_button("다시 시작 (F5)", func() -> void: restart_requested.emit()))
 	row.add_child(_button("시나리오 선택", func() -> void: menu_requested.emit()))
 	box.add_child(row)
@@ -203,6 +214,12 @@ func _next_text() -> String:
 		lines.append("  • %s (SOP %s)" % [w.title, w.sop])
 		lines.append("      결과: %s" % w.detail)
 		lines.append("      [color=#%s]→ %s[/color]" % [GOOD, w.advice])
+	var growth: Array = report.get("growth_lines", [])
+	if not growth.is_empty():
+		lines.append("")
+		lines.append("[b]대원 성장 (신임 → 일반 → 숙련 → 고참, 기획안 6-2)[/b]")
+		for l in growth:
+			lines.append("  " + str(l))
 	return "\n".join(lines)
 
 

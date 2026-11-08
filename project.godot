@@ -101,6 +101,16 @@ cmd_fog={
 "events": [Object(InputEventKey,"physical_keycode":83)
 ]
 }
+cmd_pencil={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"physical_keycode":90)
+]
+}
+cmd_cover={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"physical_keycode":78)
+]
+}
 cmd_stop={
 "deadzone": 0.2,
 "events": [Object(InputEventKey,"physical_keycode":68)

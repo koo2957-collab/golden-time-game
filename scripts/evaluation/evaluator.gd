@@ -399,6 +399,17 @@ func _check_debris() -> Dictionary:
 	return {"score": _linear(s, _params.good_s, _params.bad_s), "detail": "낙하물 위험구역 %d곳, 구역 안 대원 체류 합계 %d초 (기준 %d초 이하)" % [f.zones.size(), roundi(s), int(_params.good_s)]}
 
 
+## 방수포와 진입대원 (SOP 207-1.1, R11): 방수포를 썼을 때만
+func _check_monitor() -> Dictionary:
+	var m := sim.monitors
+	var used := sim.events.of_type("monitor_start").size()
+	if used == 0:
+		return {}
+	if m.violations == 0:
+		return {"score": 1.0, "detail": "방수포 %d회 — 진입대원이 있는 방에는 쓰지 않음" % used}
+	return {"score": 0.0, "detail": "진입대원이 있는 방에 방수포 %d회 (SOP 207-1.1 위반)" % m.violations}
+
+
 ## 연결송수관 활용 (SOP 200-3.3.1, 213-1.3): 연결송수관이 있는 건물에서 2층 이상 방수가 있었을 때
 func _check_standpipe() -> Dictionary:
 	if not sim.building.has_standpipe():

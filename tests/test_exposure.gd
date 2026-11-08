@@ -126,7 +126,7 @@ func test_late_squad_card_and_rules() -> void:
 	var ids: Array = []
 	for spec: Dictionary in cards["후착 진압대"]:
 		ids.append(spec.id)
-	assert_eq(ids, ["attack", "exterior", "search_auto", "withdraw"], "포위 진압·경계관창·교차 탐색·철수")
+	assert_eq(ids, ["attack", "exterior", "search_auto", "monitor", "withdraw"], "포위 진압·경계관창·교차 탐색·방수포·철수")
 	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH)
 	assert_eq(sim.units.squads[0].arrival, "선착", "처음부터 현장 = 선착")
 	var n := sim.units.squads.size()

@@ -23,7 +23,7 @@ const NOTICE_TYPES: Array[String] = [
 	"face_seen", "site_info_found", "clue_found", "witness_arrived", "statement", "ask_too_far", "ask_cancelled",
 	"command_post", "report_updated", "overhaul_start", "rekindle",
 	"emergency_cleared", "evacuation_ordered", "par_done", "role_assigned", "role_reserved", "rit_deployed",
-	"entry_factors", "order_unseen", "exit_air_low", "indoor_hydrant_empty", "plan_acquired", "panel_fire_floor", "plan_diff_found",
+	"entry_factors", "order_unseen", "exit_air_low", "indoor_hydrant_empty", "monitor_start", "monitor_no_target", "monitor_too_far", "monitor_crew_inside", "ppv_start", "ppv_no_door", "ppv_no_exhaust", "ppv_fire_push", "plan_acquired", "panel_fire_floor", "plan_diff_found",
 ]
 ## 알림으로도 띄우는 무전 우선순위
 const NOTICE_RADIO_PRIORITIES: Array[String] = ["대원 안전", "구조대상자"]
@@ -337,6 +337,8 @@ func _crew_status(crew: Crew) -> String:
 		parts.append("출구까지 필요 %dbar · 호흡 %dℓ/분" % [maxi(1, roundi(need * 300.0)), roundi(sim.conditions.air_rate(crew.leader))])
 	var traits: PackedStringArray = []
 	for ff in crew.members():
+		if ff.grade != "":
+			traits.append("%s %s" % [ff.name, ff.grade])
 		for t in ff.traits:
 			traits.append("%s %s" % [ff.name, t])
 	if not traits.is_empty():
@@ -468,7 +470,7 @@ func _build_command_panel() -> void:
 	var detail := HBoxContainer.new()
 	detail.alignment = BoxContainer.ALIGNMENT_END
 	_command_panel.add_child(detail)
-	for spec in [["entry", "진입 명령 (R)"], ["search", "검색 (Q)"], ["door", "문·창 (E)"], ["hose", "수관 연장 (H)"], ["straight", "직사 방수 (A)"], ["fog", "분무 방수 (S)"], ["stop", "방수 중지 (D)"]]:
+	for spec in [["entry", "진입 명령 (R)"], ["search", "검색 (Q)"], ["door", "문·창 (E)"], ["hose", "수관 연장 (H)"], ["straight", "직사 (A)"], ["fog", "분무 (S)"], ["pencil", "펜슬링·3D (Z)"], ["cover", "엄호 (N)"], ["stop", "방수 중지 (D)"]]:
 		var b := Button.new()
 		b.text = spec[1]
 		b.focus_mode = Control.FOCUS_NONE

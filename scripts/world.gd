@@ -22,6 +22,10 @@ var ignite_mode := false
 var command_hint := ""
 ## 원형 메뉴·임무 창 (R7c)
 var mission_ui: MissionUi
+## 리플레이 보기: 아직 넣지 않은 기록 (R12)
+var _view_entries: Array[Dictionary] = []
+var _view_next := 0
+var _last_report: Dictionary = {}
 ## 창(출동 지령·상황보고 등)을 열기 전의 일시정지 상태
 var _paused_before_dialog := false
 var projections := {ViewMode.ISO: IsoProjection.new(), ViewMode.PLAN: PlanProjection.new()}
@@ -51,6 +55,8 @@ func _ready() -> void:
 		if sim:
 			sim.tactical.set_level(_automation_level(data if data is Dictionary else {}))
 			sim.apply_realism(GameManager.realism)
+			# 대원 성장 기록 적용 (신임·일반·숙련·고참, R12)
+			sim.apply_growth(CrewGrowth.load_xp())
 	if sim == null:
 		push_error("시나리오를 불러오지 못했습니다: %s" % path)
 		return
@@ -102,11 +108,17 @@ func _ready() -> void:
 	set_view_level(sim.building.levels()[0])
 	hud.debrief.restart_requested.connect(GameManager.restart)
 	hud.debrief.menu_requested.connect(GameManager.back_to_menu)
-	hud.debrief.replay_requested.connect(func(tick: int) -> void: GameManager.request_replay(sim.issued, tick, sim.rng_seed, sim.tactical.level_name, sim.realism))
+	hud.debrief.replay_requested.connect(func(tick: int) -> void: GameManager.request_replay(sim.issued, tick, sim.rng_seed, sim.tactical.level_name, sim.realism, false, sim.growth))
+	hud.debrief.view_requested.connect(func(tick: int) -> void: GameManager.request_replay(sim.issued, tick, sim.rng_seed, sim.tactical.level_name, sim.realism, true, sim.growth))
+	hud.debrief.export_requested.connect(_export_report)
 	if replay_tick >= 0:
 		sim.clock.paused = true
 		var t := int(replay_tick * SimClock.TICK_DT)
-		hud.show_notice("다시 하기: %02d:%02d 시점입니다. Space로 다시 진행하세요." % [t / 60, t % 60])
+		if sim.view_only:
+			_build_view_banner()
+			hud.show_notice("리플레이 보기: %02d:%02d부터 — Space 재생/정지 · F2·F3 배속 · T 열화상(온도) · M 입체/평면 · Esc 끝내기" % [t / 60, t % 60])
+		else:
+			hud.show_notice("다시 하기: %02d:%02d 시점입니다. Space로 다시 진행하세요." % [t / 60, t % 60])
 	else:
 		hud.command_ui.show_dispatch()
 
@@ -125,9 +137,15 @@ func _run_replay(path: String) -> SimWorld:
 	GameManager.replay = {}
 	var entries: Array[Dictionary] = []
 	entries.assign(info.get("entries", []))
-	var r := Replay.begin(path, entries, int(info.get("tick", 0)), int(info.get("seed", -1)), str(info.get("automation", "")), str(info.get("realism", "")))
+	var r := Replay.begin(path, entries, int(info.get("tick", 0)), int(info.get("seed", -1)), str(info.get("automation", "")), str(info.get("realism", "")),
+		info.get("growth", {}))
 	if r == null:
 		return null
+	# 리플레이 보기: 그 뒤의 기록도 시간에 맞춰 다시 넣는다 (플레이어 명령은 받지 않음)
+	if bool(info.get("view", false)):
+		for e in entries:
+			if int(e.tick) >= int(info.get("tick", 0)):
+				_view_entries.append(e)
 	var label := Label.new()
 	label.add_theme_font_size_override("font_size", 28)
 	label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -136,11 +154,21 @@ func _run_replay(path: String) -> SimWorld:
 		label.text = "다시 하기 준비 중… %d%%" % roundi(r.progress() * 100.0)
 		await get_tree().process_frame
 	label.queue_free()
+	r.sim.view_only = bool(info.get("view", false))
 	return r.sim
 
 
 func _process(delta: float) -> void:
-	if sim:
+	if sim and sim.view_only:
+		# 리플레이 보기: 한 틱씩 진행하며 기록된 명령을 그 틱에 넣는다
+		for i in sim.clock.consume(delta):
+			while _view_next < _view_entries.size() and int(_view_entries[_view_next].tick) <= sim.clock.tick:
+				sim.issue_replay(_view_entries[_view_next].command)
+				_view_next += 1
+			sim.step_ticks(1)
+		if sim.ended() and not hud.debrief.visible:
+			_show_debrief()
+	elif sim:
 		sim.advance(delta)
 		if sim.ended() and not hud.debrief.visible:
 			_show_debrief()
@@ -151,7 +179,11 @@ func _show_debrief() -> void:
 	hud.command_ui.close_all()
 	selection.cancel_mode()
 	var report := Evaluator.evaluate(sim)
-	hud.debrief.show_report(report, Evaluator.save(report))
+	# 대원 성장: 끝까지 한 판만 (리플레이 보기·개발용 기능을 쓴 판 제외, R12)
+	if not sim.view_only and sim.replayable:
+		report["growth_lines"] = CrewGrowth.award(sim, report)
+	_last_report = report
+	hud.debrief.show_report(report, Evaluator.save(report) if not sim.view_only else "")
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -193,6 +225,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		_on_command("straight")
 	elif event.is_action_pressed("cmd_fog"):
 		_on_command("fog")
+	elif event.is_action_pressed("cmd_pencil"):
+		_on_command("pencil")
+	elif event.is_action_pressed("cmd_cover"):
+		_on_command("cover")
 	elif event.is_action_pressed("cmd_stop"):
 		_on_command("stop")
 	elif event.is_action_pressed("cmd_door"):
@@ -214,6 +250,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		sim.perception.enabled = not sim.perception.enabled
 		sim.replayable = false
 		_update_mode_text()
+	elif event.is_action_pressed("ui_cancel") and sim.view_only:
+		# 리플레이 보기 끝내기 → 시작 화면
+		GameManager.back_to_menu()
 	elif event.is_action_pressed("ui_cancel"):
 		# 하던 선택 모드가 있으면 취소, 없으면 마우스 가둠을 푼다 (다시 클릭하면 가둠)
 		if selection.mode != SelectionController.Mode.NONE or ignite_mode:
@@ -307,7 +346,7 @@ func _on_command_mode_changed(hint: String) -> void:
 ## 창이 열려 있는 동안 게임 시간을 멈춘다
 ## 실전·악조건: 1배속 고정, 일시정지 없음, 창이 떠도 시간 진행 (기획안 3-3, 8장)
 func realtime() -> bool:
-	return sim != null and sim.realism in ["실전", "악조건"]
+	return sim != null and not sim.view_only and sim.realism in ["실전", "악조건"]
 
 
 func _on_dialog_changed(open: bool) -> void:
@@ -346,6 +385,29 @@ func _on_command(id: String) -> void:
 			selection.begin_mode(SelectionController.Mode.STRAIGHT)
 		"fog":
 			selection.begin_mode(SelectionController.Mode.FOG)
+		"pencil":
+			selection.begin_mode(SelectionController.Mode.PENCIL)
+		"cover":
+			selection.begin_mode(SelectionController.Mode.COVER)
+		"monitor":
+			# 그 출동대 펌프차의 방수포: 쏘고 있으면 끄고, 아니면 겨눌 창을 고른다
+			var pump := -1
+			for v in sim.units.vehicles:
+				if v.squad_id == sim.units.get_crew(selection.selected[0]).squad_id and v.is_pump():
+					pump = v.id
+					break
+			if pump < 0:
+				hud.show_notice("이 출동대에는 펌프차가 없습니다")
+			elif sim.monitors.stream_of(pump):
+				sim.issue(EquipmentCommand.make("monitor_stop", [], pump))
+			else:
+				selection.monitor_vehicle = pump
+				selection.begin_mode(SelectionController.Mode.MONITOR)
+		"ppv":
+			if sim.vent.crew_id in selection.selected:
+				sim.issue(EquipmentCommand.make("ppv_stop", [sim.vent.crew_id] as Array[int]))
+			else:
+				selection.begin_mode(SelectionController.Mode.PPV)
 		"stop":
 			var spraying := selection.crews_spraying()
 			if not spraying.is_empty():
@@ -430,3 +492,32 @@ func _on_team_selected(crew_id: int, focus: bool) -> void:
 		var c := sim.units.get_crew(crew_id)
 		set_view_level(c.leader.level)
 		camera.retarget(projection().bounds(sim.building), projection().to_screen(c.leader.pos))
+
+
+# --- 디브리핑 확장 (R12) ---
+
+## 인쇄용 HTML·결과 CSV 저장 (기획안 8-1 ⑤)
+func _export_report() -> void:
+	if _last_report.is_empty():
+		return
+	var path := ReportExport.save(_last_report)
+	if path == "":
+		hud.show_notice("보고서를 저장하지 못했습니다")
+		return
+	hud.show_notice("보고서 저장: %s (CSV: %s)" % [ProjectSettings.globalize_path(path), ProjectSettings.globalize_path(ReportExport.EXPORT_DIR + "/" + ReportExport.CSV_NAME)])
+	if DisplayServer.get_name() != "headless":
+		OS.shell_open(ProjectSettings.globalize_path(path))
+
+
+## 리플레이 보기 표시줄 (화면 위)
+func _build_view_banner() -> void:
+	var l := Label.new()
+	l.text = "▶ 리플레이 보기 — 명령은 받지 않습니다 (기록대로 진행). Space 재생/정지 · T 열화상(온도) · Esc 끝내기"
+	l.add_theme_font_size_override("font_size", 18)
+	l.add_theme_color_override("font_color", Color("fde68a"))
+	l.add_theme_color_override("font_outline_color", Color.BLACK)
+	l.add_theme_constant_override("outline_size", 5)
+	l.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	l.position.y = 40
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(l)

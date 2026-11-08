@@ -19,6 +19,8 @@ extends RefCounted
 ##   gas_off:      가스 밸브 차단 (crew_ids 중 첫 조, SOP 214-2.2)
 ##   ems_treat:    구급대 응급처치 (crew_ids 중 첫 조, other = 요구조자 id, SOP 400-3.2)
 ##   ems_transport: 처치한 환자 이송 (crew_ids 중 첫 조, other = 요구조자 id, SOP 400-3.3)
+##   monitor:      방수포 (vehicle_id = 펌프차, target = 바깥 창·문 칸, SOP 207-1.1) / monitor_stop: 방수포 중지
+##   ppv:          송풍기 양압배연 (crew_ids 중 첫 조, target = 바깥 문 칸) / ppv_stop: 송풍기 끄기
 
 var tick := -1
 var action := ""
@@ -54,6 +56,19 @@ func execute(sim: SimWorld) -> void:
 			w.connect_fdc(vehicle_id, tick)
 		"shuttle":
 			sim.shuttle.toggle(vehicle_id, tick)
+		"monitor":
+			sim.monitors.start(vehicle_id, target, tick)
+		"monitor_stop":
+			sim.monitors.stop(vehicle_id, tick)
+		"ppv":
+			if not crew_ids.is_empty():
+				sim.doors.cancel(crew_ids[0])
+				sim.rescue.cancel(crew_ids[0])
+				sim.tactical.cancel(crew_ids[0])
+				sim.vent.order(crew_ids[0], target, sim.pathfinder, tick)
+		"ppv_stop":
+			for id in crew_ids:
+				sim.vent.cancel(id, tick)
 		"hose_outlet":
 			for id in crew_ids:
 				w.lay_hose_outlet(id, other, tick)

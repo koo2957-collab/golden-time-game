@@ -43,6 +43,9 @@ var _supply_range: float
 var _drag_factor: float
 var _damage_temp: float
 var _range := {}  # Pattern -> 셀
+## 주수 형태별 물 사용 비율 (펜슬링은 끊어 쏜다)
+var _flow := {HoseLine.Pattern.STRAIGHT: 1.0, HoseLine.Pattern.FOG: 1.0}
+var _cover_cells := 5.0
 var _radius := {}
 var _fuel_eff := {}
 var _gas_eff := {}
@@ -70,6 +73,14 @@ func _init(p_building: BuildingData, p_units: UnitSystem, p_pathfinder: Pathfind
 	_fuel_eff[HoseLine.Pattern.FOG] = config.value("fog_fuel_eff")
 	_gas_eff[HoseLine.Pattern.STRAIGHT] = config.value("straight_gas_eff")
 	_gas_eff[HoseLine.Pattern.FOG] = config.value("fog_gas_eff")
+	# 펜슬링·3D·엄호 (R11)
+	for pair in [[HoseLine.Pattern.PENCIL, "pencil"], [HoseLine.Pattern.COVER, "cover"]]:
+		_range[pair[0]] = config.value(pair[1] + "_range_m") / _cell_m
+		_radius[pair[0]] = config.value(pair[1] + "_radius_m") / _cell_m
+		_fuel_eff[pair[0]] = config.value(pair[1] + "_fuel_eff")
+		_gas_eff[pair[0]] = config.value(pair[1] + "_gas_eff")
+		_flow[pair[0]] = config.value(pair[1] + "_flow_factor")
+	_cover_cells = config.value("cover_protect_m") / _cell_m
 
 
 # --- 조회 ---
@@ -459,7 +470,10 @@ func _update_supply(dt: float, tick: int) -> void:
 				flowing.append(h)
 		if flowing.is_empty():
 			continue
-		var demand := v.nozzle_lpm * minutes * flowing.size()
+		var share := 0.0
+		for h in flowing:
+			share += float(_flow.get(h.pattern, 1.0))
+		var demand := v.nozzle_lpm * minutes * share
 		var used := minf(demand, v.tank_l)
 		v.tank_l -= used
 		var fraction := used / demand
@@ -498,7 +512,7 @@ func _apply_sprays(dt: float, tick: int) -> void:
 		h.blocked = trace.blocked
 		var v := units.get_vehicle(h.vehicle_id)
 		var lpm := v.nozzle_lpm if v else building.indoor_lpm
-		var liters := lpm / 60.0 * dt * h.flow_fraction
+		var liters := lpm / 60.0 * dt * h.flow_fraction * float(_flow.get(h.pattern, 1.0))
 		var impact_cell := Vector2i(h.impact.floor())
 		var comp := fire.compartment_at(leader.level, impact_cell.x, impact_cell.y)
 		if comp:
@@ -643,3 +657,14 @@ func _update_indoor(minutes: float, tick: int) -> void:
 	if indoor_tank_l <= EMPTY_TANK_L and not _indoor_empty_logged:
 		_indoor_empty_logged = true
 		events.add(tick, "indoor_hydrant_empty", {"crew": _crew_name(units.get_crew(flowing[0].crew_id))})
+
+
+## 엄호 주수 안에 있는가: 같은 층에서 엄호 관창(방수 중)과 cover_protect_m 안 (SOP 203-2.1, R11)
+func is_covered(level: int, pos: Vector2) -> bool:
+	for h in hoses:
+		if h.pattern != HoseLine.Pattern.COVER or not h.flowing or h.approaching or h.flow_fraction <= 0.0:
+			continue
+		var leader := units.get_crew(h.crew_id).leader
+		if leader.level == level and leader.pos.distance_to(pos) <= _cover_cells:
+			return true
+	return false

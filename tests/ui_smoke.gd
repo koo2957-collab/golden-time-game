@@ -434,6 +434,20 @@ func _run() -> void:
 	_check("디브리핑 중에는 무전 패널 숨김", cui._radio_panel.visible, false)
 	_check("다시 하기 시점 목록", world.hud.debrief.moment_count() > 3, true)
 	_check("종료 때 감시 지정 기록", sim.command.watch, "관계자에게 감시 당부")
+	# R12: 보고서 저장(인쇄용 HTML·CSV)·리플레이 보기 버튼
+	_check("디브리핑 결과 보관", world._last_report.is_empty(), false)
+	var html_path := ReportExport.save(world._last_report, "user://smoke_export")
+	_check("인쇄용 보고서 저장", FileAccess.file_exists(html_path), true)
+	for f in DirAccess.get_files_at("user://smoke_export"):
+		DirAccess.remove_absolute("user://smoke_export/" + f)
+	var labels: Array = []
+	var stack: Array = [world.hud.debrief]
+	while not stack.is_empty():
+		var n = stack.pop_back()
+		if n is Button:
+			labels.append(n.text)
+		stack.append_array(n.get_children())
+	_check("리플레이 보기 버튼", labels.has("이 시점부터 리플레이 보기"), true)
 
 	print("조작 점검: %s" % ("모두 통과" if _failed == 0 else "%d건 실패" % _failed))
 	quit(1 if _failed > 0 else 0)

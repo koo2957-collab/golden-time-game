@@ -47,6 +47,9 @@ var phases: PhaseSystem
 var cards: CardSystem
 ## 도면·구조 정보 (R8)
 var plan: PlanIntel
+## 방수포·송풍기 양압배연 (R11)
+var monitors: MonitorSystem
+var vent: VentSystem
 ## 난이도 (기획안 8장): "훈련" 제한시간 2배·일시정지·배속 / "실전" 1배속 고정 / "악조건" 실전 + 강풍·후착대 지연·소화전 고장.
 ## 빈 문자열이면 시나리오 그대로 (자동 테스트). 화면의 시간 규칙(배속·일시정지)은 world가 이 값을 보고 정한다
 var realism := ""
@@ -152,6 +155,9 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.conditions.activity_of = sim.activity_level
 	sim.conditions.emergency = func() -> bool: return sim.command.safety.emergency()
 	sim.conditions.exits = sim.rescue.exit_cells
+	sim.conditions.covered = sim.water.is_covered
+	sim.monitors = MonitorSystem.new(sim.fire, sim.units, fire_config, sim.events)
+	sim.vent = VentSystem.new(sim.fire, sim.units, fire_config, sim.events)
 	sim.plan = PlanIntel.new(sim.fire, sim.units, sim.perception, sim.command.interior, sim.events)
 	var building_data: Variant = JsonData.load_file(building_path)
 	if building_data is Dictionary:
@@ -230,6 +236,24 @@ func apply_realism(name: String) -> void:
 	events.add(clock.tick, "realism", {"name": name})
 
 
+## 리플레이 보기 (디브리핑, R12): 명령을 받지 않고 기록대로만 진행
+var view_only := false
+## 적용한 대원 성장 {이름: xp} (다시 하기에 넘긴다)
+var growth: Dictionary = {}
+
+
+## 대원 성장 적용 (CrewGrowth, R12): 이름별 경험치 단계의 공기·열 배율을 곱한다. 판 시작 때 한 번
+func apply_growth(xp: Dictionary) -> void:
+	if not growth.is_empty() or xp.is_empty():
+		return
+	growth = xp.duplicate()
+	for ff in units.firefighters:
+		var l := CrewGrowth.level_of(CrewGrowth.xp_of(growth, ff.name))
+		ff.air_factor *= float(l.get("air", 1.0))
+		ff.heat_factor *= float(l.get("heat", 1.0))
+		ff.grade = str(l.get("name", ""))
+
+
 ## 출동 준비: 고른 적재 장비를 적용한다 (CommandOrder "loadout", 기획안 P9). 한 번만
 var loadout: Array = []
 
@@ -291,6 +315,15 @@ func end_activity(reason: String) -> void:
 
 
 func issue(command: RefCounted) -> void:
+	# 리플레이 보기에서는 플레이어 명령을 받지 않는다 (기록된 명령만 issue_replay로)
+	if view_only:
+		return
+	issued.append({"tick": clock.tick, "command": command})
+	_pending.append(command)
+
+
+## 리플레이 보기: 기록된 명령을 그 틱에 넣는다 (R12)
+func issue_replay(command: RefCounted) -> void:
 	issued.append({"tick": clock.tick, "command": command})
 	_pending.append(command)
 
@@ -335,6 +368,8 @@ func _step() -> void:
 	cards.step(dt, clock.tick)
 	shafts.step(dt, clock.tick)
 	plan.step(dt, clock.tick)
+	monitors.step(dt, clock.tick)
+	vent.step(dt, clock.tick)
 	evac.step(dt, clock.tick)
 	falls.step(dt, clock.tick)
 	ems.step(dt, clock.tick)

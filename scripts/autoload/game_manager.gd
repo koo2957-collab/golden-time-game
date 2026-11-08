@@ -39,7 +39,8 @@ func back_to_menu() -> void:
 
 
 ## 같은 시나리오를 tick 시점부터 다시 (entries를 그 시점까지 재생)
-func request_replay(entries: Array[Dictionary], tick: int, p_seed: int, automation: String, p_realism := "") -> void:
+func request_replay(entries: Array[Dictionary], tick: int, p_seed: int, automation: String, p_realism := "", view := false, growth: Dictionary = {}) -> void:
 	skip_menu = true
-	replay = {"entries": entries.duplicate(), "tick": tick, "seed": p_seed, "automation": automation, "realism": p_realism}
+	replay = {"entries": entries.duplicate(), "tick": tick, "seed": p_seed, "automation": automation, "realism": p_realism,
+		"view": view, "growth": growth.duplicate()}
 	get_tree().reload_current_scene.call_deferred()

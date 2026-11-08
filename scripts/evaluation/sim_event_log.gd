@@ -201,6 +201,26 @@ static func describe_text(e: Dictionary) -> String:
 			text = "%s — %s" % [e.reason, e.crew]
 		"loadout":
 			text = "출동 준비 — 적재 장비: %s" % (e.items if str(e.items) != "" else "기본 장비만")
+		"monitor_start":
+			text = "방수포 방수 — %s (%s)" % [e.room, e.vehicle]
+		"monitor_stop":
+			text = "방수포 중지 — %s" % e.vehicle
+		"monitor_no_target":
+			text = "방수포는 바깥 창·문을 겨눠야 합니다 — %s" % e.vehicle
+		"monitor_too_far":
+			text = "방수포 사거리 밖 — %s" % e.vehicle
+		"monitor_crew_inside":
+			text = "진입대원이 있는 %s에 방수포 사용 — 즉시 중지 (SOP 207-1.1)" % e.room
+		"ppv_start":
+			text = "송풍기 양압배연 시작 — %s 문" % e.room
+		"ppv_stop":
+			text = "송풍기 정지 — %s" % e.crew
+		"ppv_no_door":
+			text = "송풍기는 바깥 출입문 앞에 놓아야 합니다 — %s" % e.crew
+		"ppv_no_exhaust":
+			text = "배출구가 없어 연기가 빠지지 않음 — 창을 깨거나 열어 배출구 확보"
+		"ppv_fire_push":
+			text = "화점(%s)이 바람길에 있음 — 불이 배출구 쪽으로 커질 수 있다. 배출구 위치·요구조자 확인" % e.room
 		"exit_air_low":
 			text = "출구까지 공기 약 %dbar 필요, 잔압 %dbar — 퇴각 건의" % [int(e.need_bar), int(e.air_bar)]
 		"plan_acquired":

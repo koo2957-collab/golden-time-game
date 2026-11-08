@@ -2,9 +2,9 @@ class_name HoseLine
 extends RefCounted
 ## 수관 한 줄: 펌프차에서 관창을 든 조(조장 = 관창수)까지 깔린 호스와 관창 상태.
 
-enum Pattern { STRAIGHT, FOG }
+enum Pattern { STRAIGHT, FOG, PENCIL, COVER }
 
-const PATTERN_NAMES := {Pattern.STRAIGHT: "직사", Pattern.FOG: "분무"}
+const PATTERN_NAMES := {Pattern.STRAIGHT: "직사", Pattern.FOG: "분무", Pattern.PENCIL: "펜슬링·3D", Pattern.COVER: "엄호"}
 
 var id := 0
 var vehicle_id := 0

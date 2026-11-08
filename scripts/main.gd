@@ -8,6 +8,9 @@ extends Node
 
 
 func _ready() -> void:
+	# 실제 게임으로 실행했을 때만 화면 설정을 적용한다 (자동 테스트는 메인 씬을 직접 붙이므로 current_scene이 아니다)
+	if get_tree().current_scene == self:
+		DisplaySettings.apply_once(get_window())
 	if GameManager.skip_menu and GameManager.scenario_path != "":
 		_start_world()
 		return

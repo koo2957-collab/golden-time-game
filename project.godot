@@ -218,5 +218,7 @@ time_speed_4x={
 
 [rendering]
 
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
 rendering_device/driver.windows="d3d12"
 environment/defaults/default_clear_color=Color(0.055, 0.075, 0.098, 1)

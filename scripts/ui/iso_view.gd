@@ -64,6 +64,25 @@ var _furniture_h: Dictionary = {}  # level -> PackedFloat32Array
 var _opening_of: Dictionary = {}  # Vector3i -> Opening
 var _footprint: Dictionary = {}  # level -> Rect2i
 var _lit: Array[Opening] = []  # 불빛이 보이는 창 (그릴 때마다 갱신)
+var _first_level := 0  # 지상층 (levels()는 부를 때마다 배열을 복사하므로 한 번만 읽는다)
+
+## 바닥 캐시. 칸 모양은 층별로 고정이고, 색(바닥·그을음·열화상·정보 안개)은 시뮬레이션 틱이 바뀔 때만 달라진다.
+## 그래서 모양은 setup에서 한 번 만들고, 색은 틱·층·열화상·안개 켜짐이 바뀔 때만 다시 계산해 한 번에 그린다.
+var _ground_cells: Dictionary = {}  # level -> PackedInt32Array (VOID가 아닌 칸의 y * width + x)
+var _ground_types: Dictionary = {}  # level -> PackedByteArray (_ground_cells 순서의 칸 종류)
+var _ground_points: Dictionary = {}  # level -> PackedVector2Array (칸마다 꼭짓점 4개)
+var _ground_indices: Dictionary = {}  # level -> PackedInt32Array (칸마다 삼각형 2개)
+var _stair_cells: Dictionary = {}  # level -> PackedInt32Array
+var _stair_points: Dictionary = {}  # level -> PackedVector2Array (계단 칸마다 선 4개 = 점 8개)
+var _ground_colors := PackedColorArray()
+var _stair_colors := PackedColorArray()
+var _ground_key: Array = []
+
+## 대각선(x + y) 순서로 그릴 물체가 있는 칸. 그 밖의 칸은 그릴 것이 없으므로 건너뛴다.
+## 고정 물체(벽·창·문·가구·소화전·송수구·방수구·가스 밸브)는 setup에서, 화염 칸은 틱마다 다시 모은다.
+var _static_objects: Dictionary = {}  # level -> {d: PackedInt32Array (x 오름차순)}
+var _objects: Dictionary = {}  # 지금 층의 {d: PackedInt32Array}: 고정 물체 + 화염 칸
+var _objects_key: Array = []
 
 
 func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProjection) -> void:
@@ -85,6 +104,122 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 	for o in sim.fire.openings:
 		for c in o.cells:
 			_opening_of[Vector3i(c.x, c.y, o.level)] = o
+	_first_level = b.levels()[0]
+	for lv in b.levels():
+		_build_ground_geometry(lv)
+		_build_static_objects(lv)
+	_ground_key = []
+	_objects_key = []
+
+
+func _build_ground_geometry(lv: int) -> void:
+	var b := sim.building
+	var cells := PackedInt32Array()
+	var types := PackedByteArray()
+	var points := PackedVector2Array()
+	var indices := PackedInt32Array()
+	var stairs := PackedInt32Array()
+	var stair_points := PackedVector2Array()
+	for y in b.height:
+		for x in b.width:
+			var t := b.cell(lv, x, y)
+			if t == BuildingData.Cell.VOID:
+				continue
+			var base := points.size()
+			cells.append(y * b.width + x)
+			types.append(t)
+			points.append_array(_tile(x, y, 0.0))
+			indices.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
+			if t == BuildingData.Cell.STAIRS:
+				stairs.append(y * b.width + x)
+				for k in 4:
+					var f := (k + 0.5) / 4.0
+					stair_points.append(proj.to_screen(Vector2(x, y + f)))
+					stair_points.append(proj.to_screen(Vector2(x + 1, y + f)))
+	_ground_cells[lv] = cells
+	_ground_types[lv] = types
+	_ground_points[lv] = points
+	_ground_indices[lv] = indices
+	_stair_cells[lv] = stairs
+	_stair_points[lv] = stair_points
+
+
+func _build_static_objects(lv: int) -> void:
+	var b := sim.building
+	var heights: PackedFloat32Array = _furniture_h[lv]
+	var by_diag := {}
+	for y in b.height:
+		for x in b.width:
+			var t := b.cell(lv, x, y)
+			var has := t in [BuildingData.Cell.WALL, BuildingData.Cell.WINDOW, BuildingData.Cell.DOOR] \
+				or heights[y * b.width + x] > 0.0 \
+				or Vector3i(x, y, lv) in b.outlets
+			if lv == _first_level:
+				var c := Vector2i(x, y)
+				has = has or c in b.hydrants or c == b.fdc or c == sim.gas.valve
+			if has:
+				_add_object(by_diag, x, y)
+	_static_objects[lv] = by_diag
+
+
+## 대각선 d = x + y 목록에 x를 오름차순으로 넣는다 (같은 칸은 한 번만)
+static func _add_object(by_diag: Dictionary, x: int, y: int) -> void:
+	var d := x + y
+	if not by_diag.has(d):
+		by_diag[d] = PackedInt32Array([x])
+		return
+	var xs: PackedInt32Array = by_diag[d]
+	var at := xs.bsearch(x)
+	if at < xs.size() and xs[at] == x:
+		return
+	xs.insert(at, x)
+	by_diag[d] = xs
+
+
+## 지금 층에서 그릴 물체가 있는 칸: 고정 물체 + 타고 있는(또는 마지막으로 봤을 때 타던) 칸.
+## 틱·층이 바뀔 때만 다시 모은다.
+@warning_ignore("integer_division")
+func _object_cells() -> Dictionary:
+	var key := [sim.clock.tick, level, sim.perception.enabled]
+	if key == _objects_key:
+		return _objects
+	_objects_key = key
+	var by_diag := {}
+	var fixed: Dictionary = _static_objects[level]
+	for d in fixed:
+		by_diag[d] = (fixed[d] as PackedInt32Array).duplicate()
+	var b := sim.building
+	var grid := sim.fire.grid
+	var seen_burning := sim.perception.seen_burning
+	var start := grid.index(level, 0, 0)
+	for k in b.width * b.height:
+		var i := start + k
+		if grid.state[i] == FuelGrid.State.BURNING or seen_burning[i] == 1:
+			_add_object(by_diag, k % b.width, k / b.width)
+	_objects = by_diag
+	return _objects
+
+
+## 매 프레임 바뀔 수 있는 물체 칸: 공기안전매트·낙하물 위험구역 (몇 개뿐이라 매번 모은다)
+func _dynamic_object_cells() -> Dictionary:
+	var out := {}
+	if level != _first_level:
+		return out
+	var b := sim.building
+	for m in sim.falls.mats:
+		_add_dynamic(out, Vector2i(m.floor()), b)
+	for z in sim.falls.zones:
+		_add_dynamic(out, Vector2i(z.center.floor()), b)
+	return out
+
+
+static func _add_dynamic(out: Dictionary, c: Vector2i, b: BuildingData) -> void:
+	if not b.in_bounds(c.x, c.y):
+		return
+	var d := c.x + c.y
+	if not out.has(d):
+		out[d] = []
+	out[d].append(c.x)
 
 
 func _process(_delta: float) -> void:
@@ -100,7 +235,7 @@ func _draw() -> void:
 	_lit = sim.command.survey.lit_windows()
 	_draw_ground()
 	_draw_room_labels()
-	if level == b.levels()[0]:
+	if level == _first_level:
 		_draw_face_labels()
 		_draw_staging()
 	for crew_id in selection.selected:
@@ -108,7 +243,7 @@ func _draw() -> void:
 	if selection.commander_selected:
 		_draw_path(sim.command.commander, alpha)
 	_draw_hoses()
-	if level == b.levels()[0]:
+	if level == _first_level:
 		for line in UnitsView.supply_lines(sim):
 			draw_line(proj.to_screen(line[0], 0.05), proj.to_screen(line[1], 0.05), PlanStyle.SUPPLY_LINE, 4.0)
 	# 대원·차량을 대각선(x + y) 깊이별로 모아 벽·가구와 함께 뒤에서 앞으로 그린다
@@ -116,7 +251,7 @@ func _draw() -> void:
 	for ff in sim.units.firefighters:
 		if ff.level == level and not ff.aboard:
 			_bucket(buckets, UnitsView.display_pos(ff, alpha), ff)
-	if level == b.levels()[0]:
+	if level == _first_level:
 		for v in sim.units.vehicles:
 			if not v.away:
 				_bucket(buckets, v.prev_pos.lerp(v.pos, alpha), v)
@@ -126,12 +261,21 @@ func _draw() -> void:
 	var commander := sim.command.commander
 	if commander.level == level:
 		_bucket(buckets, UnitsView.display_pos(commander, alpha), commander)
-	if level == b.levels()[0]:
+	if level == _first_level:
 		for w in sim.command.survey.witnesses:
 			if w.present(sim.clock.tick):
 				_bucket(buckets, w.pos, w)
+	# 그릴 물체가 있는 칸만 대각선마다 x 오름차순으로 (빈 바닥 칸은 그릴 것이 없다)
+	var objects := _object_cells()
+	var extra := _dynamic_object_cells()
 	for d in range(0, b.width + b.height - 1):
-		for x in range(maxi(0, d - b.height + 1), mini(d, b.width - 1) + 1):
+		var xs: PackedInt32Array = objects.get(d, PackedInt32Array())
+		if extra.has(d):
+			var merged := {d: xs.duplicate()}
+			for x: int in extra[d]:
+				_add_object(merged, x, d - x)
+			xs = merged[d]
+		for x in xs:
 			_draw_cell_objects(x, d - x)
 		if buckets.has(d):
 			var group: Array = buckets[d]
@@ -156,7 +300,7 @@ func _draw() -> void:
 			var ep := proj.to_screen(Vector2(e.x, e.y) + Vector2(0.5, 0.5), 0.05)
 			draw_circle(ep, 4.0, PlanStyle.EMBER)
 			draw_arc(ep, 7.0, 0.0, TAU, 16, PlanStyle.EMBER, 1.5)
-	if level == b.levels()[0]:
+	if level == _first_level:
 		_draw_staging_label()
 
 
@@ -170,42 +314,78 @@ func _bucket(buckets: Dictionary, p: Vector2, obj: Object) -> void:
 # --- 바닥 ---
 
 func _draw_ground() -> void:
-	var b := sim.building
-	var fire := sim.fire
-	var t_amb := fire.config.value("ambient_temp_c")
-	for y in b.height:
-		for x in b.width:
-			var t := b.cell(level, x, y)
-			if t == BuildingData.Cell.VOID:
-				continue
-			var color: Color
-			var structure := t in [BuildingData.Cell.WALL, BuildingData.Cell.WINDOW]
-			if thermal:
-				if structure:
-					color = THERMAL_STRUCTURE
-				elif t in BuildingData.OUTDOOR:
-					color = FireView.thermal_color(t_amb, t_amb)
-				elif sim.perception.is_thermal_visible(level, x, y):
-					color = FireView.thermal_color(_cell_temperature(x, y), t_amb)
-				else:
-					color = THERMAL_UNKNOWN
-			else:
-				color = PlanStyle.CELL_COLORS[t]
-				if structure:
-					color = PlanStyle.CELL_COLORS[BuildingData.Cell.FLOOR].darkened(0.3)
-				if _cell_burnt(x, y) and _furniture_height(x, y) <= 0.0:
-					color = color.lerp(FireView.CHAR_COLOR, 0.8)
-			var tile := _tile(x, y, 0.0)
-			draw_colored_polygon(tile, color)
-			if t == BuildingData.Cell.STAIRS and not thermal:
-				_draw_stair_steps(x, y)
-			if not thermal and not structure:
-				var fog := _fog_alpha(x, y)
-				if fog > 0.0:
-					draw_colored_polygon(tile, Color(FOG_COLOR, fog))
+	_update_ground_colors()
+	RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), _ground_indices[level], _ground_points[level], _ground_colors)
+	if not thermal and not _stair_colors.is_empty():
+		draw_multiline_colors(_stair_points[level], _stair_colors, 1.0)
 	if not thermal:
 		_draw_grid_lines()
 		_draw_lane_line()
+
+
+## 바닥 색을 다시 계산한다 (틱·층·열화상·정보 안개 켜짐이 바뀌었을 때만).
+## 정보 안개는 원래 바닥 위에 반투명 마름모를 한 번 더 그리던 것을, 불투명한 바닥 색에 미리 섞어 같은 색을 낸다.
+## 계단선도 안개에 덮이던 색이 그대로 나오도록 같은 비율로 섞는다.
+func _update_ground_colors() -> void:
+	var key := [sim.clock.tick, level, thermal, sim.perception.enabled]
+	if key == _ground_key:
+		return
+	_ground_key = key
+	var b := sim.building
+	var cells: PackedInt32Array = _ground_cells[level]
+	var types: PackedByteArray = _ground_types[level]
+	_ground_colors.resize(cells.size() * 4)
+	var fog_of := {}
+	# 칸마다 함수를 여러 번 부르면 느리므로 시야·그을음 배열을 직접 읽는다 (_fog_alpha·_cell_burnt와 같은 판정)
+	var p := sim.perception
+	var grid := sim.fire.grid
+	var start := grid.index(level, 0, 0)
+	var floor_dark: Color = PlanStyle.CELL_COLORS[BuildingData.Cell.FLOOR].darkened(0.3)
+	for n in cells.size():
+		var k := cells[n]
+		var t := types[n]
+		var structure := t == BuildingData.Cell.WALL or t == BuildingData.Cell.WINDOW
+		var color: Color
+		if thermal:
+			@warning_ignore("integer_division")
+			color = _thermal_ground_color(k % b.width, k / b.width)
+		else:
+			var i := start + k
+			var outdoor := t in BuildingData.OUTDOOR
+			var vis := not p.enabled or outdoor or p.visible_now[i] == 1
+			var seen := vis or p.seen_tick[i] >= 0
+			color = floor_dark if structure else PlanStyle.CELL_COLORS[t]
+			var burnt := grid.state[i] == FuelGrid.State.BURNT if vis else (seen and p.seen_burnt[i] == 1)
+			# 그을린 칸 (탄 칸은 가구 높이가 0이 되므로 _furniture_height 조건은 늘 참)
+			if burnt:
+				color = color.lerp(FireView.CHAR_COLOR, 0.8)
+			if not structure and not vis:
+				var fog := FOG_SEEN_ALPHA if seen else FOG_UNKNOWN_ALPHA
+				color = color.lerp(FOG_COLOR, fog)
+				fog_of[k] = fog
+		for j in 4:
+			_ground_colors[n * 4 + j] = color
+	var stairs: PackedInt32Array = _stair_cells[level]
+	_stair_colors.resize(stairs.size() * 4)
+	for n in stairs.size():
+		var fog: float = fog_of.get(stairs[n], 0.0)
+		var line := PlanStyle.STAIR_LINE.lerp(FOG_COLOR, fog)
+		line.a = PlanStyle.STAIR_LINE.a
+		for k in 4:
+			_stair_colors[n * 4 + k] = line
+
+
+## 열화상 화면의 바닥 색 (열화상 모드에서만 쓰므로 느린 판정 함수를 그대로 쓴다)
+func _thermal_ground_color(x: int, y: int) -> Color:
+	var t := sim.building.cell(level, x, y)
+	var t_amb := sim.fire.config.value("ambient_temp_c")
+	if t == BuildingData.Cell.WALL or t == BuildingData.Cell.WINDOW:
+		return THERMAL_STRUCTURE
+	if t in BuildingData.OUTDOOR:
+		return FireView.thermal_color(t_amb, t_amb)
+	if sim.perception.is_thermal_visible(level, x, y):
+		return FireView.thermal_color(_cell_temperature(x, y), t_amb)
+	return THERMAL_UNKNOWN
 
 
 ## 대기1단계 장소: 차로 바닥에 점선 테두리와 이름
@@ -227,7 +407,7 @@ func _draw_staging_label() -> void:
 
 
 func _draw_lane_line() -> void:
-	if level != sim.building.levels()[0]:
+	if level != _first_level:
 		return
 	var rows := sim.building.road_rows(level)
 	if rows.x < 0:
@@ -246,12 +426,6 @@ func _draw_grid_lines() -> void:
 		draw_line(proj.to_screen(Vector2(x, 0)), proj.to_screen(Vector2(x, b.height)), line, 1.0)
 	for y in range(0, b.height + 1, 2):
 		draw_line(proj.to_screen(Vector2(0, y)), proj.to_screen(Vector2(b.width, y)), line, 1.0)
-
-
-func _draw_stair_steps(x: int, y: int) -> void:
-	for k in 4:
-		var f := (k + 0.5) / 4.0
-		draw_line(proj.to_screen(Vector2(x, y + f)), proj.to_screen(Vector2(x + 1, y + f)), PlanStyle.STAIR_LINE, 1.0)
 
 
 func _draw_room_labels() -> void:
@@ -309,12 +483,12 @@ func _draw_cell_objects(x: int, y: int) -> void:
 			_draw_window(x, y)
 		BuildingData.Cell.DOOR:
 			_draw_door(x, y)
-	if level == sim.building.levels()[0] and Vector2i(x, y) in sim.building.hydrants:
+	if level == _first_level and Vector2i(x, y) in sim.building.hydrants:
 		_box(Vector2(x + 0.3, y + 0.3), Vector2(x + 0.7, y + 0.7), 0.0, HYDRANT_M, PlanStyle.HYDRANT_COLOR, PlanStyle.HYDRANT_COLOR)
 		var label := proj.to_screen(Vector2(x + 0.5, y + 0.5), HYDRANT_M + 0.4)
 		draw_string(PlanStyle.font(), label + Vector2(-30, 0), "소화전", HORIZONTAL_ALIGNMENT_CENTER, 60, 13, PlanStyle.HYDRANT_COLOR.lightened(0.4))
 	var b := sim.building
-	if level == b.levels()[0]:
+	if level == _first_level:
 		for m in sim.falls.mats:
 			if Vector2i(m.floor()) == Vector2i(x, y):
 				_box(m - Vector2(1.2, 0.8), m + Vector2(1.2, 0.8), 0.0, 0.5, Color("fde047"), Color("facc15"))
@@ -327,14 +501,14 @@ func _draw_cell_objects(x: int, y: int) -> void:
 					pts.append(proj.to_screen(z.center + Vector2(cos(a), sin(a)) * z.radius, 0.02))
 				draw_polyline(pts, Color(0.95, 0.3, 0.3, 0.8), 2.0)
 				draw_string(PlanStyle.font(), proj.to_screen(z.center, 0.1) + Vector2(-50, 0), "낙하물 위험", HORIZONTAL_ALIGNMENT_CENTER, 100, 13, Color(1, 0.6, 0.6))
-	if b.has_standpipe() and ((level == b.levels()[0] and Vector2i(x, y) == b.fdc) or Vector3i(x, y, level) in b.outlets):
-		var is_fdc := Vector2i(x, y) == b.fdc and level == b.levels()[0]
+	if b.has_standpipe() and ((level == _first_level and Vector2i(x, y) == b.fdc) or Vector3i(x, y, level) in b.outlets):
+		var is_fdc := Vector2i(x, y) == b.fdc and level == _first_level
 		var sc := PlanStyle.STANDPIPE_COLOR
 		_box(Vector2(x + 0.2, y + 0.2), Vector2(x + 0.8, y + 0.8), 0.0, 0.8, sc, sc)
 		var sl := proj.to_screen(Vector2(x + 0.5, y + 0.5), 1.2)
 		var txt := "송수구%s" % (" (연결)" if sim.water.fdc_vehicle >= 0 else "") if is_fdc else "방수구"
 		draw_string(PlanStyle.font(), sl + Vector2(-50, 0), txt, HORIZONTAL_ALIGNMENT_CENTER, 100, 13, sc.lightened(0.4))
-	if level == sim.building.levels()[0] and Vector2i(x, y) == sim.gas.valve and sim.gas.known(sim.command.survey):
+	if level == _first_level and Vector2i(x, y) == sim.gas.valve and sim.gas.known(sim.command.survey):
 		var gc := PlanStyle.GAS_COLOR if sim.gas.open else PlanStyle.GAS_COLOR.darkened(0.5)
 		_box(Vector2(x + 0.25, y + 0.25), Vector2(x + 0.75, y + 0.75), 0.0, 0.9, gc, gc)
 		var gl := proj.to_screen(Vector2(x + 0.5, y + 0.5), 1.3)
@@ -753,22 +927,22 @@ func _block(x: int, y: int, h0: float, h1: float, color: Color, top_color := Col
 	_box(Vector2(x, y), Vector2(x + 1, y + 1), h0, h1, color, color, top_color)
 
 
+## 면은 모두 볼록 사각형이라 다각형 분할(draw_colored_polygon)이 필요 없다: draw_primitive로 바로 그린다.
+## 높이는 화면에서 위로 PX_PER_M씩 올라가므로 바닥 모서리 4개만 변환하고 높이는 더한다.
 func _box(p0: Vector2, p1: Vector2, h0: float, h1: float, color: Color, side_color: Color, top_color := Color(0, 0, 0, 0)) -> void:
-	var south := PackedVector2Array([
-		proj.to_screen(Vector2(p0.x, p1.y), h0), proj.to_screen(Vector2(p1.x, p1.y), h0),
-		proj.to_screen(Vector2(p1.x, p1.y), h1), proj.to_screen(Vector2(p0.x, p1.y), h1),
-	])
-	var east := PackedVector2Array([
-		proj.to_screen(Vector2(p1.x, p0.y), h0), proj.to_screen(Vector2(p1.x, p1.y), h0),
-		proj.to_screen(Vector2(p1.x, p1.y), h1), proj.to_screen(Vector2(p1.x, p0.y), h1),
-	])
-	var top := PackedVector2Array([
-		proj.to_screen(p0, h1), proj.to_screen(Vector2(p1.x, p0.y), h1),
-		proj.to_screen(p1, h1), proj.to_screen(Vector2(p0.x, p1.y), h1),
-	])
-	draw_colored_polygon(south, Color(side_color.darkened(SOUTH_SHADE), side_color.a))
-	draw_colored_polygon(east, Color(side_color.darkened(EAST_SHADE), side_color.a))
-	draw_colored_polygon(top, top_color if top_color.a > 0.0 else color)
+	var nw := proj.to_screen(p0)
+	var ne := proj.to_screen(Vector2(p1.x, p0.y))
+	var se := proj.to_screen(p1)
+	var sw := proj.to_screen(Vector2(p0.x, p1.y))
+	var lo := Vector2(0, -h0 * IsoProjection.PX_PER_M)
+	var hi := Vector2(0, -h1 * IsoProjection.PX_PER_M)
+	_quad(sw + lo, se + lo, se + hi, sw + hi, Color(side_color.darkened(SOUTH_SHADE), side_color.a))
+	_quad(ne + lo, se + lo, se + hi, ne + hi, Color(side_color.darkened(EAST_SHADE), side_color.a))
+	_quad(nw + hi, ne + hi, se + hi, sw + hi, top_color if top_color.a > 0.0 else color)
+
+
+func _quad(a: Vector2, b: Vector2, c: Vector2, d: Vector2, color: Color) -> void:
+	draw_primitive(PackedVector2Array([a, b, c, d]), PackedColorArray([color, color, color, color]), PackedVector2Array())
 
 
 func _flame_shape(base: Vector2, half_w: float, tip: Vector2) -> PackedVector2Array:

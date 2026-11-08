@@ -13,7 +13,7 @@ extends Node2D
 ## 선택 단위는 조(2인 1조)와 차량이며, 현재 보고 있는 층의 대원만 선택된다.
 ## 좌표 변환은 projection(상황판/입체)을 따른다.
 
-enum Mode { NONE, HOSE, STRAIGHT, FOG, DOOR, SEARCH, OVERHAUL, PRIMARY, ATTACK, SEARCH_AUTO, EXTERIOR, RESCUE }
+enum Mode { NONE, HOSE, STRAIGHT, FOG, DOOR, SEARCH, OVERHAUL, PRIMARY, ATTACK, SEARCH_AUTO, EXTERIOR, RESCUE, TREAT, TRANSPORT }
 
 ## 관계인을 클릭했을 때 (world가 진술 창을 연다)
 signal witness_clicked(index: int)
@@ -35,6 +35,8 @@ const MODE_HINTS := {
 	Mode.SEARCH_AUTO: "수색: 방을 클릭 (문 개방·인명검색·이송)",
 	Mode.EXTERIOR: "외부 방수: 창이나 개구부를 클릭 (밖에서 직사)",
 	Mode.RESCUE: "구조: 발견한 구조대상자나 쓰러진 대원을 클릭",
+	Mode.TREAT: "처치: 구조된 환자를 클릭 (구급대가 가서 응급처치)",
+	Mode.TRANSPORT: "이송: 처치한 환자를 클릭 (들것으로 구급차에 태워 병원으로)",
 }
 ## 요구조자·쓰러진 대원을 클릭으로 고를 때 허용 반경 (px)
 const CASUALTY_PICK_PX := 20.0
@@ -204,13 +206,13 @@ func _box_select(add: bool) -> void:
 	var ids: Array[int] = []
 	for c in sim.units.crews:
 		for ff in c.members():
-			if ff.level == level and _drag_rect.has_point(projection.to_screen(ff.pos)):
+			if ff.level == level and not ff.aboard and _drag_rect.has_point(projection.to_screen(ff.pos)):
 				ids.append(c.id)
 				break
 	var vehicles: Array[int] = []
 	if ids.is_empty() and level == sim.building.levels()[0]:
 		for v in sim.units.vehicles:
-			if _drag_rect.has_point(projection.to_screen(v.pos)):
+			if not v.away and _drag_rect.has_point(projection.to_screen(v.pos)):
 				vehicles.append(v.id)
 	if add:
 		_set_selection(_merge(ids), _merge_vehicles(vehicles))
@@ -251,7 +253,12 @@ func _issue_right_click(world_pos: Vector2) -> void:
 				without_hose.append(id)
 		var door := _door_at(world_pos)
 		var casualty := _casualty_at(world_pos)
-		if casualty.x >= 0:
+		var patient := _patient_at(world_pos)
+		if patient >= 0 and sim.ems.is_ems_crew(selected[0]):
+			var p := sim.ems.patient_of(patient)
+			sim.issue(EquipmentCommand.make("ems_transport" if p.stage == EmsSystem.Stage.TREATED else "ems_treat", selected, -1, patient))
+			marker_cell = sim.rescue.victims[patient].pos
+		elif casualty.x >= 0:
 			sim.issue(EquipmentCommand.make("rescue" if casualty.x == 0 else "rescue_ff", selected, -1, casualty.y))
 		elif level == 1 and sim.gas.open and sim.gas.known(sim.command.survey) and sim.gas.valve_near(cell_f):
 			# 가스 밸브 우클릭: 첫 조가 가서 차단 (SOP 214-2.2)
@@ -314,6 +321,10 @@ func _complete_mode(world_pos: Vector2) -> void:
 						sim.issue(TacticalCommand.make("search", search, target))
 				_marker_world = projection.to_screen(Vector2(cell) + Vector2(0.5, 0.5))
 				_marker_start_ms = Time.get_ticks_msec()
+		Mode.TREAT, Mode.TRANSPORT:
+			var patient := _patient_at(world_pos)
+			if patient >= 0 and not selected.is_empty():
+				sim.issue(EquipmentCommand.make("ems_treat" if mode == Mode.TREAT else "ems_transport", selected, -1, patient))
 		Mode.RESCUE:
 			var casualty := _casualty_at(world_pos)
 			if casualty.x >= 0 and not selected.is_empty():
@@ -341,7 +352,7 @@ func _crew_at(world_pos: Vector2) -> int:
 	var best := -1
 	var best_d := projection.pick_radius_px
 	for ff in sim.units.firefighters:
-		if ff.level != level:
+		if ff.level != level or ff.aboard:
 			continue
 		var d := projection.to_screen(ff.pos, projection.pick_height_m).distance_to(world_pos)
 		if d < best_d:
@@ -392,6 +403,23 @@ func _casualty_at(world_pos: Vector2) -> Vector2i:
 			if d < best_d:
 				best_d = d
 				best = Vector2i(1, ff.id)
+	return best
+
+
+## world_pos 아래의 구조된 환자 (요구조자 id, 없으면 -1). 1층 바깥에만 있다
+func _patient_at(world_pos: Vector2) -> int:
+	if level != sim.building.levels()[0]:
+		return -1
+	var best := -1
+	var best_d := CASUALTY_PICK_PX
+	for p in sim.ems.patients:
+		var v := sim.rescue.victims[p.victim_id]
+		if not sim.ems.on_scene(p) or v.carried_by >= 0:
+			continue
+		var d := projection.to_screen(v.pos, 0.2).distance_to(world_pos)
+		if d < best_d:
+			best_d = d
+			best = v.id
 	return best
 
 

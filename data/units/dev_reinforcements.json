@@ -1,12 +1,12 @@
 {
-  "note": "개발용 시나리오의 후착대·지원 출동대 편성. 인물은 모두 가상이다. 차량을 타고 지도 동쪽 끝에서 들어와 대기1단계 장소에 선 뒤 조가 내린다 (spawn 없음). 시나리오의 arrivals·support가 id로 부른다.",
+  "note": "개발용 시나리오의 후착대·지원 출동대 편성. 인물은 모두 가상이다. 차량을 타고 지도 동쪽 끝에서 들어와 대기1단계 장소에 선 뒤 조가 내린다 (spawn 없음). 구급대는 1개 조(2명) + 운전원 1명 = 3명. 시나리오의 arrivals·support가 id로 부른다.",
   "squads": [
     {
       "id": "pump2",
       "name": "진압2",
       "type": "진압대",
       "color": "#10B981",
-      "vehicles": [{"type": "펌프차"}],
+      "vehicles": [{"type": "펌프차", "driver": {"name": "박정우", "rank": "소방장"}}],
       "crews": [
         {
           "thermal_camera": true,
@@ -28,7 +28,7 @@
       "name": "진압3",
       "type": "진압대",
       "color": "#8B5CF6",
-      "vehicles": [{"type": "펌프차"}, {"type": "물탱크차"}],
+      "vehicles": [{"type": "펌프차", "driver": {"name": "최영호", "rank": "소방교"}}, {"type": "물탱크차", "driver": {"name": "정민규", "rank": "소방장"}}],
       "crews": [
         {
           "thermal_camera": true,
@@ -50,7 +50,7 @@
       "name": "진압4",
       "type": "진압대",
       "color": "#EC4899",
-      "vehicles": [{"type": "펌프차"}],
+      "vehicles": [{"type": "펌프차", "driver": {"name": "한석진", "rank": "소방교"}}],
       "crews": [
         {
           "thermal_camera": true,
@@ -72,7 +72,7 @@
       "name": "구조2",
       "type": "구조대",
       "color": "#14B8A6",
-      "vehicles": [{"type": "구조공작차"}],
+      "vehicles": [{"type": "구조공작차", "driver": {"name": "윤도경", "rank": "소방장"}}],
       "crews": [
         {
           "thermal_camera": true,
@@ -90,11 +90,41 @@
       ]
     },
     {
+      "id": "ems1",
+      "name": "구급1",
+      "type": "구급대",
+      "color": "#F8FAFC",
+      "vehicles": [{"type": "구급차", "driver": {"name": "민서준", "rank": "소방교"}}],
+      "crews": [
+        {
+          "members": [
+            {"name": "하은수", "rank": "소방장", "role": "구급대장 (1급 응급구조사)"},
+            {"name": "도윤아", "rank": "소방사", "role": "구급대원 (간호사)"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ems2",
+      "name": "구급2",
+      "type": "구급대",
+      "color": "#E2E8F0",
+      "vehicles": [{"type": "구급차", "driver": {"name": "류지환", "rank": "소방교"}}],
+      "crews": [
+        {
+          "members": [
+            {"name": "엄태준", "rank": "소방장", "role": "구급대장 (1급 응급구조사)"},
+            {"name": "표하린", "rank": "소방사", "role": "구급대원 (2급 응급구조사)"}
+          ]
+        }
+      ]
+    },
+    {
       "id": "pump5",
       "name": "진압5",
       "type": "진압대",
       "color": "#A3E635",
-      "vehicles": [{"type": "펌프차"}],
+      "vehicles": [{"type": "펌프차", "driver": {"name": "조성래", "rank": "소방교"}}],
       "crews": [
         {
           "thermal_camera": true,

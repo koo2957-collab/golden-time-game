@@ -54,7 +54,8 @@ func _draw() -> void:
 			draw_string(PlanStyle.font(), PlanStyle.to_px(Vector2(rects[0].position.x + 0.5, rects[0].end.y + 0.8)),
 				"대기1단계 장소 (%s)" % sim.command.resources.staging_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, PlanStyle.STAGING_COLOR.lightened(0.3))
 		for v in sim.units.vehicles:
-			_draw_vehicle(v, alpha)
+			if not v.away:
+				_draw_vehicle(v, alpha)
 		for line in supply_lines(sim):
 			draw_line(PlanStyle.to_px(line[0]), PlanStyle.to_px(line[1]), PlanStyle.SUPPLY_LINE, 4.0)
 	for o in sim.command.survey.lit_windows():
@@ -78,7 +79,7 @@ func _draw() -> void:
 	# 다른 층 대원을 먼저 그려 현재 층 대원이 위에 오게 한다
 	for pass_current in [false, true]:
 		for ff in sim.units.firefighters:
-			if (ff.level == level) == pass_current:
+			if (ff.level == level) == pass_current and not ff.aboard:
 				_draw_unit(ff, alpha)
 	_draw_commander(alpha)
 	_draw_victims()
@@ -90,6 +91,15 @@ func _draw() -> void:
 
 ## 발견한 요구조자: 상태별 색 마름모 + 이름표
 func _draw_victims() -> void:
+	for p in sim.ems.patients:
+		var pv := sim.rescue.victims[p.victim_id]
+		if level != sim.building.levels()[0] or not sim.ems.on_scene(p) or pv.carried_by >= 0:
+			continue
+		var pc := PlanStyle.to_px(pv.pos)
+		var tag: Color = EmsSystem.TRIAGE_COLORS[p.triage]
+		draw_rect(Rect2(pc - Vector2(7, 7), Vector2(14, 14)), tag)
+		draw_rect(Rect2(pc - Vector2(7, 7), Vector2(14, 14)), Color.WHITE, false, 1.5)
+		draw_string(PlanStyle.font(), pc + Vector2(-80, -12), "%s · %s · %s" % [pv.label(), sim.ems.triage_name(p), EmsSystem.STAGE_NAMES[p.stage]], HORIZONTAL_ALIGNMENT_CENTER, 160, 12, tag.lightened(0.3))
 	for v in sim.rescue.victims:
 		if not v.discovered or v.level != level or v.state == Victim.State.RESCUED:
 			continue

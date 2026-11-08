@@ -237,6 +237,46 @@ func _check_rescue_time() -> Dictionary:
 	return {"score": sum / victims.size(), "detail": "%s (기준 %d분 안)" % [", ".join(parts), int(_params.good_s / 60)]}
 
 
+## 구조 후 응급처치 (SOP 400-3.2, 402): 구조된 환자마다 구조 → 처치 시작 시간. 긴급 환자 처치 지연 사망은 0점
+func _check_ems_treat() -> Dictionary:
+	var ems := sim.ems
+	if ems.patients.is_empty():
+		return {}
+	var sum := 0.0
+	var parts: PackedStringArray = []
+	for p in ems.patients:
+		var v := sim.rescue.victims[p.victim_id]
+		if v.state == Victim.State.DEAD:
+			parts.append("%s(%s) 처치 지연으로 사망" % [v.label(), ems.triage_name(p)])
+			continue
+		if p.treat_start_tick < 0:
+			parts.append("%s(%s) 처치 못함" % [v.label(), ems.triage_name(p)])
+			continue
+		var wait := (p.treat_start_tick - v.rescued_tick) * SimClock.TICK_DT
+		var good: float = _params.good_s if p.triage == EmsSystem.Triage.URGENT else _params.good_s * 2.0
+		sum += _linear(wait, good, _params.bad_s)
+		parts.append("%s(%s) 구조 %d초 뒤 처치" % [v.label(), ems.triage_name(p), roundi(wait)])
+	return {"score": sum / ems.patients.size(), "detail": ", ".join(parts)}
+
+
+## 처치 후 이송 (SOP 400-3.3·3.4): 구조 → 이송 출발 시간
+func _check_ems_transport() -> Dictionary:
+	var ems := sim.ems
+	if ems.patients.is_empty():
+		return {}
+	var sum := 0.0
+	var parts: PackedStringArray = []
+	for p in ems.patients:
+		var v := sim.rescue.victims[p.victim_id]
+		if p.depart_tick < 0:
+			parts.append("%s 이송 못함" % v.label())
+			continue
+		var t := (p.depart_tick - v.rescued_tick) * SimClock.TICK_DT
+		sum += _linear(t, _params.good_s, _params.bad_s)
+		parts.append("%s 구조 %d분 %02d초 뒤 이송 출발%s" % [v.label(), roundi(t) / 60, roundi(t) % 60, " · %s 병원 인계" % _t(p.handover_tick) if p.handover_tick >= 0 else ""])
+	return {"score": sum / ems.patients.size(), "detail": ", ".join(parts)}
+
+
 func _check_search_order() -> Dictionary:
 	var origin := _origin_room()
 	var searched: Array[Compartment] = []
@@ -751,7 +791,11 @@ static func _category_name(cat: int) -> String:
 func _victim_outcome(v: Victim) -> String:
 	match v.state:
 		Victim.State.RESCUED:
-			return "%s 구조 (%s)" % [_t(v.rescued_tick), Victim.STATE_NAMES[v.state_at_rescue]]
+			var p := sim.ems.patient_of(v.id)
+			var ems_text := ""
+			if p:
+				ems_text = " · %s · %s" % [sim.ems.triage_name(p), EmsSystem.STAGE_NAMES[p.stage]]
+			return "%s 구조 (%s)%s" % [_t(v.rescued_tick), Victim.STATE_NAMES[v.state_at_rescue], ems_text]
 		Victim.State.DEAD:
 			return "사망"
 	return "발견했지만 구조 못함" if v.discovered else "발견 못함"

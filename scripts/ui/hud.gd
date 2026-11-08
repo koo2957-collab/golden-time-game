@@ -321,7 +321,9 @@ func _squad_state(squad_id: int) -> String:
 func _vehicle_line(v: Vehicle) -> String:
 	var squad := sim.units.squads[v.squad_id]
 	var water := " — 물 %s / %sL" % [_thousands(v.tank_l), _thousands(v.tank_capacity)] if v.tank_capacity > 0.0 else ""
-	var line := "[%s] %s%s%s" % [squad.name, v.type, water, _squad_state(v.squad_id)]
+	var line := "[%s] %s (운전원 %s)%s%s" % [squad.name, v.type, v.driver_label(), water, _squad_state(v.squad_id)]
+	if v.away:
+		line += " · 환자 이송 중 (현장 없음)"
 	if v.hydrant >= 0:
 		line += " · 소화전 연결"
 	if v.supply_to >= 0:

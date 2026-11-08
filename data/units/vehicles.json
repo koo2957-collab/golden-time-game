@@ -14,6 +14,13 @@
     "length_m": 8.0, "width_m": 2.5, "height_m": 3.0, "speed_mps": 2.5,
     "source": "추정"
   },
+  "구급차": {
+    "short": "구급", "color": "#f8fafc",
+    "tank_l": 0, "nozzle_lpm": 0, "transfer_lpm": 0,
+    "hose_sections": 0, "hose_section_m": 15,
+    "length_m": 6.0, "width_m": 2.1, "height_m": 2.7, "speed_mps": 2.5,
+    "source": "추정"
+  },
   "구조공작차": {
     "short": "구조", "color": "#ea580c",
     "tank_l": 0, "nozzle_lpm": 0, "transfer_lpm": 0,

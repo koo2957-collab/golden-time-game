@@ -50,7 +50,7 @@
       "대상: 2층 단독주택 (벽돌조), 주택가 이면도로 · 동쪽 약 2m에 단층 이웃집",
       "신고 내용(남편, 휴대전화): \"2층 딸 방에서 불이 났어요. 아내랑 딸이 아직 안에 있어요!\"",
       "시간·날씨: 03:40, 맑음, 북풍 3m/s",
-      "출동대: 진압1(펌프차·물탱크차), 구조1 (선착) · 후착: 진압2(펌프차, 약 4분 뒤), 구조2(약 6분 뒤)",
+      "출동대: 진압1(펌프차·물탱크차), 구조1 (선착) · 구급1(약 5분 뒤) · 후착: 진압2(펌프차, 약 4분 뒤), 구조2(약 6분 뒤)",
       "소화전: 건물 동쪽 보도 지상식 1개소 · 대기1단계 장소: 도로 동쪽"
     ],
     "reported_victims": true
@@ -79,6 +79,8 @@
       "rescue.survival",
       "rescue.time",
       "rescue.search_order",
+      "rescue.ems_treat",
+      "rescue.ems_transport",
       "property.spread",
       "property.exposure",
       "property.water",
@@ -201,13 +203,18 @@
     {
       "squad": "rescue2",
       "time_s": 360
+    },
+    {
+      "squad": "ems1",
+      "time_s": 300
     }
   ],
   "support": {
     "추가 출동대 요청": {
       "squads": [
         "pump3",
-        "pump4"
+        "pump4",
+        "ems2"
       ],
       "delay_s": 360
     },
@@ -215,7 +222,8 @@
       "squads": [
         "pump3",
         "pump4",
-        "pump5"
+        "pump5",
+        "ems2"
       ],
       "delay_s": 360
     },
@@ -266,5 +274,9 @@
         1
       ]
     ]
+  },
+  "ems": {
+    "hospital": "○○병원 응급실 (가상)",
+    "note": "이송 병원 (SOP 400-3.2.4). 인물·기관은 가상"
   }
 }

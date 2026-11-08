@@ -40,6 +40,8 @@ var tasks: Array[Task] = []
 ## 자동화 수준 이름 (입문·중급·상급)
 var level_name := "입문"
 var level: Dictionary = LEVELS["입문"]
+## 구급 처치 후 자동 이송 여부를 자동화 수준에 맞춘다
+var ems: EmsSystem
 
 
 func _init(p_fire: FireSim, p_units: UnitSystem, p_water: WaterSystem, p_doors: DoorSystem, p_rescue: RescueSystem, p_events: SimEventLog) -> void:
@@ -54,6 +56,8 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_water: WaterSystem, p_doors: 
 func set_level(name: String) -> void:
 	level_name = name if LEVELS.has(name) else "입문"
 	level = LEVELS[level_name]
+	if ems:
+		ems.auto_transport = level_name == "입문"
 
 
 func task_of_crew(crew_id: int) -> Task:

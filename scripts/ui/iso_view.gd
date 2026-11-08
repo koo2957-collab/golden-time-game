@@ -106,11 +106,12 @@ func _draw() -> void:
 	# 대원·차량을 대각선(x + y) 깊이별로 모아 벽·가구와 함께 뒤에서 앞으로 그린다
 	var buckets := {}
 	for ff in sim.units.firefighters:
-		if ff.level == level:
+		if ff.level == level and not ff.aboard:
 			_bucket(buckets, UnitsView.display_pos(ff, alpha), ff)
 	if level == b.levels()[0]:
 		for v in sim.units.vehicles:
-			_bucket(buckets, v.prev_pos.lerp(v.pos, alpha), v)
+			if not v.away:
+				_bucket(buckets, v.prev_pos.lerp(v.pos, alpha), v)
 	for victim in sim.rescue.victims:
 		if victim.discovered and victim.level == level:
 			_bucket(buckets, victim.pos, victim)
@@ -633,6 +634,14 @@ func _draw_victim(v: Victim) -> void:
 		draw_colored_polygon(_ellipse(at, 12, 4), color)
 		return
 	if v.state == Victim.State.RESCUED:
+		var p := sim.ems.patient_of(v.id)
+		if p == null or not sim.ems.on_scene(p):
+			return
+		var tag: Color = EmsSystem.TRIAGE_COLORS[p.triage]
+		var at := proj.to_screen(v.pos, 0.05)
+		draw_colored_polygon(_ellipse(at + Vector2(0, -3), 13, 5), color)
+		draw_circle(at + Vector2(12, -5), 5.0, tag)
+		draw_string(PlanStyle.font(), at + Vector2(-70, -14), "%s · %s · %s" % [v.label(), sim.ems.triage_name(p), EmsSystem.STAGE_NAMES[p.stage]], HORIZONTAL_ALIGNMENT_CENTER, 140, 12, tag.lightened(0.3))
 		return
 	var feet := proj.to_screen(v.pos, 0.05)
 	draw_colored_polygon(_ellipse(feet, 15, 6), Color(0, 0, 0, 0.35))

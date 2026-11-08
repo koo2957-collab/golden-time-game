@@ -89,11 +89,11 @@ static func describe_text(e: Dictionary) -> String:
 		"window_vented":
 			text = "창 파괴 (배연) — %s" % e.room
 		"hydrant_connected":
-			text = "소화전 점령 — %s" % e.vehicle
+			text = "소화전 점령 — %s%s" % [e.vehicle, _driver(e)]
 		"hydrant_disconnected":
 			text = "소화전 연결 해제 — %s" % e.vehicle
 		"supply_connected":
-			text = "급수 연결 — %s → %s" % [e.vehicle, e.to]
+			text = "급수 연결 — %s → %s%s" % [e.vehicle, e.to, _driver(e)]
 		"hose_laid":
 			text = "수관 연장 — %s (%s)" % [e.crew, e.vehicle]
 		"hose_too_short":
@@ -103,9 +103,9 @@ static func describe_text(e: Dictionary) -> String:
 		"tank_empty":
 			text = "탱크 물 소진 — %s" % e.vehicle
 		"vehicle_locked":
-			text = "수관이 연결되어 이동 불가 — %s" % e.vehicle
+			text = "수관이 연결되어 이동 불가 — %s%s" % [e.vehicle, _driver(e)]
 		"vehicle_blocked":
-			text = "차량 이동 불가 (차도·다른 차량) — %s" % e.vehicle
+			text = "차량 이동 불가 (차도·다른 차량) — %s%s" % [e.vehicle, _driver(e)]
 		"spray_start":
 			text = "방수 시작 — %s (%s)" % [e.crew, e.pattern]
 		"spray_stop":
@@ -215,6 +215,24 @@ static func describe_text(e: Dictionary) -> String:
 			text = "%s 차단 — %s" % [e.what, e.crew]
 		"gas_explosion":
 			text = "가스 폭발 — %s" % e.room
+		"ems_triage":
+			text = "환자 분류 %s — %s (SOP 402)" % [e.triage, e.who]
+		"ems_treat_order":
+			text = "처치 지시 — %s → %s (%s)" % [e.crew, e.who, e.triage]
+		"ems_treat_start":
+			text = "응급처치 시작 — %s, %s" % [e.crew, e.who]
+		"ems_treated":
+			text = "응급처치 완료 — %s (%s)%s" % [e.who, e.crew, "" if e.get("auto", false) else " — 이송 지시 바람"]
+		"ems_carry":
+			text = "들것으로 구급차까지 이동 — %s, %s" % [e.crew, e.who]
+		"ems_depart":
+			text = "환자 이송 출발 — %s (%s) → %s, %s 운전" % [e.who, e.triage, e.hospital, e.driver]
+		"ems_handover":
+			text = "병원 인계 — %s → %s" % [e.who, e.hospital]
+		"ems_returned":
+			text = "구급대 복귀 — %s" % e.squad
+		"ems_no_ambulance":
+			text = "구급차 없음 (이송 중) — %s" % e.crew
 		"activity_ended":
 			text = "활동 종료 — %s" % e.reason
 		"span_warning":
@@ -222,3 +240,7 @@ static func describe_text(e: Dictionary) -> String:
 		_:
 			text = str(e.type)
 	return text
+
+
+static func _driver(e: Dictionary) -> String:
+	return " (운전원 %s)" % e.driver if e.has("driver") else ""

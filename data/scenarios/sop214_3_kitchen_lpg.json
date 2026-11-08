@@ -52,7 +52,7 @@
       "대상: 2층 단독주택 (벽돌조), 주택가 이면도로 · 동쪽 약 2m에 단층 이웃집",
       "신고 내용(이웃): \"옆집 부엌 쪽에서 불길이 보여요. 할머니 혼자 사시는데 다리가 불편하세요.\"",
       "시간·날씨: 평일 18:50, 흐림, 남서풍 4m/s",
-      "출동대: 진압1(소형 펌프차·물탱크차), 구조1 (선착) · 후착: 진압2(인접 관할, 약 7분 뒤)",
+      "출동대: 진압1(소형 펌프차·물탱크차), 구조1 (선착) · 구급1(약 6분 뒤) · 후착: 진압2(인접 관할, 약 7분 뒤)",
       "소화전: 건물 동쪽 보도 지상식 1개소 · 대기1단계 장소: 도로 동쪽"
     ],
     "reported_victims": true
@@ -81,6 +81,8 @@
       "rescue.survival",
       "rescue.time",
       "rescue.search_order",
+      "rescue.ems_treat",
+      "rescue.ems_transport",
       "property.spread",
       "property.exposure",
       "property.gas",
@@ -216,13 +218,18 @@
     {
       "squad": "pump2",
       "time_s": 420
+    },
+    {
+      "squad": "ems1",
+      "time_s": 360
     }
   ],
   "support": {
     "추가 출동대 요청": {
       "squads": [
         "rescue2",
-        "pump3"
+        "pump3",
+        "ems2"
       ],
       "delay_s": 480
     },
@@ -230,7 +237,8 @@
       "squads": [
         "rescue2",
         "pump3",
-        "pump4"
+        "pump4",
+        "ems2"
       ],
       "delay_s": 480
     },
@@ -280,5 +288,9 @@
         1
       ]
     ]
+  },
+  "ems": {
+    "hospital": "○○병원 응급실 (가상)",
+    "note": "이송 병원 (SOP 400-3.2.4). 인물·기관은 가상"
   }
 }

@@ -21,7 +21,7 @@ scripts/
                    sim_world.gd(전체 상태·명령 실행), sim_clock.gd(고정 틱 시계), json_data.gd,
                    fire_sim.gd(화재 통합·사건 판정), fire_config.gd(화재 수치·재질), param_table.gd,
                    door_system.gd(문 개방·폐쇄·파괴), crew_condition_system.gd(자세·복사열·열 스트레스·공기호흡기),
-                   perception.gd(정보 안개·시야·열화상), rescue_system.gd(요구조자·검색·구조)
+                   perception.gd(정보 안개·시야·열화상), rescue_system.gd(요구조자·검색·구조), ems_system.gd(구급 처치·이송)
     compartment/   구획(방) 2층 모델: compartment.gd, opening.gd(문·창·계단), compartment_model.gd(계산)
     grid/          건물 도면(building_data.gd), 길찾기(pathfinder.gd), 셀 연소(fuel_grid.gd)
     hazards/       특수현상(hazard_system.gd): 롤오버 징후, 플래시오버 피해, 백드래프트 징후·폭발, 350℃ 경고, 인접 건물 연소(exposure_system.gd), 가스(gas_system.gd), 붕괴(collapse_system.gd)
@@ -187,6 +187,19 @@ tests/             단위 테스트(test_*.gd)와 조작 점검(ui_smoke.gd)
 | 교육 모드 | `HintUi` + `data/sop/hints.json` 13종. 트리거가 처음 성립하면 카드(SOP 조항·원리·권장 행동)를 띄우고 멈춤. 결과 파일에 mode·difficulty 기록 |
 
 검증은 `tests/test_tactical.gd`, `tests/test_hints.gd`.
+
+## 구급대·운전원 요약 (M7b-2)
+
+| 요소 | 내용 |
+|---|---|
+| 구급 | `scripts/simulation/ems_system.gd`, 값 `data/units/ems_params.json`. 구조된 요구조자 → 환자 등록·중증도 분류 → 처치(구급대 조, 환자 옆) → 이송(들것으로 구급차까지, 출발하면 구급차 `away`·대원 `aboard`) → 병원 인계 → 복귀 |
+| 명령 | 장비 명령 `ems_treat`·`ems_transport` (other = 요구조자 id). 구급대 명령칸: 처치(W)·이송(V). 구급대 선택 후 환자 우클릭도 같다 |
+| 자동화 | 입문: 처치 후 자동 이송 / 중급·상급: "이송 지시 바람" 보고 후 대기 |
+| 운전원 | 편성 파일 차량 `driver: {name, rank}` → `Vehicle.driver_label()`. HUD 차량 줄과 차량 기록에 표시 |
+| 편성 | `dev_reinforcements.json`의 구급1·구급2. 시나리오 arrivals로 구급1이 4~6분 뒤 도착, 지원 요청에 구급2 |
+| 평가·힌트 | rescue.ems_treat, rescue.ems_transport (29개), 힌트 patient_waiting (17종). RECEO R줄에 처치 대기 수 |
+
+검증은 `tests/test_ems.gd`.
 
 ## 주택화재 완성도 요약 (M7b-1)
 

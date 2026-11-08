@@ -293,7 +293,12 @@ func _on_command(id: String) -> void:
 			selection.begin_mode(SelectionController.Mode.OVERHAUL)
 		# 분대 명령칸 (고수준 명령)
 		"primary":
-			selection.begin_mode(SelectionController.Mode.PRIMARY)
+			var lead := sim.units.squad_of_crew(selection.selected[0]) if not selection.selected.is_empty() else null
+			selection.begin_mode(SelectionController.Mode.TREAT if lead and lead.type == "구급대" else SelectionController.Mode.PRIMARY)
+		"treat":
+			selection.begin_mode(SelectionController.Mode.TREAT)
+		"transport":
+			selection.begin_mode(SelectionController.Mode.TRANSPORT)
 		"attack":
 			selection.begin_mode(SelectionController.Mode.ATTACK)
 		"search_auto":
@@ -304,7 +309,10 @@ func _on_command(id: String) -> void:
 			selection.begin_mode(SelectionController.Mode.RESCUE)
 		"secondary":
 			var first := sim.units.squad_of_crew(selection.selected[0])
-			selection.begin_mode(SelectionController.Mode.RESCUE if first.type == "구조대" else SelectionController.Mode.EXTERIOR)
+			if first.type == "구급대":
+				selection.begin_mode(SelectionController.Mode.TRANSPORT)
+			else:
+				selection.begin_mode(SelectionController.Mode.RESCUE if first.type == "구조대" else SelectionController.Mode.EXTERIOR)
 		"withdraw":
 			sim.issue(TacticalCommand.make("withdraw", selection.selected))
 

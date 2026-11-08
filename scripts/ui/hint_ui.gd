@@ -108,6 +108,9 @@ func _check() -> void:
 	for type in ["exposure_heating", "collapse_sign"]:
 		if not ev.of_type(type).is_empty():
 			_trigger(type)
+	for p in sim.ems.patients:
+		if p.stage == EmsSystem.Stage.WAITING and sim.ems.on_scene(p) and sim.clock.tick - sim.rescue.victims[p.victim_id].rescued_tick >= roundi(60.0 / SimClock.TICK_DT):
+			_trigger("patient_waiting")
 	if sim.gas.open and sim.gas.known(cmd.survey):
 		_trigger("gas_known")
 	if not ev.of_type("squad_staged").is_empty():

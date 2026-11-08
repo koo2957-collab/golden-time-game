@@ -42,6 +42,15 @@ var supply_to := -1
 var pending_hydrant := -1
 var pending_supply := -1
 var tank_empty_logged := false
+## 운전원 (기관원). 차량 명령은 운전원에게 내리는 지시다
+var driver_name := ""
+var driver_rank := ""
+## 환자 이송 등으로 현장을 떠나 있음 (화면·선택에서 빠진다)
+var away := false
+
+
+func driver_label() -> String:
+	return "%s %s" % [driver_rank, driver_name] if driver_name != "" else "운전원"
 
 
 func display_name(squad_name: String) -> String:

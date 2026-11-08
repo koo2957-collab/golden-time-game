@@ -32,6 +32,8 @@ var heat_stress := 0.0
 var heat_flux := 0.0
 ## 행동 불능 (공기 소진·열 스트레스 한계)
 var incapacitated := false
+## 구급차에 타고 현장을 떠나 있음 (화면·선택에서 빠진다)
+var aboard := false
 var air_alarm_logged := false
 ## 공기호흡기 교체 진행 시간 (초)
 var swap_timer := 0.0

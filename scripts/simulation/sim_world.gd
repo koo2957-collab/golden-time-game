@@ -9,6 +9,7 @@ const DEFAULT_UNIT_STATS_PATH := "res://data/units/firefighter.json"
 const FIRE_PARAMS_PATH := "res://data/fire/fire_params.json"
 const MATERIALS_PATH := "res://data/materials/materials.json"
 const VEHICLES_PATH := "res://data/units/vehicles.json"
+const EMS_PARAMS_PATH := "res://data/units/ems_params.json"
 const HAZARD_PARAMS_PATH := "res://data/fire/hazard_params.json"
 const RADIO_PARAMS_PATH := "res://data/command/radio_params.json"
 const SURVEY_PARAMS_PATH := "res://data/command/survey_params.json"
@@ -34,6 +35,7 @@ var tactical: TacticalSystem
 var exposure: ExposureSystem
 var gas: GasSystem
 var collapse: CollapseSystem
+var ems: EmsSystem
 var command: CommandSystem
 var command_log := CommandLog.new()
 var events := SimEventLog.new()
@@ -69,8 +71,9 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	var radio_data: Variant = JsonData.load_file(RADIO_PARAMS_PATH)
 	var survey_data: Variant = JsonData.load_file(SURVEY_PARAMS_PATH)
 	var safety_data: Variant = JsonData.load_file(SAFETY_PARAMS_PATH)
+	var ems_data: Variant = JsonData.load_file(EMS_PARAMS_PATH)
 	var fire_config := FireConfig.load_files(FIRE_PARAMS_PATH, MATERIALS_PATH)
-	if building == null or not roster is Dictionary or not stats_data is Dictionary or not vehicle_stats is Dictionary or not hazard_data is Dictionary or not radio_data is Dictionary or not survey_data is Dictionary or not safety_data is Dictionary or fire_config == null:
+	if building == null or not roster is Dictionary or not stats_data is Dictionary or not vehicle_stats is Dictionary or not hazard_data is Dictionary or not radio_data is Dictionary or not survey_data is Dictionary or not safety_data is Dictionary or not ems_data is Dictionary or fire_config == null:
 		return null
 	var stats := ParamTable.from_dict(stats_data)
 	for type: String in vehicle_overrides:
@@ -95,6 +98,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.exposure = ExposureSystem.new(sim.fire, sim.water, hazard_params, sim.events)
 	sim.gas = GasSystem.new(sim.fire, sim.units, sim.pathfinder, hazard_params, sim.events)
 	sim.collapse = CollapseSystem.new(sim.fire, sim.units, sim.rescue, hazard_params, sim.events)
+	sim.ems = EmsSystem.new(sim.units, sim.rescue, sim.pathfinder, ParamTable.from_dict(ems_data), sim.events)
 	sim.command = CommandSystem.new(sim.fire, sim.units, sim.pathfinder, sim.rescue, sim.water, sim.doors, sim.perception, sim.clock, ParamTable.from_dict(radio_data), sim.events)
 	sim.command.resources = ResourceSystem.new(sim.units, sim.pathfinder, sim.conditions, building, sim.events)
 	var safety := SafetySystem.new(sim.fire, sim.units, sim.pathfinder, sim.rescue, sim.water, sim.doors, ParamTable.from_dict(safety_data), sim.events)
@@ -105,6 +109,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.command.safety = safety
 	sim.tactical = TacticalSystem.new(sim.fire, sim.units, sim.water, sim.doors, sim.rescue, sim.events)
 	sim.tactical.safety = safety
+	sim.tactical.ems = sim.ems
 	sim.command.survey = SiteSurvey.new(sim.fire, sim.units, sim.pathfinder, sim.command.resources, sim.command.commander, ParamTable.from_dict(survey_data), sim.events)
 	sim.water.safe_cell = sim.conditions.safe_to_enter
 	sim.rescue.water = sim.water
@@ -139,6 +144,7 @@ static func from_scenario(path: String, command_rules := true, seed_override := 
 		sim.command.apply_scenario(data)
 		sim.exposure.apply_scenario(data)
 		sim.gas.apply_scenario(data)
+		sim.ems.apply_scenario(data)
 		if not command_rules:
 			sim.command.entry_order_required = false
 			sim.command.auto_slow = false
@@ -202,6 +208,7 @@ func _step() -> void:
 	exposure.step(dt, clock.tick)
 	gas.step(dt, clock.tick)
 	collapse.step(dt, clock.tick)
+	ems.step(dt, clock.tick)
 	tactical.step(clock.tick)
 	rescue.step_after_fire(dt, clock.tick)
 	command.step(dt, clock.tick)

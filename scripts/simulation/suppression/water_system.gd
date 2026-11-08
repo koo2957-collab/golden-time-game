@@ -89,7 +89,7 @@ func hydrant_near(p: Vector2, radius := 1.2) -> int:
 
 func vehicle_at(p: Vector2) -> int:
 	for v in units.vehicles:
-		if v.contains(p):
+		if not v.away and v.contains(p):
 			return v.id
 	return -1
 
@@ -111,13 +111,13 @@ func order_vehicle_move(vehicle_id: int, target: Vector2i, tick: int) -> bool:
 	if v == null:
 		return false
 	if not hoses_of_vehicle(vehicle_id).is_empty():
-		events.add(tick, "vehicle_locked", {"vehicle": _name(v)})
+		events.add(tick, "vehicle_locked", {"vehicle": _name(v), "driver": v.driver_label()})
 		return false
 	var along := (Vector2(target) + Vector2(0.5, 0.5) - v.pos).dot(v.heading)
 	var reach := _clear_distance(v, along)
 	if absf(reach) < VEHICLE_MIN_MOVE_CELLS:
 		if absf(along) >= VEHICLE_MIN_MOVE_CELLS:
-			events.add(tick, "vehicle_blocked", {"vehicle": _name(v)})
+			events.add(tick, "vehicle_blocked", {"vehicle": _name(v), "driver": v.driver_label()})
 		return false
 	v.drive(reach)
 	v.pending_hydrant = -1
@@ -524,12 +524,12 @@ func _hydrant_distance(v: Vehicle, hydrant: int) -> float:
 
 func _connect_hydrant_now(v: Vehicle, hydrant: int, tick: int) -> void:
 	v.hydrant = hydrant
-	events.add(tick, "hydrant_connected", {"vehicle": _name(v)})
+	events.add(tick, "hydrant_connected", {"vehicle": _name(v), "driver": v.driver_label()})
 
 
 func _connect_supply_now(t: Vehicle, p: Vehicle, tick: int) -> void:
 	t.supply_to = p.id
-	events.add(tick, "supply_connected", {"vehicle": _name(t), "to": _name(p)})
+	events.add(tick, "supply_connected", {"vehicle": _name(t), "to": _name(p), "driver": t.driver_label()})
 
 
 func _disconnect(v: Vehicle, tick: int) -> void:

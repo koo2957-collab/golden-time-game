@@ -22,6 +22,7 @@ func execute(sim: SimWorld) -> void:
 	for id in crew_ids:
 		sim.rekindle.cancel(id)
 		sim.gas.cancel(id)
+		sim.ems.cancel(id)
 		sim.tactical.order(action, id, target, tick)
 
 

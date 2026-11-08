@@ -1,0 +1,38 @@
+{
+  "note": "구급 처치·이송 (SOP 400 구급 공통, 402 중증도 분류). 모두 추정값이며 교관이 바꿀 수 있다.",
+  "treat_urgent_s": {
+    "value": 180,
+    "source": "추정",
+    "note": "긴급(의식 잃음) 환자 현장 응급처치 시간 (기도 확보·산소·CPR 판단)"
+  },
+  "treat_emergent_s": {
+    "value": 120,
+    "source": "추정",
+    "note": "응급 환자 처치 시간"
+  },
+  "treat_minor_s": {
+    "value": 60,
+    "source": "추정",
+    "note": "비응급 환자 처치 시간"
+  },
+  "urgent_untreated_death_s": {
+    "value": 420,
+    "source": "추정",
+    "note": "긴급 환자가 구조 후 이만큼 처치를 받지 못하면 사망 (연기 흡입 후 저산소)"
+  },
+  "transport_s": {
+    "value": 600,
+    "source": "추정",
+    "note": "현장 출발부터 병원 인계까지"
+  },
+  "return_s": {
+    "value": 600,
+    "source": "추정",
+    "note": "병원 인계 후 현장 복귀까지"
+  },
+  "stretcher_speed_factor": {
+    "value": 0.7,
+    "source": "추정",
+    "note": "들것으로 옮길 때 걷는 속도 비율"
+  }
+}

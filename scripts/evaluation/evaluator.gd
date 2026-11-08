@@ -239,6 +239,16 @@ func _check_rescue_time() -> Dictionary:
 	return {"score": sum / victims.size(), "detail": "%s (기준 %d분 안)" % [", ".join(parts), int(_params.good_s / 60)]}
 
 
+## 선착 차량 배치 (SOP 200-3.1.1): 시나리오에 배치 보기가 있을 때만
+func _check_placement() -> Dictionary:
+	if Placement.options(sim).is_empty():
+		return {}
+	var p := sim.command.placement
+	if p.is_empty():
+		return {"score": 0.5, "detail": "배치를 고르지 않음 (편성 기본 위치)"}
+	return {"score": float(p.score), "detail": "%s — %s" % [p.name, p.feedback]}
+
+
 ## 구조 후 응급처치 (SOP 400-3.2, 402): 구조된 환자마다 구조 → 처치 시작 시간. 긴급 환자 처치 지연 사망은 0점
 func _check_ems_treat() -> Dictionary:
 	var ems := sim.ems

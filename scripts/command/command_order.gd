@@ -14,6 +14,7 @@ extends RefCounted
 ##   end:            활동 종료 선언 (SOP 113-1.1). answers.watch = 재발화 감시 (202-6.5). 디브리핑으로 넘어간다
 ##   evacuate:       긴급탈출 지시 (SSG 9 2.1.7, SOP 109-1.3)
 ##   par:            인원점검 (SOP 109-1.3, 200-4.1)
+##   placement:      선착 차량 배치 (value = 시나리오 approach.options index, SOP 200-3.1.1)
 ##   role:           안전 임무 지정 (squad_ids = 조 id, value = SafetySystem.Role: 0 해제 / 1 RIT / 2 현장안전담당)
 
 var tick := -1
@@ -37,6 +38,8 @@ static func make(p_action: String, p_squad_ids: Array[int] = [], p_value := 0, p
 func execute(sim: SimWorld) -> void:
 	var cmd := sim.command
 	match action:
+		"placement":
+			Placement.apply(sim, value, tick)
 		"declare":
 			cmd.declare(answers, tick)
 		"entry":

@@ -215,6 +215,8 @@ static func describe_text(e: Dictionary) -> String:
 			text = "%s 차단 — %s" % [e.what, e.crew]
 		"gas_explosion":
 			text = "가스 폭발 — %s" % e.room
+		"placement":
+			text = "선착 차량 배치 — %s" % e.name
 		"ems_triage":
 			text = "환자 분류 %s — %s (SOP 402)" % [e.triage, e.who]
 		"ems_treat_order":

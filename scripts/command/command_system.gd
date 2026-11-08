@@ -113,6 +113,8 @@ var report: Dictionary = {}
 var report_updates: Array[Dictionary] = []
 ## 출동 지령 (시나리오 dispatch)
 var dispatch: Dictionary = {}
+## 선착 차량 배치 결과 (Placement.apply, SOP 200-3.1.1). 비어 있으면 고르지 않음
+var placement: Dictionary = {}
 ## 상황보고 정답 중 도면으로 알 수 없는 것 (시나리오 report_truth: use, vehicle_access, hazards)
 var report_truth: Dictionary = {}
 

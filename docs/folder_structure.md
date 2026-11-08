@@ -188,6 +188,17 @@ tests/             단위 테스트(test_*.gd)와 조작 점검(ui_smoke.gd)
 
 검증은 `tests/test_tactical.gd`, `tests/test_hints.gd`.
 
+## 선착 차량 배치 요약 (M8a)
+
+| 요소 | 내용 |
+|---|---|
+| 데이터 | 시나리오 `approach {default, squad, options: [{id, name, text, score, feedback, vehicles: [{spawn, heading}]}]}` |
+| 실행 | `scripts/command/placement.gd`. 지휘 명령 `placement`(value = 보기 index, 기록·다시 하기 대상). 도착 직후(5초 안) 한 번만. 모두 들어 올린 뒤 차례로 세우고, 한 대라도 도로 밖·겹침이면 모두 원래 자리 |
+| 화면 | 출동 지령 창의 배치 보기와 설명. "현장 도착"(Enter) 때 명령이 나간다 |
+| 평가 | fire.placement (SOP 200-3.1.1): 고른 보기의 score·feedback. 고르지 않으면 0.5 |
+
+검증은 `tests/test_placement.gd`.
+
 ## 대원 개성·캠페인 요약 (M7c-3)
 
 | 요소 | 내용 |

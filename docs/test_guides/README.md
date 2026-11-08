@@ -30,3 +30,4 @@
 | M7c-1 튜토리얼 | [M7c1_tutorial.md](M7c1_tutorial.md) |
 | M7c-2 내 기록·교관 설정 | [M7c2_history_instructor.md](M7c2_history_instructor.md) |
 | M7c-3 대원 개성·캠페인 | [M7c3_traits_campaign.md](M7c3_traits_campaign.md) |
+| M8a 선착 차량 배치 | [M8a_placement.md](M8a_placement.md) |

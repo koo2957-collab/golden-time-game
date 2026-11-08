@@ -32,6 +32,8 @@ var _radio_panel: PanelContainer
 var _radio_label: Label
 var _entry_label: Label
 var _dispatch: PanelContainer
+## 출동 지령 창의 선착 차량 배치 보기 (시나리오 approach가 있을 때)
+var _placement: OptionButton
 var _report: PanelContainer
 var _strategy: PanelContainer
 var _confirm: PanelContainer
@@ -222,7 +224,7 @@ func dispatch_visible() -> bool:
 
 
 func close_dispatch() -> void:
-	_close(_dispatch)
+	_arrive()
 
 
 ## 방어 전략 중 진입 명령: 병행으로 바꾸고 진입할지 묻는다
@@ -425,8 +427,30 @@ func _build_dispatch() -> void:
 		l.custom_minimum_size = Vector2(DIALOG_WIDTH - 40, 0)
 		box.add_child(l)
 	box.add_child(_label("도착하면 지휘권을 선언하고 최초 상황보고를 하십시오 (C). 내부 진입은 진입 명령(R)을 받은 출동대만 합니다.", 16, DIM_COLOR))
-	var go := _button("현장 도착 (Enter)", func() -> void: _close(_dispatch))
+	var opts := Placement.options(sim)
+	if not opts.is_empty():
+		box.add_child(_label("선착 차량 배치 (SOP 200-3.1.1) — 화염·낙하물 피해, 후착대·특수차 공간, 소화전을 생각해 고르세요", 17, Color("fde68a")))
+		_placement = OptionButton.new()
+		_placement.focus_mode = Control.FOCUS_NONE
+		for o: Dictionary in opts:
+			_placement.add_item(str(o.get("name", "")))
+		_placement.select(Placement.default_index(sim))
+		box.add_child(_placement)
+		var desc := _label("", 15, DIM_COLOR)
+		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		desc.custom_minimum_size = Vector2(DIALOG_WIDTH - 40, 0)
+		desc.text = str(opts[_placement.selected].get("text", ""))
+		_placement.item_selected.connect(func(i: int) -> void: desc.text = str(opts[i].get("text", "")))
+		box.add_child(desc)
+	var go := _button("현장 도착 (Enter)", _arrive)
 	box.add_child(go)
+
+
+## 현장 도착: 고른 배치를 명령으로 내린다 (기록·다시 하기 대상)
+func _arrive() -> void:
+	if _placement and sim.command.placement.is_empty() and sim.clock.tick <= Placement.MAX_TICK:
+		order_issued.emit(CommandOrder.make("placement", [], _placement.selected))
+	_close(_dispatch)
 
 
 func _build_report() -> void:

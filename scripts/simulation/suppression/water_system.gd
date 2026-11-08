@@ -141,6 +141,11 @@ func _clear_distance(v: Vehicle, along: float) -> float:
 	return best
 
 
+## 차량이 center에 설 수 있는가 (차도 안, 다른 차량과 겹치지 않음)
+func vehicle_can_be_at(v: Vehicle, center: Vector2) -> bool:
+	return _vehicle_can_be_at(v, center)
+
+
 func _vehicle_can_be_at(v: Vehicle, center: Vector2) -> bool:
 	var body := v.footprint(center)
 	if not pathfinder.vehicle_fits(body):

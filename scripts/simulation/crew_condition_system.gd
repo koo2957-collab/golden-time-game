@@ -174,7 +174,7 @@ func _update_air(ff: Firefighter, inside: bool, dt: float, tick: int) -> void:
 		ff.swap_timer = 0.0
 		if ff.air_ratio() < _air_alarm and not ff.air_alarm_logged:
 			ff.air_alarm_logged = true
-			events.add(tick, "air_alarm", {"crew": _ff_name(ff)})
+			events.add(tick, "air_alarm", {"crew": _ff_name(ff), "crew_id": ff.crew_id})
 		return
 	# 바깥: 차량 근처에 멈춰 있으면 용기 교체
 	if ff.air_ratio() >= 0.95 or ff.is_moving() or not _near_vehicle(ff.pos):

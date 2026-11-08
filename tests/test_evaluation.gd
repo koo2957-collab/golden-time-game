@@ -51,7 +51,7 @@ func test_early_end_report() -> void:
 	sim.step_ticks(600)
 	sim.end_activity("활동 종료 선언")
 	var r := Evaluator.evaluate(sim)
-	assert_eq(r.rules.size(), 27, "규칙 27개 판정 (R1 종료 체계 3개 포함)")
+	assert_eq(r.rules.size(), 28, "규칙 28개 판정 (R1 종료 체계 3개·R3 카드 1개 포함)")
 	assert_eq(_rule(r, "safety.ff_down").score, 1.0, "행동 불능 없음")
 	assert_eq(_rule(r, "command.declare").score, 0.0, "선언하지 않으면 0점")
 	assert_eq(_rule(r, "fire.extinguish").score, 0.0, "연소 중 종료면 완진 0점")

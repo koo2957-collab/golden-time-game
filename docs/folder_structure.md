@@ -188,6 +188,18 @@ tests/             단위 테스트(test_*.gd)와 조작 점검(ui_smoke.gd)
 
 검증은 `tests/test_tactical.gd`, `tests/test_hints.gd`.
 
+## 질문 카드 요약 (R3)
+
+| 요소 | 내용 |
+|---|---|
+| 데이터 | `data/cards/cards.json` (cards: id·title·trigger·urgency·text({이름} 치환)·variants{if, text, urgency, options}·options{text, grade, effect}·sop_ref·debrief·skip_if_preordered, preorders: key·label·sop), `data/cards/card_params.json` (긴급도별 초·대기열·훈련 배율) |
+| 엔진 | `scripts/command/card_system.gd` (`CardSystem`: queue·log·preorders·answer·set_preorder). 트리거는 사건으로 정한다: `tactical_halt`(kind locked·closed·backdraft·victim·door_failed + crew_id·door·action·target), `air_alarm`(crew_id), `knockdown_reported`(crew_id·room_cell). effect: force_door·open_door(`TacticalSystem.allow_door` 후 임무 재개)·vent_then_open(창 배연 뒤 개방)·rescue_victim·resume·withdraw·overhaul·flood·hold |
+| 명령 | 지휘 명령 `card_answer`(answers.uid, value = 화면 순서), `preorder`(answers.key, value 1/0) — 기록·다시 하기 대상 |
+| 화면 | `scripts/ui/card_ui.gd` (`Hud.card_ui`), 숫자 키 1~4. 무전 패널 '선제지시' 창 |
+| 평가 | command.cards (최선 1·허용 0.5·오답·치명·미응답 0, 선제지시 = 최선), 결과 파일 `cards`, 디브리핑 ③ "판단 요청 해설" |
+
+검증은 `tests/test_cards.gd`.
+
 ## 실시간 규칙 요약 (R2)
 
 | 요소 | 내용 |

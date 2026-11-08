@@ -1,0 +1,236 @@
+{
+  "note": "질문 카드 (기획안 7장). 카드 1장 = SOP 조항 1개. trigger: halt_locked·halt_closed·halt_backdraft·halt_victim(전술 명령이 멈춘 자리), air_alarm, knockdown. text·variants의 {이름}은 사건 값으로 채운다 (crew·door_name·victim_name·state·air). effect: force_door·open_door·vent_then_open·rescue_victim·resume·withdraw·overhaul·flood·hold. grade: 최선·허용·오답·치명 (화면에는 보이지 않음). skip_if_preordered: 그 선제지시가 켜져 있으면 카드 없이 최선 선택을 실행. 교관이 문구·등급·해설을 고칠 수 있다.",
+  "preorders": [
+    {
+      "key": "force_locked",
+      "label": "잠긴 문은 지휘관 명령 없이 바로 파괴 개방",
+      "sop": "202-3.3"
+    },
+    {
+      "key": "open_closed",
+      "label": "닫힌 문은 상부 온도 확인 후 문 옆에서 개방",
+      "sop": "210-4.5"
+    },
+    {
+      "key": "vent_first",
+      "label": "백드래프트 징후 문은 상부 창 배연 뒤 개방",
+      "sop": "210-4.5"
+    },
+    {
+      "key": "rescue_on_find",
+      "label": "구조대상자를 찾으면 바로 업고 나옴",
+      "sop": "214-2.1"
+    },
+    {
+      "key": "withdraw_on_air",
+      "label": "공기 경보가 울리면 짝과 함께 바로 철수",
+      "sop": "201-3.7"
+    },
+    {
+      "key": "overhaul_plan",
+      "label": "초진 뒤 열화상으로 불씨를 찾아 정확히 주수",
+      "sop": "202-6"
+    }
+  ],
+  "cards": [
+    {
+      "id": "DOOR-LOCKED-01",
+      "title": "잠긴 문",
+      "phase": "진입",
+      "trigger": "halt_locked",
+      "asker": "진입 조",
+      "urgency": "중요",
+      "text": "{crew}: {door_name} 잠겨 있습니다. 어떻게 할까요?",
+      "options": [
+        {
+          "text": "문 옆 벽에 붙어 파괴기로 강제 개방하고 진입",
+          "grade": "최선",
+          "effect": "force_door"
+        },
+        {
+          "text": "창문 등 다른 진입구를 찾아 보고하라",
+          "grade": "허용",
+          "effect": "hold"
+        },
+        {
+          "text": "그 자리에서 대기하라",
+          "grade": "오답",
+          "effect": "hold"
+        }
+      ],
+      "sop_ref": [
+        "SOP 202-3.3",
+        "SOP 213-2.3"
+      ],
+      "debrief": "강제 개방은 현장지휘관의 명령으로 한다. 문 정면이 아니라 옆 벽에 붙어 열어야 역류 화염을 피한다.",
+      "skip_if_preordered": "force_locked"
+    },
+    {
+      "id": "DOOR-CLOSED-01",
+      "title": "닫힌 문",
+      "phase": "진입",
+      "trigger": "halt_closed",
+      "asker": "진입 조",
+      "urgency": "일반",
+      "text": "{crew}: {door_name} 닫혀 있습니다. 열고 들어갈까요?",
+      "options": [
+        {
+          "text": "문 상부 온도와 연기를 확인한 뒤 문 옆에서 천천히 개방",
+          "grade": "최선",
+          "effect": "open_door"
+        },
+        {
+          "text": "바로 열고 진입",
+          "grade": "허용",
+          "effect": "open_door"
+        },
+        {
+          "text": "대기하라",
+          "grade": "오답",
+          "effect": "hold"
+        }
+      ],
+      "sop_ref": [
+        "SOP 210-4.5",
+        "SOP 202-3.1"
+      ],
+      "debrief": "문을 열기 전에 상부 온도·연기·문틈 기류를 확인한다. 징후가 없을 때 문 옆에서 천천히 연다.",
+      "skip_if_preordered": "open_closed"
+    },
+    {
+      "id": "DOOR-BACKDRAFT-01",
+      "title": "백드래프트 징후 문",
+      "phase": "진입",
+      "trigger": "halt_backdraft",
+      "asker": "진입 조",
+      "urgency": "긴급",
+      "text": "{crew}: {door_name} 너머 백드래프트 징후! 문틈으로 공기가 빨려 들어가고 연기가 맥박치듯 나옵니다.",
+      "options": [
+        {
+          "text": "하부 개방 금지 — 바깥 상부 창을 먼저 깨 배연한 뒤 개방",
+          "grade": "최선",
+          "effect": "vent_then_open"
+        },
+        {
+          "text": "문을 닫은 채 물러나 주변을 냉각하며 대기",
+          "grade": "허용",
+          "effect": "hold"
+        },
+        {
+          "text": "즉시 문을 열고 진입",
+          "grade": "치명",
+          "effect": "force_door"
+        }
+      ],
+      "sop_ref": [
+        "SOP 210-4.4",
+        "SOP 210-4.5"
+      ],
+      "debrief": "백드래프트 징후가 있으면 하부 개구부를 열지 않는다. 상부(창·지붕)를 먼저 개방해 가연성 가스를 배출한 뒤 진입한다.",
+      "skip_if_preordered": "vent_first"
+    },
+    {
+      "id": "VICTIM-FOUND-01",
+      "title": "구조대상자 발견",
+      "phase": "탐색·구조",
+      "trigger": "halt_victim",
+      "asker": "검색 조",
+      "urgency": "중요",
+      "text": "{crew}: {victim_name} 발견! {state}입니다.",
+      "variants": [
+        {
+          "if": {
+            "state": "의식 잃음"
+          },
+          "urgency": "긴급",
+          "text": "{crew}: {victim_name} 발견! 의식이 없습니다."
+        }
+      ],
+      "options": [
+        {
+          "text": "즉시 업고 가장 가까운 출구로 이송",
+          "grade": "최선",
+          "effect": "rescue_victim"
+        },
+        {
+          "text": "방 검색을 마저 끝낸 뒤 이송",
+          "grade": "오답",
+          "effect": "resume"
+        },
+        {
+          "text": "구급대가 올 때까지 그 자리에서 보호",
+          "grade": "오답",
+          "effect": "hold"
+        }
+      ],
+      "sop_ref": [
+        "SOP 214-2.1",
+        "SOP 203-1.4"
+      ],
+      "debrief": "발견한 구조대상자는 연기·열 노출이 계속되므로 즉시 안전한 곳으로 옮긴다. 응급처치는 밖에서 구급대가 한다.",
+      "skip_if_preordered": "rescue_on_find"
+    },
+    {
+      "id": "AIR-ALARM-01",
+      "title": "공기 잔량 경보",
+      "phase": "안전",
+      "trigger": "air_alarm",
+      "asker": "진입 대원",
+      "urgency": "긴급",
+      "text": "{crew}: 공기 잔량 경보입니다. 어떻게 할까요?",
+      "options": [
+        {
+          "text": "짝과 함께 즉시 철수, 교대조 투입 요청",
+          "grade": "최선",
+          "effect": "withdraw"
+        },
+        {
+          "text": "지금 하던 일만 마치고 철수",
+          "grade": "오답",
+          "effect": "hold"
+        },
+        {
+          "text": "그대로 계속 진압",
+          "grade": "치명",
+          "effect": "hold"
+        }
+      ],
+      "sop_ref": [
+        "SOP 201-3.7"
+      ],
+      "debrief": "공기 잔량 경보가 울리면 출구까지 걸리는 시간을 생각해 즉시 짝과 함께 철수하고, 지휘관은 교대조를 투입한다.",
+      "skip_if_preordered": "withdraw_on_air"
+    },
+    {
+      "id": "OVERHAUL-01",
+      "title": "초진 후 잔불정리",
+      "phase": "잔불정리",
+      "trigger": "knockdown",
+      "asker": "진압 조",
+      "urgency": "일반",
+      "text": "{crew}: 초진입니다. 잔불정리는 어떻게 할까요?",
+      "options": [
+        {
+          "text": "열화상으로 불씨 위치를 찾아 정확히 주수, 인명검색 병행",
+          "grade": "최선",
+          "effect": "overhaul"
+        },
+        {
+          "text": "남은 곳 전체에 충분히 직사 주수",
+          "grade": "오답",
+          "effect": "flood"
+        },
+        {
+          "text": "바로 철수 준비",
+          "grade": "오답",
+          "effect": "hold"
+        }
+      ],
+      "sop_ref": [
+        "SOP 202-6"
+      ],
+      "debrief": "잔불정리는 불씨 잠복 지점을 찾아 정확히 주수하고 인명검색을 병행한다. 다량 주수는 수손 피해만 키운다.",
+      "skip_if_preordered": "overhaul_plan"
+    }
+  ]
+}

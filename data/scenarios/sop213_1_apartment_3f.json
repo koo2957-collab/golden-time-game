@@ -73,6 +73,7 @@
       "fire.overhaul",
       "fire.watch",
       "command.declare",
+      "command.cards",
       "command.report",
       "command.strategy",
       "command.survey",

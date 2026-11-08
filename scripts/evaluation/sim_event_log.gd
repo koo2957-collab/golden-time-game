@@ -223,6 +223,18 @@ static func describe_text(e: Dictionary) -> String:
 			text = "송수구 미연결 — 방수구 사용 불가 (%s)" % e.crew
 		"hose_outlet_laid":
 			text = "방수구에서 수관 연장 — %s (%s)" % [e.crew, e.level]
+		"card_asked":
+			text = "판단 요청 [%s] — %s" % [e.urgency, e.title]
+		"card_answered":
+			text = "지시 — %s: %s" % [e.title, e.option]
+		"card_timeout":
+			text = "응답 없음 — %s (지시 대기)" % e.title
+		"card_overflow":
+			text = "판단 요청 대기 중 — %s" % e.title
+		"card_preordered":
+			text = "선제지시대로 처리 — %s" % e.title
+		"preorder":
+			text = "선제지시 %s — %s" % ["지정" if e.on else "해제", e.key]
 		"realism":
 			text = "난이도 — %s" % e.name
 		"phase":

@@ -65,6 +65,8 @@ var hint_ui: HintUi
 var phase_bar: RichTextLabel
 ## 튜토리얼 시나리오에서만 만든다
 var tutorial_ui: TutorialUi
+## 질문 카드 (화면 위쪽 가운데)
+var card_ui: CardUi
 
 
 func setup(p_sim: SimWorld, on_floor_selected: Callable) -> void:

@@ -117,6 +117,7 @@ func _run() -> Dictionary:
 		"mode": sim.play_mode,
 		"difficulty": sim.tactical.level_name,
 		"realism": sim.realism,
+		"cards": sim.cards.log,
 		"end_reason": sim.end_reason,
 		"end_time_s": sim.ended_tick * SimClock.TICK_DT,
 		"points": snappedf(points, 0.1),
@@ -128,6 +129,7 @@ func _run() -> Dictionary:
 		"plan": _plan(cfg),
 		"timeline": _timeline(),
 		"decisions": _decisions(),
+		"card_lines": _card_lines(),
 		"timeline_ticks": _timeline_ticks(),
 		"replayable": sim.replayable,
 		"instructor_params": InstructorSettings.changed_params(),
@@ -238,6 +240,27 @@ func _check_rescue_time() -> Dictionary:
 		else:
 			parts.append("%s 구조 못함" % v.label())
 	return {"score": sum / victims.size(), "detail": "%s (기준 %d분 안)" % [", ".join(parts), int(_params.good_s / 60)]}
+
+
+## 질문 카드 판단 (기획안 8장 SOP 준수): 최선 1·허용 0.5·오답·치명·미응답 0, 선제지시는 최선. 카드가 하나라도 있었을 때만
+func _check_cards() -> Dictionary:
+	var lg := sim.cards.log
+	if lg.is_empty():
+		return {}
+	var sum := 0.0
+	var counts := {}
+	for e in lg:
+		var key: String = e.grade if e.result in ["answered", "preordered"] else ("미응답" if e.result == "timeout" else "대기 밀림")
+		if e.result == "preordered":
+			key = "선제지시"
+		counts[key] = int(counts.get(key, 0)) + 1
+		if e.result in ["answered", "preordered"]:
+			sum += float(CardSystem.GRADE_SCORE.get(e.grade, 0.0))
+	var parts: PackedStringArray = []
+	for k in ["최선", "선제지시", "허용", "오답", "치명", "미응답", "대기 밀림"]:
+		if counts.has(k):
+			parts.append("%s %d" % [k, counts[k]])
+	return {"score": sum / lg.size(), "detail": "판단 요청 %d건 — %s" % [lg.size(), ", ".join(parts)]}
 
 
 ## 완진 선언의 정확성 (소방전술 I 8단계 ⑥, SOP 202-6): 활동을 끝냈을 때만
@@ -835,6 +858,17 @@ func _timeline() -> Array:
 
 
 ## 주요 의사결정과 그때 알던 정보 (SOP 111-2.2)
+## 질문 카드 판단 해설 (기획안 8-1 ②): 내 선택·등급·SOP·해설
+func _card_lines() -> Array:
+	var out: Array = []
+	for e in sim.cards.log:
+		var result := str(e.get("result", ""))
+		var what := "미응답 (지시 대기)" if result == "timeout" else ("대기 중 밀림" if result == "overflow" else str(e.get("option", "")))
+		var grade := "선제지시" if result == "preordered" else (str(e.get("grade", "")) if str(e.get("grade", "")) != "" else "—")
+		out.append("%s [%s] %s → %s (%s) — %s" % [_t(int(e.get("asked_tick", 0))), grade, e.get("title", ""), what, e.get("sop", ""), e.get("debrief", "")])
+	return out
+
+
 func _decisions() -> Array:
 	var out: Array = []
 	for d in sim.command.decisions:

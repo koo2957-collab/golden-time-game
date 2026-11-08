@@ -37,6 +37,8 @@ var rescue: RescueSystem
 var safety: SafetySystem
 var events: SimEventLog
 var tasks: Array[Task] = []
+## 질문 카드 답으로 이 조가 열어도 되는 문 {조 id: 개구부 index} (자동화 수준·징후와 상관없이)
+var allowed_doors: Dictionary = {}
 ## 자동화 수준 이름 (입문·중급·상급)
 var level_name := "입문"
 var level: Dictionary = LEVELS["입문"]
@@ -128,24 +130,29 @@ func _step_doors(t: Task, c: Crew, tick: int) -> void:
 	var o := t.doors[0]
 	if t.door_requested:
 		if doors_sys.task_of_crew(t.crew_id) == null and not o.is_open:
-			_halt(t, c, tick, "%s을(를) 열지 못함 — 지시 바람" % _door_name(o))
+			_halt(t, c, tick, "%s을(를) 열지 못함 — 지시 바람" % _door_name(o), false, "door_failed", _door_ctx(o))
+		return
+	if allowed_doors.get(t.crew_id, -1) == o.index:
+		allowed_doors.erase(t.crew_id)
+		doors_sys.request(t.crew_id, Vector3i(o.cells[0].x, o.cells[0].y, o.level), true, tick)
+		t.door_requested = true
 		return
 	# 자동으로 열 수 있는 문인지 (자동화 수준·잠김·백드래프트 징후)
 	if level.doors == "none":
-		_halt(t, c, tick, "%s 닫힘 — 문 개방 지시 바람 (E)" % _door_name(o))
+		_halt(t, c, tick, "%s 닫힘 — 문 개방 지시 바람 (E)" % _door_name(o), false, "closed", _door_ctx(o))
 		return
 	if o.locked and level.doors != "all":
-		_halt(t, c, tick, "%s 잠김 — 진입구 개척(문 파괴) 지시 바람" % _door_name(o))
+		_halt(t, c, tick, "%s 잠김 — 진입구 개척(문 파괴) 지시 바람" % _door_name(o), false, "locked", _door_ctx(o))
 		return
 	if _sign_behind(o):
-		_halt(t, c, tick, "%s 너머 백드래프트 징후 — 문 개방 보류, 지시 바람 (SOP 210-4.5)" % _door_name(o), true)
+		_halt(t, c, tick, "%s 너머 백드래프트 징후 — 문 개방 보류, 지시 바람 (SOP 210-4.5)" % _door_name(o), true, "backdraft", _door_ctx(o))
 		return
 	doors_sys.request(t.crew_id, Vector3i(o.cells[0].x, o.cells[0].y, o.level), true, tick)
 	t.door_requested = true
 	# 문 앞에 다가가며 징후를 느끼면 바로 멈춘다
 	if _sign_behind(o):
 		doors_sys.cancel(t.crew_id)
-		_halt(t, c, tick, "%s 너머 백드래프트 징후 — 문 개방 보류, 지시 바람 (SOP 210-4.5)" % _door_name(o), true)
+		_halt(t, c, tick, "%s 너머 백드래프트 징후 — 문 개방 보류, 지시 바람 (SOP 210-4.5)" % _door_name(o), true, "backdraft", _door_ctx(o))
 
 
 func _act(t: Task, c: Crew, tick: int) -> void:
@@ -183,7 +190,8 @@ func _step_working(t: Task, c: Crew, tick: int) -> void:
 				if rescue.order_rescue(t.crew_id, "victim", v.id, tick):
 					events.add(tick, "tactical_done", {"crew": _crew_name(c), "text": "%s 발견, 이송 시작" % v.label()})
 			else:
-				_halt(t, c, tick, "%s 발견 — 구조 지시 바람 (V 또는 우클릭)" % v.label())
+				_halt(t, c, tick, "%s 발견 — 구조 지시 바람 (V 또는 우클릭)" % v.label(), false, "victim",
+					{"victim": v.id, "victim_name": v.label(), "state": Victim.STATE_NAMES[v.state]})
 
 
 # --- 도움 ---
@@ -267,9 +275,22 @@ func _victim_in_room(room: int) -> Victim:
 	return null
 
 
-func _halt(t: Task, c: Crew, tick: int, reason: String, safety_issue := false) -> void:
+## 멈춤: 무전 보고와 함께 종류(kind)·문맥을 남긴다 — 질문 카드(CardSystem)가 이 사건으로 카드를 만든다
+func _halt(t: Task, c: Crew, tick: int, reason: String, safety_issue := false, kind := "", ctx: Dictionary = {}) -> void:
 	t.phase = Phase.DONE
-	events.add(tick, "tactical_halt", {"crew": _crew_name(c), "reason": reason, "safety": safety_issue})
+	var e := {"crew": _crew_name(c), "reason": reason, "safety": safety_issue, "kind": kind, "crew_id": c.id,
+		"action": t.action, "target": [t.target.x, t.target.y, t.target.z]}
+	e.merge(ctx)
+	events.add(tick, "tactical_halt", e)
+
+
+func _door_ctx(o: Opening) -> Dictionary:
+	return {"door": [o.cells[0].x, o.cells[0].y, o.level], "door_name": _door_name(o)}
+
+
+## 질문 카드 답: 이 조가 다음에 만나는 그 문은 열어도 된다
+func allow_door(crew_id: int, opening_index: int) -> void:
+	allowed_doors[crew_id] = opening_index
 
 
 func _center(o: Opening) -> Vector2:

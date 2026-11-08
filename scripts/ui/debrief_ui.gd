@@ -153,6 +153,12 @@ func _actual_text() -> String:
 
 func _why_text() -> String:
 	var lines: PackedStringArray = ["[color=#%s]'누가'가 아니라 '무엇'이 결과를 만들었는지 봅니다 (SOP 113-2.1③). 판단 → 결과 → SOP 조항 → 왜(소방전술). 기준값 중 '추정'은 현장 검수 전 값입니다.[/color]" % DIM, ""]
+	var card_lines: Array = report.get("card_lines", [])
+	if not card_lines.is_empty():
+		lines.append("")
+		lines.append("[b]판단 요청 해설 — 내 지시 · SOP · 해설 (기획안 8-1 ②)[/b]")
+		for l in card_lines:
+			lines.append("  " + str(l))
 	var decisions: Array = report.get("decisions", [])
 	if not decisions.is_empty():
 		lines.append("[b]주요 의사결정과 그때 알던 정보 (SOP 111-2.2)[/b]")

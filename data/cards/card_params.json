@@ -1,0 +1,28 @@
+{
+  "note": "질문 카드 수치 (기획안 3-3). 초 수는 시범운영에서 조정 — 모두 추정값.",
+  "urgent_s": {
+    "value": 8,
+    "source": "추정",
+    "note": "긴급(빨강) 카드 제한시간"
+  },
+  "important_s": {
+    "value": 12,
+    "source": "추정",
+    "note": "중요(노랑) 카드 제한시간"
+  },
+  "normal_s": {
+    "value": 20,
+    "source": "추정",
+    "note": "일반(흰색) 카드 제한시간"
+  },
+  "queue_max": {
+    "value": 3,
+    "source": "추정",
+    "note": "대기열 최대 장 수 (만장이면 무전 '대기 중')"
+  },
+  "training_time_factor": {
+    "value": 2,
+    "source": "추정",
+    "note": "훈련 난이도 카드 제한시간 배율"
+  }
+}

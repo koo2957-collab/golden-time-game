@@ -66,6 +66,9 @@ var _update: PanelContainer
 var _update_victims: OptionButton
 var _update_hazards: Array[CheckBox] = []
 var _end: PanelContainer
+## 선제지시 창
+var _preorder: PanelContainer
+var _preorder_checks: Dictionary = {}  # key -> CheckBox
 ## 완진 선언 창 (노출된 곳 확인 목록)
 var _all_clear: PanelContainer
 var _all_clear_status: Label
@@ -92,6 +95,7 @@ func setup(p_sim: SimWorld) -> void:
 	_build_update()
 	_build_end()
 	_build_all_clear()
+	_build_preorder()
 
 
 func _process(delta: float) -> void:
@@ -105,7 +109,7 @@ func _process(delta: float) -> void:
 
 func any_dialog_open() -> bool:
 	return _dispatch.visible or _report.visible or _strategy.visible or _confirm.visible or _org.visible \
-		or _witness.visible or _info.visible or _update.visible or _end.visible or _all_clear.visible
+		or _witness.visible or _info.visible or _update.visible or _end.visible or _all_clear.visible or _preorder.visible
 
 
 func set_radio_visible(on: bool) -> void:
@@ -415,8 +419,9 @@ func _build_radio_panel() -> void:
 	evac.add_theme_color_override("font_color", WARN_COLOR)
 	var par := _button("인원점검 (P)", func() -> void: order_issued.emit(CommandOrder.make("par")))
 	var clear := _button("완진 선언", open_all_clear)
+	var pre := _button("선제지시", open_preorder)
 	var end := _button("활동 종료", open_end_confirm)
-	for b in [evac, par, clear, end]:
+	for b in [evac, par, pre, clear, end]:
 		b.custom_minimum_size = Vector2(150, 34)
 		row2.add_child(b)
 	box.add_child(row2)
@@ -1014,6 +1019,39 @@ func _build_all_clear() -> void:
 	row.alignment = BoxContainer.ALIGNMENT_END
 	row.add_child(_button("취소", func() -> void: _close(_all_clear)))
 	row.add_child(_button("완진 선언 (무전)", confirm_all_clear))
+	box.add_child(row)
+
+
+## 선제지시 창: 자주 묻는 상황을 미리 정해 두면 그 질문 카드가 뜨지 않는다 (기획안 3-3 ⑤)
+func open_preorder() -> void:
+	_close(_strategy)
+	if any_dialog_open():
+		return
+	for key: String in _preorder_checks:
+		_preorder_checks[key].set_pressed_no_signal(sim.cards.preorders.has(key))
+	_open(_preorder)
+
+
+func set_preorder(key: String, on: bool) -> void:
+	order_issued.emit(CommandOrder.make("preorder", [], 1 if on else 0, Vector3i.ZERO, {"key": key}))
+
+
+func _build_preorder() -> void:
+	_preorder = _dialog()
+	var box: VBoxContainer = _preorder.get_child(0)
+	box.add_child(_label("선제지시 — 미리 정해 두면 대원이 묻지 않고 그대로 합니다", 22, Color("fde68a")))
+	var data: Variant = JsonData.load_file(SimWorld.CARDS_PATH)
+	for p: Dictionary in (data.get("preorders", []) if data is Dictionary else []):
+		var cb := CheckBox.new()
+		cb.text = "%s (SOP %s)" % [p.label, p.sop]
+		cb.focus_mode = Control.FOCUS_NONE
+		var key := str(p.key)
+		cb.toggled.connect(func(on: bool) -> void: set_preorder(key, on))
+		box.add_child(cb)
+		_preorder_checks[key] = cb
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_END
+	row.add_child(_button("닫기", func() -> void: _close(_preorder)))
 	box.add_child(row)
 
 

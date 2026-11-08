@@ -11,6 +11,8 @@ const MATERIALS_PATH := "res://data/materials/materials.json"
 const VEHICLES_PATH := "res://data/units/vehicles.json"
 const EMS_PARAMS_PATH := "res://data/units/ems_params.json"
 const PHASE_PARAMS_PATH := "res://data/command/phase_params.json"
+const CARDS_PATH := "res://data/cards/cards.json"
+const CARD_PARAMS_PATH := "res://data/cards/card_params.json"
 const HAZARD_PARAMS_PATH := "res://data/fire/hazard_params.json"
 const RADIO_PARAMS_PATH := "res://data/command/radio_params.json"
 const SURVEY_PARAMS_PATH := "res://data/command/survey_params.json"
@@ -42,10 +44,12 @@ var shafts: ShaftSystem
 var evac: EvacSystem
 var shuttle: ShuttleSystem
 var phases: PhaseSystem
+var cards: CardSystem
 ## 난이도 (기획안 8장): "훈련" 제한시간 2배·일시정지·배속 / "실전" 1배속 고정 / "악조건" 실전 + 강풍·후착대 지연·소화전 고장.
 ## 빈 문자열이면 시나리오 그대로 (자동 테스트). 화면의 시간 규칙(배속·일시정지)은 world가 이 값을 보고 정한다
 var realism := ""
 var _phase_params: ParamTable
+var _card_training_factor := 2.0
 var command: CommandSystem
 var command_log := CommandLog.new()
 var events := SimEventLog.new()
@@ -85,12 +89,14 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	var safety_data: Variant = JsonData.load_file(SAFETY_PARAMS_PATH)
 	var ems_data: Variant = JsonData.load_file(EMS_PARAMS_PATH)
 	var phase_data: Variant = JsonData.load_file(PHASE_PARAMS_PATH)
+	var card_data: Variant = JsonData.load_file(CARDS_PATH)
+	var card_params: Variant = JsonData.load_file(CARD_PARAMS_PATH)
 	if safety_data is Dictionary:
 		safety_data = InstructorSettings.apply("safety", safety_data)
 	if ems_data is Dictionary:
 		ems_data = InstructorSettings.apply("ems", ems_data)
 	var fire_config := FireConfig.load_files(FIRE_PARAMS_PATH, MATERIALS_PATH)
-	if building == null or not roster is Dictionary or not stats_data is Dictionary or not vehicle_stats is Dictionary or not hazard_data is Dictionary or not radio_data is Dictionary or not survey_data is Dictionary or not safety_data is Dictionary or not ems_data is Dictionary or not phase_data is Dictionary or fire_config == null:
+	if building == null or not roster is Dictionary or not stats_data is Dictionary or not vehicle_stats is Dictionary or not hazard_data is Dictionary or not radio_data is Dictionary or not survey_data is Dictionary or not safety_data is Dictionary or not ems_data is Dictionary or not phase_data is Dictionary or not card_data is Dictionary or not card_params is Dictionary or fire_config == null:
 		return null
 	var stats := ParamTable.from_dict(stats_data)
 	for type: String in vehicle_overrides:
@@ -133,6 +139,9 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.tactical = TacticalSystem.new(sim.fire, sim.units, sim.water, sim.doors, sim.rescue, sim.events)
 	sim.tactical.safety = safety
 	sim.tactical.ems = sim.ems
+	sim.cards = CardSystem.new(sim.units, sim.tactical, sim.doors, sim.rescue, sim.rekindle, sim.water, sim.fire,
+		ParamTable.from_dict(card_params), card_data, sim.events, p_seed)
+	sim._card_training_factor = ParamTable.from_dict(card_params).value("training_time_factor")
 	sim.command.survey = SiteSurvey.new(sim.fire, sim.units, sim.pathfinder, sim.command.resources, sim.command.commander, ParamTable.from_dict(survey_data), sim.events)
 	sim.water.safe_cell = sim.conditions.safe_to_enter
 	sim.rescue.water = sim.water
@@ -186,6 +195,7 @@ func apply_realism(name: String) -> void:
 		"훈련":
 			if time_limit_tick > 0:
 				time_limit_tick = roundi(time_limit_tick * pp.value("training_time_factor"))
+			cards.time_factor = _card_training_factor
 		"악조건":
 			var w: Dictionary = scenario.get("wind", {})
 			var speed := maxf(float(w.get("speed_mps", 0.0)) * pp.value("harsh_wind_factor"), pp.value("harsh_wind_min_mps"))
@@ -257,6 +267,7 @@ func _step() -> void:
 	collapse.step(dt, clock.tick)
 	shuttle.step(dt, clock.tick)
 	phases.step(dt, clock.tick, command.declared(), time_limit_tick)
+	cards.step(dt, clock.tick)
 	shafts.step(dt, clock.tick)
 	evac.step(dt, clock.tick)
 	falls.step(dt, clock.tick)

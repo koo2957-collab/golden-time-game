@@ -188,6 +188,16 @@ tests/             단위 테스트(test_*.gd)와 조작 점검(ui_smoke.gd)
 
 검증은 `tests/test_tactical.gd`, `tests/test_hints.gd`.
 
+## 골목 안 주택 요약 (M9c)
+
+| 요소 | 내용 |
+|---|---|
+| 지도 | `data/buildings/house_alley.json` (house_2f에서 생성: 골목 x33~38 차도, 담장 y22, 옆집 동쪽으로 5칸, 소화전 [56,26]) |
+| 시나리오 | `sop214_4_alley.json` (meta.order 3.5 — 목록 정렬은 실수 비교), 배치 보기 3종(골목 안 차량은 heading [0,-1]) |
+| 캠페인 | 4장에 추가 |
+
+검증은 `tests/test_alley.gd`.
+
 ## 순환보수 요약 (M9b)
 
 | 요소 | 내용 |

@@ -17,8 +17,8 @@ static func list() -> Array[Dictionary]:
 			if f.ends_with(".json"):
 				out.append(info("%s/%s" % [dir, f]))
 	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		var oa := int(a.meta.get("order", 99))
-		var ob := int(b.meta.get("order", 99))
+		var oa := float(a.meta.get("order", 99))
+		var ob := float(b.meta.get("order", 99))
 		return oa < ob or (oa == ob and str(a.title) < str(b.title)))
 	return out
 

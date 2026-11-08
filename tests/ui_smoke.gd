@@ -223,6 +223,9 @@ func _run() -> void:
 	_check("입체: 물탱크차 선택", sel.selected_vehicles, [1])
 	var hydrant_top := Vector2(sim.building.hydrants[0]) + Vector2(0.5, 0.5)
 	var proj = world.projection()
+	# 소화전이 하단 콘솔 뒤에 가리지 않게 화면 가운데로 (콘솔은 지도 클릭을 막는다)
+	world.camera.retarget(proj.bounds(sim.building), proj.to_screen(hydrant_top))
+	await process_frame
 	var e := InputEventMouseButton.new()
 	e.button_index = MOUSE_BUTTON_RIGHT
 	e.pressed = true

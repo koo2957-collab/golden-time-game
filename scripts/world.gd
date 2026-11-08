@@ -208,6 +208,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			hud.show_notice("마우스 가둠을 풀었습니다 — 화면을 클릭하면 다시 가둡니다")
 	elif event.is_action_pressed("toggle_board"):
 		hud.command_ui.toggle_board()
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_HOME:
+		# 지휘소(현장지휘관 위치)로 돌아오기 (기획안 9-3)
+		var c := sim.command.commander
+		set_view_level(c.level)
+		camera.retarget(projection().bounds(sim.building), projection().to_screen(c.pos))
 	elif event.is_action_pressed("toggle_view"):
 		set_view_mode(ViewMode.PLAN if view_mode == ViewMode.ISO else ViewMode.ISO)
 	elif event.is_action_pressed("toggle_thermal"):

@@ -50,6 +50,8 @@ var _todo_label: Label
 var _board_title: Label
 var _board_body: VBoxContainer
 var _fold_button: Button
+## 지휘관 명령 버튼 줄 (HUD 하단 콘솔이 가져간다, R6b)
+var command_rows: Array[HBoxContainer] = []
 ## 전술상황판을 접었는가 (Tab)
 var board_folded := false
 var _org: PanelContainer
@@ -506,6 +508,7 @@ func _build_radio_panel() -> void:
 		b.custom_minimum_size = Vector2(150, 34)
 		row.add_child(b)
 	box.add_child(row)
+	command_rows.append(row)
 	var row2 := HBoxContainer.new()
 	var evac := _button("긴급탈출 지시", func() -> void: order_issued.emit(CommandOrder.make("evacuate")))
 	evac.add_theme_color_override("font_color", WARN_COLOR)
@@ -517,6 +520,7 @@ func _build_radio_panel() -> void:
 		b.custom_minimum_size = Vector2(150, 34)
 		row2.add_child(b)
 	box.add_child(row2)
+	command_rows.append(row2)
 	add_child(_radio_panel)
 
 

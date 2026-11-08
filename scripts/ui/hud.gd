@@ -40,6 +40,7 @@ var sim: SimWorld
 var mode_text := ""
 var _floor_buttons: Dictionary = {}  # level -> Button
 var _legend: Control
+var _victim_panel: PanelContainer
 var _debug_panel: PanelContainer
 var _debug_cells: Array[Label] = []
 var _debug_events: Label
@@ -112,6 +113,7 @@ func setup(p_sim: SimWorld, on_floor_selected: Callable) -> void:
 	command_ui = CommandUi.new()
 	add_child(command_ui)
 	command_ui.setup(sim)
+	_build_console()
 	hint_ui = HintUi.new()
 	add_child(hint_ui)
 	debrief = DebriefUi.new()
@@ -161,6 +163,7 @@ func _process(delta: float) -> void:
 		_notice_label.offset_left = cx - size.x * 0.5 - 400.0
 		_notice_label.offset_right = cx - size.x * 0.5 + 400.0
 	_refresh_floor_bar(delta)
+	_layout_console()
 	_refresh_subtitles()
 	_refresh_emergency()
 	_update_notices(delta)
@@ -222,6 +225,8 @@ func _build_victim_panel() -> void:
 	panel.offset_right = -16
 	panel.offset_top = 150
 	panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_victim_panel = panel
+	panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	_victim_label = Label.new()
 	_victim_label.add_theme_font_size_override("font_size", 16)
 	_victim_label.add_theme_color_override("font_color", Color("ffe082"))
@@ -267,8 +272,10 @@ func _refresh_selection() -> void:
     우클릭: 이동 (건물 안으로는 혼자 들어가지 않음) · C: 지휘권 선언·전략 · 관계인 클릭: 질문" % [
 			cmd.commander.name, cmd.commander.rank, cmd.commander_title, cmd.commander_position_text(),
 			" · 관계인에게 질문 중 (%d개 남음)" % ask.questions.size() if not ask.is_empty() else ""])
-	selection_label.text = "\n".join(lines) if not lines.is_empty() else "선택 없음"
+	selection_label.text = "\n".join(lines) if not lines.is_empty() else _squad_summary()
 	_command_panel.visible = not _crew_ids.is_empty()
+	# 아무 조도 고르지 않았으면 지휘관 명령 (기획안 9-2: 선택 대상에 따라 바뀌는 명령 버튼)
+	_commander_box.visible = _crew_ids.is_empty()
 	if not _crew_ids.is_empty():
 		var squad := sim.units.squad_of_crew(_crew_ids[0])
 		var card := "%s %s" % [squad.arrival, squad.type]
@@ -669,7 +676,8 @@ func _refresh_subtitles() -> void:
 		danger = danger or radio.current.priority == Radio.Priority.SAFETY
 	_subtitles.text = "\n".join(lines)
 	_subtitles.add_theme_color_override("font_color", Color("fca5a5") if danger else Color("f1f5f9"))
-	_subtitles.position = Vector2(16, size.y - 120.0 - _subtitles.get_combined_minimum_size().y)
+	var bottom := console.position.y if console else size.y - 120.0
+	_subtitles.position = Vector2(16, bottom - 8.0 - _subtitles.get_combined_minimum_size().y)
 
 
 var _emergency_button: Button
@@ -720,3 +728,99 @@ func _draw_vignette() -> void:
 		var w := 6.0 * (k + 1)
 		var c := Color(0.9, 0.1, 0.1, pulse * (1.0 - k / 6.0))
 		_vignette.draw_rect(r.grow(-w + 6.0), c, false, 6.0)
+
+
+# --- R6b: 하단 콘솔 (기획안 9-2) ---
+
+const CONSOLE_MIN_H := 150.0
+var console: PanelContainer
+var _commander_box: VBoxContainer
+var _minimap_label: Label
+
+
+## 화면 아래 반투명 띠: 왼쪽 미니맵 자리 · 가운데 선택 정보 · 오른쪽 명령 버튼 (선택 대상에 따라)
+func _build_console() -> void:
+	console = PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.04, 0.07, 0.12, 0.78)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(8)
+	console.add_theme_stylebox_override("panel", style)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	console.add_child(row)
+	# 미니맵: 도면을 얻기 전에는 잠김 (R8)
+	var mini := PanelContainer.new()
+	mini.custom_minimum_size = Vector2(200, 0)
+	_minimap_label = Label.new()
+	_minimap_label.text = "미니맵\n도면 수신 대기"
+	_minimap_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_minimap_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_minimap_label.add_theme_color_override("font_color", Color("64748b"))
+	_minimap_label.tooltip_text = "도면은 방재실 방문·지휘대 도착 때 얻습니다 (R8 예정)"
+	_minimap_label.mouse_filter = Control.MOUSE_FILTER_STOP
+	mini.add_child(_minimap_label)
+	row.add_child(mini)
+	# 선택 정보
+	var info := ScrollContainer.new()
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	selection_label.get_parent().remove_child(selection_label)
+	selection_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	selection_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info.add_child(selection_label)
+	row.add_child(info)
+	$SelectionPanel.visible = false
+	# 명령: 조를 고르면 출동대 명령칸·세부 명령, 아니면 지휘관 명령
+	var cmd := VBoxContainer.new()
+	cmd.alignment = BoxContainer.ALIGNMENT_END
+	_command_panel.get_parent().remove_child(_command_panel)
+	_command_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	cmd.add_child(_command_panel)
+	_commander_box = VBoxContainer.new()
+	for r in command_ui.command_rows:
+		r.get_parent().remove_child(r)
+		_commander_box.add_child(r)
+	cmd.add_child(_commander_box)
+	var help := Button.new()
+	help.text = "? 조작"
+	help.focus_mode = Control.FOCUS_NONE
+	help.tooltip_text = $HelpLabel.text
+	help.size_flags_horizontal = Control.SIZE_SHRINK_END
+	cmd.add_child(help)
+	$HelpLabel.visible = false
+	row.add_child(cmd)
+	add_child(console)
+	move_child(console, 0)
+
+
+## 아무것도 고르지 않았을 때: 출동대 전체 요약 (기획안 9-2)
+func _squad_summary() -> String:
+	var lines: PackedStringArray = ["선택 없음 — 출동대 요약 (대원을 클릭하거나 끌어서 고르세요)"]
+	var res := sim.command.resources
+	for squad in sim.units.squads:
+		var state := "현장 접근 중" if res.is_en_route(squad.id) else ("대기1단계" if res.is_staged(squad.id) else "현장")
+		var inside := 0
+		var low := 1.0
+		for c in squad.crews:
+			if not sim.building.cell(c.leader.level, floori(c.leader.pos.x), floori(c.leader.pos.y)) in BuildingData.OUTDOOR:
+				inside += 1
+				low = minf(low, c.leader.air_ratio())
+		lines.append("%s (%s) %s%s" % [squad.name, squad.type, state, " · 내부 %d조, 최저 공기 %d%%" % [inside, roundi(low * 100.0)] if inside > 0 else ""])
+	return "\n".join(lines)
+
+
+## 콘솔·왼쪽 열(층 막대·구조대상자·열화상 범례) 자리 잡기
+func _layout_console() -> void:
+	if console == null:
+		return
+	var h := maxf(CONSOLE_MIN_H, size.y * 0.18)
+	console.position = Vector2(8.0, size.y - h - 8.0)
+	console.size = Vector2(size.x - 16.0, h)
+	var y := floor_tabs.position.y + floor_tabs.size.y + 8.0
+	if _victim_panel:
+		_victim_panel.position = Vector2(16.0, y)
+		if _victim_panel.visible:
+			y += _victim_panel.size.y + 8.0
+	if _legend:
+		_legend.position = Vector2(16.0, y)

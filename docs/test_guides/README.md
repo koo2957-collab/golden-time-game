@@ -44,4 +44,5 @@
 | R4 질문 카드 확장 (28장) | [R4_cards30.md](R4_cards30.md) |
 | R5 평가 배점·SOP 준수 축 | [R5_scoring.md](R5_scoring.md) |
 | R6a 화면 배치 ① (상황판·층 막대·자막) | [R6a_screen.md](R6a_screen.md) |
+| R6b 화면 배치 ② (하단 콘솔·Home) | [R6b_console.md](R6b_console.md) |
 | **R1~R5 빠른 점검 (한 판으로 확인)** | [R1-R5_빠른점검.md](R1-R5_빠른점검.md) |

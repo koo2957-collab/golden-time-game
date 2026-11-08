@@ -26,6 +26,8 @@ func _run() -> void:
 	for s in menu.scenarios:
 		_check("시나리오 검증 통과: %s" % s.title, s.errors, PackedStringArray())
 	menu.select(dev)
+	# 배속·일시정지 조작을 확인하므로 훈련 난이도로 시작한다 (실전·악조건은 1배속 고정)
+	menu._realism.select(0)
 	_key(KEY_ENTER)
 	await process_frame
 	await process_frame

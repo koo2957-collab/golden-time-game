@@ -75,7 +75,7 @@
       "command.close_out"
     ],
     "params": {},
-    "time_limit_s": 2400,
+    "time_limit_s": 1500,
     "objectives": [
       "구조대상자(노인·아이) 생존 구조 — 인명검색·구조 최우선 (SOP 214-2.1)",
       "대원 안전: 행동 불능 0, 공기 경보 조 즉시 철수 (SOP 108, 201)",

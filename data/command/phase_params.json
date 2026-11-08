@@ -9,5 +9,30 @@
     "value": 60,
     "source": "추정",
     "note": "건물 안 생존 구조대상자가 없고 타는 칸이 없는 상태가 이만큼 이어지면 종료 제안"
+  },
+  "training_time_factor": {
+    "value": 2.0,
+    "source": "추정",
+    "note": "훈련 난이도 제한 시간 배율 (기획안 8장 '훈련: 제한시간 2배')"
+  },
+  "harsh_wind_factor": {
+    "value": 2.0,
+    "source": "추정",
+    "note": "악조건 풍속 배율 (기획안 8장 '강풍')"
+  },
+  "harsh_wind_min_mps": {
+    "value": 5.0,
+    "source": "추정",
+    "note": "악조건 최소 풍속"
+  },
+  "harsh_arrival_factor": {
+    "value": 1.5,
+    "source": "추정",
+    "note": "악조건 후착대 도착 시간 배율 (기획안 8장 '후착대 지연')"
+  },
+  "harsh_shuttle_round_trip_s": {
+    "value": 420,
+    "source": "추정",
+    "note": "악조건 소화전 고장 시 원거리 수원 왕복 시간 (기획안 8장 '소화전 고장')"
   }
 }

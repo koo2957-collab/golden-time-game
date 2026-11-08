@@ -39,3 +39,4 @@
 | M9c 골목 안 주택 (진입·회차) | [M9c_alley.md](M9c_alley.md) |
 | M9d 시나리오 편집기 | [M9d_editor.md](M9d_editor.md) |
 | R1 종료 체계 (활동 단계·초진·완진 선언) | [R1_end.md](R1_end.md) |
+| R2 실시간 규칙 (난이도 훈련·실전·악조건) | [R2_realtime.md](R2_realtime.md) |

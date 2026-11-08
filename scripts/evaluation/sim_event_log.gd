@@ -223,6 +223,8 @@ static func describe_text(e: Dictionary) -> String:
 			text = "송수구 미연결 — 방수구 사용 불가 (%s)" % e.crew
 		"hose_outlet_laid":
 			text = "방수구에서 수관 연장 — %s (%s)" % [e.crew, e.level]
+		"realism":
+			text = "난이도 — %s" % e.name
 		"phase":
 			text = "활동 단계 — %s" % e.phase
 		"knockdown_reported":

@@ -188,6 +188,16 @@ tests/             단위 테스트(test_*.gd)와 조작 점검(ui_smoke.gd)
 
 검증은 `tests/test_tactical.gd`, `tests/test_hints.gd`.
 
+## 실시간 규칙 요약 (R2)
+
+| 요소 | 내용 |
+|---|---|
+| 난이도 | `GameManager.realism` (훈련·실전·악조건, 시작 화면·교관 설정 기본값). `SimWorld.apply_realism(name)` — 훈련: 제한 시간 ×training_time_factor, 악조건: 풍속 ×harsh_wind_factor(최소 harsh_wind_min_mps), 후착대 도착 ×harsh_arrival_factor(`ResourceSystem.delay_arrivals`), 소화전 전부 `hydrants_out` + 순환보수 수원. 수치는 `data/command/phase_params.json` |
+| 시간 규칙 | `world.realtime()`: 실전·악조건이면 Space·배속 키 무시(알림), 창·힌트가 떠도 진행, 출동 지령만 멈춤 |
+| 기록 | 다시 하기(`GameManager.replay.realism`, `Replay.begin(..., realism)`), 결과 파일 `realism`, 사건 `realism` |
+
+검증은 `tests/test_realism.gd`.
+
 ## 종료 체계 요약 (R1)
 
 | 요소 | 내용 |

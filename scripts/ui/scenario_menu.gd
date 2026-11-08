@@ -12,6 +12,7 @@ var _detail: RichTextLabel
 var _start: Button
 var _mode: OptionButton
 var _difficulty: OptionButton
+var _realism: OptionButton
 ## 열려 있는 내 기록·교관 설정 화면
 var overlay: Control
 
@@ -22,6 +23,7 @@ func _ready() -> void:
 		var defs: Dictionary = InstructorSettings.load_settings().get("defaults", {})
 		GameManager.mode = str(defs.get("mode", GameManager.mode))
 		GameManager.difficulty = str(defs.get("difficulty", GameManager.difficulty))
+		GameManager.realism = str(defs.get("realism", GameManager.realism))
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var bg := ColorRect.new()
 	bg.color = BG
@@ -78,6 +80,14 @@ func _ready() -> void:
 	_mode.add_item("교육 모드 — 판단할 때 SOP 힌트")
 	_mode.select(1 if GameManager.mode == "교육" else 0)
 	buttons.add_child(_mode)
+	_realism = OptionButton.new()
+	_realism.focus_mode = Control.FOCUS_NONE
+	_realism.custom_minimum_size = Vector2(250, 48)
+	for r in ["난이도: 훈련 (제한시간 2배·일시정지)", "난이도: 실전 (1배속 고정)", "난이도: 악조건 (강풍·지연·소화전 고장)"]:
+		_realism.add_item(r)
+	_realism.select(maxi(0, ["훈련", "실전", "악조건"].find(GameManager.realism)))
+	_realism.tooltip_text = "실전·악조건은 시간이 멈추지 않습니다 (창·힌트가 떠도 진행, 배속 없음). 출동 지령을 읽는 동안만 멈춥니다."
+	buttons.add_child(_realism)
 	_difficulty = OptionButton.new()
 	_difficulty.focus_mode = Control.FOCUS_NONE
 	_difficulty.custom_minimum_size = Vector2(300, 48)
@@ -213,4 +223,5 @@ func _on_start() -> void:
 		return
 	GameManager.mode = "교육" if _mode.selected == 1 else "평가"
 	GameManager.difficulty = ["", "입문", "중급", "상급"][_difficulty.selected]
+	GameManager.realism = ["훈련", "실전", "악조건"][_realism.selected]
 	start_requested.emit(scenarios[sel[0]].path)

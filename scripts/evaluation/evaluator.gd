@@ -116,6 +116,7 @@ func _run() -> Dictionary:
 		"seed": sim.rng_seed,
 		"mode": sim.play_mode,
 		"difficulty": sim.tactical.level_name,
+		"realism": sim.realism,
 		"end_reason": sim.end_reason,
 		"end_time_s": sim.ended_tick * SimClock.TICK_DT,
 		"points": snappedf(points, 0.1),

@@ -10,6 +10,7 @@ var _weekly: OptionButton
 var _note: LineEdit
 var _mode: OptionButton
 var _difficulty: OptionButton
+var _realism: OptionButton
 var _status: Label
 var _spins: Dictionary = {}  # "표.키" -> SpinBox
 var _defaults: Dictionary = {}  # "표.키" -> 기본값
@@ -70,6 +71,11 @@ func _ready() -> void:
 		_difficulty.add_item(d)
 	_difficulty.select(maxi(0, ["", "입문", "중급", "상급"].find(str(settings.get("defaults", {}).get("difficulty", "")))))
 	defs.add_child(_difficulty)
+	_realism = OptionButton.new()
+	for r in ["훈련", "실전", "악조건"]:
+		_realism.add_item(r)
+	_realism.select(maxi(0, ["훈련", "실전", "악조건"].find(str(settings.get("defaults", {}).get("realism", "실전")))))
+	defs.add_child(_realism)
 	box.add_child(defs)
 	# 수치
 	box.add_child(_label("수치 덮어쓰기 — 기본값은 교재·추정값 (마우스를 올리면 설명). 바꾼 값은 결과 파일에 기록된다", Color("94a3b8")))
@@ -135,6 +141,7 @@ func collect() -> Dictionary:
 	var out := {"params": params, "defaults": {
 		"mode": "교육" if _mode.selected == 1 else "평가",
 		"difficulty": ["", "입문", "중급", "상급"][_difficulty.selected],
+		"realism": ["훈련", "실전", "악조건"][_realism.selected],
 	}}
 	if _weekly.selected > 0:
 		out["weekly"] = {"scenario": _scenario_ids[_weekly.selected], "note": _note.text}

@@ -137,6 +137,8 @@ func _process(delta: float) -> void:
 		var left := maxi(0, int((sim.time_limit_tick - sim.clock.tick) * SimClock.TICK_DT))
 		text += " / 남은 %02d:%02d" % [floori(left / 60.0), left % 60]
 	text += "   ×%d" % int(sim.clock.speed)
+	if sim.realism != "":
+		text += "   %s%s" % [sim.realism, " · 1배속 고정" if sim.realism != "훈련" else ""]
 	if sim.clock.paused:
 		text += "   일시정지"
 	if mode_text != "":

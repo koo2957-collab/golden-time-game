@@ -12,7 +12,9 @@ var skip_menu := false
 var mode := "평가"
 ## 자동화 수준 (입문·중급·상급). 빈 문자열이면 시나리오 난이도를 따른다
 var difficulty := ""
-## 다시 하기 요청 {entries: [{tick, command}], tick, seed, automation}. 비어 있으면 처음부터
+## 난이도: "훈련"(제한시간 2배, 일시정지·배속) / "실전"(1배속 고정, 일시정지 없음) / "악조건"(실전 + 강풍·후착대 지연·소화전 고장)
+var realism := "실전"
+## 다시 하기 요청 {entries: [{tick, command}], tick, seed, automation, realism}. 비어 있으면 처음부터
 var replay: Dictionary = {}
 ## 교관 설정의 시작 화면 기본값을 한 번 적용했는가
 var defaults_applied := false
@@ -37,7 +39,7 @@ func back_to_menu() -> void:
 
 
 ## 같은 시나리오를 tick 시점부터 다시 (entries를 그 시점까지 재생)
-func request_replay(entries: Array[Dictionary], tick: int, p_seed: int, automation: String) -> void:
+func request_replay(entries: Array[Dictionary], tick: int, p_seed: int, automation: String, p_realism := "") -> void:
 	skip_menu = true
-	replay = {"entries": entries.duplicate(), "tick": tick, "seed": p_seed, "automation": automation}
+	replay = {"entries": entries.duplicate(), "tick": tick, "seed": p_seed, "automation": automation, "realism": p_realism}
 	get_tree().reload_current_scene.call_deferred()

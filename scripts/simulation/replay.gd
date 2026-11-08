@@ -11,11 +11,13 @@ var _next := 0
 
 
 ## path 시나리오로 새로 시작해 entries([{tick, command}])를 target_tick까지 재생할 준비. 실패하면 null
-static func begin(path: String, entries: Array[Dictionary], p_target_tick: int, p_seed := -1, automation := "") -> Replay:
+static func begin(path: String, entries: Array[Dictionary], p_target_tick: int, p_seed := -1, automation := "", realism := "") -> Replay:
 	var r := Replay.new()
 	r.sim = SimWorld.from_scenario(path, true, p_seed)
 	if r.sim == null:
 		return null
+	if realism != "":
+		r.sim.apply_realism(realism)
 	if automation != "":
 		r.sim.tactical.set_level(automation)
 	r.target_tick = maxi(0, p_target_tick)

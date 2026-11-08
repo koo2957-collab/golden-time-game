@@ -46,6 +46,7 @@ func _ready() -> void:
 		sim = SimWorld.from_scenario(path, true, randi() % 1000000 if random_seed else -1)
 		if sim:
 			sim.tactical.set_level(_automation_level(data if data is Dictionary else {}))
+			sim.apply_realism(GameManager.realism)
 	if sim == null:
 		push_error("시나리오를 불러오지 못했습니다: %s" % path)
 		return
@@ -78,7 +79,7 @@ func _ready() -> void:
 	set_view_level(sim.building.levels()[0])
 	hud.debrief.restart_requested.connect(GameManager.restart)
 	hud.debrief.menu_requested.connect(GameManager.back_to_menu)
-	hud.debrief.replay_requested.connect(func(tick: int) -> void: GameManager.request_replay(sim.issued, tick, sim.rng_seed, sim.tactical.level_name))
+	hud.debrief.replay_requested.connect(func(tick: int) -> void: GameManager.request_replay(sim.issued, tick, sim.rng_seed, sim.tactical.level_name, sim.realism))
 	if replay_tick >= 0:
 		sim.clock.paused = true
 		var t := int(replay_tick * SimClock.TICK_DT)
@@ -101,7 +102,7 @@ func _run_replay(path: String) -> SimWorld:
 	GameManager.replay = {}
 	var entries: Array[Dictionary] = []
 	entries.assign(info.get("entries", []))
-	var r := Replay.begin(path, entries, int(info.get("tick", 0)), int(info.get("seed", -1)), str(info.get("automation", "")))
+	var r := Replay.begin(path, entries, int(info.get("tick", 0)), int(info.get("seed", -1)), str(info.get("automation", "")), str(info.get("realism", "")))
 	if r == null:
 		return null
 	var label := Label.new()
@@ -154,7 +155,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("cmd_entry"):
 		_on_command("entry")
 	elif event.is_action_pressed("time_pause"):
-		sim.clock.paused = not sim.clock.paused
+		# 실전·악조건은 일시정지 없음 (다시 하기로 멈춰 있을 때 다시 진행하는 것만 허용)
+		if realtime() and not sim.clock.paused:
+			hud.show_notice("%s 난이도는 일시정지할 수 없습니다 — 현장은 멈추지 않습니다" % sim.realism)
+		else:
+			sim.clock.paused = not sim.clock.paused
 	elif event.is_action_pressed("floor_up"):
 		_step_level(1)
 	elif event.is_action_pressed("floor_down"):
@@ -201,7 +206,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	else:
 		for action: String in SPEED_ACTIONS:
 			if event.is_action_pressed(action):
-				sim.clock.speed = SPEED_ACTIONS[action]
+				if realtime() and SPEED_ACTIONS[action] != 1.0:
+					hud.show_notice("%s 난이도는 1배속 고정입니다" % sim.realism)
+				else:
+					sim.clock.speed = SPEED_ACTIONS[action]
 
 
 func projection() -> ViewProjection:
@@ -260,7 +268,17 @@ func _on_command_mode_changed(hint: String) -> void:
 
 
 ## 창이 열려 있는 동안 게임 시간을 멈춘다
+## 실전·악조건: 1배속 고정, 일시정지 없음, 창이 떠도 시간 진행 (기획안 3-3, 8장)
+func realtime() -> bool:
+	return sim != null and sim.realism in ["실전", "악조건"]
+
+
 func _on_dialog_changed(open: bool) -> void:
+	# 실전·악조건에서는 출동 지령(도착 전)만 멈춘다
+	if realtime() and not hud.command_ui.dispatch_visible():
+		if not open and _paused_before_dialog == false:
+			sim.clock.paused = false
+		return
 	if open:
 		_paused_before_dialog = sim.clock.paused
 		sim.clock.paused = true

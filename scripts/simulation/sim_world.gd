@@ -42,6 +42,10 @@ var shafts: ShaftSystem
 var evac: EvacSystem
 var shuttle: ShuttleSystem
 var phases: PhaseSystem
+## 난이도 (기획안 8장): "훈련" 제한시간 2배·일시정지·배속 / "실전" 1배속 고정 / "악조건" 실전 + 강풍·후착대 지연·소화전 고장.
+## 빈 문자열이면 시나리오 그대로 (자동 테스트). 화면의 시간 규칙(배속·일시정지)은 world가 이 값을 보고 정한다
+var realism := ""
+var _phase_params: ParamTable
 var command: CommandSystem
 var command_log := CommandLog.new()
 var events := SimEventLog.new()
@@ -111,6 +115,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.exposure = ExposureSystem.new(sim.fire, sim.water, hazard_params, sim.events)
 	sim.gas = GasSystem.new(sim.fire, sim.units, sim.pathfinder, hazard_params, sim.events)
 	sim.collapse = CollapseSystem.new(sim.fire, sim.units, sim.rescue, hazard_params, sim.events)
+	sim._phase_params = ParamTable.from_dict(phase_data)
 	sim.phases = PhaseSystem.new(sim.fire, sim.units, sim.water, sim.rescue, sim.rekindle, sim.perception, ParamTable.from_dict(phase_data), sim.events)
 	sim.shuttle = ShuttleSystem.new(sim.units, sim.water, sim.events)
 	sim.shafts = ShaftSystem.new(sim.fire, sim.units, sim.water, hazard_params, sim.events)
@@ -171,6 +176,28 @@ static func from_scenario(path: String, command_rules := true, seed_override := 
 		sim.doors.sync_blocking()
 		sim.perception.update(0)
 	return sim
+
+
+## 난이도 적용 (시나리오를 불러온 직후, 진행 전에). 다시 하기도 같은 값으로 부른다
+func apply_realism(name: String) -> void:
+	realism = name
+	var pp := _phase_params
+	match name:
+		"훈련":
+			if time_limit_tick > 0:
+				time_limit_tick = roundi(time_limit_tick * pp.value("training_time_factor"))
+		"악조건":
+			var w: Dictionary = scenario.get("wind", {})
+			var speed := maxf(float(w.get("speed_mps", 0.0)) * pp.value("harsh_wind_factor"), pp.value("harsh_wind_min_mps"))
+			exposure.apply_scenario({"wind": {"from_deg": float(w.get("from_deg", 270.0)), "speed_mps": speed}})
+			command.resources.delay_arrivals(pp.value("harsh_arrival_factor"))
+			for i in building.hydrants.size():
+				if not i in water.hydrants_out:
+					water.hydrants_out.append(i)
+			if not shuttle.available():
+				shuttle.source_name = "원거리 소화전 (악조건)"
+				shuttle.round_trip_s = pp.value("harsh_shuttle_round_trip_s")
+	events.add(clock.tick, "realism", {"name": name})
 
 
 func ended() -> bool:

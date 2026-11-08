@@ -75,7 +75,7 @@
       "command.close_out"
     ],
     "params": {},
-    "time_limit_s": 3600,
+    "time_limit_s": 1800,
     "objectives": [
       "안내판의 순서대로 기본 지휘 흐름을 한 번 해 보기",
       "아이 생존 구조와 구급대 처치",

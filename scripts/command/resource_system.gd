@@ -64,6 +64,14 @@ func apply_scenario(data: Dictionary) -> void:
 
 
 ## 도착 예정을 모두 지운다 (지휘 절차와 상관없는 테스트용)
+## 시나리오 후착대 도착을 factor배 늦춘다 (악조건 난이도)
+func delay_arrivals(factor: float) -> void:
+	for s in _schedule:
+		if str(s.get("reason", "")) == "후착":
+			s.tick = roundi(int(s.tick) * factor)
+	_schedule.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a.tick) < int(b.tick))
+
+
 func clear_schedule() -> void:
 	for list: Array[Dictionary] in [_schedule, _queue]:
 		for entry in list:

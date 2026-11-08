@@ -256,6 +256,15 @@ func _run() -> void:
 	sim.step_ticks(300)
 	_check("RIT 지정 (구조1 2조)", sim.command.safety.role_of(3), SafetySystem.Role.RIT)
 	_check("P → 인원점검", sim.command.safety.par_log.size() >= 1, true)
+	# 활동 단계 표시줄·남은 시간 (R1)
+	_check("단계 표시줄", world.hud.phase_bar.text.contains("완진 선언"), true)
+	_check("남은 시간 표시", world.hud.clock_label.text.contains("남은"), true)
+	# 완진 선언 창 → 선언 (불이 남아 있어도 막지 않음) → 마무리 단계
+	cui.open_all_clear()
+	_check("완진 선언 창 (확인 목록)", cui.all_clear_checklist().contains("초진 보고"), true)
+	cui.confirm_all_clear()
+	sim.step_ticks(2)
+	_check("완진 선언 → 마무리 단계", sim.phases.phase, PhaseSystem.Phase.CLOSE_OUT)
 	# 활동 종료 선언 (감시: 관계자에게 당부) → 디브리핑
 	cui.open_end_confirm()
 	cui.set_end_watch(1)

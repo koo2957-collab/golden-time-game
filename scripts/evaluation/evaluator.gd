@@ -239,6 +239,65 @@ func _check_rescue_time() -> Dictionary:
 	return {"score": sum / victims.size(), "detail": "%s (기준 %d분 안)" % [", ".join(parts), int(_params.good_s / 60)]}
 
 
+## 완진 선언의 정확성 (소방전술 I 8단계 ⑥, SOP 202-6): 활동을 끝냈을 때만
+func _check_all_clear() -> Dictionary:
+	if not sim.ended():
+		return {}
+	var ac := sim.phases.all_clear
+	if ac.is_empty():
+		return {"score": 0.0, "detail": "완진 선언 없이 활동 종료"}
+	var after := sim.events.of_type("rekindle").filter(func(e: Dictionary) -> bool: return int(e.tick) >= int(ac.tick)).size()
+	if int(ac.burning) > 0:
+		return {"score": 0.0, "detail": "%s 완진 선언 — 그때 아직 연소 중 (타는 칸 %d)" % [_t(ac.tick), ac.burning]}
+	if after > 0:
+		return {"score": 0.3, "detail": "%s 완진 선언 뒤 재발화 %d건" % [_t(ac.tick), after]}
+	if int(ac.embers) > 0:
+		return {"score": 0.6, "detail": "%s 완진 선언 — 숨은 불씨 %d곳이 남아 있었음 (재발화 위험)" % [_t(ac.tick), ac.embers]}
+	return {"score": 1.0, "detail": "%s 완진 선언 — 불과 숨은 불씨 모두 없음" % _t(ac.tick)}
+
+
+## 2차 검색 (소방전술 I 8단계 ⑤, SOP 202-6.3): 초진에 이르렀을 때만. 완진 선언(없으면 종료) 전까지 다시 검색한 구획 비율
+func _check_secondary() -> Dictionary:
+	var ph := sim.phases
+	if ph.knockdown_tick < 0:
+		return {}
+	var limit := int(ph.all_clear.get("tick", sim.ended_tick if sim.ended() else sim.clock.tick))
+	var targets := ph.search_targets()
+	var done := 0
+	for c in targets:
+		if ph.secondary.has(c.index) and int(ph.secondary[c.index]) <= limit:
+			done += 1
+	return {"score": float(done) / maxf(1.0, targets.size()) if targets.size() > 0 else 1.0,
+		"detail": "초진(%s) 뒤 2차 검색 %d/%d구획" % [_t(ph.knockdown_tick), done, targets.size()]}
+
+
+## 마무리 순서 (SOP 202-6.5, 200-4.1, 113): 완진 선언 → 인원점검 → 감시 지정 → 활동 종료
+func _check_close_out() -> Dictionary:
+	if not sim.ended():
+		return {}
+	var ac := sim.phases.all_clear
+	var parts: PackedStringArray = []
+	var score := 0.0
+	if not ac.is_empty():
+		score += 0.4
+		parts.append("완진 선언 %s" % _t(ac.tick))
+	else:
+		parts.append("완진 선언 없음")
+	var par_after := sim.events.of_type("par_done").filter(func(e: Dictionary) -> bool: return not ac.is_empty() and int(e.tick) >= int(ac.tick))
+	if not par_after.is_empty():
+		score += 0.3
+		parts.append("인원점검 %s" % _t(par_after[0].tick))
+	else:
+		parts.append("완진 뒤 인원점검 없음")
+	var watch := sim.command.watch
+	if watch != "":
+		score += 0.3
+		parts.append("감시: %s" % watch)
+	else:
+		parts.append("재발화 감시 지정 없음")
+	return {"score": score, "detail": " → ".join(parts)}
+
+
 ## 순환보수 (SOP 200-3.1.1.3): 소화전을 쓸 수 없고 원거리 수원이 있는 시나리오에서만
 func _check_shuttle() -> Dictionary:
 	var sh := sim.shuttle

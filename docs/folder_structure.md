@@ -188,6 +188,18 @@ tests/             단위 테스트(test_*.gd)와 조작 점검(ui_smoke.gd)
 
 검증은 `tests/test_tactical.gd`, `tests/test_hints.gd`.
 
+## 종료 체계 요약 (R1)
+
+| 요소 | 내용 |
+|---|---|
+| 단계 | `scripts/command/phase_system.gd` (`PhaseSystem.Phase`, `reached`, `knockdown_tick`, `all_clear`, `secondary`). 수치 `data/command/phase_params.json` (knockdown_hold_s 60, end_suggest_quiet_s 60, 모두 추정) |
+| 초진 | 최성기·플래시오버 구획 없음 + 새 착화 없음 + 타는 칸 늘지 않음 + 물을 쓴 적 있음이 60초 → `knockdown_reported` (수관 조가 보는 방만) |
+| 명령 | 지휘 명령 `all_clear` (완진 선언, 막지 않음). 무전 패널 '완진 선언'·'활동 종료' 버튼, 완진 선언 창(확인 목록), 종료 창의 완진 전 경고 |
+| 화면 | HUD 위 단계 표시줄(`Hud.phase_bar`), 시계 "경과 / 남은" |
+| 평가·힌트 | command.all_clear, search.secondary, command.close_out (38개), 힌트 knockdown_reported·end_suggested·time_warning (26종) |
+
+검증은 `tests/test_phases.gd`, `tests/ui_smoke.gd`.
+
 ## 시나리오 편집기 요약 (M9d)
 
 | 요소 | 내용 |

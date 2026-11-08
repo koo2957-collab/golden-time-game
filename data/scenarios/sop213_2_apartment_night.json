@@ -60,6 +60,7 @@
       "rescue.survival",
       "rescue.time",
       "rescue.search_order",
+      "search.secondary",
       "rescue.air_mat",
       "rescue.ems_treat",
       "rescue.ems_transport",
@@ -67,6 +68,7 @@
       "property.exposure",
       "property.water",
       "fire.extinguish",
+      "command.all_clear",
       "fire.standpipe",
       "fire.placement",
       "fire.water_supply",
@@ -78,7 +80,8 @@
       "command.survey",
       "command.witness",
       "command.span",
-      "command.par_end"
+      "command.par_end",
+      "command.close_out"
     ],
     "params": {
       "rescue.time": {

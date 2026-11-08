@@ -10,6 +10,7 @@ const FIRE_PARAMS_PATH := "res://data/fire/fire_params.json"
 const MATERIALS_PATH := "res://data/materials/materials.json"
 const VEHICLES_PATH := "res://data/units/vehicles.json"
 const EMS_PARAMS_PATH := "res://data/units/ems_params.json"
+const PHASE_PARAMS_PATH := "res://data/command/phase_params.json"
 const HAZARD_PARAMS_PATH := "res://data/fire/hazard_params.json"
 const RADIO_PARAMS_PATH := "res://data/command/radio_params.json"
 const SURVEY_PARAMS_PATH := "res://data/command/survey_params.json"
@@ -40,6 +41,7 @@ var falls: FallSystem
 var shafts: ShaftSystem
 var evac: EvacSystem
 var shuttle: ShuttleSystem
+var phases: PhaseSystem
 var command: CommandSystem
 var command_log := CommandLog.new()
 var events := SimEventLog.new()
@@ -78,12 +80,13 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	var survey_data: Variant = JsonData.load_file(SURVEY_PARAMS_PATH)
 	var safety_data: Variant = JsonData.load_file(SAFETY_PARAMS_PATH)
 	var ems_data: Variant = JsonData.load_file(EMS_PARAMS_PATH)
+	var phase_data: Variant = JsonData.load_file(PHASE_PARAMS_PATH)
 	if safety_data is Dictionary:
 		safety_data = InstructorSettings.apply("safety", safety_data)
 	if ems_data is Dictionary:
 		ems_data = InstructorSettings.apply("ems", ems_data)
 	var fire_config := FireConfig.load_files(FIRE_PARAMS_PATH, MATERIALS_PATH)
-	if building == null or not roster is Dictionary or not stats_data is Dictionary or not vehicle_stats is Dictionary or not hazard_data is Dictionary or not radio_data is Dictionary or not survey_data is Dictionary or not safety_data is Dictionary or not ems_data is Dictionary or fire_config == null:
+	if building == null or not roster is Dictionary or not stats_data is Dictionary or not vehicle_stats is Dictionary or not hazard_data is Dictionary or not radio_data is Dictionary or not survey_data is Dictionary or not safety_data is Dictionary or not ems_data is Dictionary or not phase_data is Dictionary or fire_config == null:
 		return null
 	var stats := ParamTable.from_dict(stats_data)
 	for type: String in vehicle_overrides:
@@ -108,6 +111,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.exposure = ExposureSystem.new(sim.fire, sim.water, hazard_params, sim.events)
 	sim.gas = GasSystem.new(sim.fire, sim.units, sim.pathfinder, hazard_params, sim.events)
 	sim.collapse = CollapseSystem.new(sim.fire, sim.units, sim.rescue, hazard_params, sim.events)
+	sim.phases = PhaseSystem.new(sim.fire, sim.units, sim.water, sim.rescue, sim.rekindle, sim.perception, ParamTable.from_dict(phase_data), sim.events)
 	sim.shuttle = ShuttleSystem.new(sim.units, sim.water, sim.events)
 	sim.shafts = ShaftSystem.new(sim.fire, sim.units, sim.water, hazard_params, sim.events)
 	sim.evac = EvacSystem.new(sim.fire, sim.rescue, sim.pathfinder, hazard_params, sim.units.walk_speed_cells, sim.events)
@@ -180,6 +184,7 @@ func end_activity(reason: String) -> void:
 	ended_tick = clock.tick
 	end_reason = reason
 	clock.paused = true
+	phases.on_ended(clock.tick)
 	events.add(clock.tick, "activity_ended", {"reason": reason})
 
 
@@ -224,6 +229,7 @@ func _step() -> void:
 	gas.step(dt, clock.tick)
 	collapse.step(dt, clock.tick)
 	shuttle.step(dt, clock.tick)
+	phases.step(dt, clock.tick, command.declared(), time_limit_tick)
 	shafts.step(dt, clock.tick)
 	evac.step(dt, clock.tick)
 	falls.step(dt, clock.tick)

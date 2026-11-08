@@ -223,6 +223,18 @@ static func describe_text(e: Dictionary) -> String:
 			text = "송수구 미연결 — 방수구 사용 불가 (%s)" % e.crew
 		"hose_outlet_laid":
 			text = "방수구에서 수관 연장 — %s (%s)" % [e.crew, e.level]
+		"phase":
+			text = "활동 단계 — %s" % e.phase
+		"knockdown_reported":
+			text = "초진 — %s (%s)" % [e.rooms, e.crew]
+		"secondary_search_done":
+			text = "2차 검색 완료 — %s" % e.room
+		"all_clear_declared":
+			text = "완진 선언 — 잔불정리·감시·인원점검 후 활동 종료"
+		"time_warning":
+			text = "활동 제한 시간 %d분 전" % e.min
+		"end_suggested":
+			text = "더 할 일이 없습니다 — %s" % ("인원점검 후 활동 종료하세요" if e.get("all_clear", false) else "완진 선언 후 활동 종료를 검토하세요")
 		"hydrant_out":
 			text = "소화전 사용 불가(고장) — %s%s" % [e.vehicle, _driver(e)]
 		"shuttle_on":

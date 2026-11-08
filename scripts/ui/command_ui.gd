@@ -66,6 +66,10 @@ var _update: PanelContainer
 var _update_victims: OptionButton
 var _update_hazards: Array[CheckBox] = []
 var _end: PanelContainer
+## 완진 선언 창 (노출된 곳 확인 목록)
+var _all_clear: PanelContainer
+var _all_clear_status: Label
+var _end_warning: Label
 var _end_status: Label
 var _end_watch: OptionButton
 var _role_crew: OptionButton
@@ -87,6 +91,7 @@ func setup(p_sim: SimWorld) -> void:
 	_build_info()
 	_build_update()
 	_build_end()
+	_build_all_clear()
 
 
 func _process(delta: float) -> void:
@@ -100,7 +105,7 @@ func _process(delta: float) -> void:
 
 func any_dialog_open() -> bool:
 	return _dispatch.visible or _report.visible or _strategy.visible or _confirm.visible or _org.visible \
-		or _witness.visible or _info.visible or _update.visible or _end.visible
+		or _witness.visible or _info.visible or _update.visible or _end.visible or _all_clear.visible
 
 
 func set_radio_visible(on: bool) -> void:
@@ -409,7 +414,9 @@ func _build_radio_panel() -> void:
 	var evac := _button("긴급탈출 지시", func() -> void: order_issued.emit(CommandOrder.make("evacuate")))
 	evac.add_theme_color_override("font_color", WARN_COLOR)
 	var par := _button("인원점검 (P)", func() -> void: order_issued.emit(CommandOrder.make("par")))
-	for b in [evac, par]:
+	var clear := _button("완진 선언", open_all_clear)
+	var end := _button("활동 종료", open_end_confirm)
+	for b in [evac, par, clear, end]:
 		b.custom_minimum_size = Vector2(150, 34)
 		row2.add_child(b)
 	box.add_child(row2)
@@ -907,6 +914,10 @@ func _build_end() -> void:
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.custom_minimum_size = Vector2(DIALOG_WIDTH - 40, 0)
 	box.add_child(l)
+	_end_warning = _label("", 16, WARN_COLOR)
+	_end_warning.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_end_warning.custom_minimum_size = Vector2(DIALOG_WIDTH - 40, 0)
+	box.add_child(_end_warning)
 	_end_status = _label("", 16, TEXT_COLOR)
 	_end_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_end_status.custom_minimum_size = Vector2(DIALOG_WIDTH - 40, 0)
@@ -938,6 +949,7 @@ func _rebuild_end() -> void:
 	var par_text := "인원점검: %s" % ("하지 않음 — 무전 패널의 인원점검(P)으로 먼저 확인하세요 (SOP 200-4.1)" if pars.is_empty()
 		else "마지막 %s (%s)" % [_time(pars[-1].tick), "이상 없음" if pars[-1].missing == 0 and pars[-1].indoor == 0 else "건물 안 %d명, 미확인 %d명" % [pars[-1].indoor, pars[-1].missing]])
 	_end_status.text = "%s\n지금 건물 안 대원: %d명" % [par_text, inside]
+	_end_warning.text = "" if not sim.phases.all_clear.is_empty() else "⚠ 아직 완진 선언 전입니다. 그대로 종료하면 지금 상태로 평가합니다 (완진 선언 → 인원점검 → 감시 지정 → 종료가 원칙)."
 	_end_watch.clear()
 	_end_watch.add_item("지정 안 함")
 	_end_watch.add_item("관계자에게 감시 당부")
@@ -945,6 +957,69 @@ func _rebuild_end() -> void:
 		if cmd.resources.on_scene(squad.id):
 			_end_watch.add_item("%s 감시조" % squad.name)
 	_end_watch.select(0)
+
+
+## 완진 선언 창: 지휘관이 알 수 있는 것만으로 노출된 곳 확인 목록을 보여 준다 (소방전술 I 8단계 ⑥)
+func open_all_clear() -> void:
+	_close(_strategy)
+	if any_dialog_open() or not sim.phases.all_clear.is_empty():
+		return
+	_all_clear_status.text = all_clear_checklist()
+	_open(_all_clear)
+
+
+func all_clear_checklist() -> String:
+	var ph := sim.phases
+	var lines: PackedStringArray = []
+	lines.append("%s 초진 보고 %s" % ["✓" if ph.knockdown_tick >= 0 else "✗", _time(ph.knockdown_tick) if ph.knockdown_tick >= 0 else "없음"])
+	var origin_level := -1
+	for e in sim.events.of_type("ignition"):
+		var c := sim.fire.compartment_at(int(e.cell[2]), int(e.cell[0]), int(e.cell[1]))
+		if c:
+			origin_level = c.level
+			break
+	for pair in [[origin_level, "발화층"], [origin_level + 1, "직상층"]]:
+		var lv: int = pair[0]
+		if not sim.building.has_level(lv):
+			continue
+		var total := 0
+		var done := 0
+		for c in ph.search_targets():
+			if c.level == lv:
+				total += 1
+				if ph.secondary.has(c.index):
+					done += 1
+		lines.append("%s %s(%s) 2차 검색 %d/%d" % ["✓" if done == total else "✗", pair[1], sim.building.floor_name(lv), done, total])
+	var seen := 0
+	for i in sim.fire.grid.burning:
+		if not sim.perception.enabled or sim.perception.seen_burning[i] == 1:
+			seen += 1
+	lines.append("%s 보이는 불 %s" % ["✓" if seen == 0 else "✗", "없음" if seen == 0 else "%d곳" % seen])
+	var embers := sim.rekindle.spotted_cells().size()
+	lines.append("%s 찾은 불씨 %s · 잔불정리 %d회" % ["✓" if embers == 0 else "✗", "없음" if embers == 0 else "%d곳 남음" % embers, sim.events.of_type("overhaul_done").size()])
+	return "\n".join(lines)
+
+
+func _build_all_clear() -> void:
+	_all_clear = _dialog()
+	var box: VBoxContainer = _all_clear.get_child(0)
+	box.add_child(_label("완진 선언 (소방전술 I 8단계 ⑥, SOP 202-6)", 22, Color("fde68a")))
+	var l := _label("발화층·직상층·각 진압 구역 등 노출된 모든 곳을 확인했으면 완진을 선언합니다. 아직 불이 남아 있어도 선언은 할 수 있지만 그대로 평가됩니다. 선언 뒤에는 인원점검(P)과 활동 종료(재발화 감시 지정)로 마무리합니다.", 16, TEXT_COLOR)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size = Vector2(DIALOG_WIDTH - 40, 0)
+	box.add_child(l)
+	_all_clear_status = _label("", 17, TEXT_COLOR)
+	box.add_child(_all_clear_status)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_END
+	row.add_child(_button("취소", func() -> void: _close(_all_clear)))
+	row.add_child(_button("완진 선언 (무전)", confirm_all_clear))
+	box.add_child(row)
+
+
+func confirm_all_clear() -> void:
+	order_issued.emit(CommandOrder.make("all_clear"))
+	_close(_all_clear)
 
 
 static func _time(tick: int) -> String:

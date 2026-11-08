@@ -14,7 +14,7 @@
 ## 진행 방식
 
 - 기존 엔진(화재·대원·물·평가)은 살리고 기획안과 다른 부분만 고친다. 기획안 12장 프롬프트는 점검표로만 쓴다 (폴더 재배치·TileMapLayer 전환 안 함).
-- 큰 단계(R 번호)마다 계획을 사용자에게 보여 주고 확인받은 뒤 구현한다.
+- 큰 단계(R 번호)는 로드맵 순서대로 **확인 없이 이어서 진행한다** (2026-11-08 사용자 결정, R1부터). 단계마다 테스트를 통과시키고 `docs/test_guides/<단계>.md`를 쓴 뒤 GitHub에 올리고 다음 단계로 넘어간다. 선택이 필요하면 추천안으로 정하고 문서에 남긴다.
 - 결정 사항: 실전·악조건은 1배속·일시정지 없음, 훈련 난이도만 일시정지·배속. 지휘권 이양 후에는 지휘대장으로 계속 플레이.
 
 ## 코드 규칙
@@ -28,7 +28,7 @@
 
 ## 실행·테스트
 
-Godot은 PATH에 없다: `C:\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe`
+Godot은 PATH에 없고 PC마다 위치가 다르다: `C:\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe` 또는 `C:\Users\koo29\Downloads\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe`
 
 ```
 godot --headless --path . -s res://tests/run_tests.gd   # 단위 테스트 (10분 이상 — 백그라운드로)

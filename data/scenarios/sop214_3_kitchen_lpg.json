@@ -81,6 +81,7 @@
       "rescue.survival",
       "rescue.time",
       "rescue.search_order",
+      "search.secondary",
       "rescue.ems_treat",
       "rescue.ems_transport",
       "property.spread",
@@ -88,6 +89,7 @@
       "property.gas",
       "property.water",
       "fire.extinguish",
+      "command.all_clear",
       "fire.placement",
       "fire.water_supply",
       "fire.shuttle",
@@ -99,7 +101,8 @@
       "command.survey",
       "command.witness",
       "command.span",
-      "command.par_end"
+      "command.par_end",
+      "command.close_out"
     ],
     "params": {
       "rescue.time": {

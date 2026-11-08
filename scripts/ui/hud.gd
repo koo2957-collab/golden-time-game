@@ -61,6 +61,8 @@ var _commander_selected := false
 var command_ui: CommandUi
 var debrief: DebriefUi
 var hint_ui: HintUi
+## 화면 위 활동 단계 표시줄 (①~⑧, 지금 단계 강조)
+var phase_bar: RichTextLabel
 ## 튜토리얼 시나리오에서만 만든다
 var tutorial_ui: TutorialUi
 
@@ -69,6 +71,16 @@ func setup(p_sim: SimWorld, on_floor_selected: Callable) -> void:
 	sim = p_sim
 	# 다시 하기로 중간부터 시작하면 그 전 사건은 알림으로 띄우지 않는다
 	_events_seen = sim.events.entries.size()
+	phase_bar = RichTextLabel.new()
+	phase_bar.bbcode_enabled = true
+	phase_bar.fit_content = true
+	phase_bar.scroll_active = false
+	phase_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	phase_bar.custom_minimum_size = Vector2(900, 0)
+	phase_bar.add_theme_font_size_override("normal_font_size", 15)
+	phase_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	phase_bar.position = Vector2(-450, 6)
+	add_child(phase_bar)
 	var group := ButtonGroup.new()
 	for level in sim.building.levels():
 		var button := Button.new()
@@ -120,12 +132,17 @@ func _process(delta: float) -> void:
 	if sim == null:
 		return
 	var t := int(sim.clock.elapsed_seconds())
-	var text := "경과 %02d:%02d   ×%d" % [floori(t / 60.0), t % 60, int(sim.clock.speed)]
+	var text := "경과 %02d:%02d" % [floori(t / 60.0), t % 60]
+	if sim.time_limit_tick > 0:
+		var left := maxi(0, int((sim.time_limit_tick - sim.clock.tick) * SimClock.TICK_DT))
+		text += " / 남은 %02d:%02d" % [floori(left / 60.0), left % 60]
+	text += "   ×%d" % int(sim.clock.speed)
 	if sim.clock.paused:
 		text += "   일시정지"
 	if mode_text != "":
 		text += "   [%s]" % mode_text
 	clock_label.text = text
+	_refresh_phase_bar()
 	_update_notices(delta)
 	_selection_timer -= delta
 	if _selection_timer <= 0.0:
@@ -526,3 +543,21 @@ func _refresh_debug() -> void:
 	for k in range(maxi(0, entries.size() - DEBUG_EVENT_LINES), entries.size()):
 		lines.append(SimEventLog.describe(entries[k]))
 	_debug_events.text = "\n".join(lines)
+
+
+## 활동 단계 표시줄: 지난 단계는 흐리게, 지금 단계는 강조
+func _refresh_phase_bar() -> void:
+	if phase_bar == null:
+		return
+	var ph := sim.phases
+	var parts: PackedStringArray = []
+	for i in PhaseSystem.PHASE_NAMES.size():
+		var name := "%s %s" % ["①②③④⑤⑥⑦⑧"[i], PhaseSystem.PHASE_NAMES[i]]
+		if i == ph.phase:
+			parts.append("[color=#fde68a][b]%s[/b][/color]" % name)
+		elif ph.reached.has(i):
+			parts.append("[color=#64748b]%s[/color]" % name)
+		else:
+			parts.append("[color=#94a3b8]%s[/color]" % name)
+	phase_bar.text = "[center]%s[/center]" % " → ".join(parts)
+	phase_bar.position = Vector2((size.x - phase_bar.size.x) * 0.5, 6.0)

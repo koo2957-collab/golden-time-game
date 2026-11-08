@@ -39,8 +39,17 @@
     },
     {
       "id": "apartment",
-      "title": "5장 · 공동주택 (준비 중)",
-      "text": "M8에서 공동주택·일반건축물 시나리오를 추가한다.",
+      "title": "5장 · 아파트화재 — 3층 세대",
+      "text": "발화층·상층 주민 대피, 연결송수관, 방화문 파괴 (SOP 213).",
+      "scenarios": [
+        "sop213_1_apartment_3f"
+      ],
+      "min_grade": "C"
+    },
+    {
+      "id": "general",
+      "title": "6장 · 일반 건축물 (준비 중)",
+      "text": "상가·사무실 등 일반 건축물 화재 (SOP 212) 시나리오를 추가할 예정이다.",
       "scenarios": [],
       "min_grade": "C"
     }

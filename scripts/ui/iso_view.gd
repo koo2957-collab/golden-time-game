@@ -305,6 +305,14 @@ func _draw_cell_objects(x: int, y: int) -> void:
 		_box(Vector2(x + 0.3, y + 0.3), Vector2(x + 0.7, y + 0.7), 0.0, HYDRANT_M, PlanStyle.HYDRANT_COLOR, PlanStyle.HYDRANT_COLOR)
 		var label := proj.to_screen(Vector2(x + 0.5, y + 0.5), HYDRANT_M + 0.4)
 		draw_string(PlanStyle.font(), label + Vector2(-30, 0), "소화전", HORIZONTAL_ALIGNMENT_CENTER, 60, 13, PlanStyle.HYDRANT_COLOR.lightened(0.4))
+	var b := sim.building
+	if b.has_standpipe() and ((level == b.levels()[0] and Vector2i(x, y) == b.fdc) or Vector3i(x, y, level) in b.outlets):
+		var is_fdc := Vector2i(x, y) == b.fdc and level == b.levels()[0]
+		var sc := PlanStyle.STANDPIPE_COLOR
+		_box(Vector2(x + 0.2, y + 0.2), Vector2(x + 0.8, y + 0.8), 0.0, 0.8, sc, sc)
+		var sl := proj.to_screen(Vector2(x + 0.5, y + 0.5), 1.2)
+		var txt := "송수구%s" % (" (연결)" if sim.water.fdc_vehicle >= 0 else "") if is_fdc else "방수구"
+		draw_string(PlanStyle.font(), sl + Vector2(-50, 0), txt, HORIZONTAL_ALIGNMENT_CENTER, 100, 13, sc.lightened(0.4))
 	if level == sim.building.levels()[0] and Vector2i(x, y) == sim.gas.valve and sim.gas.known(sim.command.survey):
 		var gc := PlanStyle.GAS_COLOR if sim.gas.open else PlanStyle.GAS_COLOR.darkened(0.5)
 		_box(Vector2(x + 0.25, y + 0.25), Vector2(x + 0.75, y + 0.75), 0.0, 0.9, gc, gc)

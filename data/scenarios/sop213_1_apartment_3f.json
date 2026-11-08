@@ -1,0 +1,415 @@
+{
+  "id": "sop213_1_apartment_3f",
+  "title": "아파트화재 ① 낮 · 3층 세대",
+  "note": "정식 시나리오 (M8b). 5층 계단식 아파트. 인물·기관은 모두 가상.",
+  "meta": {
+    "order": 4,
+    "sop": "213 아파트화재",
+    "difficulty": "중급",
+    "role": "선착대장",
+    "estimated_min": 30,
+    "summary": "평일 낮 3층 301호 거실에서 불이 났습니다. 301호 주민은 대피하면서 현관문을 열어 두어 연기가 계단실로 올라갑니다. 4층 할머니가 연락이 안 됩니다. 현관은 방화문이라 파괴에 오래 걸리고, 상층으로 수관을 끌어올리는 대신 연결송수관(송수구 → 층별 방수구)을 쓸 수 있습니다. 발화층과 상층 주민 대피가 우선입니다."
+  },
+  "building": "res://data/buildings/apartment_5f.json",
+  "roster": "res://data/units/test_roster.json",
+  "seed": 3131,
+  "dispatch": {
+    "title": "출동 지령 — 아파트 화재",
+    "lines": [
+      "대상: 5층 계단식 아파트 (철근콘크리트조) 3층 301호, 단지 안 이면도로",
+      "신고 내용(301호 주민): \"거실 소파에서 불이 났어요. 저는 나왔는데 현관문을 못 닫았어요. 4층 할머니가 안 보여요.\"",
+      "시간·날씨: 평일 13:10, 맑음, 서풍 2m/s",
+      "출동대: 진압1(펌프차·물탱크차), 구조1 (선착) · 구급1(약 4분 뒤) · 후착: 진압2(펌프차, 약 3분 뒤), 구조2(약 6분 뒤)",
+      "소화전: 건물 동쪽 보도 지상식 1개소 · 연결송수관 송수구: 공동현관 동쪽 · 대기1단계 장소: 도로 동쪽"
+    ],
+    "reported_victims": true
+  },
+  "wind": {
+    "from_deg": 270,
+    "speed_mps": 2,
+    "note": "바람이 불어오는 방향(북=0, 시계방향)과 풍속"
+  },
+  "commander": {
+    "name": "서정호",
+    "rank": "소방경",
+    "title": "선착대장",
+    "spawn": [
+      6,
+      26
+    ],
+    "note": "가상 인물"
+  },
+  "report_truth": {
+    "use": "공동주택",
+    "vehicle_access": "진입·회차 가능",
+    "hazards": [],
+    "note": "최초 상황보고 정답 중 도면으로 알 수 없는 것"
+  },
+  "entry_order_required": true,
+  "evaluation": {
+    "rules": [
+      "safety.ff_down",
+      "safety.air_exit",
+      "safety.withdraw",
+      "safety.command_post",
+      "safety.rit",
+      "safety.emergency",
+      "safety.officer",
+      "safety.entry_judgment",
+      "rescue.survival",
+      "rescue.time",
+      "rescue.search_order",
+      "rescue.ems_treat",
+      "rescue.ems_transport",
+      "property.spread",
+      "property.water",
+      "fire.extinguish",
+      "fire.standpipe",
+      "fire.placement",
+      "fire.water_supply",
+      "fire.overhaul",
+      "fire.watch",
+      "command.declare",
+      "command.report",
+      "command.strategy",
+      "command.survey",
+      "command.witness",
+      "command.span",
+      "command.par_end"
+    ],
+    "params": {
+      "rescue.time": {
+        "good_s": 600,
+        "bad_s": 1500
+      },
+      "property.spread": {
+        "bad_rooms": 6
+      }
+    },
+    "time_limit_s": 3000,
+    "objectives": [
+      "발화층(3층)·직상층(4층) 주민부터 검색·구조 (SOP 213-2.4.1)",
+      "송수구 연결 → 3층 방수구에서 수관 연장으로 빠른 진압 (SOP 200-3.3.1, 213-1.3)",
+      "현관 방화문 파괴는 시간이 걸리므로 두 조 이상으로 (SOP 213-2.3)",
+      "연기 확산 방지: 301호 현관문 닫기·계단실 배연 (SOP 213-2.5·2.6)"
+    ],
+    "end_state": "할머니·학생 생존 구조, 대원 부상 없음, 301호에서 완진"
+  },
+  "site": {
+    "faces": [
+      {
+        "face": "C",
+        "text": "북쪽 주차장 — 3층 301호 주방 창에서 검은 연기"
+      }
+    ],
+    "lights": [
+      "4F_01_room1",
+      "3F_02_room1"
+    ],
+    "shoes": [],
+    "witnesses": [
+      {
+        "name": "301호 주민",
+        "source": "신고자",
+        "pos": [
+          12,
+          23
+        ],
+        "arrive_s": 0,
+        "statements": {
+          "victims": {
+            "text": "4층 할머니가 늘 방에 계시는데 안 보이셨어요. 옆집 302호는 낮엔 비어요.",
+            "reliable": false,
+            "rooms": [
+              "4F_01_room1"
+            ],
+            "note": "302호에는 실제로 학생이 방1에 있다 (302호 방1 불빛)"
+          },
+          "origin": {
+            "text": "거실 소파에서 불이 났어요.",
+            "reliable": true
+          },
+          "hazards": {
+            "text": "가스는 주방에서 쓰는데 밸브는 못 잠갔어요.",
+            "reliable": true
+          },
+          "doors": {
+            "text": "제 집 현관문은 열려 있어요. 다른 집은 다 방화문이라 잠겨 있을 거예요.",
+            "reliable": true
+          }
+        }
+      },
+      {
+        "name": "관리사무소 직원",
+        "source": "관계자",
+        "pos": [
+          44,
+          23
+        ],
+        "arrive_s": 150,
+        "statements": {
+          "victims": {
+            "text": "401호 할머니는 거동이 불편하세요. 302호 학생이 오늘 시험 기간이라 집에 있을 수도 있어요.",
+            "reliable": true,
+            "rooms": [
+              "4F_01_room1",
+              "3F_02_room1"
+            ]
+          },
+          "origin": {
+            "text": "301호 화재경보가 울렸어요.",
+            "reliable": true
+          },
+          "hazards": {
+            "text": "세대별 가스 중간밸브가 있고, 연결송수관 송수구는 공동현관 옆에 있어요.",
+            "reliable": true
+          },
+          "doors": {
+            "text": "공동현관은 열어 뒀어요. 세대 현관은 전부 방화문 번호키예요.",
+            "reliable": true
+          }
+        }
+      }
+    ]
+  },
+  "reinforcements": "res://data/units/dev_reinforcements.json",
+  "arrivals": [
+    {
+      "squad": "pump2",
+      "time_s": 180
+    },
+    {
+      "squad": "ems1",
+      "time_s": 240
+    },
+    {
+      "squad": "rescue2",
+      "time_s": 360
+    }
+  ],
+  "support": {
+    "추가 출동대 요청": {
+      "squads": [
+        "pump3",
+        "ems2"
+      ],
+      "delay_s": 420
+    },
+    "대응 1단계 발령": {
+      "squads": [
+        "pump3",
+        "pump4",
+        "ems2"
+      ],
+      "delay_s": 420
+    },
+    "note": "지원 요청(SOP 103-1.2) 후 도착할 출동대와 걸리는 시간 (추정)"
+  },
+  "staging": {
+    "name": "도로 동쪽",
+    "lanes": [
+      {
+        "y": 36,
+        "x_min": 43
+      },
+      {
+        "y": 30,
+        "x_min": 43
+      }
+    ],
+    "gap_cells": 1,
+    "note": "대기1단계 장소 (SOP 103-2.1). 후착 차량은 지도 동쪽 끝에서 서쪽을 보고 들어와 차로(y)의 x_min부터 차례로 선다. 자리가 없으면 진입로에서 기다린다"
+  },
+  "ems": {
+    "hospital": "○○병원 응급실 (가상)",
+    "note": "이송 병원 (SOP 400-3.2.4)"
+  },
+  "approach": {
+    "note": "선착 차량 배치 보기 (SOP 200-3.1.1). vehicles는 진압1 차량 순서(펌프차, 물탱크차)",
+    "default": 1,
+    "options": [
+      {
+        "id": "front",
+        "name": "공동현관 바로 앞에 펌프차",
+        "score": 0.5,
+        "text": "공동현관 앞에 세운다. 송수구·현관은 가깝지만 굴절·사다리차가 설 정면 자리를 막고 창 유리 낙하 범위에 가깝다.",
+        "feedback": "송수구는 가까웠지만 특수차 공간을 막고 낙하물 범위에 차량을 두었다 (200-3.1.1.1, 213-2.2)",
+        "vehicles": [
+          {
+            "spawn": [
+              30,
+              30
+            ],
+            "heading": [
+              1,
+              0
+            ]
+          },
+          {
+            "spawn": [
+              9,
+              36
+            ],
+            "heading": [
+              1,
+              0
+            ]
+          }
+        ]
+      },
+      {
+        "id": "far_lane",
+        "name": "건너편 차로, 송수구 맞은편",
+        "score": 1.0,
+        "text": "건너편 차로에 세워 건물 앞 차로를 굴절차·후착대에 비워 둔다. 송수구까지 수관 한두 본이면 닿는다.",
+        "feedback": "정면 차로를 특수차에 비우면서 송수구를 쓸 수 있는 자리였다 (200-3.1.1.1, 213-2.2)",
+        "vehicles": [
+          {
+            "spawn": [
+              25,
+              36
+            ],
+            "heading": [
+              1,
+              0
+            ]
+          },
+          {
+            "spawn": [
+              8,
+              36
+            ],
+            "heading": [
+              1,
+              0
+            ]
+          }
+        ]
+      },
+      {
+        "id": "west",
+        "name": "건물 서쪽 끝 앞",
+        "score": 0.6,
+        "text": "건물 서쪽 끝 앞에 세운다. 낙하물 범위는 피하지만 송수구가 멀어 연결송수관을 쓰려면 차를 옮겨야 한다.",
+        "feedback": "피해 범위는 피했지만 송수구가 멀어 연결송수관 활용이 늦어졌다 (200-3.3.1)",
+        "vehicles": [
+          {
+            "spawn": [
+              9,
+              30
+            ],
+            "heading": [
+              1,
+              0
+            ]
+          },
+          {
+            "spawn": [
+              9,
+              36
+            ],
+            "heading": [
+              1,
+              0
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "victims": [
+    {
+      "name": "할머니",
+      "age": 83,
+      "mobility": "거동 불편 (자력 피난 불가)",
+      "level": 4,
+      "room": "4F_01_room1"
+    },
+    {
+      "name": "학생",
+      "age": 15,
+      "mobility": "",
+      "level": 3,
+      "room": "3F_02_room1"
+    }
+  ],
+  "fire": {
+    "ignitions": [
+      {
+        "level": 3,
+        "cell": [
+          10,
+          16
+        ],
+        "time_s": 0,
+        "note": "301호 거실 소파"
+      }
+    ],
+    "doors_closed": [],
+    "doors_open": [
+      [
+        27,
+        14,
+        3
+      ],
+      [
+        29,
+        19,
+        1
+      ],
+      [
+        30,
+        19,
+        1
+      ]
+    ],
+    "doors_locked": [
+      [
+        27,
+        14,
+        1
+      ],
+      [
+        32,
+        14,
+        1
+      ],
+      [
+        27,
+        14,
+        2
+      ],
+      [
+        32,
+        14,
+        2
+      ],
+      [
+        32,
+        14,
+        3
+      ],
+      [
+        27,
+        14,
+        4
+      ],
+      [
+        32,
+        14,
+        4
+      ],
+      [
+        27,
+        14,
+        5
+      ],
+      [
+        32,
+        14,
+        5
+      ]
+    ],
+    "note_doors": "301호 현관 방화문은 열린 채(주민 대피), 나머지 세대 현관은 잠긴 방화문, 공동현관은 열림"
+  }
+}

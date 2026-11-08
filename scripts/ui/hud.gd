@@ -338,7 +338,9 @@ func _vehicle_line(v: Vehicle) -> String:
 		line += " · 급수 중"
 	if v.is_pump():
 		line += " · 수관 %d" % sim.water.hoses_of_vehicle(v.id).size()
-		line += "\n    소화전 우클릭: 점령"
+		if sim.water.fdc_vehicle == v.id:
+			line += " · 송수구 연결"
+		line += "\n    소화전 우클릭: 점령%s" % (" · 송수구 우클릭: 연결송수관 가압" if sim.building.has_standpipe() else "")
 	elif v.transfer_lpm > 0.0:
 		line += "\n    펌프차 우클릭: 급수 · 소화전 우클릭: 점령"
 	return line

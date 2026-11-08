@@ -33,6 +33,7 @@ var window_break_s := 5.0
 var _open_s: float
 var _force_s: float
 var _force_people: int
+var _fire_door_factor: float
 
 
 func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, stats: ParamTable, p_events: SimEventLog) -> void:
@@ -43,6 +44,7 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, stats
 	_open_s = stats.value("door_open_s")
 	_force_s = stats.value("forcible_entry_s")
 	_force_people = int(stats.value("forcible_entry_min_people"))
+	_fire_door_factor = stats.value("fire_door_force_factor")
 	sync_blocking()
 
 
@@ -102,6 +104,8 @@ func request(crew_id: int, door_cell: Vector3i, open: bool, tick: int) -> bool:
 			t.required = window_break_s
 		else:
 			t.required = (_force_s if o.locked else _open_s) if open else _open_s
+			if open and o.locked and fire.building.is_fire_door(o.cells[0]):
+				t.required *= _fire_door_factor  # 방화문: 파괴기·동력절단기로 더 오래 (SOP 213-2.3)
 		tasks.append(t)
 		if open and o.kind == Opening.Kind.DOOR and on_door_approach.is_valid():
 			on_door_approach.call(o, tick)

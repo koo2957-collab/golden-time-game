@@ -27,5 +27,6 @@
 
   "door_open_s": {"value": 3, "source": "추정", "note": "잠기지 않은 문 개방·폐쇄"},
   "forcible_entry_s": {"value": 60, "source": "추정", "note": "잠긴 문 파괴(강제 개방). SOP 202-3.3 현장지휘관 명령으로 실시"},
-  "forcible_entry_min_people": {"value": 2, "source": "추정", "note": "파괴 작업에 문 앞에 있어야 하는 최소 인원"}
+  "forcible_entry_min_people": {"value": 2, "source": "추정", "note": "파괴 작업에 문 앞에 있어야 하는 최소 인원"},
+  "fire_door_force_factor": {"value": 2.0, "source": "추정", "note": "아파트 현관 방화문 파괴 시간 배율 (SOP 213-2.3 방화문 파괴기·동력절단기)"}
 }

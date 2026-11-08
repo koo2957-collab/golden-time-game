@@ -41,6 +41,14 @@ var faces: Dictionary = {}
 var hydrants: Array[Vector2i] = []
 ## 도면 안의 건물들 [{id, name, rect: Rect2i, exposure}]. 첫 번째(main)가 화재 건물, exposure는 인접 건물(연소 확대 대상)
 var structures: Array[Dictionary] = []
+## 연결송수관 (SOP 200-3.3.1): 송수구 칸, 층별 방수구 (x, y, level), 방수구에서 쓰는 수관 길이(m). 없으면 fdc = (-1, -1)
+var fdc := Vector2i(-1, -1)
+var outlets: Array[Vector3i] = []
+var outlet_hose_m := 30.0
+## 현관 방화문 칸 (모든 층). 잠겨 있으면 파괴에 더 오래 걸린다 (SOP 213-2.3)
+var fire_doors: Array[Vector2i] = []
+## 같은 건물 아래층 창 → 위층 창 연소 확대 (SOP 213-1.1)
+var vertical_exposure := false
 var load_errors: PackedStringArray = []
 
 var _floors: Dictionary = {}  # level -> FloorData
@@ -158,6 +166,16 @@ func _parse(data: Dictionary) -> void:
 		})
 	for h: Array in data.get("hydrants", []):
 		hydrants.append(Vector2i(int(h[0]), int(h[1])))
+	var sp: Dictionary = data.get("standpipe", {})
+	if not sp.is_empty():
+		var f: Array = sp.get("fdc", [-1, -1])
+		fdc = Vector2i(int(f[0]), int(f[1]))
+		for o: Array in sp.get("outlets", []):
+			outlets.append(Vector3i(int(o[0]), int(o[1]), int(o[2])))
+		outlet_hose_m = float(sp.get("outlet_hose_m", outlet_hose_m))
+	for d: Array in data.get("fire_doors", []):
+		fire_doors.append(Vector2i(int(d[0]), int(d[1])))
+	vertical_exposure = bool(data.get("vertical_exposure", false))
 	if width <= 0 or height <= 0:
 		load_errors.append("width/height가 올바르지 않습니다.")
 		return
@@ -224,3 +242,19 @@ func structure_at(x: int, y: int) -> Dictionary:
 ## 인접 건물(연소 확대 대상)의 셀인지
 func is_exposure(x: int, y: int) -> bool:
 	return bool(structure_at(x, y).get("exposure", false))
+
+
+func has_standpipe() -> bool:
+	return fdc.x >= 0 and not outlets.is_empty()
+
+
+## 그 층의 방수구 index (없으면 -1)
+func outlet_on(level: int) -> int:
+	for i in outlets.size():
+		if outlets[i].z == level:
+			return i
+	return -1
+
+
+func is_fire_door(cell: Vector2i) -> bool:
+	return cell in fire_doors

@@ -188,6 +188,18 @@ tests/             단위 테스트(test_*.gd)와 조작 점검(ui_smoke.gd)
 
 검증은 `tests/test_tactical.gd`, `tests/test_hints.gd`.
 
+## 아파트화재 요약 (M8b-1)
+
+| 요소 | 내용 |
+|---|---|
+| 건물 | `data/buildings/apartment_5f.json` (생성기: 스크래치 gen_apartment.py와 같은 규칙 — 층당 2세대 + 계단실, 좌우 대칭). 키 `standpipe {fdc, outlets[[x,y,층]], outlet_hose_m}`, `fire_doors`, `vertical_exposure`(M8b-2) |
+| 연결송수관 | `WaterSystem.fdc_vehicle`, `connect_fdc`(소화전 연결 거리의 1.5배 안), `lay_hose_outlet`(방수구 → 조, 30m, 물은 송수구 펌프차). `start_spray`는 목표가 2층 이상이고 송수구가 연결돼 있으면 방수구를 먼저 쓴다. `HoseLine.outlet` |
+| 조작 | 펌프차 선택 → 송수구 우클릭 = `fdc`, 조 선택 → 방수구 우클릭 = `hose_outlet`. 입체·상황판에 주황 송수구·방수구 표시, 차량 줄에 "송수구 연결" |
+| 방화문 | `DoorSystem`: 잠긴 방화문 파괴 시간 × fire_door_force_factor(2) |
+| 시나리오 | `sop213_1_apartment_3f.json` (meta.order 4): 301호 현관 열림, 할머니 401호·학생 302호, 관계인(301호 주민·관리사무소), 배치 보기(공동현관 앞 / 건너편 차로 / 서쪽 끝) |
+
+검증은 `tests/test_apartment.gd`.
+
 ## 선착 차량 배치 요약 (M8a)
 
 | 요소 | 내용 |

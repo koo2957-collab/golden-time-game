@@ -239,6 +239,21 @@ func _check_rescue_time() -> Dictionary:
 	return {"score": sum / victims.size(), "detail": "%s (기준 %d분 안)" % [", ".join(parts), int(_params.good_s / 60)]}
 
 
+## 연결송수관 활용 (SOP 200-3.3.1, 213-1.3): 연결송수관이 있는 건물에서 2층 이상 방수가 있었을 때
+func _check_standpipe() -> Dictionary:
+	if not sim.building.has_standpipe():
+		return {}
+	var upper := sim.water.hoses.filter(func(h: HoseLine) -> bool: return h.target.z > 1 or h.points[-1].z > 1)
+	if upper.is_empty():
+		return {}
+	var from_outlet := upper.filter(func(h: HoseLine) -> bool: return h.outlet >= 0).size()
+	if from_outlet > 0:
+		return {"score": 1.0, "detail": "상층 방수 %d줄 중 %d줄을 방수구에서 연장 (송수구 연결)" % [upper.size(), from_outlet]}
+	if sim.water.fdc_vehicle >= 0:
+		return {"score": 0.5, "detail": "송수구는 연결했지만 상층 수관을 모두 펌프차에서 계단으로 연장"}
+	return {"score": 0.2, "detail": "연결송수관을 쓰지 않고 상층까지 펌프차 수관을 계단으로 연장 (시간·인력 소모)"}
+
+
 ## 선착 차량 배치 (SOP 200-3.1.1): 시나리오에 배치 보기가 있을 때만
 func _check_placement() -> Dictionary:
 	if Placement.options(sim).is_empty():

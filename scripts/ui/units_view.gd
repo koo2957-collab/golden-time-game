@@ -32,6 +32,10 @@ func _draw() -> void:
 			draw_circle(c, 7.0, PlanStyle.HYDRANT_COLOR)
 			draw_arc(c, 7.0, 0.0, TAU, 16, Color.WHITE, 1.5)
 			draw_string(PlanStyle.font(), c + Vector2(-30, -12), "소화전", HORIZONTAL_ALIGNMENT_CENTER, 60, 12, PlanStyle.HYDRANT_COLOR.lightened(0.4))
+		if sim.building.has_standpipe():
+			var f := PlanStyle.to_px(Vector2(sim.building.fdc) + Vector2(0.5, 0.5))
+			draw_rect(Rect2(f - Vector2(6, 6), Vector2(12, 12)), PlanStyle.STANDPIPE_COLOR)
+			draw_string(PlanStyle.font(), f + Vector2(-60, -12), "송수구%s" % (" (연결)" if sim.water.fdc_vehicle >= 0 else ""), HORIZONTAL_ALIGNMENT_CENTER, 120, 12, PlanStyle.STANDPIPE_COLOR.lightened(0.4))
 		if sim.gas.known(sim.command.survey):
 			var g := PlanStyle.to_px(Vector2(sim.gas.valve) + Vector2(0.5, 0.5))
 			var gc := PlanStyle.GAS_COLOR if sim.gas.open else PlanStyle.GAS_COLOR.darkened(0.5)
@@ -58,6 +62,11 @@ func _draw() -> void:
 				_draw_vehicle(v, alpha)
 		for line in supply_lines(sim):
 			draw_line(PlanStyle.to_px(line[0]), PlanStyle.to_px(line[1]), PlanStyle.SUPPLY_LINE, 4.0)
+	for o in sim.building.outlets:
+		if o.z == level:
+			var oc := PlanStyle.to_px(Vector2(o.x, o.y) + Vector2(0.5, 0.5))
+			draw_rect(Rect2(oc - Vector2(5, 5), Vector2(10, 10)), PlanStyle.STANDPIPE_COLOR)
+			draw_string(PlanStyle.font(), oc + Vector2(-40, -10), "방수구", HORIZONTAL_ALIGNMENT_CENTER, 80, 11, PlanStyle.STANDPIPE_COLOR.lightened(0.4))
 	for o in sim.command.survey.lit_windows():
 		if o.level == level:
 			for c in o.cells:

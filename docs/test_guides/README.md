@@ -31,3 +31,4 @@
 | M7c-2 내 기록·교관 설정 | [M7c2_history_instructor.md](M7c2_history_instructor.md) |
 | M7c-3 대원 개성·캠페인 | [M7c3_traits_campaign.md](M7c3_traits_campaign.md) |
 | M8a 선착 차량 배치 | [M8a_placement.md](M8a_placement.md) |
+| M8b-1 아파트화재 ① (연결송수관·방화문) | [M8b1_apartment.md](M8b1_apartment.md) |

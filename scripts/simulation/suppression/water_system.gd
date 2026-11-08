@@ -23,6 +23,8 @@ var pathfinder: Pathfinder
 var fire: FireSim
 var events: SimEventLog
 var hoses: Array[HoseLine] = []
+## 송수구에 연결한 펌프차 id (-1: 없음). 연결되면 층별 방수구에서 수관을 연장할 수 있다 (SOP 200-3.3.1)
+var fdc_vehicle := -1
 ## (level, cell) -> 들어가도 되는 칸인지. 방수 위치를 고를 때 열기가 심한 칸을 피한다.
 var safe_cell := Callable()
 
@@ -182,6 +184,51 @@ func connect_supply(tanker_id: int, pump_id: int, tick: int) -> void:
 		t.pending_supply = pump_id
 
 
+## 송수구 연결: 펌프차가 송수구 가까이(소화전 연결 거리의 1.5배, 수관 한 본 안) 있으면 연결한다
+func connect_fdc(vehicle_id: int, tick: int) -> bool:
+	var v := units.get_vehicle(vehicle_id)
+	if v == null or not v.is_pump() or not building.has_standpipe():
+		return false
+	if v.distance_to_body(Vector2(building.fdc) + Vector2(0.5, 0.5)) > _hydrant_range * 1.5:
+		events.add(tick, "fdc_too_far", {"vehicle": _name(v), "driver": v.driver_label()})
+		return false
+	fdc_vehicle = vehicle_id
+	events.add(tick, "fdc_connected", {"vehicle": _name(v), "driver": v.driver_label()})
+	return true
+
+
+## 방수구에서 수관 연장: 송수구에 연결된 펌프차의 물을 쓴다. 수관 길이는 방수구 적재분(outlet_hose_m)
+func lay_hose_outlet(crew_id: int, outlet: int, tick: int, report := true) -> bool:
+	var c := units.get_crew(crew_id)
+	if c == null or outlet < 0 or outlet >= building.outlets.size() or hose_of_crew(crew_id) != null:
+		return false
+	if fdc_vehicle < 0:
+		if report:
+			events.add(tick, "fdc_not_connected", {"crew": _crew_name(c)})
+		return false
+	var o := building.outlets[outlet]
+	var start := pathfinder.nearest_walkable(o.z, Vector2i(o.x, o.y))
+	var path := pathfinder.find_path(Vector3i(start.x, start.y, o.z), c.leader.cell3())
+	if path.is_empty():
+		return false
+	var h := HoseLine.new()
+	h.id = hoses.size()
+	h.vehicle_id = fdc_vehicle
+	h.crew_id = crew_id
+	h.outlet = outlet
+	h.max_cells = building.outlet_hose_m / _cell_m
+	h.points = path
+	if h.length_cells() > h.max_cells:
+		if report:
+			events.add(tick, "hose_too_short", {"crew": _crew_name(c)})
+		return false
+	hoses.append(h)
+	for ff in c.members():
+		ff.speed_factor = _drag_factor
+	events.add(tick, "hose_outlet_laid", {"crew": _crew_name(c), "level": building.floor_name(o.z)})
+	return true
+
+
 ## 수관 연장: 펌프차에서 조장(관창수) 위치까지 호스를 깐다.
 func lay_hose(crew_id: int, vehicle_id: int, tick: int) -> bool:
 	var c := units.get_crew(crew_id)
@@ -216,9 +263,12 @@ func start_spray(crew_id: int, target: Vector3i, pattern: HoseLine.Pattern, tick
 		return false
 	var h := hose_of_crew(crew_id)
 	if h == null:
-		var pump := _nearest_pump(c.leader.pos)
-		if pump < 0 or not lay_hose(crew_id, pump, tick):
-			return false
+		# 연결송수관이 살아 있고 목표 층에 방수구가 있으면 방수구에서, 아니면 가장 가까운 펌프차에서
+		var outlet := building.outlet_on(target.z) if fdc_vehicle >= 0 and target.z > 1 else -1
+		if outlet < 0 or not lay_hose_outlet(crew_id, outlet, tick, false):
+			var pump := _nearest_pump(c.leader.pos)
+			if pump < 0 or not lay_hose(crew_id, pump, tick):
+				return false
 		h = hose_of_crew(crew_id)
 	h.pattern = pattern
 	h.target = target

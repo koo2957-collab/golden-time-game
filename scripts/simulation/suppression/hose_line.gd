@@ -8,6 +8,8 @@ const PATTERN_NAMES := {Pattern.STRAIGHT: "직사", Pattern.FOG: "분무"}
 
 var id := 0
 var vehicle_id := 0
+## 연결송수관 방수구에서 연장한 수관이면 방수구 index (-1: 펌프차에서)
+var outlet := -1
 var crew_id := 0
 ## 호스가 깔린 셀 (차량 쪽 → 관창 쪽)
 var points: Array[Vector3i] = []

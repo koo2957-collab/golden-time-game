@@ -237,9 +237,12 @@ func _issue_right_click(world_pos: Vector2) -> void:
 			# 입체 화면에서 소화전 기둥 윗부분을 누른 경우
 			hydrant = sim.water.hydrant_near(projection.to_cell_at(world_pos, HYDRANT_PICK_HEIGHT_M), 1.5)
 		var target_vehicle := _vehicle_at(world_pos)
+		var on_fdc := sim.building.has_standpipe() and cell_f.distance_to(Vector2(sim.building.fdc) + Vector2(0.5, 0.5)) <= 1.5
 		for vid in selected_vehicles:
 			var v := sim.units.get_vehicle(vid)
-			if hydrant >= 0:
+			if on_fdc and v.is_pump():
+				sim.issue(EquipmentCommand.make("fdc", [], vid))
+			elif hydrant >= 0:
 				sim.issue(EquipmentCommand.make("hydrant", [], vid, hydrant))
 			elif target_vehicle >= 0 and target_vehicle != vid and v.transfer_lpm > 0.0:
 				sim.issue(EquipmentCommand.make("supply", [], vid, target_vehicle))
@@ -260,6 +263,9 @@ func _issue_right_click(world_pos: Vector2) -> void:
 			marker_cell = sim.rescue.victims[patient].pos
 		elif casualty.x >= 0:
 			sim.issue(EquipmentCommand.make("rescue" if casualty.x == 0 else "rescue_ff", selected, -1, casualty.y))
+		elif _outlet_at(cell_f) >= 0 and not without_hose.is_empty():
+			# 방수구 우클릭: 수관이 없는 조는 방수구에서 수관 연장 (연결송수관)
+			sim.issue(EquipmentCommand.make("hose_outlet", without_hose, -1, _outlet_at(cell_f)))
 		elif level == 1 and sim.gas.open and sim.gas.known(sim.command.survey) and sim.gas.valve_near(cell_f):
 			# 가스 밸브 우클릭: 첫 조가 가서 차단 (SOP 214-2.2)
 			sim.issue(EquipmentCommand.make("gas_off", selected))
@@ -404,6 +410,15 @@ func _casualty_at(world_pos: Vector2) -> Vector2i:
 				best_d = d
 				best = Vector2i(1, ff.id)
 	return best
+
+
+## 지금 층에서 cell 가까이의 연결송수관 방수구 index (없으면 -1)
+func _outlet_at(cell: Vector2) -> int:
+	var outlets := sim.building.outlets
+	for i in outlets.size():
+		if outlets[i].z == level and cell.distance_to(Vector2(outlets[i].x, outlets[i].y) + Vector2(0.5, 0.5)) <= 1.5:
+			return i
+	return -1
 
 
 ## world_pos 아래의 구조된 환자 (요구조자 id, 없으면 -1). 1층 바깥에만 있다

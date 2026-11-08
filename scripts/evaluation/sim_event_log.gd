@@ -215,6 +215,14 @@ static func describe_text(e: Dictionary) -> String:
 			text = "%s 차단 — %s" % [e.what, e.crew]
 		"gas_explosion":
 			text = "가스 폭발 — %s" % e.room
+		"fdc_connected":
+			text = "송수구 연결 — %s%s" % [e.vehicle, _driver(e)]
+		"fdc_too_far":
+			text = "송수구가 멀어 연결 못함 — %s%s" % [e.vehicle, _driver(e)]
+		"fdc_not_connected":
+			text = "송수구 미연결 — 방수구 사용 불가 (%s)" % e.crew
+		"hose_outlet_laid":
+			text = "방수구에서 수관 연장 — %s (%s)" % [e.crew, e.level]
 		"placement":
 			text = "선착 차량 배치 — %s" % e.name
 		"ems_triage":

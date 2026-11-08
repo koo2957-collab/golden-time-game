@@ -142,6 +142,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.cards = CardSystem.new(sim.units, sim.tactical, sim.doors, sim.rescue, sim.rekindle, sim.water, sim.fire,
 		ParamTable.from_dict(card_params), card_data, sim.events, p_seed)
 	sim._card_training_factor = ParamTable.from_dict(card_params).value("training_time_factor")
+	sim.cards.sim = sim
 	sim.command.survey = SiteSurvey.new(sim.fire, sim.units, sim.pathfinder, sim.command.resources, sim.command.commander, ParamTable.from_dict(survey_data), sim.events)
 	sim.water.safe_cell = sim.conditions.safe_to_enter
 	sim.rescue.water = sim.water

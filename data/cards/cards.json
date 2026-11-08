@@ -1,5 +1,5 @@
 {
-  "note": "질문 카드 (기획안 7장). 카드 1장 = SOP 조항 1개. trigger: halt_locked·halt_closed·halt_backdraft·halt_victim(전술 명령이 멈춘 자리), air_alarm, knockdown. text·variants의 {이름}은 사건 값으로 채운다 (crew·door_name·victim_name·state·air). effect: force_door·open_door·vent_then_open·rescue_victim·resume·withdraw·overhaul·flood·hold. grade: 최선·허용·오답·치명 (화면에는 보이지 않음). skip_if_preordered: 그 선제지시가 켜져 있으면 카드 없이 최선 선택을 실행. 교관이 문구·등급·해설을 고칠 수 있다.",
+  "note": "질문 카드 (기획안 7장). 카드 1장 = SOP 조항 1개. trigger: halt_locked·halt_closed·halt_backdraft·halt_victim(전술 명령이 멈춘 자리), air_alarm, knockdown, arrival, rollover_sign, jump_risk, exposure_heating, shaft, sign_warning, debris_zone, hydrant_out, tank_empty, mayday, gas_found, victim_trapped, triage_urgent, stair_smoke, attack_upper, victims_many, first_search, search_mark, end_suggested. once: 한 판에 한 번. 선택지 time_cost_sec + then: 정보 확인(시간을 쓴 뒤 then 행동). text·variants의 {이름}은 사건 값으로 채운다 (crew·door_name·victim_name·state·air). effect: force_door·open_door·vent_then_open·rescue_victim·resume·withdraw·overhaul·flood·hold. grade: 최선·허용·오답·치명 (화면에는 보이지 않음). skip_if_preordered: 그 선제지시가 켜져 있으면 카드 없이 최선 선택을 실행. 교관이 문구·등급·해설을 고칠 수 있다.",
   "preorders": [
     {
       "key": "force_locked",
@@ -30,6 +30,41 @@
       "key": "overhaul_plan",
       "label": "초진 뒤 열화상으로 불씨를 찾아 정확히 주수",
       "sop": "202-6"
+    },
+    {
+      "key": "rollover_close",
+      "label": "롤오버 징후가 보이면 화점실 문을 닫고 천장 냉각",
+      "sop": "210-3.5"
+    },
+    {
+      "key": "air_mat_ready",
+      "label": "창가 주민이 보이면 바로 그 창 아래 공기안전매트",
+      "sop": "213-2.4.3"
+    },
+    {
+      "key": "cover_exposure",
+      "label": "인접·위층 창이 달궈지면 바로 경계관창",
+      "sop": "214-2.4.1"
+    },
+    {
+      "key": "check_shaft",
+      "label": "샤프트 유입 시 위층 PS 바로 확인",
+      "sop": "212-2.3"
+    },
+    {
+      "key": "clear_debris",
+      "label": "낙하 위험이 생기면 그 아래 대원을 바로 뺌",
+      "sop": "213-2.7.1"
+    },
+    {
+      "key": "auto_shuttle",
+      "label": "소화전 고장·물 소진 시 물탱크차 순환보수·급수",
+      "sop": "200-3.1.1.3"
+    },
+    {
+      "key": "use_standpipe",
+      "label": "상층 진압은 연결송수관 방수구 사용",
+      "sop": "213-1.3"
     }
   ],
   "cards": [
@@ -231,6 +266,662 @@
       ],
       "debrief": "잔불정리는 불씨 잠복 지점을 찾아 정확히 주수하고 인명검색을 병행한다. 다량 주수는 수손 피해만 키운다.",
       "skip_if_preordered": "overhaul_plan"
+    },
+    {
+      "id": "ARRIVAL-WATER-01",
+      "title": "예비 소방용수",
+      "phase": "출동",
+      "trigger": "arrival",
+      "asker": "현장 대원",
+      "urgency": "일반",
+      "text": "출동 중입니다. 예비 소방용수를 몇 개소 선정할까요?",
+      "options": [
+        {
+          "text": "2개소 이상 선정해 운전원에게 전파",
+          "grade": "최선",
+          "effect": "note"
+        },
+        {
+          "text": "가장 가까운 소화전 1개소만",
+          "grade": "오답",
+          "effect": "note"
+        },
+        {
+          "text": "현장 도착 후 정하겠다",
+          "grade": "오답",
+          "effect": "note"
+        }
+      ],
+      "sop_ref": [
+        "SOP 200-2.2"
+      ],
+      "debrief": "출동 중에 2개소 이상의 예비 소방용수를 선정한다. 첫 소화전이 고장이면 물이 끊긴다.",
+      "once": true
+    },
+    {
+      "id": "ARRIVAL-RELAY-01",
+      "title": "관계자 조치 요청",
+      "phase": "출동",
+      "trigger": "arrival",
+      "asker": "현장 대원",
+      "urgency": "일반",
+      "text": "상황실에 관계자 조치로 무엇을 요청할까요?",
+      "options": [
+        {
+          "text": "발화 위치·층 확인, 진입로 확보, 가스 차단, 주차 차량 이동, 소방시설 작동 확인",
+          "grade": "최선",
+          "effect": "note"
+        },
+        {
+          "text": "발화 위치만 확인 요청",
+          "grade": "허용",
+          "effect": "note"
+        },
+        {
+          "text": "요청하지 않는다",
+          "grade": "오답",
+          "effect": "note"
+        }
+      ],
+      "sop_ref": [
+        "SOP 213-2.1"
+      ],
+      "debrief": "신고·출동 단계에서 관계자에게 발화 위치·층 확인, 진입로 확보, 소방시설 작동 확인, 가스 차단, 주차 차량 이동을 요청한다.",
+      "once": true
+    },
+    {
+      "id": "ROLLOVER-01",
+      "title": "롤오버 징후",
+      "phase": "진입",
+      "trigger": "rollover_sign",
+      "asker": "현장 대원",
+      "urgency": "긴급",
+      "text": "{room} 천장에 불꽃이 굴러다닙니다!",
+      "options": [
+        {
+          "text": "화점실 출입문을 닫고 천장 부분을 짧게 분무해 냉각",
+          "grade": "최선",
+          "effect": "cool_and_close"
+        },
+        {
+          "text": "물러나서 상황을 지켜본다",
+          "grade": "오답",
+          "effect": "hold"
+        },
+        {
+          "text": "그대로 들어가 화점을 공격",
+          "grade": "치명",
+          "effect": "hold"
+        }
+      ],
+      "sop_ref": [
+        "SOP 210-3.4",
+        "SOP 210-3.5"
+      ],
+      "debrief": "롤오버는 플래시오버의 전조다. 화재실 문을 닫아 산소를 끊고 천장 가스층을 짧은 분무로 식힌다.",
+      "skip_if_preordered": "rollover_close"
+    },
+    {
+      "id": "JUMP-01",
+      "title": "창가 주민 추락 위험",
+      "phase": "구조",
+      "trigger": "jump_risk",
+      "asker": "현장 대원",
+      "urgency": "긴급",
+      "text": "{who}이(가) {room} 창가에서 뛰어내리려 합니다!",
+      "options": [
+        {
+          "text": "창 아래에 공기안전매트를 펴고, 내부 구조조를 그 세대로 보낸다",
+          "grade": "최선",
+          "effect": "air_mat"
+        },
+        {
+          "text": "매트를 펴고 뛰어내리라고 안내",
+          "grade": "오답",
+          "effect": "air_mat"
+        },
+        {
+          "text": "확성기로 기다리라고만 안내",
+          "grade": "오답",
+          "effect": "hold"
+        }
+      ],
+      "sop_ref": [
+        "SOP 213-2.4.3",
+        "SOP 326-2.4"
+      ],
+      "debrief": "추락 예상지점에 공기안전매트를 설치하되, 뛰어내리게 하지 말고 내부 구조를 우선한다(매트 이탈 위험).",
+      "skip_if_preordered": "air_mat_ready"
+    },
+    {
+      "id": "EXPOSURE-01",
+      "title": "인접·위층 창 가열",
+      "phase": "방수",
+      "trigger": "exposure_heating",
+      "asker": "현장 대원",
+      "urgency": "중요",
+      "text": "{target}이(가) 달궈지고 있습니다 ({from} 화염).",
+      "options": [
+        {
+          "text": "한 조를 경계관창으로 돌려 그 창을 냉각",
+          "grade": "최선",
+          "effect": "exterior_cover"
+        },
+        {
+          "text": "화점 진압에 집중 — 불부터 끈다",
+          "grade": "허용",
+          "effect": "hold"
+        },
+        {
+          "text": "지켜본다",
+          "grade": "오답",
+          "effect": "hold"
+        }
+      ],
+      "sop_ref": [
+        "SOP 214-2.4.1",
+        "SOP 213-1.1"
+      ],
+      "debrief": "화염이 분출되는 개구부 맞은편·위층 창에 경계관창을 두어 연소 확대를 막는다.",
+      "skip_if_preordered": "cover_exposure"
+    },
+    {
+      "id": "SHAFT-01",
+      "title": "샤프트 연기 유입",
+      "phase": "진입",
+      "trigger": "shaft",
+      "asker": "현장 대원",
+      "urgency": "중요",
+      "text": "{floor} 배관 샤프트(PS)로 화염·연기가 들어갔습니다. 위층은 어떻게 할까요?",
+      "options": [
+        {
+          "text": "한 조를 위층 PS로 보내 확인·방수",
+          "grade": "최선",
+          "effect": "check_shaft"
+        },
+        {
+          "text": "화점 진압을 먼저 끝내고 확인",
+          "grade": "오답",
+          "effect": "hold"
+        },
+        {
+          "text": "확인하지 않는다",
+          "grade": "오답",
+          "effect": "hold"
+        }
+      ],
+      "sop_ref": [
+        "SOP 212-2.3"
+      ],
+      "debrief": "샤프트·배선관은 층을 관통해 연기와 불이 오르는 통로다. 위층에서 먼저 확인해야 숨은 확대를 막는다.",
+      "skip_if_preordered": "check_shaft"
+    },
+    {
+      "id": "SIGN-01",
+      "title": "간판 낙하 위험",
+      "phase": "안전",
+      "trigger": "sign_warning",
+      "asker": "현장 대원",
+      "urgency": "긴급",
+      "text": "{name} 뒤에서 화염이 나옵니다. 곧 떨어질 수 있습니다.",
+      "options": [
+        {
+          "text": "간판 아래 대원을 모두 빼고 접근을 통제",
+          "grade": "최선",
+          "effect": "clear_zone"
+        },
+        {
+          "text": "하던 작업을 서둘러 마친다",
+          "grade": "오답",
+          "effect": "hold"
+        },
+        {
+          "text": "그대로 활동",
+          "grade": "치명",
+          "effect": "hold"
+        }
+      ],
+      "sop_ref": [
+        "SOP 212-1.4"
+      ],
+      "debrief": "창문·간판 파손 낙하로 대원이 다친다. 낙하 우려가 보이면 아래 공간에서 즉시 대원을 뺀다.",
+      "skip_if_preordered": "clear_debris"
+    },
+    {
+      "id": "DEBRIS-01",
+      "title": "외부 안전구역",
+      "phase": "안전",
+      "trigger": "debris_zone",
+      "asker": "현장 대원",
+      "urgency": "중요",
+      "text": "{floor} {face} 창이 깨졌습니다. 외부 안전구역은 어떻게 할까요?",
+      "options": [
+        {
+          "text": "발화층 높이의 1/2 이상(바람이 세면 건물 높이) 안전구역을 정하고 대원을 뺀다",
+          "grade": "최선",
+          "effect": "clear_zone"
+        },
+        {
+          "text": "창 바로 아래만 피한다",
+          "grade": "허용",
+          "effect": "clear_zone"
+        },
+        {
+          "text": "정하지 않는다",
+          "grade": "오답",
+          "effect": "hold"
+        }
+      ],
+      "sop_ref": [
+        "SOP 213-2.7.1"
+      ],
+      "debrief": "유리·파편 낙하 위험반경은 발화층 높이의 1/2로 하되, 바람 등 현장 상황에 따라 건물 높이만큼 안전구역을 둔다.",
+      "skip_if_preordered": "clear_debris"
+    },
+    {
+      "id": "HYDRANT-OUT-01",
+      "title": "소화전 고장",
+      "phase": "방수",
+      "trigger": "hydrant_out",
+      "asker": "현장 대원",
+      "urgency": "중요",
+      "text": "{vehicle}: 소화전이 고장입니다. 물은 어떻게 확보할까요?",
+      "options": [
+        {
+          "text": "물탱크차 순환보수로 원거리 수원을 오가게 한다",
+          "grade": "최선",
+          "effect": "shuttle"
+        },
+        {
+          "text": "예비 소방용수를 다시 찾아본다 (정보 확인)",
+          "grade": "허용",
+          "effect": "ask_info",
+          "time_cost_sec": 30,
+          "then": "shuttle"
+        },
+        {
+          "text": "탱크 물로만 버틴다",
+          "grade": "오답",
+          "effect": "hold"
+        }
+      ],
+      "sop_ref": [
+        "SOP 200-3.1.1.3"
+      ],
+      "debrief": "수원 확보가 어려우면 물탱크차의 순환보수 전술을 지시한다.",
+      "skip_if_preordered": "auto_shuttle"
+    },
+    {
+      "id": "TANK-EMPTY-01",
+      "title": "물 소진",
+      "phase": "방수",
+      "trigger": "tank_empty",
+      "asker": "현장 대원",
+      "urgency": "긴급",
+      "text": "{vehicle} 탱크 물이 떨어졌습니다!",
+      "options": [
+        {
+          "text": "물탱크차를 펌프차에 급수 연결 (소화전 고장이면 순환보수)",
+          "grade": "최선",
+          "effect": "supply_pump"
+        },
+        {
+          "text": "방수를 멈추고 대기",
+          "grade": "오답",
+          "effect": "hold"
+        }
+      ],
+      "sop_ref": [
+        "SOP 200-3.1.1.2"
+      ],
+      "debrief": "물탱크차 운전원은 도착 즉시 펌프차에 급수를 연결하고 소화전을 점령한다. 물이 끊기면 진입 대원이 위험해진다.",
+      "skip_if_preordered": "auto_shuttle"
+    },
+    {
+      "id": "MAYDAY-01",
+      "title": "대원 긴급탈출",
+      "phase": "안전",
+      "trigger": "mayday",
+      "asker": "현장 대원",
+      "urgency": "긴급",
+      "text": "{crew}: 긴급탈출! {who} 대원이 쓰러졌습니다 ({where}).",
+      "options": [
+        {
+          "text": "긴급탈출 상황 선포 — RIT 투입, 무전 통제",
+          "grade": "최선",
+          "effect": "rit_deploy"
+        },
+        {
+          "text": "다시 호출해 상태를 확인",
+          "grade": "오답",
+          "effect": "hold"
+        },
+        {
+          "text": "하던 진압을 계속",
+          "grade": "치명",
+          "effect": "hold"
+        }
+      ],
+      "sop_ref": [
+        "SOP 109-1.1",
+        "SSG 9 2.1"
+      ],
+      "debrief": "대원 고립·부상이 확인되면 긴급탈출 상황을 선포하고 RIT를 즉시 투입하며, 다른 무전은 통제한다."
+    },
+    {
+      "id": "GAS-01",
+      "title": "가스 시설 확인",
+      "phase": "안전",
+      "trigger": "gas_found",
+      "asker": "현장 대원",
+      "urgency": "중요",
+      "text": "{text}. 어떻게 할까요?",
+      "options": [
+        {
+          "text": "한 조를 보내 가스 밸브를 차단",
+          "grade": "최선",
+          "effect": "gas_off"
+        },
+        {
+          "text": "불을 끈 뒤 차단",
+          "grade": "오답",
+          "effect": "hold"
+        },
+        {
+          "text": "관계자에게 차단 여부를 물어본다 (정보 확인)",
+          "grade": "허용",
+          "effect": "ask_info",
+          "time_cost_sec": 20,
+          "then": "gas_off"
+        }
+      ],
+      "sop_ref": [
+        "SOP 214-2.2",
+        "SOP 213-2.3.1"
+      ],
+      "debrief": "연소 확대 방지를 위해 난방연료(가스·유류)를 먼저 차단·제거한다. 가스 폭발에 유의한다."
+    },
+    {
+      "id": "TRAPPED-01",
+      "title": "대피자 갇힘",
+      "phase": "구조",
+      "trigger": "victim_trapped",
+      "asker": "현장 대원",
+      "urgency": "긴급",
+      "text": "{who}이(가) {room}에서 연기에 갇혔다는 연락입니다.",
+      "options": [
+        {
+          "text": "가까운 구조조를 그 위치로 보내 구조",
+          "grade": "최선",
+          "effect": "rescue_trapped"
+        },
+        {
+          "text": "화점부터 진압",
+          "grade": "오답",
+          "effect": "hold"
+        },
+        {
+          "text": "세대 안에서 문 닫고 기다리라고만 안내",
+          "grade": "허용",
+          "effect": "shelter"
+        }
+      ],
+      "sop_ref": [
+        "SOP 212-1.2",
+        "SOP 214-2.1"
+      ],
+      "debrief": "입체적으로 발생하는 구조대상자는 갇힌 위치가 곧 검색 우선 위치다. 위치가 확인되면 바로 구조조를 보낸다."
+    },
+    {
+      "id": "TRIAGE-01",
+      "title": "중증도 분류",
+      "phase": "구급",
+      "trigger": "triage_urgent",
+      "asker": "현장 대원",
+      "urgency": "일반",
+      "text": "구급대: {who} — 의식 저하, 호흡이 빠르고 얕습니다. 분류는?",
+      "options": [
+        {
+          "text": "긴급(적색)",
+          "grade": "최선",
+          "effect": "note"
+        },
+        {
+          "text": "응급(황색)",
+          "grade": "오답",
+          "effect": "note"
+        },
+        {
+          "text": "비응급(녹색)",
+          "grade": "오답",
+          "effect": "note"
+        }
+      ],
+      "sop_ref": [
+        "SOP 402",
+        "구급 START"
+      ],
+      "debrief": "의식 저하·호흡 이상(분당 30회 초과) 환자는 긴급(적색)으로 분류해 먼저 처치·이송한다."
+    },
+    {
+      "id": "STAIR-SMOKE-01",
+      "title": "계단실 연기 — 주민 안내",
+      "phase": "상황평가",
+      "trigger": "stair_smoke",
+      "asker": "현장 대원",
+      "urgency": "중요",
+      "text": "{room}에 연기가 찼습니다. 주민에게 어떻게 안내할까요?",
+      "options": [
+        {
+          "text": "연기 찬 계단이니 세대 안에서 문 닫고 대기하라고 방송",
+          "grade": "최선",
+          "effect": "shelter"
+        },
+        {
+          "text": "모두 계단으로 내려오라고 방송",
+          "grade": "오답",
+          "effect": "evacuate_now"
+        },
+        {
+          "text": "안내하지 않는다",
+          "grade": "오답",
+          "effect": "hold"
+        }
+      ],
+      "sop_ref": [
+        "SOP 213-2.4.2",
+        "SOP 213-2.6"
+      ],
+      "debrief": "연기의 유입·이동 경로를 보고 대피 우선순위를 정한다. 연기 찬 계단으로 일괄 대피시키면 계단실에서 다수가 쓰러진다.",
+      "once": true
+    },
+    {
+      "id": "STANDPIPE-01",
+      "title": "상층 수관 연장",
+      "phase": "진입",
+      "trigger": "attack_upper",
+      "asker": "현장 대원",
+      "urgency": "중요",
+      "text": "{crew}: 상층으로 올라갑니다. 수관을 펌프차에서 계단으로 끌어올릴까요?",
+      "options": [
+        {
+          "text": "송수구에 펌프차를 연결하고 화재층 방수구에서 연장",
+          "grade": "최선",
+          "effect": "connect_fdc"
+        },
+        {
+          "text": "펌프차에서 계단으로 끌어올린다",
+          "grade": "오답",
+          "effect": "hold"
+        }
+      ],
+      "sop_ref": [
+        "SOP 213-1.3",
+        "SOP 200-3.3.1"
+      ],
+      "debrief": "고층 화재는 연결송수관(송수구 → 층별 방수구)을 활용한다. 계단 연장은 방수 개시가 크게 늦어진다.",
+      "skip_if_preordered": "use_standpipe",
+      "once": true
+    },
+    {
+      "id": "STAGING-FLOOR-01",
+      "title": "장비 집결 층",
+      "phase": "진입",
+      "trigger": "attack_upper",
+      "asker": "현장 대원",
+      "urgency": "일반",
+      "text": "{crew}: 장비는 어느 층에 모을까요?",
+      "options": [
+        {
+          "text": "화점 직하층에 활동 거점을 둔다",
+          "grade": "최선",
+          "effect": "note"
+        },
+        {
+          "text": "화점층 복도에 모은다",
+          "grade": "오답",
+          "effect": "note"
+        }
+      ],
+      "sop_ref": [
+        "SOP 202 각주 10",
+        "SSG 4 1.3"
+      ],
+      "debrief": "장비 집결·활동 거점은 화점 직하층에 둔다. 화점층 복도는 연기 속에서 장비를 잃고 공기를 소모한다.",
+      "once": true
+    },
+    {
+      "id": "VICTIMS-MANY-01",
+      "title": "구조 우선순위",
+      "phase": "구조",
+      "trigger": "victims_many",
+      "asker": "현장 대원",
+      "urgency": "중요",
+      "text": "구조대상자가 여럿입니다. 누구부터 옮길까요?",
+      "options": [
+        {
+          "text": "의식 없는 사람·노약자 등 자력 피난이 안 되는 사람부터",
+          "grade": "최선",
+          "effect": "note"
+        },
+        {
+          "text": "가까운 사람부터",
+          "grade": "오답",
+          "effect": "note"
+        }
+      ],
+      "sop_ref": [
+        "SOP 203-1.4"
+      ],
+      "debrief": "구조 순서는 위험이 큰 사람(의식 없음·자력 피난 불가·노약자)이 먼저다.",
+      "once": true
+    },
+    {
+      "id": "SEARCH-ORDER-01",
+      "title": "검색 순서",
+      "phase": "탐색",
+      "trigger": "first_search",
+      "asker": "현장 대원",
+      "urgency": "일반",
+      "text": "{crew}: 어느 공간부터 검색할까요?",
+      "options": [
+        {
+          "text": "화점실 → 인근실 → 연소층 → 직상층 순",
+          "grade": "최선",
+          "effect": "note"
+        },
+        {
+          "text": "출입구에서 먼 방부터",
+          "grade": "오답",
+          "effect": "note"
+        }
+      ],
+      "sop_ref": [
+        "SOP 202-3.1.2"
+      ],
+      "debrief": "검색은 화점실, 인근실, 연소층, 화점직상층, 화점상층, 화점하층 순으로 한다.",
+      "once": true
+    },
+    {
+      "id": "SEARCH-MARK-01",
+      "title": "검색 완료 표시",
+      "phase": "탐색",
+      "trigger": "search_mark",
+      "asker": "현장 대원",
+      "urgency": "일반",
+      "text": "{crew}: {room} 검색을 마쳤습니다. 표시는 어떻게 할까요?",
+      "options": [
+        {
+          "text": "약속한 표시(리본·락카)를 하고 무전으로 전파",
+          "grade": "최선",
+          "effect": "note"
+        },
+        {
+          "text": "표시하지 않고 다음 방으로",
+          "grade": "오답",
+          "effect": "note"
+        }
+      ],
+      "sop_ref": [
+        "SOP 212-2.1.1",
+        "SOP 212-2.2.2"
+      ],
+      "debrief": "검색을 마친 방은 약속한 방법으로 표시하고 무전으로 전파해 중복 검색과 누락을 막는다.",
+      "once": true
+    },
+    {
+      "id": "ALL-CLEAR-CHECK-01",
+      "title": "완진 판단",
+      "phase": "잔불정리",
+      "trigger": "knockdown",
+      "asker": "현장 대원",
+      "urgency": "일반",
+      "text": "불꽃이 보이지 않습니다. 완진을 선언할까요?",
+      "options": [
+        {
+          "text": "발화층·직상층·각 진압 구역을 확인하고 출동대와 무전 확인 후 선언",
+          "grade": "최선",
+          "effect": "note"
+        },
+        {
+          "text": "불꽃이 안 보이니 바로 선언",
+          "grade": "오답",
+          "effect": "note"
+        }
+      ],
+      "sop_ref": [
+        "소방전술 I 8단계 ⑥",
+        "SOP 202-6"
+      ],
+      "debrief": "완진 선언은 노출된 모든 곳을 확인했다는 뜻이다. 보이는 불이 없다는 것만으로는 부족하다.",
+      "once": true
+    },
+    {
+      "id": "RETURN-01",
+      "title": "복귀 전 확인",
+      "phase": "마무리",
+      "trigger": "end_suggested",
+      "asker": "현장 대원",
+      "urgency": "일반",
+      "text": "더 할 일이 없어 보입니다. 복귀 전에 무엇을 할까요?",
+      "options": [
+        {
+          "text": "각 대별 대원 신체·장비 이상을 점검하고 재발화 감시를 정한 뒤 복귀",
+          "grade": "최선",
+          "effect": "note"
+        },
+        {
+          "text": "바로 복귀",
+          "grade": "오답",
+          "effect": "note"
+        }
+      ],
+      "sop_ref": [
+        "SOP 200-4.1",
+        "SOP 202-6.5"
+      ],
+      "debrief": "복귀 전 대원·장비 이상 여부를 점검하고, 재발화에 대비해 감시조를 두거나 관계자에게 감시를 당부한다.",
+      "once": true
     }
   ]
 }

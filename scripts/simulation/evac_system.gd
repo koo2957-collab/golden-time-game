@@ -14,6 +14,8 @@ var events: SimEventLog
 var paths: Dictionary = {}
 var trapped: Dictionary = {}
 var escaped: Dictionary = {}
+## 지휘관의 주민 대피 방송 (SOP 213-2.4.2): "" 없음 / "shelter" 세대 안 대기·문 닫기 / "evacuate" 지금 바로 대피
+var instruction := ""
 
 var _alert_ticks: int
 var _clear_m: float
@@ -37,6 +39,11 @@ func step(dt: float, tick: int) -> void:
 		if not v.self_evac or v.state != Victim.State.CONSCIOUS or v.carried_by >= 0 or escaped.has(v.id):
 			continue
 		var alert := roundi(v.alert_s / SimClock.TICK_DT) if v.alert_s >= 0.0 else _alert_ticks
+		if instruction == "evacuate":
+			alert = 0
+		# 세대 안 대기 안내를 받으면 아직 나서지 않은 사람은 그 자리에서 기다린다
+		if instruction == "shelter" and not paths.has(v.id):
+			continue
 		if tick < alert or trapped.has(v.id) and not paths.has(v.id):
 			continue
 		if not paths.has(v.id):

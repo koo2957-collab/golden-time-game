@@ -62,7 +62,6 @@ const REPORT_PRIORITY := {
 	"sign_warning": Radio.Priority.SAFETY,
 	"hydrant_out": Radio.Priority.KEY_FACTOR,
 	"knockdown_reported": Radio.Priority.KEY_FACTOR,
-	"card_overflow": Radio.Priority.KEY_FACTOR,
 	"all_clear_declared": Radio.Priority.KEY_FACTOR,
 	"time_warning": Radio.Priority.KEY_FACTOR,
 	"end_suggested": Radio.Priority.KEY_FACTOR,

@@ -27,6 +27,8 @@ class Card:
 	var deadline_tick := 0
 
 
+## 시뮬레이션 전체 (사건에 없는 문맥 — 방·구조대상자·차량·가까운 조 — 을 상태에서 찾는다)
+var sim: SimWorld
 var units: UnitSystem
 var tactical: TacticalSystem
 var doors: DoorSystem
@@ -52,6 +54,8 @@ var _next_uid := 1
 var _seed := 0
 ## 이어서 할 일: 창 배연이 끝나면 문을 열고 임무를 다시 시작 [{crew, window, door, action, target}]
 var _followups: Array[Dictionary] = []
+## 정보 확인 뒤 할 행동 [{tick, effect, card}]
+var _delayed: Array[Dictionary] = []
 
 
 func _init(p_units: UnitSystem, p_tactical: TacticalSystem, p_doors: DoorSystem, p_rescue: RescueSystem, p_rekindle: RekindleSystem,
@@ -103,7 +107,12 @@ func answer(uid: int, index: int, tick: int) -> bool:
 		var opt: Dictionary = c.options[index]
 		_log(c, tick, opt, "answered")
 		events.add(tick, "card_answered", {"crew": _crew_name(c.crew_id), "title": str(c.spec.get("title", c.id)), "option": str(opt.text)})
-		_apply(str(opt.get("effect", "")), c, tick)
+		# 정보 확인 선택지: 그만큼 시간이 흐른 뒤 then 행동을 한다 (그동안 대원은 기다린다)
+		if opt.has("time_cost_sec"):
+			_delayed.append({"tick": tick + roundi(float(opt.time_cost_sec) / SimClock.TICK_DT), "effect": str(opt.get("then", "hold")), "card": c})
+			events.add(tick, "card_info_check", {"crew": _crew_name(c.crew_id), "seconds": int(opt.time_cost_sec)})
+		else:
+			_apply(str(opt.get("effect", "")), c, tick)
 		return true
 	return false
 
@@ -118,10 +127,14 @@ func _scan_events(tick: int) -> void:
 		var trigger := _trigger_of(e)
 		if trigger == "":
 			continue
+		# 같은 트리거에 카드가 여러 장이면 모두 묻는다 (once 카드는 한 판에 한 번)
 		for spec: Dictionary in cards:
-			if str(spec.get("trigger", "")) == trigger:
-				_raise(spec, e, tick)
-				break
+			if str(spec.get("trigger", "")) != trigger:
+				continue
+			if bool(spec.get("once", false)) and log.any(func(l: Dictionary) -> bool: return l.id == str(spec.id)) \
+					or queue.any(func(q: Card) -> bool: return q.id == str(spec.id)):
+				continue
+			_raise(spec, e, tick)
 
 
 ## 사건 → 트리거 이름
@@ -133,7 +146,42 @@ func _trigger_of(e: Dictionary) -> String:
 			return "air_alarm"
 		"knockdown_reported":
 			return "knockdown"
+		"rollover_sign", "jump_risk", "exposure_heating", "sign_warning", "debris_zone", "hydrant_out", "tank_empty", "mayday", \
+				"victim_trapped", "end_suggested":
+			return str(e.type)
+		"shaft_heat", "shaft_smoke":
+			return "shaft"
+		"site_info_found":
+			return "gas_found" if str(e.get("text", "")).contains("가스") or str(e.get("text", "")).contains("LPG") else ""
+		"ems_triage":
+			return "triage_urgent" if str(e.get("triage", "")) == "긴급" else ""
+		"smoke":
+			return "stair_smoke" if str(e.get("room", "")).contains("계단실") and fire.building.levels().size() >= 3 else ""
+		"victim_found":
+			var alive := 0
+			for v in rescue.victims:
+				if v.discovered and v.alive() and v.carried_by < 0:
+					alive += 1
+			return "victims_many" if alive >= 2 else ""
+		"tactical_start":
+			if str(e.get("action", "")) == "수색":
+				return "first_search"
+			return "attack_upper" if _upper_attack(e) else ""
+		"search_done":
+			return "search_mark"
+		"phase":
+			return "arrival" if int(e.get("index", -1)) == 1 else ""
 	return ""
+
+
+## 2층보다 높은 층을 진압하러 가고, 연결송수관이 있는데 아직 송수구를 잇지 않았는가
+func _upper_attack(e: Dictionary) -> bool:
+	if sim == null or not fire.building.has_standpipe() or water.fdc_vehicle >= 0 or str(e.get("action", "")) != "진압":
+		return false
+	for c in fire.comps:
+		if c.display_name() == str(e.get("room", "")):
+			return c.level >= 3
+	return false
 
 
 func _raise(spec: Dictionary, e: Dictionary, tick: int) -> void:
@@ -144,6 +192,7 @@ func _raise(spec: Dictionary, e: Dictionary, tick: int) -> void:
 	c.spec = spec
 	c.crew_id = int(e.get("crew_id", -1))
 	c.ctx = e.duplicate()
+	_resolve(c)
 	c.urgency = str(spec.get("urgency", "일반"))
 	c.text = str(spec.get("text", ""))
 	var opts: Array = spec.get("options", [])
@@ -200,12 +249,60 @@ func _shuffled(opts: Array, uid: int) -> Array:
 	return out
 
 
+## 사건에 없는 문맥을 시뮬레이션 상태에서 채운다 (방·구조대상자·차량·묻는 조)
+func _resolve(c: Card) -> void:
+	if sim == null:
+		return
+	var room := _room_named(str(c.ctx.get("room", "")))
+	if room:
+		var cell: Vector2i = room.cells[room.cells.size() / 2]
+		c.ctx["room_cell"] = [cell.x, cell.y, room.level]
+		c.ctx["room_index"] = room.index
+	var who := str(c.ctx.get("who", ""))
+	for v in rescue.victims:
+		if v.label() == who:
+			c.ctx["victim"] = v.id
+	if c.crew_id < 0:
+		var near := Vector2(room.rect.get_center()) if room else Vector2(fire.building.footprint(1).get_center())
+		c.crew_id = _nearest_crew(near, room.level if room else -1)
+
+
+func _room_named(name: String) -> Compartment:
+	if name == "":
+		return null
+	for comp in fire.comps:
+		if comp.display_name() == name or comp.name == name:
+			return comp
+	return null
+
+
+## p 가까이 있는 움직일 수 있는 조 (같은 층 우선). type이 있으면 그 출동대 종류만
+func _nearest_crew(p: Vector2, level := -1, type := "") -> int:
+	var best := -1
+	var best_d := INF
+	for cr in units.crews:
+		var s := units.squads[cr.squad_id]
+		if cr.leader.incapacitated or cr.leader.aboard or (type != "" and s.type != type) or s.type == "구급대":
+			continue
+		if sim.command.resources.is_en_route(s.id):
+			continue
+		var d := cr.leader.pos.distance_to(p) + (0.0 if level < 0 or cr.leader.level == level else 40.0)
+		if d < best_d:
+			best_d = d
+			best = cr.id
+	return best
+
+
 # --- 행동 (결과는 시뮬레이션이 만든다) ---
 
 func _apply(effect: String, c: Card, tick: int) -> void:
 	var crew := units.get_crew(c.crew_id)
-	if crew == null:
+	# 조가 없어도 되는 행동 (차량·대피 방송·안전구역·RIT 등)
+	const NO_CREW := ["shuttle", "clear_zone", "shelter", "evacuate_now", "note", "hold", "", "connect_fdc", "supply_pump", "rit_deploy", "air_mat"]
+	if crew == null and not effect in NO_CREW:
 		return
+	var here := crew.leader.pos if crew else Vector2(fire.building.footprint(1).get_center())
+	var here_level := crew.leader.level if crew else 1
 	var door := _opening(c.ctx.get("door", []))
 	var action := str(c.ctx.get("action", ""))
 	var target := _cell(c.ctx.get("target", []))
@@ -235,17 +332,138 @@ func _apply(effect: String, c: Card, tick: int) -> void:
 		"flood":
 			var room := _cell(c.ctx.get("room_cell", []))
 			water.start_spray(c.crew_id, room, HoseLine.Pattern.STRAIGHT, tick)
-		"hold", "":
+		"close_room_door", "cool_and_close":
+			var r := _room_named(str(c.ctx.get("room", "")))
+			if r:
+				if effect == "cool_and_close" and water.hose_of_crew(c.crew_id):
+					water.start_spray(c.crew_id, _cell(c.ctx.get("room_cell", [])), HoseLine.Pattern.FOG, tick)
+				else:
+					var d := _door_of(r, crew)
+					if d:
+						doors.request(c.crew_id, Vector3i(d.cells[0].x, d.cells[0].y, d.level), false, tick)
+		"air_mat":
+			var v := int(c.ctx.get("victim", -1))
+			var rc := _nearest_crew(here, 1, "구조대")
+			if v >= 0 and rc >= 0:
+				var below := sim.falls.ground_below(rescue.victims[v])
+				if below.x >= 0:
+					sim.falls.order_mat(rc, Vector2i(below.floor()), tick)
+		"exterior_cover":
+			var w := _hot_window()
+			if w:
+				tactical.order("exterior", c.crew_id, Vector3i(w.cells[0].x, w.cells[0].y, w.level), tick)
+		"check_shaft":
+			for lv: int in sim.shafts.shaft_rooms:
+				if sim.shafts.hot.has(lv - 1) and not sim.shafts.checked.has(lv):
+					var sh: Compartment = sim.shafts.shaft_rooms[lv]
+					var sc: Vector2i = sh.cells[0]
+					tactical.order("search", c.crew_id, Vector3i(sc.x, sc.y, lv), tick)
+					break
+		"clear_zone":
+			for z: Dictionary in sim.falls.zones:
+				for ff in units.firefighters:
+					if ff.level == 1 and not ff.aboard and ff.pos.distance_to(z.center) <= float(z.radius) + 1.0:
+						var away: Vector2 = z.center + (ff.pos - z.center).normalized() * (float(z.radius) + 3.0)
+						var spot := sim.pathfinder.nearest_walkable(1, Vector2i(away.floor()))
+						if spot != Pathfinder.NO_CELL:
+							units.order_move([ff.crew_id] as Array[int], Vector3i(spot.x, spot.y, 1), sim.pathfinder)
+		"shuttle":
+			for v in units.vehicles:
+				if v.transfer_lpm > 0.0 and not v.away and not sim.shuttle.tankers.has(v.id):
+					sim.shuttle.toggle(v.id, tick)
+					break
+		"supply_pump":
+			var pump := _vehicle_named(str(c.ctx.get("vehicle", "")))
+			for v in units.vehicles:
+				if pump and v.transfer_lpm > 0.0 and not v.away and v.supply_to < 0:
+					if water.hydrants_out.size() >= fire.building.hydrants.size() and sim.shuttle.available():
+						sim.shuttle.toggle(v.id, tick)
+					else:
+						water.connect_supply(v.id, pump.id, tick)
+					break
+		"rit_deploy":
+			var downed := -1
+			for ff in units.firefighters:
+				if ff.incapacitated:
+					downed = ff.id
+					break
+			var rits := sim.command.safety.crews_with(SafetySystem.Role.RIT)
+			var rescuer: int = rits[0] if not rits.is_empty() else _nearest_crew(here, here_level)
+			if downed >= 0 and rescuer >= 0:
+				sim.command.safety.deploy(rescuer, tick)
+				rescue.order_rescue(rescuer, "ff", downed, tick)
+		"gas_off":
+			sim.gas.order_off(c.crew_id, tick)
+		"rescue_trapped":
+			var v := int(c.ctx.get("victim", -1))
+			if v >= 0:
+				rescue.victims[v].discovered = true
+				var rc := _nearest_crew(rescue.victims[v].pos, rescue.victims[v].level, "구조대")
+				if rc < 0:
+					rc = c.crew_id
+				rescue.order_rescue(rc, "victim", v, tick)
+		"connect_fdc":
+			var best := -1
+			var best_d := INF
+			for v in units.vehicles:
+				if v.is_pump() and not v.away:
+					var d := v.distance_to_body(Vector2(fire.building.fdc))
+					if d < best_d:
+						best_d = d
+						best = v.id
+			if best >= 0:
+				water.connect_fdc(best, tick)
+		"shelter":
+			sim.evac.instruction = "shelter"
+		"evacuate_now":
+			sim.evac.instruction = "evacuate"
+		"hold", "note", "":
 			pass
 
 
 func _step_followups(tick: int) -> void:
+	for d in _delayed.duplicate():
+		if tick >= int(d.tick):
+			_delayed.erase(d)
+			_apply(str(d.effect), d.card, tick)
 	for f in _followups.duplicate():
 		var win: Opening = fire.openings[int(f.window)]
 		if win.broken or win.is_open:
 			_followups.erase(f)
 			tactical.allow_door(int(f.crew), int(f.door))
 			tactical.order(str(f.action) if str(f.action) != "" else "attack", int(f.crew), f.target, tick)
+
+
+## 지금 가장 많이 달궈진 인접·위층 창 (경계관창 목표)
+func _hot_window() -> Opening:
+	var best: Opening = null
+	var best_d := 0.0
+	for i: int in sim.exposure.dose:
+		if float(sim.exposure.dose[i]) > best_d and not sim.exposure.ignited.has(i):
+			best_d = float(sim.exposure.dose[i])
+			best = fire.openings[i]
+	return best
+
+
+func _vehicle_named(name: String) -> Vehicle:
+	for v in units.vehicles:
+		if v.display_name(units.squads[v.squad_id].name) == name:
+			return v
+	return null
+
+
+## 방의 문 중 조에게 가장 가까운 문
+func _door_of(room: Compartment, crew: Crew) -> Opening:
+	var best: Opening = null
+	var best_d := INF
+	for oi in room.openings:
+		var o := fire.openings[oi]
+		if o.kind == Opening.Kind.DOOR and o.is_open:
+			var d := crew.leader.pos.distance_to(Vector2(o.cells[0]))
+			if d < best_d:
+				best_d = d
+				best = o
+	return best
 
 
 ## 문 너머 방의 바깥 창 (상부 배연용). 조가 있는 쪽이 아닌 방

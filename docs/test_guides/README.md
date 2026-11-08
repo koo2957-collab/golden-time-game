@@ -41,3 +41,4 @@
 | R1 종료 체계 (활동 단계·초진·완진 선언) | [R1_end.md](R1_end.md) |
 | R2 실시간 규칙 (난이도 훈련·실전·악조건) | [R2_realtime.md](R2_realtime.md) |
 | R3 질문 카드 엔진 | [R3_cards.md](R3_cards.md) |
+| R4 질문 카드 확장 (28장) | [R4_cards30.md](R4_cards30.md) |

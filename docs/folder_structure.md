@@ -198,7 +198,9 @@ tests/             단위 테스트(test_*.gd)와 조작 점검(ui_smoke.gd)
 | 화면 | `scripts/ui/card_ui.gd` (`Hud.card_ui`), 숫자 키 1~4. 무전 패널 '선제지시' 창 |
 | 평가 | command.cards (최선 1·허용 0.5·오답·치명·미응답 0, 선제지시 = 최선), 결과 파일 `cards`, 디브리핑 ③ "판단 요청 해설" |
 
-검증은 `tests/test_cards.gd`.
+검증은 `tests/test_cards.gd`, `tests/test_cards_r4.gd`.
+
+R4 추가: 트리거 arrival·rollover_sign·jump_risk·exposure_heating·shaft·sign_warning·debris_zone·hydrant_out·tank_empty·mayday·gas_found·victim_trapped·triage_urgent·stair_smoke·attack_upper·victims_many·first_search·search_mark·end_suggested. `CardSystem.sim`으로 문맥을 찾는다(`_resolve`, `_nearest_crew`). effect 추가: cool_and_close·air_mat·exterior_cover·check_shaft·clear_zone·shuttle·supply_pump·rit_deploy·gas_off·rescue_trapped·connect_fdc·shelter·evacuate_now·note, 선택지 `time_cost_sec`+`then`(정보 확인). `EvacSystem.instruction`(shelter·evacuate).
 
 ## 실시간 규칙 요약 (R2)
 

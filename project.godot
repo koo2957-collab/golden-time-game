@@ -173,6 +173,11 @@ debug_info_fog={
 }
 toggle_view={
 "deadzone": 0.2,
+"events": [Object(InputEventKey,"physical_keycode":77)
+]
+}
+toggle_board={
+"deadzone": 0.2,
 "events": [Object(InputEventKey,"physical_keycode":4194306)
 ]
 }

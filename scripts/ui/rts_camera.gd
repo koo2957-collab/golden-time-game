@@ -8,6 +8,9 @@ const ZOOM_STEP := 1.15
 const ZOOM_MIN := 0.5
 const ZOOM_MAX := 3.0
 var bounds := Rect2()
+## 화면 가장자리 자동 스크롤 (기획안 9-3). 마우스가 가장자리 EDGE_PX 안에 있으면 그쪽으로 흐른다
+var edge_scroll := true
+const EDGE_PX := 20.0
 var _dragging := false
 
 
@@ -26,6 +29,11 @@ func retarget(p_bounds: Rect2, center: Vector2) -> void:
 
 func _process(delta: float) -> void:
 	var dir := Input.get_vector("camera_left", "camera_right", "camera_up", "camera_down")
+	if edge_scroll and dir == Vector2.ZERO and DisplayServer.window_is_focused() and Input.mouse_mode == Input.MOUSE_MODE_CONFINED:
+		var m := get_viewport().get_mouse_position()
+		var s := get_viewport().get_visible_rect().size
+		dir = Vector2(-1.0 if m.x < EDGE_PX else (1.0 if m.x > s.x - EDGE_PX else 0.0),
+			-1.0 if m.y < EDGE_PX else (1.0 if m.y > s.y - EDGE_PX else 0.0))
 	if dir != Vector2.ZERO:
 		position += dir * PAN_SPEED_PX * delta / zoom.x
 		_clamp()

@@ -35,6 +35,8 @@ var projections := {ViewMode.ISO: IsoProjection.new(), ViewMode.PLAN: PlanProjec
 
 func _ready() -> void:
 	InstructorSettings.active = true
+	# 창 모드에서도 가장자리 스크롤이 되도록 게임 중에는 마우스를 창 안에 가둔다 (Esc로 풂, 기획안 9-3)
+	confine_mouse(true)
 	var path := GameManager.scenario_path if GameManager.scenario_path != "" else SCENARIO_PATH
 	var replay_tick := int(GameManager.replay.get("tick", -1))
 	if replay_tick >= 0:
@@ -196,9 +198,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		sim.replayable = false
 		_update_mode_text()
 	elif event.is_action_pressed("ui_cancel"):
-		selection.cancel_mode()
-		if ignite_mode:
-			_set_ignite_mode(false)
+		# 하던 선택 모드가 있으면 취소, 없으면 마우스 가둠을 푼다 (다시 클릭하면 가둠)
+		if selection.mode != SelectionController.Mode.NONE or ignite_mode:
+			selection.cancel_mode()
+			if ignite_mode:
+				_set_ignite_mode(false)
+		else:
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+			hud.show_notice("마우스 가둠을 풀었습니다 — 화면을 클릭하면 다시 가둡니다")
+	elif event.is_action_pressed("toggle_board"):
+		hud.command_ui.toggle_board()
 	elif event.is_action_pressed("toggle_view"):
 		set_view_mode(ViewMode.PLAN if view_mode == ViewMode.ISO else ViewMode.ISO)
 	elif event.is_action_pressed("toggle_thermal"):
@@ -368,3 +377,15 @@ func _step_level(direction: int) -> void:
 	var levels := sim.building.levels()
 	var i := clampi(levels.find(view_level) + direction, 0, levels.size() - 1)
 	set_view_level(levels[i])
+
+
+## 마우스 가둠 (기획안 9-3). 자동 테스트·헤드리스에서는 하지 않는다
+func confine_mouse(on: bool) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	Input.mouse_mode = Input.MOUSE_MODE_CONFINED if on else Input.MOUSE_MODE_VISIBLE
+
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE and sim and not sim.ended():
+		confine_mouse(true)

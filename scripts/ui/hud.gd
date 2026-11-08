@@ -33,7 +33,7 @@ const DEBUG_EVENT_LINES := 8
 const DEBUG_COLUMNS: Array[String] = ["구획", "단계", "상부℃", "하부℃", "연기층m", "O2%", "가스%", "열방출kW", "시야m", "FO℃"]
 
 @onready var clock_label: Label = $ClockPanel/ClockLabel
-@onready var floor_tabs: HBoxContainer = $FloorTabs
+@onready var floor_tabs: VBoxContainer = $FloorTabs
 @onready var selection_label: Label = $SelectionPanel/SelectionLabel
 
 var sim: SimWorld
@@ -84,18 +84,26 @@ func setup(p_sim: SimWorld, on_floor_selected: Callable) -> void:
 	phase_bar.position = Vector2(-450, 6)
 	add_child(phase_bar)
 	var group := ButtonGroup.new()
-	for level in sim.building.levels():
+	var levels := sim.building.levels()
+	levels.reverse()
+	for level in levels:
 		var button := Button.new()
 		button.text = sim.building.floor_name(level)
 		button.toggle_mode = true
 		button.button_group = group
 		button.focus_mode = Control.FOCUS_NONE
-		button.custom_minimum_size = Vector2(80, 40)
+		button.custom_minimum_size = Vector2(160, 34)
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.tooltip_text = "이 층 보기 (PgUp·PgDn)"
 		button.add_theme_color_override("font_pressed_color", PlanStyle.SELECTION)
 		button.add_theme_color_override("font_hover_pressed_color", PlanStyle.SELECTION)
 		button.pressed.connect(on_floor_selected.bind(level))
 		floor_tabs.add_child(button)
 		_floor_buttons[level] = button
+	$ClockPanel.gui_input.connect(_on_badge_input)
+	$ClockPanel.tooltip_text = "클릭: 전략 변경 (지휘 C)"
+	_build_subtitles()
+	_build_emergency()
 	_build_legend()
 	_build_debug_panel()
 	_build_command_panel()
@@ -145,8 +153,16 @@ func _process(delta: float) -> void:
 		text += "   일시정지"
 	if mode_text != "":
 		text += "   [%s]" % mode_text
-	clock_label.text = text
+	clock_label.text = text + "\n" + _badge_line()
 	_refresh_phase_bar()
+	if _notice_label:
+		# 알림은 오른쪽 상황판이 가리지 않는 지도 영역 가운데에
+		var cx := command_ui.map_center_x()
+		_notice_label.offset_left = cx - size.x * 0.5 - 400.0
+		_notice_label.offset_right = cx - size.x * 0.5 + 400.0
+	_refresh_floor_bar(delta)
+	_refresh_subtitles()
+	_refresh_emergency()
 	_update_notices(delta)
 	_selection_timer -= delta
 	if _selection_timer <= 0.0:
@@ -565,3 +581,142 @@ func _refresh_phase_bar() -> void:
 			parts.append("[color=#94a3b8]%s[/color]" % name)
 	phase_bar.text = "[center]%s[/center]" % " → ".join(parts)
 	phase_bar.position = Vector2((size.x - phase_bar.size.x) * 0.5, 6.0)
+
+
+# --- R6a: 상황 배지·층 막대·무전 자막·긴급탈출 ---
+
+## 상황 배지 둘째 줄: 전략 · 풍향 · 대응 단계 (기획안 9-2)
+func _badge_line() -> String:
+	var cmd := sim.command
+	var strategy := CommandSystem.STRATEGY_NAMES[cmd.strategy] if cmd.declared() else "전략 미선언"
+	var wind := "바람 없음"
+	if sim.exposure.wind_mps > 0.0:
+		var dirs := ["북", "북동", "동", "남동", "남", "남서", "서", "북서"]
+		wind = "%s풍 %.0fm/s" % [dirs[roundi(fposmod(sim.exposure.wind_from_deg, 360.0) / 45.0) % 8], sim.exposure.wind_mps]
+	var level := "선착대"
+	var sup := sim.events.of_type("support_requested")
+	if not sup.is_empty():
+		level = str(sup[-1].level)
+	return "%s · %s · %s" % [strategy, wind, level]
+
+
+func _on_badge_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		command_ui.open_command_dialog()
+
+
+var _floor_timer := 0.0
+
+
+## 층 막대: 층마다 보이는 불·연기와 대원 수 (기획안 9-2). 맨 아래 층은 바깥 포함
+func _refresh_floor_bar(delta: float) -> void:
+	_floor_timer -= delta
+	if _floor_timer > 0.0:
+		return
+	_floor_timer = 0.5
+	var fire := {}
+	var smoke := {}
+	var grid := sim.fire.grid
+	for i in grid.burning:
+		if not sim.perception.enabled or sim.perception.seen_burning[i] == 1:
+			fire[grid.cell_of(i).z] = true
+	for c in sim.fire.comps:
+		if c.layer_depth > 0.6 and (not sim.perception.enabled or sim.perception.room_visible(c)):
+			smoke[c.level] = true
+	var crews := {}
+	for ff in sim.units.firefighters:
+		if not ff.aboard:
+			crews[ff.level] = int(crews.get(ff.level, 0)) + 1
+	var lowest := sim.building.levels()[0]
+	for level: int in _floor_buttons:
+		var b: Button = _floor_buttons[level]
+		var mark := " 불" if fire.has(level) else (" 연기" if smoke.has(level) else "")
+		b.text = "%s%s%s  %d명" % [sim.building.floor_name(level), "·외부" if level == lowest else "", mark, int(crews.get(level, 0))]
+		var color := Color("f87171") if fire.has(level) else (Color("cbd5e1") if smoke.has(level) else Color("e2e8f0"))
+		b.add_theme_color_override("font_color", color)
+
+
+var _subtitles: Label
+
+
+## 무전 자막: 화면 아래 왼쪽 반투명 2~3줄, 5초 뒤 사라짐, 대원 안전 무전은 빨강 (기획안 9-2, SOP 107)
+func _build_subtitles() -> void:
+	_subtitles = Label.new()
+	_subtitles.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_subtitles.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_subtitles.custom_minimum_size = Vector2(760, 0)
+	_subtitles.add_theme_font_size_override("font_size", 17)
+	_subtitles.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	_subtitles.add_theme_constant_override("outline_size", 5)
+	add_child(_subtitles)
+
+
+func _refresh_subtitles() -> void:
+	var radio := sim.command.radio
+	var now := sim.clock.tick
+	var lines: PackedStringArray = []
+	var danger := false
+	var shown := 0
+	for i in range(radio.history.size() - 1, -1, -1):
+		var m := radio.history[i]
+		if (now - m.end_tick) * SimClock.TICK_DT > 5.0 or shown >= 3:
+			break
+		lines.insert(0, m.text())
+		danger = danger or m.priority == Radio.Priority.SAFETY
+		shown += 1
+	if radio.current:
+		lines.append("▶ " + radio.current.text())
+		danger = danger or radio.current.priority == Radio.Priority.SAFETY
+	_subtitles.text = "\n".join(lines)
+	_subtitles.add_theme_color_override("font_color", Color("fca5a5") if danger else Color("f1f5f9"))
+	_subtitles.position = Vector2(16, size.y - 120.0 - _subtitles.get_combined_minimum_size().y)
+
+
+var _emergency_button: Button
+var _vignette: Control
+
+
+## 긴급탈출 상황: 화면 위쪽 큰 빨간 버튼(누르면 긴급탈출 지시 — 전원 철수), 화면 가장자리 붉은 비네트 (기획안 9-3)
+func _build_emergency() -> void:
+	_vignette = Control.new()
+	_vignette.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_vignette.draw.connect(_draw_vignette)
+	add_child(_vignette)
+	_emergency_button = Button.new()
+	_emergency_button.text = "⚠ 긴급탈출 상황 — 눌러서 전원 긴급탈출 지시 (RIT는 조직 창·카드로 투입)"
+	_emergency_button.focus_mode = Control.FOCUS_NONE
+	_emergency_button.custom_minimum_size = Vector2(620, 48)
+	_emergency_button.add_theme_font_size_override("font_size", 18)
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color(0.75, 0.08, 0.08, 0.92)
+	st.set_corner_radius_all(8)
+	_emergency_button.add_theme_stylebox_override("normal", st)
+	_emergency_button.pressed.connect(func() -> void: command_ui.order_issued.emit(CommandOrder.make("evacuate")))
+	_emergency_button.visible = false
+	add_child(_emergency_button)
+
+
+func _refresh_emergency() -> void:
+	var on := sim.command.safety.emergency() and not sim.ended()
+	_emergency_button.visible = on
+	_emergency_button.position = Vector2((size.x - _emergency_button.size.x) * 0.5, 40.0)
+	_vignette.queue_redraw()
+
+
+## 위기 비네트: 긴급탈출이거나 최근 30초 안에 특수현상 징후가 있으면 화면 가장자리를 붉게
+func _draw_vignette() -> void:
+	var hot := sim.command.safety.emergency()
+	if not hot:
+		for t in ["rollover_sign", "backdraft_sign", "fgi_warning", "collapse_sign", "jump_risk"]:
+			var list := sim.events.of_type(t)
+			if not list.is_empty() and (sim.clock.tick - int(list[-1].tick)) * SimClock.TICK_DT < 30.0:
+				hot = true
+	if not hot or sim.ended():
+		return
+	var pulse := 0.25 + 0.15 * sin(Time.get_ticks_msec() / 250.0)
+	var r := Rect2(Vector2.ZERO, _vignette.size)
+	for k in 6:
+		var w := 6.0 * (k + 1)
+		var c := Color(0.9, 0.1, 0.1, pulse * (1.0 - k / 6.0))
+		_vignette.draw_rect(r.grow(-w + 6.0), c, false, 6.0)

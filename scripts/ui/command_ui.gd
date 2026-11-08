@@ -17,7 +17,8 @@ signal dialog_changed(open: bool)
 signal end_dialog_opened
 
 const RADIO_LINES := 6
-const RADIO_WIDTH := 660.0
+## 오른쪽 전술상황판 폭 (기획안 9-2)
+const RADIO_WIDTH := 540.0
 const DIALOG_WIDTH := 820.0
 const PLACEHOLDER := "— 선택 —"
 const TEXT_COLOR := Color("e2e8f0")
@@ -45,6 +46,12 @@ var _auto_labels: Dictionary = {}  # 항목 -> Label
 var _strategy_buttons: Array[Button] = []
 var _span_label: Label
 var _receo_label: RichTextLabel
+var _todo_label: Label
+var _board_title: Label
+var _board_body: VBoxContainer
+var _fold_button: Button
+## 전술상황판을 접었는가 (Tab)
+var board_folded := false
 var _org: PanelContainer
 var _org_name: OptionButton
 var _org_supervisor: OptionButton
@@ -105,6 +112,58 @@ func _process(delta: float) -> void:
 	if _refresh <= 0.0:
 		_refresh = REFRESH_S
 		_refresh_radio()
+
+
+## 전술상황판 접기·펴기 (Tab). 접으면 제목(확인 필요 수)과 지휘 버튼만 남는다
+func toggle_board() -> void:
+	board_folded = not board_folded
+	for i in _board_body.get_child_count():
+		var c := _board_body.get_child(i)
+		# 버튼 줄은 남긴다
+		c.visible = not board_folded or c is HBoxContainer
+	_fold_button.text = "◀ 펴기 (Tab)" if board_folded else "▶ 접기 (Tab)"
+	_radio_panel.reset_size()
+
+
+## 상황판이 가리지 않는 지도 영역의 가운데 x (알림·질문 카드를 여기에 띄운다)
+func map_center_x() -> float:
+	if _radio_panel == null or not _radio_panel.visible:
+		return size.x * 0.5
+	return (size.x - _radio_panel.size.x - 16.0) * 0.5
+
+
+## 확인 필요 항목: 아직 해결되지 않은 일 (기획안 9-2). 해결되면 사라진다. 지휘관이 아는 정보만 쓴다
+func todo_items() -> Array[String]:
+	var out: Array[String] = []
+	var cmd := sim.command
+	if cmd.safety.emergency():
+		out.append("긴급탈출 상황 — 쓰러진 대원 구출 (RIT)")
+	var waiting := sim.cards.queue.size()
+	if waiting > 0:
+		out.append("대원 판단 요청 %d건 대기" % waiting)
+	for r: String in cmd.survey.reported_rooms:
+		var room: Compartment = null
+		for c in sim.fire.comps:
+			if c.id == r:
+				room = c
+		if room and room.searched_tick < 0:
+			out.append("%s — 구조대상자 제보, 미검색" % room.display_name())
+	for p in sim.ems.patients:
+		if p.stage == EmsSystem.Stage.WAITING and sim.ems.on_scene(p):
+			out.append("%s — 처치 대기" % sim.rescue.victims[p.victim_id].label())
+	if sim.gas.open and sim.gas.known(cmd.survey):
+		out.append("%s 열림 — 차단 필요" % sim.gas.valve_text)
+	if sim.water.hydrants_out.size() > 0 and sim.events.of_type("hydrant_out").size() > 0 and sim.shuttle.tankers.is_empty():
+		out.append("소화전 고장 — 물탱크차 순환보수 미지정")
+	for lv: int in sim.shafts.hot:
+		if not sim.shafts.checked.has(lv + 1) and sim.shafts.shaft_rooms.has(lv + 1):
+			out.append("%s 샤프트 확인 필요" % sim.building.floor_name(lv + 1))
+	for id: int in sim.falls.warned:
+		if not sim.falls.jumped.has(id) and sim.rescue.victims[id].state == Victim.State.CONSCIOUS and sim.falls.mats.is_empty():
+			out.append("%s 창가 — 공기안전매트 없음" % sim.rescue.victims[id].label())
+	if sim.phases.knockdown_tick >= 0 and sim.phases.all_clear.is_empty() and sim.rekindle.spotted_cells().size() > 0:
+		out.append("찾은 불씨 %d곳 — 잔불정리" % sim.rekindle.spotted_cells().size())
+	return out
 
 
 func any_dialog_open() -> bool:
@@ -307,15 +366,24 @@ func _update_submit() -> void:
 
 
 func _refresh_radio() -> void:
+	_radio_panel.reset_size()
+	_radio_panel.position = Vector2(size.x - _radio_panel.size.x - 16.0, 64.0)
 	var radio := sim.command.radio
-	var lines: PackedStringArray = ["무전 (지휘망)" + ("   대기 %d건" % radio.queue.size() if not radio.queue.is_empty() else "")]
+	var lines: PackedStringArray = ["무전 기록 (최근 순, 지휘망)" + ("   대기 %d건" % radio.queue.size() if not radio.queue.is_empty() else "")]
+	if radio.current:
+		lines.append("▶ 송신 중 %d%%  %s" % [roundi(radio.progress() * 100.0), radio.current.text()])
+	# 무전과 답한 질문 카드("질문 → 내 답")를 시간 순으로 섞어 최근 것부터
+	var items: Array = []
 	var start := maxi(0, radio.history.size() - RADIO_LINES)
 	for i in range(start, radio.history.size()):
 		var m := radio.history[i]
-		var t := int(m.end_tick * SimClock.TICK_DT)
-		lines.append("%02d:%02d  %s" % [floori(t / 60.0), t % 60, m.text()])
-	if radio.current:
-		lines.append("▶ 송신 중 %d%%  %s" % [roundi(radio.progress() * 100.0), radio.current.text()])
+		items.append([m.end_tick, m.text()])
+	for e in sim.events.of_type("card_answered").slice(-RADIO_LINES):
+		items.append([int(e.tick), "질문: %s → %s" % [e.title, e.option]])
+	items.sort_custom(func(a: Array, b: Array) -> bool: return a[0] > b[0])
+	for it in items.slice(0, RADIO_LINES):
+		var t := int(int(it[0]) * SimClock.TICK_DT)
+		lines.append("%02d:%02d  %s" % [floori(t / 60.0), t % 60, it[1]])
 	# 작전망: 단위대마다 송신 중이거나 마지막 무전 한 줄
 	for d in sim.command.org.divisions:
 		var r := d.radio
@@ -337,6 +405,9 @@ func _refresh_radio() -> void:
 	_span_label.text = span
 	_survey_label.text = _survey_text()
 	_receo_label.text = _receo_text()
+	var todo := todo_items()
+	_todo_label.text = "확인 필요\n" + "\n".join(todo.map(func(t: String) -> String: return "• " + t)) if not todo.is_empty() else ""
+	_board_title.text = "전술상황판%s" % ("  · 확인 필요 %d" % todo.size() if not todo.is_empty() else "")
 	_span_label.add_theme_color_override("font_color", WARN_COLOR if n > cmd.org.span_ideal else DIM_COLOR)
 
 
@@ -376,20 +447,29 @@ func _entry_text() -> String:
 	return "\n".join(lines)
 
 
+## 오른쪽 전술상황판 (기획안 9-2): 상황 요약(RECEO) · 팀 현황 · 확인 필요 · 무전 기록 · 지휘 버튼. Tab·화살표로 접기
 func _build_radio_panel() -> void:
 	_radio_panel = PanelContainer.new()
 	_radio_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_radio_panel.position = Vector2(16, 64)
 	_radio_panel.custom_minimum_size = Vector2(RADIO_WIDTH, 0)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.04, 0.07, 0.12, 0.72)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(8)
+	_radio_panel.add_theme_stylebox_override("panel", style)
+	var outer := VBoxContainer.new()
+	_radio_panel.add_child(outer)
+	var head := HBoxContainer.new()
+	_board_title = _label("전술상황판", 17, Color("fdba74"))
+	_board_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(_board_title)
+	_fold_button = _button("▶ 접기 (Tab)", toggle_board)
+	head.add_child(_fold_button)
+	outer.add_child(head)
 	var box := VBoxContainer.new()
-	_radio_panel.add_child(box)
-	_radio_label = _label("", 15, RADIO_COLOR)
-	_radio_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_radio_label.custom_minimum_size = Vector2(RADIO_WIDTH - 16, 0)
-	box.add_child(_radio_label)
-	box.add_child(HSeparator.new())
-	_entry_label = _label("", 15, TEXT_COLOR)
-	box.add_child(_entry_label)
+	_board_body = box
+	outer.add_child(box)
 	_receo_label = RichTextLabel.new()
 	_receo_label.bbcode_enabled = true
 	_receo_label.fit_content = true
@@ -397,6 +477,18 @@ func _build_radio_panel() -> void:
 	_receo_label.custom_minimum_size = Vector2(RADIO_WIDTH - 16, 0)
 	_receo_label.add_theme_font_size_override("normal_font_size", 15)
 	box.add_child(_receo_label)
+	box.add_child(_label("팀 현황", 15, Color("fdba74")))
+	_entry_label = _label("", 14, TEXT_COLOR)
+	box.add_child(_entry_label)
+	_todo_label = _label("", 15, WARN_COLOR)
+	_todo_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_todo_label.custom_minimum_size = Vector2(RADIO_WIDTH - 16, 0)
+	box.add_child(_todo_label)
+	box.add_child(HSeparator.new())
+	_radio_label = _label("", 14, RADIO_COLOR)
+	_radio_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_radio_label.custom_minimum_size = Vector2(RADIO_WIDTH - 16, 0)
+	box.add_child(_radio_label)
 	_span_label = _label("", 15, DIM_COLOR)
 	_span_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_span_label.custom_minimum_size = Vector2(RADIO_WIDTH - 16, 0)

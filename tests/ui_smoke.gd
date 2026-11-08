@@ -34,6 +34,9 @@ func _run() -> void:
 	await process_frame
 	var world = root.get_node("Main/World")
 	_world = world
+	# 실제 마우스 위치가 화면 가장자리면 카메라가 흘러가므로 조작 점검에서는 끈다
+	world.camera.edge_scroll = false
+	world.confine_mouse(false)
 	var sim: SimWorld = world.sim
 	# EventBus(autoload)를 쓰는 UI 스크립트는 타입으로 참조하지 않는다
 	# (-s 실행 시 autoload 등록 전에 컴파일되어 실패하기 때문)
@@ -49,8 +52,8 @@ func _run() -> void:
 	_check("지령 창을 닫으면 시간 진행", sim.clock.paused, false)
 
 	_check("기본 화면은 입체", world.view_mode, world.ViewMode.ISO)
-	_key(KEY_TAB)
-	_check("Tab → 상황판", world.view_mode, world.ViewMode.PLAN)
+	_key(KEY_M)
+	_check("M → 상황판", world.view_mode, world.ViewMode.PLAN)
 
 	# 닫힌(잠긴) 현관문 우클릭 → 문 파괴 작업 시작
 	_click(u.get_crew(3).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
@@ -200,8 +203,8 @@ func _run() -> void:
 	_check("Space → 일시정지", sim.clock.paused, true)
 
 	# 입체 화면
-	_key(KEY_TAB)
-	_check("Tab → 입체", world.view_mode, world.ViewMode.ISO)
+	_key(KEY_M)
+	_check("M → 입체", world.view_mode, world.ViewMode.ISO)
 	await process_frame
 	_click(u.get_crew(1).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
 	_check("입체: 클릭 선택", sel.selected, [1])

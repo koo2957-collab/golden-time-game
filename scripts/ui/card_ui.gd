@@ -70,7 +70,10 @@ func _process(_delta: float) -> void:
 	if c == null:
 		_shown_uid = -1
 		return
-	_panel.position = Vector2((size.x - WIDTH) * 0.5, 96.0)
+	# 오른쪽 상황판이 가리지 않는 지도 영역 가운데에
+	var hud := get_parent() as Hud
+	var cx := hud.command_ui.map_center_x() if hud and hud.command_ui else size.x * 0.5
+	_panel.position = Vector2(cx - WIDTH * 0.5, 96.0)
 	if c.uid != _shown_uid:
 		_shown_uid = c.uid
 		_fill(c)
@@ -78,6 +81,9 @@ func _process(_delta: float) -> void:
 	_bar.value = 100.0 * float(c.deadline_tick - sim.clock.tick) / maxf(1.0, total)
 	var waiting := sim.cards.queue.size() - 1
 	_more.text = "+%d 대기" % waiting if waiting > 0 else ""
+	if _more.visible != (waiting > 0):
+		_more.visible = waiting > 0
+		_panel.reset_size()
 
 
 func _fill(c: CardSystem.Card) -> void:
@@ -96,6 +102,7 @@ func _fill(c: CardSystem.Card) -> void:
 		b.visible = i < c.options.size()
 		if b.visible:
 			b.text = "%d. %s" % [i + 1, str(c.options[i].text)]
+	_panel.reset_size()
 
 
 ## 맨 앞 카드에 답한다 (화면에 보인 순서 index)

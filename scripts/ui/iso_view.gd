@@ -1109,6 +1109,9 @@ func _draw_monitors_and_fans() -> void:
 			pts.append(a.lerp(mid, t).lerp(mid.lerp(b, t), t))
 		draw_polyline(pts, Color(0.55, 0.8, 1.0, 0.85), 5.0, true)
 		draw_string(PlanStyle.font(), b + Vector2(-40, -18), "방수포", HORIZONTAL_ALIGNMENT_CENTER, 80, 13, Color("bae6fd"))
+	for lc: Vector3i in sim.lifeline.cells:
+		if lc.z == level:
+			draw_circle(proj.to_screen(Vector2(lc.x + 0.5, lc.y + 0.5), 0.15), 3.0, Color("facc15"))
 	if sim.elevator.available():
 		var ec := Vector2(sim.elevator.cell) + Vector2(0.5, 0.5)
 		_box(ec - Vector2(0.45, 0.45), ec + Vector2(0.45, 0.45), 0.0, 2.2, Color("475569"), Color("334155"), Color("94a3b8"))

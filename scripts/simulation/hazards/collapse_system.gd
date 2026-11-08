@@ -24,9 +24,11 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_rescue: RescueSystem, params:
 	units = p_units
 	rescue = p_rescue
 	events = p_events
-	_rate = 1.0 / maxf(1.0, params.value("collapse_s"))
+	var panel := fire.building.structure.contains("샌드위치패널")
+	_rate = 1.0 / maxf(1.0, params.value("collapse_panel_s" if panel else "collapse_s"))
 	_sign = params.value("collapse_sign_ratio")
-	enabled = fire.building.structure.contains("벽돌")
+	# 노후 벽돌조와 샌드위치패널(천장·지붕 붕괴, SOP 240) 건물
+	enabled = fire.building.structure.contains("벽돌") or panel
 
 
 func first_sign_tick() -> int:

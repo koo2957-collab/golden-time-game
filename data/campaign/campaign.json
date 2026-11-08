@@ -76,6 +76,60 @@
         "sop222_1_highrise_25f"
       ],
       "min_grade": "C"
+    },
+    {
+      "id": "stage0",
+      "title": "0장 · 훈련탑 (스테이지 0)",
+      "text": "기본 조작·2인 1조·호스 연장·공기호흡기 점검 (SOP 200·201·208).",
+      "scenarios": [
+        "stage0_training_tower"
+      ],
+      "min_grade": "C"
+    },
+    {
+      "id": "stage1_2",
+      "title": "9장 · 필로티 다세대 (스테이지 1-2)",
+      "text": "필로티 차량 화재·외장재 수직 연소·출입구 확보 (SOP 232).",
+      "scenarios": [
+        "stage1_2_piloti"
+      ],
+      "min_grade": "C"
+    },
+    {
+      "id": "stage3_1",
+      "title": "10장 · 전통시장 (스테이지 3-1)",
+      "text": "진입로·포위 배치·아케이드 연기 (SOP 233).",
+      "scenarios": [
+        "stage3_1_market"
+      ],
+      "min_grade": "C"
+    },
+    {
+      "id": "stage3_2",
+      "title": "11장 · 지하층 (스테이지 3-2)",
+      "text": "급기측 진입·라이트라인·방향감각 상실 (SOP 217).",
+      "scenarios": [
+        "stage3_2_basement"
+      ],
+      "min_grade": "C"
+    },
+    {
+      "id": "stage3_3",
+      "title": "12장 · 물류창고 (스테이지 3-3)",
+      "text": "진입 판단·병행 전략·붕괴 반경·방수포 (SOP 240·205).",
+      "scenarios": [
+        "stage3_3_warehouse"
+      ],
+      "min_grade": "C"
+    },
+    {
+      "id": "stage4_1",
+      "title": "13장 · 초고층 (스테이지 4-1)",
+      "text": "방재실·피난안전구역·승강기·대응 2단계 (SOP 223·222).",
+      "scenarios": [
+        "stage4_1_supertall"
+      ],
+      "min_grade": "C"
     }
   ]
 }

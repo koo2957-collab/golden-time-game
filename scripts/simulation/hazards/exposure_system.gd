@@ -126,7 +126,7 @@ func step(dt: float, tick: int) -> void:
 				protected_tick = tick
 			d = maxf(0.0, d - _cool * dt)
 		else:
-			d += maxf(0.0, float(flux_at.get(t.index, 0.0)) - _crit) * dt
+			d += maxf(0.0, float(flux_at.get(t.index, 0.0)) - _crit) * dt * (fire.building.facade_factor if p.vertical else 1.0)
 		dose[t.index] = d
 		peak = maxf(peak, minf(1.0, d / _ignite))
 		var t_room := _room(t)

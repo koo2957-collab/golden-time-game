@@ -1,5 +1,5 @@
 {
-  "note": "질문 카드 (기획안 7장). 카드 1장 = SOP 조항 1개. trigger: halt_locked·halt_closed·halt_backdraft·halt_victim(전술 명령이 멈춘 자리), air_alarm, knockdown, arrival, rollover_sign, jump_risk, exposure_heating, shaft, sign_warning, debris_zone, hydrant_out, tank_empty, mayday, gas_found, victim_trapped, triage_urgent, stair_smoke, attack_upper, victims_many, first_search, search_mark, end_suggested, fire_found. once: 한 판에 한 번. 선택지 time_cost_sec + then: 정보 확인(시간을 쓴 뒤 then 행동). text·variants의 {이름}은 사건 값으로 채운다 (crew·door_name·victim_name·state·air). effect: force_door·open_door·vent_then_open·rescue_victim·resume·withdraw·overhaul·flood·hold·close_then_resume(화재실 문 닫고 검색 계속)·attack_found(찾은 화점 진압)·halt_here(하던 일 멈춤). 임무 조건(data/command/mission_params.json)이 정해져 있으면 카드 없이 그 행동을 한다. grade: 최선·허용·오답·치명 (화면에는 보이지 않음). skip_if_preordered: 그 선제지시가 켜져 있으면 카드 없이 최선 선택을 실행. 교관이 문구·등급·해설을 고칠 수 있다.",
+  "note": "질문 카드 (기획안 7장). 카드 1장 = SOP 조항 1개. trigger: halt_locked·halt_closed·halt_backdraft·halt_victim(전술 명령이 멈춘 자리), air_alarm, knockdown, arrival, rollover_sign, jump_risk, exposure_heating, shaft, sign_warning, debris_zone, hydrant_out, tank_empty, mayday, gas_found, victim_trapped, triage_urgent, stair_smoke, attack_upper, victims_many, first_search, search_mark, end_suggested, fire_found. once: 한 판에 한 번. 선택지 time_cost_sec + then: 정보 확인(시간을 쓴 뒤 then 행동). text·variants의 {이름}은 사건 값으로 채운다 (crew·door_name·victim_name·state·air). effect: force_door·open_door·vent_then_open·rescue_victim·resume·withdraw·overhaul·flood·hold·close_then_resume(화재실 문 닫고 검색 계속)·attack_found(찾은 화점 진압)·halt_here(하던 일 멈춤). 임무 조건(data/command/mission_params.json)이 정해져 있으면 카드 없이 그 행동을 한다. grade: 최선·허용·오답·치명 (화면에는 보이지 않음). skip_if_preordered: 그 선제지시가 켜져 있으면 카드 없이 최선 선택을 실행. stages: 그 스테이지 시나리오에서만 묻는다(R14). 교관이 문구·등급·해설을 고칠 수 있다.",
   "preorders": [
     {
       "key": "force_locked",
@@ -977,6 +977,211 @@
         "SOP 210-3.5"
       ],
       "debrief": "검색 임무 조는 인명검색이 우선이다(214-2.1). 화재실 문을 닫으면 연기·열 확산과 롤오버를 늦출 수 있고(210-3.5), 화점 위치는 진압대가 쓰도록 보고한다. 수관이 있는 조라면 바로 진압해도 되지만 검색이 늦어진다."
+    },
+    {
+      "id": "SCBA-CHECK-01",
+      "title": "진입 전 공기호흡기 점검",
+      "phase": "진입",
+      "trigger": "arrival",
+      "stages": [
+        "0"
+      ],
+      "asker": "진압1 1조",
+      "urgency": "일반",
+      "once": true,
+      "text": "진입 준비 끝났습니다. 바로 들어갈까요?",
+      "options": [
+        {
+          "text": "짝과 서로 잔압·경보기·면체 밀착을 확인하고 진입 보고 후 들어간다",
+          "grade": "최선",
+          "effect": "note"
+        },
+        {
+          "text": "잔압만 보고 들어간다",
+          "grade": "허용",
+          "effect": "note"
+        },
+        {
+          "text": "시간이 없으니 바로 들어간다",
+          "grade": "오답",
+          "effect": "note"
+        }
+      ],
+      "sop_ref": [
+        "SOP 201-3.7"
+      ],
+      "debrief": "공기호흡기는 진입 전에 짝과 서로 잔압·경보기·면체 밀착을 점검한다. 진입 보고로 지휘부가 진입 대원 현황을 관리한다(201-3.7)."
+    },
+    {
+      "id": "PILOTI-01",
+      "title": "필로티 차량 화재와 출입구",
+      "phase": "도착",
+      "trigger": "arrival",
+      "stages": [
+        "1-2"
+      ],
+      "asker": "진압1 1조",
+      "urgency": "중요",
+      "once": true,
+      "text": "주차장 차량 화재가 공동현관 쪽을 막고 있습니다. 어떻게 할까요?",
+      "options": [
+        {
+          "text": "출입구 방향 연소를 먼저 막고(방수), 외부 방향으로 진압한 뒤 현관으로 진입",
+          "grade": "최선",
+          "effect": "note"
+        },
+        {
+          "text": "구조대는 사다리로 창 진입, 진압대는 차량 화재만 진압",
+          "grade": "허용",
+          "effect": "note"
+        },
+        {
+          "text": "화염 옆으로 바로 현관 진입",
+          "grade": "치명",
+          "effect": "note"
+        }
+      ],
+      "sop_ref": [
+        "SOP 232"
+      ],
+      "debrief": "필로티 차량 화재는 출입구를 막는다. 출입구 쪽 연소를 먼저 차단해 피난·진입로를 확보하고, 외부 방향으로 밀어내며 진압한다(232). 가연성 외장재를 타고 위층 창으로 번지는 것을 함께 막는다."
+    },
+    {
+      "id": "MARKET-01",
+      "title": "전통시장 진입로와 포위 배치",
+      "phase": "도착",
+      "trigger": "arrival",
+      "stages": [
+        "3-1"
+      ],
+      "asker": "진압2 대장",
+      "urgency": "중요",
+      "once": true,
+      "text": "시장 진입로가 불법주차로 좁습니다. 후착대 배치를 어떻게 할까요?",
+      "options": [
+        {
+          "text": "선착대는 화점 진입, 후착대는 반대편 입구·측면 골목으로 돌아 포위 배치",
+          "grade": "최선",
+          "effect": "note"
+        },
+        {
+          "text": "모든 차량을 정면 입구에 모은다",
+          "grade": "오답",
+          "effect": "note"
+        },
+        {
+          "text": "불법주차 차량을 견인한 뒤 진입",
+          "grade": "허용",
+          "effect": "note"
+        }
+      ],
+      "sop_ref": [
+        "SOP 233"
+      ],
+      "debrief": "전통시장은 진입로가 좁고 점포가 붙어 있어 순식간에 번진다. 선착대는 화점에, 후착대는 반대편·측면으로 포위해 연소 저지선을 만든다(233)."
+    },
+    {
+      "id": "BASEMENT-01",
+      "title": "지하층 진입 방향",
+      "phase": "진입",
+      "trigger": "arrival",
+      "stages": [
+        "3-2"
+      ],
+      "asker": "구조1 1조",
+      "urgency": "긴급",
+      "once": true,
+      "text": "지하로 내려가는 계단이 두 곳입니다. 어디로 들어갈까요?",
+      "options": [
+        {
+          "text": "바람이 들어가는 서쪽(급기측) 계단으로, 라이트라인을 깔며 진입. 동쪽은 배기측으로 열어 둔다",
+          "grade": "최선",
+          "effect": "note"
+        },
+        {
+          "text": "가까운 동쪽 계단으로 바로 진입",
+          "grade": "치명",
+          "effect": "note"
+        },
+        {
+          "text": "배연이 될 때까지 진입 대기",
+          "grade": "허용",
+          "effect": "note"
+        }
+      ],
+      "sop_ref": [
+        "SOP 217"
+      ],
+      "debrief": "지하층은 연기·열이 빠져나오는 배기측으로 들어가면 열기를 정면으로 맞는다. 급기측으로 진입하고, 시계 0에서는 라이트라인으로 퇴로를 확보한다(217). 급격한 공기 유입은 백드래프트를 부를 수 있다."
+    },
+    {
+      "id": "WAREHOUSE-01",
+      "title": "샌드위치패널 창고 진입 판단",
+      "phase": "상황평가",
+      "trigger": "arrival",
+      "stages": [
+        "3-3"
+      ],
+      "asker": "진압1 대장",
+      "urgency": "중요",
+      "once": true,
+      "text": "검은 연기가 지붕 틈으로 나오고 외벽 패널이 휘었습니다. 내부로 들어갈까요?",
+      "options": [
+        {
+          "text": "내부 진입 보류 — 방어(병행) 전략, 방수포·외부 방수, 붕괴 반경 1.5배 밖 배치",
+          "grade": "최선",
+          "effect": "note"
+        },
+        {
+          "text": "하역장 입구에서만 짧게 진입해 방수",
+          "grade": "허용",
+          "effect": "note"
+        },
+        {
+          "text": "안쪽 랙까지 들어가 직접 진압",
+          "grade": "치명",
+          "effect": "note"
+        }
+      ],
+      "sop_ref": [
+        "SOP 240",
+        "SOP 205-3.5"
+      ],
+      "debrief": "샌드위치패널 건물은 심재가 타면서 검은 연기를 내고 천장이 갑자기 무너진다. 검은 연기·패널 변위·고온이 보이면 내부 진입을 보류하고 방어·병행 전략으로 바꾸며, 붕괴 반경(건물 높이의 1.5배) 밖에서 활동한다(240, 205-3.5)."
+    },
+    {
+      "id": "SUPERTALL-01",
+      "title": "초고층 재실자 대피",
+      "phase": "상황평가",
+      "trigger": "arrival",
+      "stages": [
+        "4-1"
+      ],
+      "asker": "방재실장",
+      "urgency": "중요",
+      "once": true,
+      "text": "33·34층 근무자를 어디로 대피시킬까요?",
+      "options": [
+        {
+          "text": "30층 피난안전구역으로 유도하고 방재실 비상방송으로 층별 순차 대피",
+          "grade": "최선",
+          "effect": "note"
+        },
+        {
+          "text": "모두 1층까지 계단으로 내려가게 한다",
+          "grade": "오답",
+          "effect": "note"
+        },
+        {
+          "text": "승강기로 바로 내려보낸다",
+          "grade": "치명",
+          "effect": "note"
+        }
+      ],
+      "sop_ref": [
+        "SOP 223"
+      ],
+      "debrief": "초고층은 전 층 동시 대피가 계단을 막는다. 화재층·직상층부터 가까운 피난안전구역으로 유도하고 방재실 방송으로 순차 대피시킨다(223). 일반 승강기는 쓰지 않는다."
     }
   ]
 }

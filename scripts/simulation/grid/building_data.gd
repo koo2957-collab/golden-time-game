@@ -52,6 +52,10 @@ var indoor_tank_l := 0.0
 var fire_doors: Array[Vector2i] = []
 ## 같은 건물 아래층 창 → 위층 창 연소 확대 (SOP 213-1.1)
 var vertical_exposure := false
+## 가연성 외장재: 아래층 창 화염이 위층 창을 데우는 속도 배율 (필로티 다세대, SOP 232, R14)
+var facade_factor := 1.0
+## 실제 층 번호 {층 index: 번호} — 초고층처럼 일부 층만 그릴 때 (R14). 없으면 index가 번호
+var floor_numbers: Dictionary = {}
 ## 배관 샤프트 [{name, rect: Rect2i, levels: [층]}] (SOP 212-2.3)
 var shafts: Array[Dictionary] = []
 ## 외벽 간판 [{name, rect: Rect2i, level}] (SOP 212-1.4)
@@ -81,6 +85,11 @@ func levels() -> Array[int]:
 
 func has_level(level: int) -> bool:
 	return _floors.has(level)
+
+
+## 실제 층 번호 (floor_numbers가 없으면 index)
+func floor_number(level: int) -> int:
+	return int(floor_numbers.get(level, level))
 
 
 func floor_name(level: int) -> String:
@@ -186,6 +195,9 @@ func _parse(data: Dictionary) -> void:
 	for d: Array in data.get("fire_doors", []):
 		fire_doors.append(Vector2i(int(d[0]), int(d[1])))
 	vertical_exposure = bool(data.get("vertical_exposure", false))
+	facade_factor = float(data.get("facade_factor", 1.0))
+	for k in data.get("floor_numbers", {}):
+		floor_numbers[int(k)] = int(data.floor_numbers[k])
 	for sh: Dictionary in data.get("shafts", []):
 		var r: Array = sh.get("rect", [0, 0, 1, 1])
 		shafts.append({"name": str(sh.get("name", "샤프트")), "rect": Rect2i(int(r[0]), int(r[1]), int(r[2]), int(r[3])),

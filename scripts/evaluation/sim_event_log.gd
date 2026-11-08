@@ -201,6 +201,14 @@ static func describe_text(e: Dictionary) -> String:
 			text = "%s — %s" % [e.reason, e.crew]
 		"loadout":
 			text = "출동 준비 — 적재 장비: %s" % (e.items if str(e.items) != "" else "기본 장비만")
+		"lifeline_laid":
+			text = "라이트라인 설치 %dm — %s" % [int(e.length_m), e.crew]
+		"crew_disoriented":
+			text = "%s에서 방향감각 상실 — 위치를 모름, 라이트라인·구조 바람 (SOP 217)" % e.room
+		"crew_reoriented":
+			text = "방향 되찾음 — %s" % e.crew
+		"victim_refuge":
+			text = "%s 피난안전구역(%s) 도착" % [e.who, e.floor]
 		"command_unit_arrived":
 			text = "%s 도착 — 지휘권 이양 브리핑 바람 (SOP 112)" % e.unit
 		"command_transferred":

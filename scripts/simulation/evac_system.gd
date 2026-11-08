@@ -21,6 +21,9 @@ var _alert_ticks: int
 var _clear_m: float
 var _hot_c: float
 var _speed: float
+## 피난안전구역 (초고층, SOP 223, R14): 이 층보다 위의 자력 대피자는 이 층 refuge_cell로 간다. -1이면 없음
+var refuge_level := -1
+var refuge_cell := Vector2i(-1, -1)
 var _o2_slow := 18.0
 var _o2_stop := 10.0
 var _o2_factor := 0.5
@@ -88,7 +91,10 @@ func _walk(v: Victim, dt: float, tick: int) -> void:
 		else:
 			v.pos += (target - v.pos) / d * budget
 			budget = 0.0
-	if fire.building.cell(v.level, floori(v.pos.x), floori(v.pos.y)) in BuildingData.OUTDOOR:
+	var at_refuge := refuge_level > 0 and v.level == refuge_level and v.pos.distance_to(Vector2(refuge_cell) + Vector2(0.5, 0.5)) <= 1.5
+	if at_refuge:
+		events.add(tick, "victim_refuge", {"who": v.label(), "floor": fire.building.floor_name(refuge_level)})
+	if at_refuge or fire.building.cell(v.level, floori(v.pos.x), floori(v.pos.y)) in BuildingData.OUTDOOR:
 		escaped[v.id] = tick
 		v.discovered = true
 		v.state_at_rescue = Victim.State.CONSCIOUS
@@ -116,6 +122,8 @@ func _trap(v: Victim, tick: int) -> void:
 ## 가장 짧은 바깥 출입구 경로 (바깥 칸까지)
 func _exit_path(v: Victim) -> Array:
 	var start := Vector3i(floori(v.pos.x), floori(v.pos.y), v.level)
+	if refuge_level > 0 and v.level > refuge_level:
+		return pathfinder.find_path(start, Vector3i(refuge_cell.x, refuge_cell.y, refuge_level))
 	var best: Array = []
 	for o in fire.openings:
 		if o.kind != Opening.Kind.DOOR or (o.room_a != Opening.OUTSIDE and o.room_b != Opening.OUTSIDE):

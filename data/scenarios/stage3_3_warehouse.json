@@ -1,0 +1,221 @@
+{
+  "id": "stage3_3_warehouse",
+  "title": "샌드위치패널 물류창고 (스테이지 3-3)",
+  "note": "스테이지 3-3 (기획안 4장). 인물·기관은 모두 가상.",
+  "meta": {
+    "order": 14,
+    "sop": "240 창고 · 210 FGI · 205",
+    "difficulty": "상급",
+    "role": "지휘대장 (대응1단계)",
+    "estimated_min": 25,
+    "summary": "샌드위치패널 물류창고 적재 구역에서 불이 나 검은 연기가 지붕 틈으로 나옵니다. 내부 진입 여부를 판단하고(검은 연기·패널 변형·고온), 병행·방어 전략과 방수포를 쓰며, 붕괴 반경 1.5배 밖에 차량·대원을 둡니다.",
+    "stage": "3-3"
+  },
+  "building": "res://data/buildings/warehouse_panel.json",
+  "roster": "res://data/units/test_roster.json",
+  "seed": 2033,
+  "dispatch": {
+    "title": "출동 지령",
+    "lines": [
+      "대상: 샌드위치패널 물류창고 (단층, EPS 심재)",
+      "신고 내용(직원): \"적재 구역에서 연기가 나요. 직원 한 명이 안 보여요.\"",
+      "시간·날씨: 오후 15:20, 맑음, 북서풍 5m/s",
+      "출동대: 진압1(펌프차·물탱크차), 구조1 · 후착: 진압2(약 3분 뒤), 구급1(약 4분 뒤), 구조2(약 5분 뒤), 진압3(약 6분 뒤)"
+    ],
+    "reported_victims": false
+  },
+  "wind": {
+    "from_deg": 315,
+    "speed_mps": 5
+  },
+  "commander": {
+    "name": "한도윤",
+    "rank": "소방령",
+    "title": "지휘대장",
+    "spawn": [
+      6,
+      26
+    ],
+    "note": "가상 인물"
+  },
+  "report_truth": {
+    "use": "",
+    "vehicle_access": "진입·회차 가능",
+    "hazards": [],
+    "note": "최초 상황보고 정답 중 도면으로 알 수 없는 것"
+  },
+  "entry_order_required": true,
+  "evaluation": {
+    "rules": [
+      "safety.ff_down",
+      "safety.air_exit",
+      "safety.withdraw",
+      "safety.command_post",
+      "safety.rit",
+      "safety.emergency",
+      "safety.officer",
+      "safety.entry_judgment",
+      "safety.debris",
+      "safety.monitor",
+      "rescue.survival",
+      "rescue.time",
+      "rescue.search_order",
+      "search.secondary",
+      "rescue.air_mat",
+      "rescue.ems_treat",
+      "rescue.ems_transport",
+      "property.spread",
+      "property.exposure",
+      "property.water",
+      "fire.extinguish",
+      "command.all_clear",
+      "fire.standpipe",
+      "fire.placement",
+      "fire.water_supply",
+      "fire.overhaul",
+      "fire.watch",
+      "command.declare",
+      "command.cards",
+      "command.report",
+      "command.strategy",
+      "command.survey",
+      "command.witness",
+      "command.span",
+      "command.par_end",
+      "command.close_out",
+      "safety.elevator"
+    ],
+    "params": {
+      "rescue.time": {
+        "good_s": 600,
+        "bad_s": 1500
+      },
+      "property.spread": {
+        "bad_rooms": 6
+      }
+    },
+    "time_limit_s": 1800,
+    "objectives": [
+      "진입 여부 판단: 검은 연기·패널 변위·고온 → 방어·병행 (SOP 240)",
+      "화재가스발화 350℃ 대피 (SOP 210)",
+      "붕괴 반경 1.5배 밖 배치 (SOP 205-3.5)",
+      "방수포 활용"
+    ],
+    "end_state": "402호 주민·401호 할머니 생존 구조, 대원 부상 없음, 302호에서 완진(상층 확대 없음)"
+  },
+  "site": {
+    "faces": [
+      {
+        "face": "A",
+        "text": "지붕 틈과 하역장 셔터로 검은 연기, 외벽 패널이 휘어 있음"
+      }
+    ],
+    "lights": [],
+    "shoes": [],
+    "witnesses": [
+      {
+        "name": "물류팀장",
+        "source": "관계자",
+        "pos": [
+          26,
+          23
+        ],
+        "arrive_s": 0,
+        "statements": {
+          "victims": {
+            "text": "직원 한 명이 안 보였는데… 휴게소에 있다고 연락 왔어요. 안에는 아무도 없어요.",
+            "reliable": true,
+            "rooms": []
+          },
+          "origin": {
+            "text": "랙 3번 쪽이에요.",
+            "reliable": true
+          },
+          "hazards": {
+            "text": "패널 안이 스티로폼이에요.",
+            "reliable": true
+          },
+          "doors": {
+            "text": "하역장 셔터 2곳과 사무실 문이 있어요.",
+            "reliable": true
+          }
+        }
+      }
+    ]
+  },
+  "reinforcements": "res://data/units/dev_reinforcements.json",
+  "arrivals": [
+    {
+      "squad": "pump2",
+      "time_s": 180
+    },
+    {
+      "squad": "ems1",
+      "time_s": 240
+    },
+    {
+      "squad": "rescue2",
+      "time_s": 300
+    },
+    {
+      "squad": "pump3",
+      "time_s": 360
+    }
+  ],
+  "support": {
+    "추가 출동대 요청": {
+      "squads": [
+        "pump3",
+        "ems2"
+      ],
+      "delay_s": 420
+    },
+    "대응 1단계 발령": {
+      "squads": [
+        "pump3",
+        "pump4",
+        "ems2"
+      ],
+      "delay_s": 420
+    },
+    "note": "지원 요청(SOP 103-1.2) 후 도착할 출동대와 걸리는 시간 (추정)"
+  },
+  "staging": {
+    "name": "도로 동쪽",
+    "lanes": [
+      {
+        "y": 36,
+        "x_min": 43
+      },
+      {
+        "y": 30,
+        "x_min": 43
+      }
+    ],
+    "gap_cells": 1,
+    "note": "대기1단계 장소 (SOP 103-2.1). 후착 차량은 지도 동쪽 끝에서 서쪽을 보고 들어와 차로(y)의 x_min부터 차례로 선다. 자리가 없으면 진입로에서 기다린다"
+  },
+  "ems": {
+    "hospital": "○○병원 응급실 (가상)",
+    "note": "이송 병원 (SOP 400-3.2.4)"
+  },
+  "victims": [],
+  "fire": {
+    "ignitions": [
+      {
+        "level": 1,
+        "cell": [
+          36,
+          10
+        ],
+        "time_s": 0,
+        "note": "적재 랙 3"
+      }
+    ],
+    "doors_closed": [],
+    "doors_open": [],
+    "doors_locked": [],
+    "note_doors": "",
+    "preburn_s": 180
+  }
+}

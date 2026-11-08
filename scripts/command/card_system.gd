@@ -131,6 +131,9 @@ func _scan_events(tick: int) -> void:
 		for spec: Dictionary in cards:
 			if str(spec.get("trigger", "")) != trigger:
 				continue
+			# 스테이지 전용 카드 (R14): stages에 지금 시나리오의 스테이지가 있어야 묻는다
+			if spec.has("stages") and not (sim and str(sim.scenario.get("meta", {}).get("stage", "")) in spec.stages):
+				continue
 			if bool(spec.get("once", false)) and log.any(func(l: Dictionary) -> bool: return l.id == str(spec.id)) \
 					or queue.any(func(q: Card) -> bool: return q.id == str(spec.id)):
 				continue

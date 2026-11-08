@@ -403,6 +403,8 @@ func _on_command(id: String) -> void:
 			else:
 				selection.monitor_vehicle = pump
 				selection.begin_mode(SelectionController.Mode.MONITOR)
+		"lifeline":
+			selection.begin_mode(SelectionController.Mode.LIFELINE)
 		"elevator":
 			if not sim.elevator.available():
 				hud.show_notice("이 건물에는 비상용승강기가 없습니다")

@@ -60,11 +60,12 @@ func ride(crew_id: int, target_level: int, tick: int) -> bool:
 	for r in rides:
 		if int(r.crew) == crew_id:
 			return false
-	var floors := absi(target_level - c.leader.level)
+	var b := fire.building
+	var floors := absi(b.floor_number(target_level) - b.floor_number(c.leader.level))
 	var seconds := _door_s + floors * _per_floor_s
 	rides.append({"crew": crew_id, "level": target_level, "arrive_tick": tick + roundi(seconds / SimClock.TICK_DT)})
 	var ff := fire_floor()
-	if ff > 0 and target_level > ff - 2:
+	if ff > 0 and b.floor_number(target_level) > b.floor_number(ff) - 2:
 		violations += 1
 		events.add(tick, "elevator_too_high", {"crew": _crew_name(c), "floor": fire.building.floor_name(target_level),
 			"fire_floor": fire.building.floor_name(ff)})

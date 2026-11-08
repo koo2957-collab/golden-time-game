@@ -1,0 +1,548 @@
+{
+  "id": "sop212_1_commercial_kitchen",
+  "title": "일반건축물 ① 저녁 · 1층 식당 주방",
+  "note": "정식 시나리오 (M9a). 3층 근린생활시설(식당·학원·사무실). 인물·상호는 모두 가상.",
+  "meta": {
+    "order": 6,
+    "sop": "212 일반 건축물화재",
+    "difficulty": "중급",
+    "role": "선착대장",
+    "estimated_min": 30,
+    "summary": "저녁 7시 30분, 1층 식당 주방에서 불이 났습니다. 2층 학원에는 저녁 수업 중인 학생과 강사가 있고 스스로 내려오기 시작합니다. 계단에 연기가 차면 대피하던 사람이 갇힙니다. 주방 옆 배관 샤프트(PS)로 불이 위층에 오를 수 있고, 2층 간판 뒤 창에서 화염이 나오면 간판이 떨어집니다. 3층 사무실에는 야근자가 있을 수 있습니다."
+  },
+  "building": "res://data/buildings/commercial_3f.json",
+  "roster": "res://data/units/test_roster.json",
+  "seed": 2121,
+  "dispatch": {
+    "title": "출동 지령 — 근린생활시설 화재",
+    "lines": [
+      "대상: 3층 근린생활시설 (철근콘크리트조) — 1층 식당·편의점, 2층 학원, 3층 사무실",
+      "신고 내용(식당 사장): \"주방 가스레인지에서 기름에 불이 붙었어요. 손님은 다 나왔는데 위층 학원에 학생들이 있어요.\"",
+      "시간·날씨: 평일 19:30, 맑음, 서풍 2m/s",
+      "출동대: 진압1(펌프차·물탱크차), 구조1 (선착) · 구급1(약 4분 뒤) · 후착: 진압2(펌프차, 약 3분 뒤), 구조2(약 5분 뒤)",
+      "소화전: 건물 동쪽 보도 지상식 1개소 · 비상구: 건물 서쪽(B면) · 대기1단계 장소: 도로 동쪽"
+    ],
+    "reported_victims": true
+  },
+  "wind": {
+    "from_deg": 270,
+    "speed_mps": 2,
+    "note": "바람이 불어오는 방향(북=0, 시계방향)과 풍속"
+  },
+  "commander": {
+    "name": "서정호",
+    "rank": "소방경",
+    "title": "선착대장",
+    "spawn": [
+      6,
+      26
+    ],
+    "note": "가상 인물"
+  },
+  "report_truth": {
+    "use": "근린생활시설",
+    "vehicle_access": "진입·회차 가능",
+    "hazards": [
+      "위험물(가스 등)"
+    ],
+    "note": "최초 상황보고 정답 중 도면으로 알 수 없는 것 (주방 가스는 신고 내용으로 알려짐)"
+  },
+  "entry_order_required": true,
+  "evaluation": {
+    "rules": [
+      "safety.ff_down",
+      "safety.air_exit",
+      "safety.withdraw",
+      "safety.command_post",
+      "safety.rit",
+      "safety.emergency",
+      "safety.officer",
+      "safety.entry_judgment",
+      "safety.debris",
+      "rescue.survival",
+      "rescue.time",
+      "rescue.search_order",
+      "rescue.ems_treat",
+      "rescue.ems_transport",
+      "property.spread",
+      "property.water",
+      "property.gas",
+      "property.exposure",
+      "fire.extinguish",
+      "fire.shaft",
+      "fire.placement",
+      "fire.water_supply",
+      "fire.overhaul",
+      "fire.watch",
+      "command.declare",
+      "command.report",
+      "command.strategy",
+      "command.survey",
+      "command.witness",
+      "command.span",
+      "command.par_end"
+    ],
+    "params": {
+      "rescue.time": {
+        "good_s": 600,
+        "bad_s": 1500
+      },
+      "property.spread": {
+        "bad_rooms": 6
+      }
+    },
+    "time_limit_s": 3000,
+    "objectives": [
+      "2층 학원 인원 확인 — 스스로 나온 사람과 갇힌 사람 구분, 갇힌 위치부터 구조 (SOP 212-1.2)",
+      "주방 가스 차단과 주방 화재 진압 (SOP 214-2.2 준용, 212-2.4)",
+      "주방 옆 배관 샤프트(PS) 위층 확인 — 2층 PS로 오르기 전에 (SOP 212-2.3)",
+      "2층 간판 아래·창 아래 낙하물 구역 피하기 (SOP 212-1.4)",
+      "3층 야근자 검색 (관계인 진술 확인)"
+    ],
+    "end_state": "학원 인원·3층 야근자 모두 생존, 대원 부상 없음, 1층 주방에서 완진(샤프트 확대 없음)"
+  },
+  "site": {
+    "faces": [
+      {
+        "face": "C",
+        "text": "건물 뒤 주방 배기구에서 검은 연기, 가스 배관이 벽을 따라 올라감",
+        "hazard": "위험물(가스 등)"
+      }
+    ],
+    "lights": [
+      "2F_south_w",
+      "2F_north_w",
+      "3F_north_e"
+    ],
+    "shoes": [],
+    "gas": {
+      "valve": [
+        26,
+        2
+      ],
+      "stove": [
+        25,
+        6,
+        1
+      ],
+      "text": "주방 가스 중간밸브",
+      "note": "건물 뒤(C면) 가스 계량기 옆 밸브"
+    },
+    "witnesses": [
+      {
+        "name": "식당 사장",
+        "source": "신고자",
+        "pos": [
+          16,
+          23
+        ],
+        "arrive_s": 0,
+        "statements": {
+          "victims": {
+            "text": "2층 학원에 저녁 수업이 있어요. 학생들이 몇 명인지는 몰라요.",
+            "reliable": true,
+            "rooms": [
+              "2F_south_w"
+            ]
+          },
+          "origin": {
+            "text": "주방 가스레인지 기름 냄비에서 불이 났어요.",
+            "reliable": true
+          },
+          "hazards": {
+            "text": "가스 밸브는 건물 뒤 계량기 옆에 있어요.",
+            "reliable": true,
+            "hazard": "위험물(가스 등)"
+          },
+          "doors": {
+            "text": "뒤쪽 서쪽에 비상구가 있어요. 계단은 서쪽 끝이에요.",
+            "reliable": true
+          }
+        }
+      },
+      {
+        "name": "학원 원장",
+        "source": "관계자",
+        "pos": [
+          40,
+          23
+        ],
+        "arrive_s": 200,
+        "statements": {
+          "victims": {
+            "text": "학생 네 명과 강사 한 명이 있었어요. 3층 사무실에 야근하는 분이 있을 수도 있어요.",
+            "reliable": true,
+            "rooms": [
+              "2F_south_w",
+              "2F_north_w",
+              "3F_north_e"
+            ]
+          },
+          "origin": {
+            "text": "저는 밖에 있다 왔어요.",
+            "reliable": true
+          },
+          "hazards": {
+            "text": "모르겠어요.",
+            "reliable": true
+          },
+          "doors": {
+            "text": "학원 문은 다 열려 있어요.",
+            "reliable": true
+          }
+        }
+      }
+    ]
+  },
+  "reinforcements": "res://data/units/dev_reinforcements.json",
+  "arrivals": [
+    {
+      "squad": "pump2",
+      "time_s": 180
+    },
+    {
+      "squad": "ems1",
+      "time_s": 240
+    },
+    {
+      "squad": "rescue2",
+      "time_s": 300
+    }
+  ],
+  "support": {
+    "추가 출동대 요청": {
+      "squads": [
+        "pump3",
+        "ems2"
+      ],
+      "delay_s": 420
+    },
+    "대응 1단계 발령": {
+      "squads": [
+        "pump3",
+        "pump4",
+        "ems2"
+      ],
+      "delay_s": 420
+    },
+    "note": "지원 요청 후 도착할 출동대와 걸리는 시간 (추정)"
+  },
+  "staging": {
+    "name": "도로 동쪽",
+    "lanes": [
+      {
+        "y": 36,
+        "x_min": 43
+      },
+      {
+        "y": 30,
+        "x_min": 43
+      }
+    ],
+    "gap_cells": 1,
+    "note": "대기1단계 장소 (SOP 103-2.1). 후착 차량은 지도 동쪽 끝에서 서쪽을 보고 들어와 차로(y)의 x_min부터 차례로 선다. 자리가 없으면 진입로에서 기다린다"
+  },
+  "ems": {
+    "hospital": "○○병원 응급실 (가상)",
+    "note": "이송 병원 (SOP 400-3.2.4)"
+  },
+  "approach": {
+    "note": "선착 차량 배치 보기 (SOP 200-3.1.1). vehicles는 진압1 차량 순서(펌프차, 물탱크차)",
+    "default": 1,
+    "options": [
+      {
+        "id": "front",
+        "name": "식당 정문 바로 앞",
+        "score": 0.4,
+        "text": "식당 정문 앞에 세운다. 수관은 짧지만 2층 간판과 창 바로 아래라 낙하물·화염 위험이 크고 사다리차 자리를 막는다.",
+        "feedback": "간판·창 낙하 범위에 차량을 두고 특수차 공간을 막았다 (200-3.1.1.1, 212-1.4)",
+        "vehicles": [
+          {
+            "spawn": [
+              20,
+              30
+            ],
+            "heading": [
+              1,
+              0
+            ]
+          },
+          {
+            "spawn": [
+              9,
+              36
+            ],
+            "heading": [
+              1,
+              0
+            ]
+          }
+        ]
+      },
+      {
+        "id": "west",
+        "name": "건물 서쪽 끝(비상구 쪽) 앞, 물탱크차는 옆 차로",
+        "score": 1.0,
+        "text": "간판 범위를 벗어난 서쪽 끝 앞에 세운다. 비상구·계단 쪽과 가깝고 정면은 비워 둔다.",
+        "feedback": "낙하물 범위를 피하고 비상구·계단 쪽 접근과 정면 공간을 남겼다 (200-3.1.1.1)",
+        "vehicles": [
+          {
+            "spawn": [
+              9,
+              30
+            ],
+            "heading": [
+              1,
+              0
+            ]
+          },
+          {
+            "spawn": [
+              9,
+              36
+            ],
+            "heading": [
+              1,
+              0
+            ]
+          }
+        ]
+      },
+      {
+        "id": "east",
+        "name": "편의점 앞을 지나 소화전 가까이",
+        "score": 0.6,
+        "text": "동쪽 소화전 가까이에 세운다. 소화전은 빠르지만 계단·비상구(서쪽)와 멀고 후착대 입구를 좁힌다.",
+        "feedback": "소화전은 가까웠지만 계단 쪽 진입이 멀고 후착대 공간을 좁혔다 (200-3.1.2.1)",
+        "vehicles": [
+          {
+            "spawn": [
+              35,
+              30
+            ],
+            "heading": [
+              1,
+              0
+            ]
+          },
+          {
+            "spawn": [
+              19,
+              36
+            ],
+            "heading": [
+              1,
+              0
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "victims": [
+    {
+      "name": "학생1",
+      "age": 16,
+      "mobility": "",
+      "level": 2,
+      "cell": [
+        12,
+        16
+      ],
+      "self_evac": true,
+      "alert_s": 150
+    },
+    {
+      "name": "학생2",
+      "age": 16,
+      "mobility": "",
+      "level": 2,
+      "cell": [
+        15,
+        16
+      ],
+      "self_evac": true,
+      "alert_s": 150
+    },
+    {
+      "name": "학생3",
+      "age": 17,
+      "mobility": "",
+      "level": 2,
+      "cell": [
+        18,
+        16
+      ],
+      "self_evac": true,
+      "alert_s": 240,
+      "note": "이어폰을 끼고 자습 — 늦게 알아차림"
+    },
+    {
+      "name": "학생4",
+      "age": 15,
+      "mobility": "",
+      "level": 2,
+      "cell": [
+        21,
+        18
+      ],
+      "self_evac": true,
+      "alert_s": 240,
+      "note": "이어폰을 끼고 자습 — 늦게 알아차림"
+    },
+    {
+      "name": "강사",
+      "age": 31,
+      "mobility": "",
+      "level": 2,
+      "cell": [
+        20,
+        7
+      ],
+      "self_evac": true,
+      "alert_s": 60
+    },
+    {
+      "name": "야근자",
+      "age": 45,
+      "mobility": "이어폰 착용 (화재를 모름)",
+      "level": 3,
+      "cell": [
+        42,
+        7
+      ]
+    }
+  ],
+  "fire": {
+    "ignitions": [
+      {
+        "level": 1,
+        "cell": [
+          25,
+          6
+        ],
+        "time_s": 0,
+        "note": "주방 가스레인지 기름 냄비"
+      },
+      {
+        "level": 1,
+        "cell": [
+          20,
+          8
+        ],
+        "time_s": 45,
+        "note": "선반으로 번짐"
+      }
+    ],
+    "doors_closed": [],
+    "doors_open": [
+      [
+        11,
+        10,
+        1
+      ],
+      [
+        21,
+        10,
+        1
+      ],
+      [
+        31,
+        10,
+        1
+      ],
+      [
+        40,
+        10,
+        1
+      ],
+      [
+        8,
+        11,
+        1
+      ],
+      [
+        18,
+        13,
+        1
+      ],
+      [
+        37,
+        13,
+        1
+      ],
+      [
+        18,
+        19,
+        1
+      ],
+      [
+        37,
+        19,
+        1
+      ],
+      [
+        11,
+        10,
+        2
+      ],
+      [
+        21,
+        10,
+        2
+      ],
+      [
+        31,
+        10,
+        2
+      ],
+      [
+        40,
+        10,
+        2
+      ],
+      [
+        18,
+        13,
+        2
+      ],
+      [
+        37,
+        13,
+        2
+      ],
+      [
+        11,
+        10,
+        3
+      ],
+      [
+        21,
+        10,
+        3
+      ],
+      [
+        31,
+        10,
+        3
+      ],
+      [
+        40,
+        10,
+        3
+      ],
+      [
+        18,
+        13,
+        3
+      ],
+      [
+        37,
+        13,
+        3
+      ]
+    ],
+    "doors_locked": [],
+    "note_doors": "모든 문 열림 (저녁 영업 중)"
+  }
+}

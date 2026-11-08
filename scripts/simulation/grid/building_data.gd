@@ -49,6 +49,10 @@ var outlet_hose_m := 30.0
 var fire_doors: Array[Vector2i] = []
 ## 같은 건물 아래층 창 → 위층 창 연소 확대 (SOP 213-1.1)
 var vertical_exposure := false
+## 배관 샤프트 [{name, rect: Rect2i, levels: [층]}] (SOP 212-2.3)
+var shafts: Array[Dictionary] = []
+## 외벽 간판 [{name, rect: Rect2i, level}] (SOP 212-1.4)
+var signs: Array[Dictionary] = []
 var load_errors: PackedStringArray = []
 
 var _floors: Dictionary = {}  # level -> FloorData
@@ -176,6 +180,13 @@ func _parse(data: Dictionary) -> void:
 	for d: Array in data.get("fire_doors", []):
 		fire_doors.append(Vector2i(int(d[0]), int(d[1])))
 	vertical_exposure = bool(data.get("vertical_exposure", false))
+	for sh: Dictionary in data.get("shafts", []):
+		var r: Array = sh.get("rect", [0, 0, 1, 1])
+		shafts.append({"name": str(sh.get("name", "샤프트")), "rect": Rect2i(int(r[0]), int(r[1]), int(r[2]), int(r[3])),
+			"levels": sh.get("levels", []).map(func(l: Variant) -> int: return int(l))})
+	for sg: Dictionary in data.get("signs", []):
+		var r: Array = sg.get("rect", [0, 0, 1, 1])
+		signs.append({"name": str(sg.get("name", "간판")), "rect": Rect2i(int(r[0]), int(r[1]), int(r[2]), int(r[3])), "level": int(sg.get("level", 2))})
 	if width <= 0 or height <= 0:
 		load_errors.append("width/height가 올바르지 않습니다.")
 		return

@@ -47,7 +47,10 @@ func test_campaign_progress() -> void:
 	assert_eq(p[1].grades.sop214_1_day_living, "B", "최고 등급")
 	assert_eq(p[1].status, Campaign.Status.DONE, "B면 2장 완료")
 	assert_eq(p[2].status, Campaign.Status.OPEN, "3장 열림")
-	assert_eq(p[-1].status, Campaign.Status.SOON, "시나리오 없는 장은 준비 중")
+	for ch: Dictionary in p:
+		if ch.chapter.scenarios.is_empty():
+			assert_eq(ch.status, Campaign.Status.SOON, "시나리오 없는 장은 준비 중")
+	assert_eq(p.size(), 6, "6장")
 	var ids := {}
 	for s in ScenarioLoader.list():
 		ids[str(s.id)] = true

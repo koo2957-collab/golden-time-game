@@ -23,7 +23,7 @@ const DISPATCH_CENTER := "119종합상황실"
 ## 이 사건이 생기면 1배속으로 돌아간다
 const AUTO_SLOW_TYPES: Array[String] = [
 	"ff_down", "mayday", "air_alarm", "victim_found", "rollover_sign", "backdraft_sign", "backdraft",
-	"fgi_warning", "flashover", "rekindle", "collapse_sign", "collapse", "gas_explosion", "exposure_ignition", "jump_risk",
+	"fgi_warning", "flashover", "rekindle", "collapse_sign", "collapse", "gas_explosion", "exposure_ignition", "jump_risk", "sign_warning", "shaft_ignition",
 ]
 ## 대원이 무전으로 보고하는 사건과 우선순위 (107-1.3). 대원 쓰러짐은 SafetySystem의 긴급탈출 선언으로 보고한다
 const REPORT_PRIORITY := {
@@ -59,6 +59,14 @@ const REPORT_PRIORITY := {
 	"debris_zone": Radio.Priority.KEY_FACTOR,
 	"debris_zone_entered": Radio.Priority.SAFETY,
 	"air_mat_ready": Radio.Priority.KEY_FACTOR,
+	"sign_warning": Radio.Priority.SAFETY,
+	"sign_fall": Radio.Priority.SAFETY,
+	"shaft_heat": Radio.Priority.KEY_FACTOR,
+	"shaft_smoke": Radio.Priority.KEY_FACTOR,
+	"shaft_ignition": Radio.Priority.KEY_FACTOR,
+	"shaft_checked": Radio.Priority.KEY_FACTOR,
+	"victim_trapped": Radio.Priority.KEY_FACTOR,
+	"victim_self_evac": Radio.Priority.KEY_FACTOR,
 	"tactical_done": Radio.Priority.TACTICS,
 	"overhaul_done": Radio.Priority.KEY_FACTOR,
 }

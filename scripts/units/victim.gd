@@ -33,6 +33,10 @@ var rescued_tick := -1
 var jumper := false
 ## 창에서 떨어졌음 (매트 착지 포함)
 var fell := false
+## 걸어서 스스로 대피할 수 있는 사람 (시나리오 self_evac: true, SOP 212-1.2)
+var self_evac := false
+## 화재를 알아차리는 시간 (초, 음수면 기본값 evac_alert_s)
+var alert_s := -1.0
 
 
 func fed() -> float:

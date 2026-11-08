@@ -223,6 +223,22 @@ static func describe_text(e: Dictionary) -> String:
 			text = "송수구 미연결 — 방수구 사용 불가 (%s)" % e.crew
 		"hose_outlet_laid":
 			text = "방수구에서 수관 연장 — %s (%s)" % [e.crew, e.level]
+		"sign_warning":
+			text = "간판 뒤 화염 분출 — %s 낙하 위험, 아래 접근 금지" % e.name
+		"sign_fall":
+			text = "간판 낙하 — %s" % e.name
+		"shaft_heat":
+			text = "%s 샤프트(PS)로 화염·연기 유입 — 위층 확인 필요" % e.floor
+		"shaft_smoke":
+			text = "%s 샤프트(PS)에서 연기 — 배관 관통부 연소 우려" % e.floor
+		"shaft_ignition":
+			text = "샤프트 통해 연소 확대 — %s" % e.room
+		"shaft_checked":
+			text = "%s 샤프트(PS) 확인·차단" % e.floor
+		"victim_trapped":
+			text = "대피하던 사람이 연기에 갇힘 — %s, %s" % [e.who, e.room]
+		"victim_self_evac":
+			text = "자력 대피 — %s 밖으로 나옴" % e.who
 		"jump_risk":
 			text = "창가 요구조자가 뛰어내리려 함 — %s, %s (공기안전매트 필요)" % [e.who, e.room]
 		"victim_jumped":

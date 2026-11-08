@@ -23,6 +23,9 @@ var mats: Array[Vector2] = []
 var setups: Dictionary = {}
 ## 낙하물 구역 [{center: Vector2, radius: 셀, room: 이름}]
 var zones: Array[Dictionary] = []
+## 간판 index -> 떨어질 tick (경고 뒤) / 떨어짐 (SOP 212-1.4)
+var sign_due: Dictionary = {}
+var sign_fallen: Dictionary = {}
 ## 구역 안에 대원이 머문 시간 합 (대원·초)
 var zone_seconds := 0.0
 var warned: Dictionary = {}  # 요구조자 id -> true (뛰어내리려 함 알림)
@@ -31,6 +34,8 @@ var jumped: Dictionary = {}  # 요구조자 id -> {mat: bool, tick}
 var _warn_fed: float
 var _jump_fed: float
 var _jump_delay_ticks: int
+var _sign_ticks: int
+var _sign_radius: float
 var _burning_since: Dictionary = {}  # 요구조자 id -> 그 방에 불이 붙은 tick
 var _setup_s: float
 var _mat_radius: float
@@ -50,13 +55,15 @@ func _init(p_fire: FireSim, p_exposure: ExposureSystem, p_units: UnitSystem, p_r
 	_warn_fed = params.value("jump_warn_fed")
 	_jump_fed = params.value("jump_fed")
 	_jump_delay_ticks = roundi(params.value("jump_delay_s") / SimClock.TICK_DT)
+	_sign_ticks = roundi(params.value("sign_fall_s") / SimClock.TICK_DT)
+	_sign_radius = params.value("sign_radius_m") / _cell_m
 	_setup_s = params.value("air_mat_setup_s")
 	_mat_radius = params.value("air_mat_radius_m") / _cell_m
 
 
-## 이 건물에서 추락·낙하물을 따지는가 (3층 이상 건물)
+## 이 건물에서 추락·낙하물을 따지는가 (3층 이상 건물이거나 외벽 간판이 있는 건물)
 func enabled() -> bool:
-	return fire.building.levels().size() >= 3
+	return fire.building.levels().size() >= 3 or not fire.building.signs.is_empty()
 
 
 ## 공기안전매트 설치 명령: 구조대 조만 (매트를 싣고 다닌다)
@@ -101,6 +108,7 @@ func step(dt: float, tick: int) -> void:
 		if v.jumper and v.state == Victim.State.CONSCIOUS and v.carried_by < 0 and v.level >= 3 and not jumped.has(v.id):
 			_step_jumper(v, tick)
 	_update_zones(tick)
+	_update_signs(tick)
 	_count_zone(dt, tick)
 
 
@@ -151,6 +159,38 @@ func _step_jumper(v: Victim, tick: int) -> void:
 		v.state = Victim.State.DEAD
 		events.add(tick, "victim_jumped", {"who": v.label(), "mat": false, "crew": "현장 대원"})
 		events.add(tick, "victim_state", {"who": v.label(), "state": Victim.STATE_NAMES[Victim.State.DEAD], "reason": "추락"})
+
+
+## 간판 뒤 창이나 바로 아래층 가게 창에서 화염이 나오면(깨짐) 경고, sign_fall_s 뒤 낙하. 그때 아래에 있던 대원은 행동 불능
+func _update_signs(tick: int) -> void:
+	var b := fire.building
+	for i in b.signs.size():
+		if sign_fallen.has(i):
+			continue
+		var sg: Dictionary = b.signs[i]
+		var r: Rect2i = sg.rect
+		if not sign_due.has(i):
+			for o in fire.openings:
+				if o.kind == Opening.Kind.WINDOW and o.level in [int(sg.level), int(sg.level) - 1] and o.broken and _sign_covers(r, o.cells[0]):
+					sign_due[i] = tick + _sign_ticks
+					events.add(tick, "sign_warning", {"name": sg.name, "crew": "현장안전담당"})
+					break
+			continue
+		if tick < int(sign_due[i]):
+			continue
+		sign_fallen[i] = tick
+		var center := Vector2(r.get_center()) + _outward(r.position) * 2.0
+		zones.append({"center": center, "radius": _sign_radius, "level": int(sg.level), "tick": tick})
+		events.add(tick, "sign_fall", {"name": sg.name, "crew": "현장 대원"})
+		for ff in units.firefighters:
+			if ff.level == 1 and not ff.incapacitated and not ff.aboard and ff.pos.distance_to(center) <= _sign_radius:
+				ff.incapacitated = true
+				ff.path.clear()
+				events.add(tick, "ff_down", {"crew": "%s %s" % [_crew_name(units.get_crew(ff.crew_id)), ff.name], "reason": "간판 낙하"})
+
+
+func _sign_covers(r: Rect2i, cell: Vector2i) -> bool:
+	return cell.x >= r.position.x - 2 and cell.x < r.end.x + 2 and absi(cell.y - r.position.y) <= 1
 
 
 ## 3층 이상 바깥 창이 깨지면 그 아래에 낙하물 구역

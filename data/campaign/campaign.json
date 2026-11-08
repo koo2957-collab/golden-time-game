@@ -49,9 +49,11 @@
     },
     {
       "id": "general",
-      "title": "6장 · 일반 건축물 (준비 중)",
-      "text": "상가·사무실 등 일반 건축물 화재 (SOP 212) 시나리오를 추가할 예정이다.",
-      "scenarios": [],
+      "title": "6장 · 일반 건축물",
+      "text": "상가 건물: 자력 대피와 갇힌 사람, 배관 샤프트, 간판 낙하 (SOP 212).",
+      "scenarios": [
+        "sop212_1_commercial_kitchen"
+      ],
       "min_grade": "C"
     }
   ]

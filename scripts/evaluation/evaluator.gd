@@ -239,6 +239,21 @@ func _check_rescue_time() -> Dictionary:
 	return {"score": sum / victims.size(), "detail": "%s (기준 %d분 안)" % [", ".join(parts), int(_params.good_s / 60)]}
 
 
+## 샤프트 확인 (SOP 212-2.3): 샤프트로 불·연기가 들었을 때만
+func _check_shaft() -> Dictionary:
+	var sh := sim.shafts
+	if sh.hot.is_empty():
+		return {}
+	var spread := sh.ignited.size()
+	var first := sh.hot.values().min() as int
+	if spread > 0:
+		return {"score": 0.0, "detail": "샤프트로 %d개 층에 연소 확대 — 위층 샤프트를 확인하지 않음" % spread}
+	if sh.checked.is_empty():
+		return {"score": 0.5, "detail": "샤프트 유입(%s) 뒤 확인하지 않았지만 확대 전에 끝남" % _t(first)}
+	var t := (sh.checked.values().min() as int - first) * SimClock.TICK_DT
+	return {"score": _linear(t, _params.good_s, _params.bad_s), "detail": "샤프트 유입 %s, %d초 뒤 확인·차단" % [_t(first), roundi(t)]}
+
+
 ## 창가 주민 추락 대비 공기안전매트 (SOP 213-2.4.3): 뛰어내리려 한 사람이 있을 때만
 func _check_air_mat() -> Dictionary:
 	var f := sim.falls

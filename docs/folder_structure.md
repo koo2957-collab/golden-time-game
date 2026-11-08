@@ -188,6 +188,19 @@ tests/             단위 테스트(test_*.gd)와 조작 점검(ui_smoke.gd)
 
 검증은 `tests/test_tactical.gd`, `tests/test_hints.gd`.
 
+## 일반 건축물화재 요약 (M9a)
+
+| 요소 | 내용 |
+|---|---|
+| 건물 | `data/buildings/commercial_3f.json` (1층 식당·주방·편의점·창고, 2층 학원, 3층 사무실, 서쪽 계단실·비상구, 가운데 PS). 키 `shafts [{name, rect, levels}]`, `signs [{name, rect, level}]` |
+| 자력 대피 | `scripts/simulation/evac_system.gd` (`EvacSystem`). 요구조자 `self_evac`, `alert_s`. 값 evac_alert_s·evac_clear_m·evac_hot_c·evac_speed_factor |
+| 샤프트 | `scripts/simulation/hazards/shaft_system.gd` (`ShaftSystem`: hot·checked·ignited). 값 shaft_rise_s·shaft_spread_s |
+| 간판 | `FallSystem._update_signs` (sign_due·sign_fallen). 값 sign_fall_s·sign_radius_m |
+| 평가·힌트 | fire.shaft (34개), 힌트 shaft_heat·sign_warning·victim_trapped (22종) |
+| 시나리오 | `sop212_1_commercial_kitchen.json` (order 6): 강사·학생1·2 자력 대피, 학생3·4 갇힘, 3층 야근자(모름), 주방 가스 밸브(C면), 배치 보기 3종 |
+
+검증은 `tests/test_general.gd`.
+
 ## 아파트 상층 확대·추락·낙하물 요약 (M8b-2)
 
 | 요소 | 내용 |

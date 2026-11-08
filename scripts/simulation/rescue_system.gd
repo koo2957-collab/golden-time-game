@@ -93,6 +93,8 @@ func add_victims(list: Array, rng: RandomNumberGenerator) -> void:
 		v.mobility = str(data.get("mobility", ""))
 		v.level = int(data.get("level", 1))
 		v.jumper = bool(data.get("window", false))
+		v.self_evac = bool(data.get("self_evac", false))
+		v.alert_s = float(data.get("alert_s", -1.0))
 		if data.has("cell"):
 			var c: Array = data.cell
 			v.pos = Vector2(int(c[0]) + 0.5, int(c[1]) + 0.5)

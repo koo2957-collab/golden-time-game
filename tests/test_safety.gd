@@ -172,5 +172,5 @@ func test_safety_rules_in_evaluation() -> void:
 	assert_eq(by["command.par_end"].score, 1.0, "모두 나온 뒤 인원점검 (%s)" % by["command.par_end"].detail)
 	assert_true(not by["safety.emergency"].applicable, "긴급탈출이 없으면 해당 없음")
 	assert_true(str(by["safety.rit"].tactic).contains("SSG 9"), "소방전술 근거 함께 표기")
-	assert_eq(r.rules_version, 2, "규칙 판 기록")
+	assert_eq(r.rules_version, 3, "규칙 판 기록")
 	assert_true(r.decisions.size() >= 2, "의사결정 기록")

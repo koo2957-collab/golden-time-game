@@ -42,3 +42,4 @@
 | R2 실시간 규칙 (난이도 훈련·실전·악조건) | [R2_realtime.md](R2_realtime.md) |
 | R3 질문 카드 엔진 | [R3_cards.md](R3_cards.md) |
 | R4 질문 카드 확장 (28장) | [R4_cards30.md](R4_cards30.md) |
+| R5 평가 배점·SOP 준수 축 | [R5_scoring.md](R5_scoring.md) |

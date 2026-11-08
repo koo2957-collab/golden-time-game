@@ -10,7 +10,7 @@ GODOT --headless --path . -s res://tests/run_tests.gd
 GODOT --path . -s res://tests/ui_smoke.gd
 ```
 
-> 상태: 카드 테스트(test_cards·test_cards_r4) 12개 통과. 전체 단위 테스트는 124개까지 실패 없이 진행하다 PC 이동으로 중단했고, 조작 점검(ui_smoke)은 아직 돌리지 않았다. 다음 작업 전에 전체 테스트와 조작 점검을 먼저 돌린다.
+전체 결과는 `결과: 178 통과, 0 실패`, 조작 점검은 `모두 통과` (R5 변경과 함께 확인).
 
 `test_cards`(R3·R4)가 확인하는 것:
 - 카드 데이터: 카드 28장, 선제지시 13종이 있고, 모든 카드 트리거가 엔진에서 처리된다.

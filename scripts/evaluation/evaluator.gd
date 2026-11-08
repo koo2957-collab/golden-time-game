@@ -108,6 +108,16 @@ func _run() -> Dictionary:
 			if g[1]:
 				capped = true
 				cap_reasons.append("%s (SOP %s) → 최고 %s" % [r.title, r.sop, r.cap.get("grade", "C")])
+	# 질문 카드 치명 선택 → 등급 상한 (기획안 8장)
+	var fatal := sim.cards.log.filter(func(e: Dictionary) -> bool: return e.result == "answered" and e.grade == "치명")
+	if not fatal.is_empty():
+		var fcap := str(data.get("card_fatal_cap", "B"))
+		var g := grade_for(points, data.get("grades", []), true, fcap)
+		if g[1] and GRADE_ORDER.find(str(g[0])) > GRADE_ORDER.find(grade):
+			grade = g[0]
+		if g[1]:
+			capped = true
+			cap_reasons.append("치명 판단 %d건 (%s) → 최고 %s" % [fatal.size(), ", ".join(PackedStringArray(fatal.map(func(e: Dictionary) -> String: return "%s, %s" % [e.title, e.sop]))), fcap])
 	return {
 		"scenario_id": str(sim.scenario.get("id", "")),
 		"rules_version": int(data.get("rules_version", 1)),
@@ -260,7 +270,8 @@ func _check_cards() -> Dictionary:
 	for k in ["최선", "선제지시", "허용", "오답", "치명", "미응답", "대기 밀림"]:
 		if counts.has(k):
 			parts.append("%s %d" % [k, counts[k]])
-	return {"score": sum / lg.size(), "detail": "판단 요청 %d건 — %s" % [lg.size(), ", ".join(parts)]}
+	var pre := int(counts.get("선제지시", 0))
+	return {"score": sum / lg.size(), "detail": "판단 요청 %d건 — %s%s" % [lg.size(), ", ".join(parts), " · 선제지시로 질문 %d건 줄임" % pre if pre > 0 else ""]}
 
 
 ## 완진 선언의 정확성 (소방전술 I 8단계 ⑥, SOP 202-6): 활동을 끝냈을 때만

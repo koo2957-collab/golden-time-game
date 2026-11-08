@@ -1,18 +1,19 @@
 {
   "note": "SOP 판정 규칙 라이브러리. 시나리오 evaluation.rules가 id로 고른다. check = 판정 함수 (scripts/evaluation/evaluator.gd), params = 기준값 (시나리오 evaluation.params로 덮어쓸 수 있다). sop·text = 2025 재난현장표준작전절차 조항과 원문, tactic·tactic_text = 소방전술 교재의 관련 장절과 원리 요약(요약은 개발자 정리, 원문 아님). source: 교재 = 위 두 자료에 근거, 추정 = 기준값을 현장 검수해야 함.",
   "basis": "2025 재난현장표준작전절차 (소방청) · 소방전술 I (화재1·화재2)",
-  "rules_version": 2,
+  "rules_version": 3,
 
   "axes": [
-    {"id": "safety", "name": "대원 안전", "weight": 25},
-    {"id": "rescue", "name": "인명구조", "weight": 25},
-    {"id": "property", "name": "재산 보호", "weight": 15},
-    {"id": "fire", "name": "화재 안정화", "weight": 15},
-    {"id": "command", "name": "지휘 절차", "weight": 20}
+    {"id": "safety", "name": "대원 안전", "weight": 30},
+    {"id": "rescue", "name": "인명구조", "weight": 30},
+    {"id": "property", "name": "재산 보호", "weight": 10},
+    {"id": "fire", "name": "화재 안정화", "weight": 10},
+    {"id": "command", "name": "SOP 준수", "weight": 20}
   ],
-  "note_axes": "축 순서·가중치는 전술적 우선순위(SOP 106-1.1②: 대원안전→인명구조→재산보호→재난 안정화→환경보호)를 따른다. 결과 축(안전·구조·재산·화재) 합이 80이라 절차만 지키고 결과가 나쁘면 높은 등급이 나오지 않는다 (추정)",
+  "note_axes": "배점은 기획안 8장: 대원안전 30·인명구조 30·재산보호 10·화재진압 10·SOP 준수 20 (SOP 106 전술 우선순위 순). SOP 준수 축은 지휘 절차 규칙과 질문 카드 판단(정답률·선제지시·미응답)을 함께 본다. 결과 축 합이 80이라 절차만 지키고 결과가 나쁘면 높은 등급이 나오지 않는다",
   "grades": [[90, "S"], [80, "A"], [70, "B"], [60, "C"], [0, "D"]],
-  "note_cap": "규칙의 cap: 점수가 below 미만이면 종합 등급을 grade보다 좋게 줄 수 없다. 대원 안전(SOP 108-1.2)과 인명구조 최우선(214-2.1)에 쓴다",
+  "note_cap": "규칙의 cap: 점수가 below 미만이면 종합 등급을 grade보다 좋게 줄 수 없다. 대원 안전(SOP 108-1.2)과 인명구조 최우선(214-2.1)에 쓴다. 질문 카드에서 '치명' 선택을 하나라도 하면 card_fatal_cap보다 좋게 줄 수 없다 (기획안 8장)",
+  "card_fatal_cap": "B",
 
   "rules": [
     {

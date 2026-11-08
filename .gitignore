@@ -1,3 +1,7 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# 근거 자료 PDF(교재 원본)와 PC별 편집기 설정은 올리지 않는다
+/*.pdf
+.vscode/

@@ -98,7 +98,9 @@ godot --path . -s res://tests/ui_smoke.gd               # 조작 점검 (창이 
 
 ## 문서
 
-- [docs/game_design.md](docs/game_design.md) — 기획서 (게임 구조, 시뮬레이션, 평가, 시나리오 시스템, 로드맵)
+- [docs/design.md](docs/design.md) — **목표 기획안** (이 문서대로 개발)
+- [docs/plan_gap.md](docs/plan_gap.md) — 기획안 대비 차이 분석·수정 로드맵(R0~R15)·결정 사항
+- [docs/game_design.md](docs/game_design.md) — 기존 기획서 (구현 이력 M0~M9d, P1)
 - [docs/next_plan.md](docs/next_plan.md) — 다음 단계 계획 (자료 체계, 종료 체계 분석, M10~M13 세부 작업)
 - [docs/sop_mapping.md](docs/sop_mapping.md) — SOP 조항 ↔ 게임 기능 대응표
 - [docs/folder_structure.md](docs/folder_structure.md) — 폴더 규칙

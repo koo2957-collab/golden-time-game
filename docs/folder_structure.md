@@ -188,6 +188,17 @@ tests/             단위 테스트(test_*.gd)와 조작 점검(ui_smoke.gd)
 
 검증은 `tests/test_tactical.gd`, `tests/test_hints.gd`.
 
+## 순환보수 요약 (M9b)
+
+| 요소 | 내용 |
+|---|---|
+| 데이터 | 시나리오 `water {hydrants_out: [index], shuttle: {name, round_trip_s, fill_lpm}}` |
+| 실행 | `scripts/simulation/suppression/shuttle_system.gd` (`ShuttleSystem.toggle/step`). `WaterSystem.hydrants_out` — 고장 소화전 점령 시 `hydrant_out` 무전. 다녀오는 동안 `Vehicle.away` |
+| 조작 | 입력 `cmd_shuttle`(B): 선택한 물탱크차 순환보수 지정·해제. 장비 명령 `shuttle`(기록·다시 하기) |
+| 평가 | fire.shuttle (35개). 소화전이 모두 고장이면 fire.water_supply는 급수 연결만 본다 |
+
+검증은 `tests/test_shuttle.gd`.
+
 ## 일반 건축물화재 요약 (M9a)
 
 | 요소 | 내용 |

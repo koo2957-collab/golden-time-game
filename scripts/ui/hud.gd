@@ -342,7 +342,10 @@ func _vehicle_line(v: Vehicle) -> String:
 			line += " · 송수구 연결"
 		line += "\n    소화전 우클릭: 점령%s" % (" · 송수구 우클릭: 연결송수관 가압" if sim.building.has_standpipe() else "")
 	elif v.transfer_lpm > 0.0:
-		line += "\n    펌프차 우클릭: 급수 · 소화전 우클릭: 점령"
+		var sh: Dictionary = sim.shuttle.tankers.get(v.id, {})
+		if not sh.is_empty():
+			line += " · 순환보수 %d회" % int(sh.trips)
+		line += "\n    펌프차 우클릭: 급수 · 소화전 우클릭: 점령%s" % ("" if not sim.shuttle.available() else (" · B: 순환보수 해제" if not sh.is_empty() else " · B: 순환보수 지정"))
 	return line
 
 

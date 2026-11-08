@@ -239,6 +239,22 @@ func _check_rescue_time() -> Dictionary:
 	return {"score": sum / victims.size(), "detail": "%s (기준 %d분 안)" % [", ".join(parts), int(_params.good_s / 60)]}
 
 
+## 순환보수 (SOP 200-3.1.1.3): 소화전을 쓸 수 없고 원거리 수원이 있는 시나리오에서만
+func _check_shuttle() -> Dictionary:
+	var sh := sim.shuttle
+	if not sh.available() or sim.water.hydrants_out.is_empty():
+		return {}
+	var pump := sim.units.vehicles_of_squad(0).filter(func(v: Vehicle) -> bool: return v.is_pump())
+	var dry := sim.events.of_type("tank_empty").filter(func(e: Dictionary) -> bool:
+		return not pump.is_empty() and e.vehicle == pump[0].display_name(sim.units.squads[0].name))
+	var on := sim.events.of_type("shuttle_on")
+	if on.is_empty():
+		return {"score": 0.0 if not dry.is_empty() else 0.4, "detail": "순환보수를 지시하지 않음%s" % (" — 선착 펌프차 물 소진 %s" % _t(dry[0].tick) if not dry.is_empty() else "")}
+	if not dry.is_empty():
+		return {"score": 0.5, "detail": "순환보수 %s 지시(왕복 %d회), 그래도 선착 펌프차 물 소진 %s" % [_t(on[0].tick), sh.trips(), _t(dry[0].tick)]}
+	return {"score": 1.0, "detail": "순환보수 %s 지시(왕복 %d회) — 선착 펌프차 물이 끊기지 않음" % [_t(on[0].tick), sh.trips()]}
+
+
 ## 샤프트 확인 (SOP 212-2.3): 샤프트로 불·연기가 들었을 때만
 func _check_shaft() -> Dictionary:
 	var sh := sim.shafts
@@ -583,6 +599,8 @@ func _check_water_supply() -> Dictionary:
 			hydrant = e.tick
 	var a := _linear(supply * SimClock.TICK_DT, _params.good_s, _params.bad_s) if supply >= 0 else 0.0
 	var b := _linear(hydrant * SimClock.TICK_DT, _params.good_s, _params.bad_s) if hydrant >= 0 else 0.0
+	if sim.water.hydrants_out.size() >= sim.building.hydrants.size():
+		return {"score": a, "detail": "%s — 펌프차 급수 %s (소화전 고장 — 점령 판정 제외)" % [name, _t(supply) if supply >= 0 else "안 함"]}
 	return {"score": (a + b) / 2.0, "detail": "%s — 펌프차 급수 %s, 소화전 점령 %s (기준 %d분 안)" % [
 		name, _t(supply) if supply >= 0 else "안 함", _t(hydrant) if hydrant >= 0 else "안 함", int(_params.good_s / 60)]}
 

@@ -23,6 +23,8 @@ var pathfinder: Pathfinder
 var fire: FireSim
 var events: SimEventLog
 var hoses: Array[HoseLine] = []
+## 고장(사용 불가) 소화전 index (시나리오 water.hydrants_out)
+var hydrants_out: Array[int] = []
 ## 송수구에 연결한 펌프차 id (-1: 없음). 연결되면 층별 방수구에서 수관을 연장할 수 있다 (SOP 200-3.3.1)
 var fdc_vehicle := -1
 ## (level, cell) -> 들어가도 되는 칸인지. 방수 위치를 고를 때 열기가 심한 칸을 피한다.
@@ -578,6 +580,9 @@ func _hydrant_distance(v: Vehicle, hydrant: int) -> float:
 
 
 func _connect_hydrant_now(v: Vehicle, hydrant: int, tick: int) -> void:
+	if hydrant in hydrants_out:
+		events.add(tick, "hydrant_out", {"vehicle": _name(v), "driver": v.driver_label()})
+		return
 	v.hydrant = hydrant
 	events.add(tick, "hydrant_connected", {"vehicle": _name(v), "driver": v.driver_label()})
 

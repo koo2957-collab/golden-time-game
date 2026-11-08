@@ -12,6 +12,7 @@ extends RefCounted
 ##   search:       인명검색 (crew_ids, target = 방 안 셀)
 ##   rescue / rescue_ff: 요구조자(other = 요구조자 id) / 쓰러진 대원(other = 대원 id) 구조 (crew_ids 중 첫 조)
 ##   overhaul:     잔불정리 (crew_ids, target = 방 안 셀, SOP 202-6)
+##   shuttle:      물탱크차 순환보수 지정·해제 (vehicle_id, SOP 200-3.1.1.3)
 ##   fdc:          송수구 연결 (vehicle_id = 펌프차, SOP 200-3.3.1)
 ##   hose_outlet:  방수구에서 수관 연장 (crew_ids, other = 방수구 index)
 ##   air_mat:      공기안전매트 설치 (crew_ids 중 첫 구조대 조, target = 1층 바닥 칸, SOP 213-2.4.3)
@@ -51,6 +52,8 @@ func execute(sim: SimWorld) -> void:
 				w.lay_hose(id, vehicle_id, tick)
 		"fdc":
 			w.connect_fdc(vehicle_id, tick)
+		"shuttle":
+			sim.shuttle.toggle(vehicle_id, tick)
 		"hose_outlet":
 			for id in crew_ids:
 				w.lay_hose_outlet(id, other, tick)

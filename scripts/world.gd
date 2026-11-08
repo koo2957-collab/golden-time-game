@@ -177,6 +177,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		_on_command("primary")
 	elif event.is_action_pressed("cmd_secondary"):
 		_on_command("secondary")
+	elif event.is_action_pressed("cmd_shuttle"):
+		for vid in selection.selected_vehicles:
+			sim.issue(EquipmentCommand.make("shuttle", [], vid))
 	elif event.is_action_pressed("cmd_withdraw"):
 		_on_command("withdraw")
 	elif event.is_action_pressed("debug_info_fog") and OS.is_debug_build():

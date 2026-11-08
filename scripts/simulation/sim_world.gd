@@ -39,6 +39,7 @@ var ems: EmsSystem
 var falls: FallSystem
 var shafts: ShaftSystem
 var evac: EvacSystem
+var shuttle: ShuttleSystem
 var command: CommandSystem
 var command_log := CommandLog.new()
 var events := SimEventLog.new()
@@ -107,6 +108,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.exposure = ExposureSystem.new(sim.fire, sim.water, hazard_params, sim.events)
 	sim.gas = GasSystem.new(sim.fire, sim.units, sim.pathfinder, hazard_params, sim.events)
 	sim.collapse = CollapseSystem.new(sim.fire, sim.units, sim.rescue, hazard_params, sim.events)
+	sim.shuttle = ShuttleSystem.new(sim.units, sim.water, sim.events)
 	sim.shafts = ShaftSystem.new(sim.fire, sim.units, sim.water, hazard_params, sim.events)
 	sim.evac = EvacSystem.new(sim.fire, sim.rescue, sim.pathfinder, hazard_params, sim.units.walk_speed_cells, sim.events)
 	sim.falls = FallSystem.new(sim.fire, sim.exposure, sim.units, sim.rescue, sim.pathfinder, hazard_params, sim.events)
@@ -157,6 +159,7 @@ static func from_scenario(path: String, command_rules := true, seed_override := 
 		sim.exposure.apply_scenario(data)
 		sim.gas.apply_scenario(data)
 		sim.ems.apply_scenario(data)
+		sim.shuttle.apply_scenario(data)
 		if not command_rules:
 			sim.command.entry_order_required = false
 			sim.command.auto_slow = false
@@ -220,6 +223,7 @@ func _step() -> void:
 	exposure.step(dt, clock.tick)
 	gas.step(dt, clock.tick)
 	collapse.step(dt, clock.tick)
+	shuttle.step(dt, clock.tick)
 	shafts.step(dt, clock.tick)
 	evac.step(dt, clock.tick)
 	falls.step(dt, clock.tick)

@@ -35,3 +35,4 @@
 | 화면 점검 (시점·대원 비율·차량) | [V1_view_scale.md](V1_view_scale.md) |
 | M8b-2 아파트화재 ② (상층 확대·공기안전매트·낙하물) | [M8b2_falls.md](M8b2_falls.md) |
 | M9a 일반건축물 ① (자력 대피·샤프트·간판) | [M9a_general.md](M9a_general.md) |
+| M9b 물탱크차 순환보수 | [M9b_shuttle.md](M9b_shuttle.md) |

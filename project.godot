@@ -156,6 +156,11 @@ cmd_withdraw={
 "events": [Object(InputEventKey,"physical_keycode":88)
 ]
 }
+cmd_shuttle={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"physical_keycode":66)
+]
+}
 cmd_door={
 "deadzone": 0.2,
 "events": [Object(InputEventKey,"physical_keycode":69)

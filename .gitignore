@@ -2,6 +2,6 @@
 .godot/
 /android/
 
-# 근거 자료 PDF(교재 원본)와 PC별 편집기 설정은 올리지 않는다
+# 근거 자료 PDF는 docs/references/에 올린다(공개 자료). 저장소 루트에 둔 PDF와 PC별 편집기 설정은 올리지 않는다
 /*.pdf
 .vscode/

@@ -304,6 +304,8 @@ func _on_command(id: String) -> void:
 			selection.begin_mode(SelectionController.Mode.TREAT if lead and lead.type == "구급대" else SelectionController.Mode.PRIMARY)
 		"treat":
 			selection.begin_mode(SelectionController.Mode.TREAT)
+		"air_mat":
+			selection.begin_mode(SelectionController.Mode.AIR_MAT)
 		"transport":
 			selection.begin_mode(SelectionController.Mode.TRANSPORT)
 		"attack":

@@ -29,6 +29,10 @@ var carried_by := -1
 ## 구조될 때의 상태 (의식 있음·의식 잃음)
 var state_at_rescue := State.CONSCIOUS
 var rescued_tick := -1
+## 창가에서 뛰어내릴 수 있는 사람 (시나리오 window: true, SOP 213-2.4.3)
+var jumper := false
+## 창에서 떨어졌음 (매트 착지 포함)
+var fell := false
 
 
 func fed() -> float:

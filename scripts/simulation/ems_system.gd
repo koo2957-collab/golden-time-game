@@ -212,7 +212,7 @@ func _admit(tick: int) -> void:
 		p.victim_id = v.id
 		if v.state_at_rescue == Victim.State.UNCONSCIOUS:
 			p.triage = Triage.URGENT
-		elif v.fed() >= 0.3 or v.mobility.contains("불편") or v.age >= 75:
+		elif v.fed() >= 0.3 or v.fell or v.mobility.contains("불편") or v.age >= 75:
 			p.triage = Triage.EMERGENT
 		patients.append(p)
 		events.add(tick, "ems_triage", {"who": v.label(), "triage": triage_name(p)})

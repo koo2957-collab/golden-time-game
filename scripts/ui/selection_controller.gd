@@ -13,7 +13,7 @@ extends Node2D
 ## 선택 단위는 조(2인 1조)와 차량이며, 현재 보고 있는 층의 대원만 선택된다.
 ## 좌표 변환은 projection(상황판/입체)을 따른다.
 
-enum Mode { NONE, HOSE, STRAIGHT, FOG, DOOR, SEARCH, OVERHAUL, PRIMARY, ATTACK, SEARCH_AUTO, EXTERIOR, RESCUE, TREAT, TRANSPORT }
+enum Mode { NONE, HOSE, STRAIGHT, FOG, DOOR, SEARCH, OVERHAUL, PRIMARY, ATTACK, SEARCH_AUTO, EXTERIOR, RESCUE, TREAT, TRANSPORT, AIR_MAT }
 
 ## 관계인을 클릭했을 때 (world가 진술 창을 연다)
 signal witness_clicked(index: int)
@@ -37,6 +37,7 @@ const MODE_HINTS := {
 	Mode.RESCUE: "구조: 발견한 구조대상자나 쓰러진 대원을 클릭",
 	Mode.TREAT: "처치: 구조된 환자를 클릭 (구급대가 가서 응급처치)",
 	Mode.TRANSPORT: "이송: 처치한 환자를 클릭 (들것으로 구급차에 태워 병원으로)",
+	Mode.AIR_MAT: "공기안전매트: 창 아래 바닥(1층 바깥)을 클릭 — 구조대가 가서 설치",
 }
 ## 요구조자·쓰러진 대원을 클릭으로 고를 때 허용 반경 (px)
 const CASUALTY_PICK_PX := 20.0
@@ -325,6 +326,12 @@ func _complete_mode(world_pos: Vector2) -> void:
 						sim.issue(TacticalCommand.make("attack", attack, target))
 					if not search.is_empty():
 						sim.issue(TacticalCommand.make("search", search, target))
+				_marker_world = projection.to_screen(Vector2(cell) + Vector2(0.5, 0.5))
+				_marker_start_ms = Time.get_ticks_msec()
+		Mode.AIR_MAT:
+			if not selected.is_empty():
+				var cell := Vector2i(projection.to_cell(world_pos).floor())
+				sim.issue(EquipmentCommand.make("air_mat", selected, -1, -1, Vector3i(cell.x, cell.y, 1)))
 				_marker_world = projection.to_screen(Vector2(cell) + Vector2(0.5, 0.5))
 				_marker_start_ms = Time.get_ticks_msec()
 		Mode.TREAT, Mode.TRANSPORT:

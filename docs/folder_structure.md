@@ -188,6 +188,18 @@ tests/             단위 테스트(test_*.gd)와 조작 점검(ui_smoke.gd)
 
 검증은 `tests/test_tactical.gd`, `tests/test_hints.gd`.
 
+## 아파트 상층 확대·추락·낙하물 요약 (M8b-2)
+
+| 요소 | 내용 |
+|---|---|
+| 상층 연소 | `ExposureSystem._build_vertical_pairs` (Pair.vertical), `room_ratio`, `label()`. 알림·착화 무전은 방마다 한 번 |
+| 추락·매트·낙하물 | `scripts/simulation/hazards/fall_system.gd` (`FallSystem`, 3층 이상 건물만). 요구조자 `jumper`(시나리오 window)·`fell`. 장비 명령 `air_mat`(구조대만), 구조대 명령칸 '공기안전매트', 선택 모드 AIR_MAT. 값은 hazard_params(jump_warn_fed·jump_fed·jump_delay_s·air_mat_*) |
+| 화면 | 상황판·입체에 노란 공기안전매트, 빨간 원 낙하물 위험 |
+| 평가·힌트 | rescue.air_mat, safety.debris (33개), 힌트 jump_risk·debris_zone (19종) |
+| 시나리오 | `sop213_2_apartment_night.json` (order 5, 상급): 302호 화재 → 402호 창가 주민, 401호 할머니 |
+
+검증은 `tests/test_falls.gd`.
+
 ## 아파트화재 요약 (M8b-1)
 
 | 요소 | 내용 |

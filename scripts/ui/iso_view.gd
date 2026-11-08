@@ -314,6 +314,19 @@ func _draw_cell_objects(x: int, y: int) -> void:
 		var label := proj.to_screen(Vector2(x + 0.5, y + 0.5), HYDRANT_M + 0.4)
 		draw_string(PlanStyle.font(), label + Vector2(-30, 0), "소화전", HORIZONTAL_ALIGNMENT_CENTER, 60, 13, PlanStyle.HYDRANT_COLOR.lightened(0.4))
 	var b := sim.building
+	if level == b.levels()[0]:
+		for m in sim.falls.mats:
+			if Vector2i(m.floor()) == Vector2i(x, y):
+				_box(m - Vector2(1.2, 0.8), m + Vector2(1.2, 0.8), 0.0, 0.5, Color("fde047"), Color("facc15"))
+				draw_string(PlanStyle.font(), proj.to_screen(m, 0.9) + Vector2(-50, 0), "공기안전매트", HORIZONTAL_ALIGNMENT_CENTER, 100, 13, Color("fef08a"))
+		for z in sim.falls.zones:
+			if Vector2i(z.center.floor()) == Vector2i(x, y):
+				var pts := PackedVector2Array()
+				for k in 25:
+					var a := TAU * k / 24.0
+					pts.append(proj.to_screen(z.center + Vector2(cos(a), sin(a)) * z.radius, 0.02))
+				draw_polyline(pts, Color(0.95, 0.3, 0.3, 0.8), 2.0)
+				draw_string(PlanStyle.font(), proj.to_screen(z.center, 0.1) + Vector2(-50, 0), "낙하물 위험", HORIZONTAL_ALIGNMENT_CENTER, 100, 13, Color(1, 0.6, 0.6))
 	if b.has_standpipe() and ((level == b.levels()[0] and Vector2i(x, y) == b.fdc) or Vector3i(x, y, level) in b.outlets):
 		var is_fdc := Vector2i(x, y) == b.fdc and level == b.levels()[0]
 		var sc := PlanStyle.STANDPIPE_COLOR
@@ -486,6 +499,8 @@ func _draw_vehicle(v: Vehicle, alpha: float) -> void:
 	# 앞쪽 1/4 운전석 지붕
 	var cab := PackedVector2Array([fp[0].lerp(fp[1], 0.75), fp[1], fp[2], fp[3].lerp(fp[2], 0.75)])
 	draw_colored_polygon(_lift(cab, h), Color(color.darkened(0.35), VEHICLE_ALPHA))
+	if not thermal:
+		_vehicle_details(v, fp, h)
 	if v.id in selection.selected_vehicles:
 		var outline := _lift(fp, h)
 		outline.append(outline[0])
@@ -499,21 +514,6 @@ func _draw_vehicle(v: Vehicle, alpha: float) -> void:
 	draw_rect(Rect2(gauge.position, Vector2(gauge.size.x * f, gauge.size.y)), PlanStyle.TANK_FILL)
 
 
-	if not thermal:
-		_vehicle_details(v, fp, h)
-func _draw_sprays(alpha: float) -> void:
-	var t := Time.get_ticks_msec() / 1000.0
-	for h in sim.water.hoses:
-		if not h.flowing or h.flow_fraction <= 0.0:
-			continue
-		var leader := sim.units.get_crew(h.crew_id).leader
-		if leader.level != level:
-			continue
-		var from := proj.to_screen(UnitsView.display_pos(leader, alpha), NOZZLE_M)
-		var to := proj.to_screen(h.impact, IMPACT_M)
-		if h.pattern == HoseLine.Pattern.STRAIGHT:
-			# 포물선을 그리며 날아가는 물방울
-			var arc := PackedVector2Array()
 ## 차량 세부: 보이는 옆면의 바퀴·반사띠, 앞면 유리창, 지붕 경광등
 func _vehicle_details(v: Vehicle, fp: PackedVector2Array, h: float) -> void:
 	# fp = [뒤 왼쪽, 앞 왼쪽, 앞 오른쪽, 뒤 오른쪽]. 화면 앞쪽(x + y가 큰 쪽) 옆면만 보인다
@@ -542,6 +542,19 @@ func _vehicle_details(v: Vehicle, fp: PackedVector2Array, h: float) -> void:
 	draw_circle(proj.to_screen(bar_b, h + 0.1), 5.0, Color("3b82f6") if not on else Color("1e3a8a"))
 
 
+func _draw_sprays(alpha: float) -> void:
+	var t := Time.get_ticks_msec() / 1000.0
+	for h in sim.water.hoses:
+		if not h.flowing or h.flow_fraction <= 0.0:
+			continue
+		var leader := sim.units.get_crew(h.crew_id).leader
+		if leader.level != level:
+			continue
+		var from := proj.to_screen(UnitsView.display_pos(leader, alpha), NOZZLE_M)
+		var to := proj.to_screen(h.impact, IMPACT_M)
+		if h.pattern == HoseLine.Pattern.STRAIGHT:
+			# 포물선을 그리며 날아가는 물방울
+			var arc := PackedVector2Array()
 			for k in 13:
 				var f := k / 12.0
 				arc.append(from.lerp(to, f) + Vector2(0, -sin(f * PI) * 16.0))
@@ -775,19 +788,6 @@ static func _ellipse(center: Vector2, rx: float, ry: float, closed := false) -> 
 	return pts
 
 
-func _wall_height(x: int, y: int) -> float:
-	var fp: Rect2i = _footprint[level]
-	if y == fp.position.y or x == fp.position.x:
-		return CEILING_M
-	return WALL_CUT_M
-
-
-func _furniture_height(x: int, y: int) -> float:
-	var heights: PackedFloat32Array = _furniture_h[level]
-	if heights[y * sim.building.width + x] <= 0.0 or _cell_burnt(x, y):
-		return 0.0
-	return heights[y * sim.building.width + x]
-
 ## 사람 모양: 발 → 엉덩이 → 어깨로 넓어지는 몸통, 반사띠, 머리(안전모). 키 약 1.75m
 func _draw_figure(p: Vector2, scale: float, body: Color, helmet: Color, stripes := true) -> void:
 	var feet := proj.to_screen(p, 0.0)
@@ -815,6 +815,19 @@ func _draw_figure(p: Vector2, scale: float, body: Color, helmet: Color, stripes 
 	draw_circle(head - Vector2(0, 2), UNIT_HEAD_R * 0.9, helmet)
 	draw_arc(head - Vector2(0, 2), UNIT_HEAD_R * 0.9, PI, TAU, 10, PlanStyle.UNIT_OUTLINE, 1.0)
 
+
+func _wall_height(x: int, y: int) -> float:
+	var fp: Rect2i = _footprint[level]
+	if y == fp.position.y or x == fp.position.x:
+		return CEILING_M
+	return WALL_CUT_M
+
+
+func _furniture_height(x: int, y: int) -> float:
+	var heights: PackedFloat32Array = _furniture_h[level]
+	if heights[y * sim.building.width + x] <= 0.0 or _cell_burnt(x, y):
+		return 0.0
+	return heights[y * sim.building.width + x]
 
 
 func _furniture_color(x: int, y: int) -> Color:

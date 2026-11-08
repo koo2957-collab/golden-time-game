@@ -32,6 +32,15 @@ func _draw() -> void:
 			draw_circle(c, 7.0, PlanStyle.HYDRANT_COLOR)
 			draw_arc(c, 7.0, 0.0, TAU, 16, Color.WHITE, 1.5)
 			draw_string(PlanStyle.font(), c + Vector2(-30, -12), "소화전", HORIZONTAL_ALIGNMENT_CENTER, 60, 12, PlanStyle.HYDRANT_COLOR.lightened(0.4))
+		for z in sim.falls.zones:
+			var zc := PlanStyle.to_px(z.center)
+			draw_circle(zc, z.radius * PlanStyle.CELL_PX, Color(0.9, 0.2, 0.2, 0.15))
+			draw_arc(zc, z.radius * PlanStyle.CELL_PX, 0.0, TAU, 32, Color(0.95, 0.3, 0.3, 0.7), 2.0)
+			draw_string(PlanStyle.font(), zc + Vector2(-60, 4), "낙하물 위험", HORIZONTAL_ALIGNMENT_CENTER, 120, 12, Color(1, 0.6, 0.6))
+		for m in sim.falls.mats:
+			var mc := PlanStyle.to_px(m)
+			draw_rect(Rect2(mc - Vector2(14, 10), Vector2(28, 20)), Color("fde047"))
+			draw_string(PlanStyle.font(), mc + Vector2(-50, -14), "공기안전매트", HORIZONTAL_ALIGNMENT_CENTER, 100, 12, Color("fef08a"))
 		if sim.building.has_standpipe():
 			var f := PlanStyle.to_px(Vector2(sim.building.fdc) + Vector2(0.5, 0.5))
 			draw_rect(Rect2(f - Vector2(6, 6), Vector2(12, 12)), PlanStyle.STANDPIPE_COLOR)

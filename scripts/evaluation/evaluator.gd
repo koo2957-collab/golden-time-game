@@ -239,6 +239,36 @@ func _check_rescue_time() -> Dictionary:
 	return {"score": sum / victims.size(), "detail": "%s (기준 %d분 안)" % [", ".join(parts), int(_params.good_s / 60)]}
 
 
+## 창가 주민 추락 대비 공기안전매트 (SOP 213-2.4.3): 뛰어내리려 한 사람이 있을 때만
+func _check_air_mat() -> Dictionary:
+	var f := sim.falls
+	if f.warned.is_empty():
+		return {}
+	var parts: PackedStringArray = []
+	var sum := 0.0
+	for id: int in f.warned:
+		var v := sim.rescue.victims[id]
+		if f.jumped.has(id):
+			var on_mat: bool = f.jumped[id].mat
+			sum += 1.0 if on_mat else 0.0
+			parts.append("%s 추락 — %s" % [v.label(), "매트에 착지" if on_mat else "매트 없음 (사망)"])
+		elif v.state == Victim.State.RESCUED:
+			sum += 1.0 if not f.mats.is_empty() else 0.7
+			parts.append("%s 창가에서 구조%s" % [v.label(), " (매트 대비함)" if not f.mats.is_empty() else " (매트 없이)"])
+		else:
+			parts.append("%s %s" % [v.label(), v.state_name()])
+	return {"score": sum / f.warned.size(), "detail": ", ".join(parts)}
+
+
+## 낙하물 안전구역 (SOP 213-2.7.1): 3층 이상 창이 깨졌을 때만
+func _check_debris() -> Dictionary:
+	var f := sim.falls
+	if f.zones.is_empty():
+		return {}
+	var s := f.zone_seconds
+	return {"score": _linear(s, _params.good_s, _params.bad_s), "detail": "낙하물 위험구역 %d곳, 구역 안 대원 체류 합계 %d초 (기준 %d초 이하)" % [f.zones.size(), roundi(s), int(_params.good_s)]}
+
+
 ## 연결송수관 활용 (SOP 200-3.3.1, 213-1.3): 연결송수관이 있는 건물에서 2층 이상 방수가 있었을 때
 func _check_standpipe() -> Dictionary:
 	if not sim.building.has_standpipe():
@@ -355,7 +385,7 @@ func _check_exposure() -> Dictionary:
 	var ex := sim.exposure
 	if not ex.has_exposure() or ex.peak < float(_params.get("min_ratio", 0.2)):
 		return {}
-	var name := ex.exposure_name()
+	var name := ex.label()
 	if not ex.ignited.is_empty():
 		var e: Dictionary = sim.events.of_type("exposure_ignition")[0]
 		return {"score": 0.0, "detail": "%s %s으로 연소 확대 — 경계관창을 두지 않음" % [_t(e.tick), e.target]}

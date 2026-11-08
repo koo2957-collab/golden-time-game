@@ -223,6 +223,18 @@ static func describe_text(e: Dictionary) -> String:
 			text = "송수구 미연결 — 방수구 사용 불가 (%s)" % e.crew
 		"hose_outlet_laid":
 			text = "방수구에서 수관 연장 — %s (%s)" % [e.crew, e.level]
+		"jump_risk":
+			text = "창가 요구조자가 뛰어내리려 함 — %s, %s (공기안전매트 필요)" % [e.who, e.room]
+		"victim_jumped":
+			text = "%s 창에서 추락 — %s" % [e.who, "공기안전매트에 착지" if e.mat else "매트 없음"]
+		"air_mat_start":
+			text = "공기안전매트 설치하러 감 — %s" % e.crew
+		"air_mat_ready":
+			text = "공기안전매트 설치 완료 — %s" % e.crew
+		"debris_zone":
+			text = "낙하물 위험 — %s %s 창 파손, 아래 반경 %.1fm 접근 금지" % [e.floor, e.get("face", ""), e.radius_m]
+		"debris_zone_entered":
+			text = "낙하물 위험구역에 대원 진입 — %s" % e.crew
 		"placement":
 			text = "선착 차량 배치 — %s" % e.name
 		"ems_triage":

@@ -718,7 +718,7 @@ func _receo_text() -> String:
 	if ex.has_exposure():
 		var r := ex.max_ratio()
 		exposure_hot = r >= 0.2 or not ex.ignited.is_empty()
-		exposure_text = "%s 연소 확대됨" % ex.exposure_name() if not ex.ignited.is_empty() else "%s 가열 %d%%" % [ex.exposure_name(), roundi(r * 100.0)]
+		exposure_text = "%s 연소 확대됨" % ex.label() if not ex.ignited.is_empty() else "%s 가열 %d%%" % [ex.label(), roundi(r * 100.0)]
 	if sim.gas.has_gas():
 		exposure_text += " · 가스 %s" % ("차단됨" if not sim.gas.open else "열림")
 	var items := [

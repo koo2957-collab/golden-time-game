@@ -14,6 +14,7 @@ extends RefCounted
 ##   overhaul:     잔불정리 (crew_ids, target = 방 안 셀, SOP 202-6)
 ##   fdc:          송수구 연결 (vehicle_id = 펌프차, SOP 200-3.3.1)
 ##   hose_outlet:  방수구에서 수관 연장 (crew_ids, other = 방수구 index)
+##   air_mat:      공기안전매트 설치 (crew_ids 중 첫 구조대 조, target = 1층 바닥 칸, SOP 213-2.4.3)
 ##   gas_off:      가스 밸브 차단 (crew_ids 중 첫 조, SOP 214-2.2)
 ##   ems_treat:    구급대 응급처치 (crew_ids 중 첫 조, other = 요구조자 id, SOP 400-3.2)
 ##   ems_transport: 처치한 환자 이송 (crew_ids 중 첫 조, other = 요구조자 id, SOP 400-3.3)
@@ -84,6 +85,13 @@ func execute(sim: SimWorld) -> void:
 				sim.tactical.cancel(id)
 				sim.rescue.cancel(id)
 				sim.rekindle.order_overhaul(id, target, tick)
+		"air_mat":
+			for id in crew_ids:
+				sim.doors.cancel(id)
+				sim.rescue.cancel(id)
+				sim.tactical.cancel(id)
+				if sim.falls.order_mat(id, Vector2i(target.x, target.y), tick):
+					break
 		"gas_off":
 			for id in crew_ids:
 				sim.doors.cancel(id)

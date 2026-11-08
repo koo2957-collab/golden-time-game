@@ -39,10 +39,11 @@
     },
     {
       "id": "apartment",
-      "title": "5장 · 아파트화재 — 3층 세대",
-      "text": "발화층·상층 주민 대피, 연결송수관, 방화문 파괴 (SOP 213).",
+      "title": "5장 · 아파트화재",
+      "text": "발화층·상층 주민 대피, 연결송수관, 방화문 파괴, 상층 연소 확대와 공기안전매트 (SOP 213).",
       "scenarios": [
-        "sop213_1_apartment_3f"
+        "sop213_1_apartment_3f",
+        "sop213_2_apartment_night"
       ],
       "min_grade": "C"
     },

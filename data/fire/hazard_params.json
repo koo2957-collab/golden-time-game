@@ -41,5 +41,10 @@
   "gas_reignite_s": {"value": 20, "source": "추정", "note": "가스 밸브가 열려 있으면 가스레인지 칸이 이 간격으로 다시 불붙는다 (214-2.2)"},
   "gas_off_s": {"value": 10, "source": "추정", "note": "밸브 차단에 걸리는 시간"},
   "collapse_s": {"value": 600, "source": "추정", "note": "노후 벽돌조 구획이 최성기 상태로 이만큼 타면 붕괴 (SOP 214-1.2)"},
-  "collapse_sign_ratio": {"value": 0.6, "source": "추정", "note": "붕괴 진행이 이 비율이면 폭음·균열음 등 붕괴 징후 (205-2.2)"}
+  "collapse_sign_ratio": {"value": 0.6, "source": "추정", "note": "붕괴 진행이 이 비율이면 폭음·균열음 등 붕괴 징후 (205-2.2)"},
+  "jump_warn_fed": {"value": 0.15, "source": "추정", "note": "창가 주민이 몸을 내밀고 뛰어내리려 하는 노출량 (SOP 213-2.4.3)"},
+  "jump_fed": {"value": 0.35, "source": "추정", "note": "창가 주민이 뛰어내리는 노출량 (방에 플래시오버가 나도 뛰어내린다)"},
+  "jump_delay_s": {"value": 240, "source": "추정", "note": "창가 주민의 방에 불이 붙은 뒤 이만큼 지나면 뛰어내린다"},
+  "air_mat_setup_s": {"value": 60, "source": "추정", "note": "공기안전매트 설치 시간 (팽창 포함)"},
+  "air_mat_radius_m": {"value": 2.5, "source": "추정", "note": "창 아래 낙하 지점과 매트 중심이 이 안이면 매트에 떨어진다"}
 }

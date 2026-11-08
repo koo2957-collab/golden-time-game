@@ -92,6 +92,7 @@ func add_victims(list: Array, rng: RandomNumberGenerator) -> void:
 		v.age = int(data.get("age", 0))
 		v.mobility = str(data.get("mobility", ""))
 		v.level = int(data.get("level", 1))
+		v.jumper = bool(data.get("window", false))
 		if data.has("cell"):
 			var c: Array = data.cell
 			v.pos = Vector2(int(c[0]) + 0.5, int(c[1]) + 0.5)

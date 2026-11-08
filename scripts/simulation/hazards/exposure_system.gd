@@ -11,6 +11,8 @@ class Pair:
 	var target: Opening
 	var dist_m := 1.0
 	var wind := 1.0
+	## 같은 건물 아래층 창 → 바로 위층 창 (SOP 213-1.1)
+	var vertical := false
 
 
 var fire: FireSim
@@ -35,7 +37,8 @@ var _cool: float
 var _sign_ratio: float
 var _wind_k: float
 var _max_m: float
-var _signed: Dictionary = {}
+var _signed: Dictionary = {}  # 구획 index -> true (창이 여러 개여도 방마다 한 번 알림)
+var _ignited_rooms: Dictionary = {}
 
 
 func _init(p_fire: FireSim, p_water: WaterSystem, params: ParamTable, p_events: SimEventLog) -> void:
@@ -58,11 +61,20 @@ func apply_scenario(data: Dictionary) -> void:
 	wind_from_deg = float(w.get("from_deg", 0.0))
 	wind_mps = float(w.get("speed_mps", 0.0))
 	for p in pairs:
-		p.wind = _wind_factor(p)
+		p.wind = 1.0 if p.vertical else _wind_factor(p)
 
 
 func has_exposure() -> bool:
 	return not pairs.is_empty()
+
+
+## 그 구획의 창 가열 비율 중 가장 높은 값 (0~1). 창가 주민의 위험 판단에 쓴다
+func room_ratio(room: Compartment) -> float:
+	var m := 0.0
+	for p in pairs:
+		if _room(p.target) == room:
+			m = maxf(m, float(dose.get(p.target.index, 0.0)) / _ignite)
+	return 1.0 if ignited.keys().any(func(i: int) -> bool: return _room(fire.openings[i]) == room) else clampf(m, 0.0, 1.0)
 
 
 ## 인접 건물 가열 중 가장 높은 비율 (0~1, 화면 표시용)
@@ -71,6 +83,14 @@ func max_ratio() -> float:
 	for k in dose:
 		m = maxf(m, dose[k] / _ignite)
 	return clampf(m, 0.0, 1.0)
+
+
+## 화면·평가용 이름: 인접 건물이 있으면 그 이름, 상층 연소만 있으면 "상층 세대"
+func label() -> String:
+	for st in fire.building.structures:
+		if st.exposure:
+			return str(st.name)
+	return "상층 세대" if fire.building.vertical_exposure else "인접 건물"
 
 
 func exposure_name() -> String:
@@ -109,10 +129,13 @@ func step(dt: float, tick: int) -> void:
 			d += maxf(0.0, float(flux_at.get(t.index, 0.0)) - _crit) * dt
 		dose[t.index] = d
 		peak = maxf(peak, minf(1.0, d / _ignite))
-		if d >= _ignite * _sign_ratio and not _signed.has(t.index):
-			_signed[t.index] = true
+		var t_room := _room(t)
+		var room_key: int = t_room.index if t_room else -1 - t.index
+		if d >= _ignite * _sign_ratio and not _signed.has(room_key):
+			_signed[room_key] = true
 			var from: Compartment = main_src.get(t.index, _room(p.source))
-			events.add(tick, "exposure_heating", {"target": exposure_name(), "from": from.display_name(), "crew": "현장 대원"})
+			var target := "%s (위층 창)" % _room(t).display_name() if p.vertical else exposure_name()
+			events.add(tick, "exposure_heating", {"target": target, "from": from.display_name(), "crew": "현장 대원"})
 		if d >= _ignite:
 			_ignite_target(t, tick)
 
@@ -121,6 +144,8 @@ func step(dt: float, tick: int) -> void:
 
 func _build_pairs() -> void:
 	var b := fire.building
+	if b.vertical_exposure:
+		_build_vertical_pairs()
 	if b.structures.size() < 2:
 		return
 	var cell_m := b.cell_size_m
@@ -142,6 +167,24 @@ func _build_pairs() -> void:
 			p.source = s
 			p.target = t
 			p.dist_m = maxf(1.0, d)
+			pairs.append(p)
+
+
+## 아래층 바깥 창 → 바로 위층의 같은 면 창 (수평 3칸 안). 거리는 층 높이 3m
+func _build_vertical_pairs() -> void:
+	for s in fire.openings:
+		if s.kind != Opening.Kind.WINDOW or not _exterior(s) or _in_exposure(s):
+			continue
+		for t in fire.openings:
+			if t.kind != Opening.Kind.WINDOW or t.level != s.level + 1 or not _exterior(t) or _in_exposure(t):
+				continue
+			if _outward(s) != _outward(t) or _center(s).distance_to(_center(t)) > 3.0:
+				continue
+			var p := Pair.new()
+			p.source = s
+			p.target = t
+			p.dist_m = 3.0
+			p.vertical = true
 			pairs.append(p)
 
 
@@ -186,6 +229,8 @@ func _protected(p: Pair) -> bool:
 	for h in water.hoses:
 		if not h.flowing:
 			continue
+		if p.vertical and h.target.z != p.source.level and h.target.z != p.target.level:
+			continue
 		var tgt := Vector2(h.target.x, h.target.y) + Vector2(0.5, 0.5)
 		if tgt.distance_to(b) <= 3.0:
 			return true
@@ -214,7 +259,10 @@ func _ignite_target(t: Opening, tick: int) -> void:
 			best = i
 	if best >= 0:
 		fire.grid.ignite(best, 0.5)
-	events.add(tick, "exposure_ignition", {"target": room.name, "crew": "현장 대원"})
+	if _ignited_rooms.has(room.index):
+		return
+	_ignited_rooms[room.index] = true
+	events.add(tick, "exposure_ignition", {"target": room.display_name() if fire.building.vertical_exposure and not _in_exposure(t) else room.name, "crew": "현장 대원"})
 
 
 func _room(o: Opening) -> Compartment:

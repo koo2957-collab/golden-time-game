@@ -26,6 +26,16 @@ func value(key: String) -> float:
 	return float(params[key]["value"])
 
 
+## 건물 구조에 따라 다른 값 (params[key].by_structure: {구조 낱말: 값}). 구조 이름에 낱말이 들어 있으면 그 값, 없으면 value
+func by_structure(key: String, structure: String) -> float:
+	var entry: Dictionary = params.get(key, {})
+	var table: Dictionary = entry.get("by_structure", {})
+	for word: String in table:
+		if structure.contains(word):
+			return float(table[word])
+	return value(key)
+
+
 func range_of(key: String) -> Vector2:
 	var entry: Dictionary = params.get(key, {})
 	return Vector2(float(entry.get("min", 0.0)), float(entry.get("max", 0.0)))

@@ -8,6 +8,10 @@ const FACE_FONT_SIZE := 18
 
 var building: BuildingData
 var level := 1
+## 직하층 확인 추정 구조 (P2-2): TacticalSystem과 세대 배치. 없으면 그리지 않는다
+var tactical: TacticalSystem
+var layout: UnitAssembly
+const ESTIMATE_COLOR := Color(0.55, 0.8, 1.0, 0.85)
 
 
 func setup(p_building: BuildingData) -> void:
@@ -31,6 +35,7 @@ func _draw() -> void:
 	_draw_furniture()
 	_draw_grid(size_px)
 	_draw_room_labels()
+	_draw_estimates()
 	if level == building.levels()[0]:
 		_draw_lane_line()
 		_draw_face_labels()
@@ -85,6 +90,24 @@ func _draw_room_labels() -> void:
 		var rect_px := Rect2(Vector2(r.position) * PlanStyle.CELL_PX, Vector2(r.size) * PlanStyle.CELL_PX)
 		var baseline := Vector2(rect_px.position.x, rect_px.get_center().y + ROOM_FONT_SIZE * 0.35)
 		draw_string(font, baseline, room.name, HORIZONTAL_ALIGNMENT_CENTER, rect_px.size.x, ROOM_FONT_SIZE, PlanStyle.ROOM_LABEL)
+
+
+## 직하층 확인으로 얻은 위 세대의 추정 구조: 세대 범위를 점선으로, "추정 (직하층 1001호)" (기획안 4-2-1)
+func _draw_estimates() -> void:
+	if tactical == null or layout == null:
+		return
+	var font := PlanStyle.font()
+	for name: String in tactical.unit_estimates:
+		var u := layout.unit_named(name)
+		if u.is_empty() or int(u.level) != level:
+			continue
+		var r: Rect2i = u.rect
+		var rect_px := Rect2(Vector2(r.position) * PlanStyle.CELL_PX, Vector2(r.size) * PlanStyle.CELL_PX)
+		var corners := [rect_px.position, Vector2(rect_px.end.x, rect_px.position.y), rect_px.end, Vector2(rect_px.position.x, rect_px.end.y)]
+		for k in 4:
+			draw_dashed_line(corners[k], corners[(k + 1) % 4], ESTIMATE_COLOR, 2.0, 8.0)
+		var est: Dictionary = tactical.unit_estimates[name]
+		draw_string(font, rect_px.position + Vector2(6, 18), "추정 구조 (직하층 %s)" % str(est.get("from", "")), HORIZONTAL_ALIGNMENT_LEFT, -1, ROOM_FONT_SIZE, ESTIMATE_COLOR)
 
 
 ## 건물 방면 표시 (SOP 105-2.2: 전면 A, 시계방향 B·C·D)

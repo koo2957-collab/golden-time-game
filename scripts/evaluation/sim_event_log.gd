@@ -58,6 +58,24 @@ static func describe_text(e: Dictionary) -> String:
 			text = "공기호흡기 교체 — %s" % e.crew
 		"ff_down":
 			text = "대원 행동 불능 (%s) — %s" % [e.reason, e.crew]
+		"below_checked":
+			text = "직하층 확인 — %s (%s)" % [e.text, e.crew]
+		"estimate_differs":
+			text = "%s 구조가 다릅니다 — %s (직하층 %s와 다름, %s)" % [e.unit, e.actual, e.from, e.crew]
+		"flow_short":
+			text = "수량이 부족합니다 — %s (필요 %dL/분, 지금 %dL/분) %s" % [e.room, e.required, e.applied, e.crew]
+		"tank_low":
+			text = "%s 물탱크 %d%% 남음 — 급수 필요 (%s)" % [e.vehicle, e.percent, e.crew]
+		"steam_mix":
+			text = "수증기로 열기가 내려옵니다 — %s, 배기구 없이 분무 (%s)" % [e.room, e.crew]
+		"firebrand_ignition":
+			text = "비화 — 불티가 %s에 옮겨 붙음 (풍속 %.0fm/s)" % [e.target, e.wind_mps]
+		"work_start":
+			text = "%s %s 시작 — 약 %d초 (%d인, 호스 %d본) %s" % [e.vehicle, e.work, e.seconds, e.people, e.lengths, e.driver]
+		"hose_resupply":
+			text = "호스가 모자랍니다 — 차량에서 더 가져옵니다 (%s, %d본째)" % [e.crew, e.lengths]
+		"door_check_seen":
+			text = "%s 현관문에 도어체크가 걸려 있습니다 — 안에 사람이 있을 수 있습니다 (%s)" % [e.unit, e.crew]
 		"victim_found":
 			text = "요구조자 발견 (%s) — %s, %s, %s" % [e.how, e.who, e.room, e.state]
 		"victim_state":
@@ -317,8 +335,6 @@ static func describe_text(e: Dictionary) -> String:
 			text = "2차 검색 완료 — %s" % e.room
 		"all_clear_declared":
 			text = "완진 선언 — 잔불정리·감시·인원점검 후 활동 종료"
-		"time_warning":
-			text = "활동 제한 시간 %d분 전" % e.min
 		"end_suggested":
 			text = "더 할 일이 없습니다 — %s" % ("인원점검 후 활동 종료하세요" if e.get("all_clear", false) else "완진 선언 후 활동 종료를 검토하세요")
 		"hydrant_out":

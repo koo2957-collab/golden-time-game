@@ -14,8 +14,12 @@ const LAYER_MIN_CLEAR_M := 0.05
 const STEFAN_BOLTZMANN := 5.67e-11  # kW/(m²·K⁴)
 const SATURATION_EXPONENT := 8.0
 const MAX_COOLING_SHARE := 0.9
+## 계단 구획이 이만큼 남기고 연기로 차면 '꽉 참'
+const STAIR_FULL_MARGIN_M := 0.3
 
 var comps: Array[Compartment]
+## 굴뚝효과 배율 (계단·승강로 상승 기류, FireSim이 계절·건물 높이로 정한다)
+var stack_factor := 1.0
 var openings: Array[Opening]
 
 var _t_amb: float
@@ -34,6 +38,9 @@ var _closed_leak: float
 var _min_leak: float
 var _smolder: float
 var _gas_max_pct: float
+var _hot_margin: float
+var _stair_coeff: float
+var _stair_depth: float
 
 
 func _init(p_comps: Array[Compartment], p_openings: Array[Opening], config: FireConfig) -> void:
@@ -55,6 +62,9 @@ func _init(p_comps: Array[Compartment], p_openings: Array[Opening], config: Fire
 	_min_leak = config.value("room_min_leak_ah")
 	_smolder = config.value("smolder_consumption_ratio")
 	_gas_max_pct = config.value("unburned_gas_max_pct")
+	_hot_margin = config.value("hot_layer_flow_margin_c")
+	_stair_coeff = config.value("stair_upflow_coeff")
+	_stair_depth = config.value("stair_upflow_depth_m")
 	for c in comps:
 		c.t_upper = _t_amb
 		c.t_lower = _t_amb
@@ -149,11 +159,13 @@ func _exchange_air(o: Opening, m_exchange: float, dt: float) -> void:
 
 
 ## 연기층 하단이 개구부 상단보다 낮아지면 그 차이만큼 넘쳐 흐른다.
+## 받는 쪽 연기층이 더 두꺼워도 그쪽이 더 차가우면 뜨거운 가스는 그 위로 계속 넘어간다 (부력·압력 차, 화재2 337쪽 중성대).
+## 받는 쪽이 더 두껍고 비슷하게 뜨거울 때만 멈춘다.
 func _layer_outflow(o: Opening, from: int, to: int, dt: float) -> void:
 	var c := comps[from]
 	if c.layer_depth <= 0.01:
 		return
-	if to != Opening.OUTSIDE and comps[to].layer_depth >= c.layer_depth:
+	if to != Opening.OUTSIDE and comps[to].layer_depth >= c.layer_depth and comps[to].t_upper >= c.t_upper - _hot_margin:
 		return
 	var bottom := c.height - c.layer_depth
 	if bottom >= o.top:
@@ -164,14 +176,18 @@ func _layer_outflow(o: Opening, from: int, to: int, dt: float) -> void:
 	_move_layer(c, to, rate * dt, dt)
 
 
-## 계단: 아래층 연기층이 위층으로 올라간다.
+## 계단: 아래층 연기층이 위층으로 올라간다. 수직 연기 속도가 교재 값(계단 초기 약 1.5m/s, 중기 3~4m/s, 화재2 330쪽)에
+## 가깝도록 계수를 맞춘다 (stair_upflow_coeff·stair_upflow_depth_m). 위층으로 빨리 빠져나가 꼭대기부터 차는 모습이 된다 (SOP 223 1.3)
 func _layer_outflow_up(o: Opening, dt: float) -> void:
 	var c := comps[o.room_a]
 	var upper := comps[o.room_b]
-	if c.layer_depth <= 0.05 or c.t_upper < upper.t_upper - 1.0:
+	if c.layer_depth <= 0.02 or c.t_upper < upper.t_upper - 1.0:
+		return
+	# 위층 계단이 연기로 꽉 차면 더 올라가지 못하고 아래층에 쌓인다 → 꼭대기부터 아래로 찬다
+	if upper.layer_depth >= upper.height - STAIR_FULL_MARGIN_M:
 		return
 	var d_t := maxf(c.t_upper - _t_amb, 5.0)
-	var rate := 0.5 * o.area * sqrt(2.0 * G * d_t / (_t_amb + 273.0)) * minf(1.0, c.layer_depth)
+	var rate := _stair_coeff * o.area * sqrt(2.0 * G * d_t / (_t_amb + 273.0)) * minf(1.0, c.layer_depth / _stair_depth) * stack_factor
 	_move_layer(c, o.room_b, rate * dt, dt)
 
 
@@ -192,6 +208,7 @@ func _move_layer(c: Compartment, to: int, dv: float, dt: float) -> void:
 	var d := comps[to]
 	d.soot += soot_moved
 	d.gas += gas_moved
+	d.toxicity = maxf(d.toxicity, c.toxicity)
 	_add_layer(d, dv)
 	d.imported_kw += _gas_density(c.t_upper) * dv / dt * CP * (c.t_upper - _t_amb)
 

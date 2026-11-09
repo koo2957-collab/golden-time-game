@@ -274,6 +274,7 @@
   "W": "창",
   "S": "계단"
  },
+ "units": {"note": "세대 (기획안 4-2-1, P2-2): 같은 동 틀 + 세대마다 변형·집기 세트. rect는 세대 범위, mirror는 타입 A를 좌우로 뒤집음. 층마다 이름은 <층><id>호", "type": "apartment_a", "furnishings": "res://data/furnishings/apartment_a.json", "variants": "res://data/unit_variants/apartment_a.json", "list": [{"id": "01", "rect": [7, 5, 20, 14]}, {"id": "02", "rect": [33, 5, 20, 14], "mirror": true}]},
  "floors": [
   {
    "level": 1,

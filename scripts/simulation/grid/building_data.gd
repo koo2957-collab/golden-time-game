@@ -203,7 +203,7 @@ func _parse(data: Dictionary) -> void:
 		floor_numbers[int(k)] = int(data.floor_numbers[k])
 	for sh: Dictionary in data.get("shafts", []):
 		var r: Array = sh.get("rect", [0, 0, 1, 1])
-		shafts.append({"name": str(sh.get("name", "샤프트")), "rect": Rect2i(int(r[0]), int(r[1]), int(r[2]), int(r[3])),
+		shafts.append({"name": str(sh.get("name", "샤프트")), "rect": Rect2i(int(r[0]), int(r[1]), int(r[2]), int(r[3])), "pvc": bool(sh.get("pvc", false)),
 			"levels": sh.get("levels", []).map(func(l: Variant) -> int: return int(l))})
 	for sg: Dictionary in data.get("signs", []):
 		var r: Array = sg.get("rect", [0, 0, 1, 1])

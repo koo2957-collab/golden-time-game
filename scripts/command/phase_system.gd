@@ -6,7 +6,7 @@ extends RefCounted
 ##         화재 구획 가까이 있는 진압 조가 자기가 보는 방을 "초진"으로 보고한다 (보지 못한 곳의 불은 빠진다 — SOP 102-4.1 ⑥).
 ##   2차 검색: 초진 뒤 끝난 인명검색은 2차 검색으로 기록한다 (8단계 ⑤).
 ##   완진 선언: 플레이어 명령. 막지 않고, 선언 때 실제 상태(타는 칸·숨은 불씨)를 기록해 판정한다.
-##   제한 시간 5분·1분 전 알림, 더 할 일이 없으면 종료 제안 (강제 아님).
+##   더 할 일이 없으면 종료 제안 (강제 아님, 반복은 MissionEndChecker). 제한 시간은 없다 (기획안 8-3, P11-1).
 
 enum Phase { DISPATCH, COMMAND, OPERATIONS, KNOCKDOWN, OVERHAUL, ALL_CLEAR, CLOSE_OUT, ENDED }
 const PHASE_NAMES := ["출동·도착", "지휘권 확립", "진압·인명구조", "초진", "잔불정리·2차 검색", "완진 선언", "마무리", "활동 종료"]
@@ -34,7 +34,6 @@ var _window_start := -1
 var _window_burning := 0
 var _burned_count := 0
 var _event_index := 0
-var _warned: Dictionary = {}
 var _quiet_since := -1
 
 
@@ -70,7 +69,7 @@ func on_ended(tick: int) -> void:
 	_enter(Phase.ENDED, tick)
 
 
-func step(_dt: float, tick: int, declared: bool, time_limit_tick: int) -> void:
+func step(_dt: float, tick: int, declared: bool) -> void:
 	if phase == Phase.DISPATCH and tick >= 1:
 		_enter(Phase.COMMAND, tick)
 	if phase == Phase.COMMAND and declared:
@@ -78,7 +77,6 @@ func step(_dt: float, tick: int, declared: bool, time_limit_tick: int) -> void:
 	if knockdown_tick < 0 and phase >= Phase.OPERATIONS:
 		_check_knockdown(tick)
 	_scan_searches()
-	_time_warnings(tick, time_limit_tick)
 	_check_nothing_left(tick)
 
 
@@ -158,16 +156,7 @@ func search_targets() -> Array[Compartment]:
 	return out
 
 
-# --- 시간·종료 제안 ---
-
-func _time_warnings(tick: int, limit: int) -> void:
-	if limit < 0 or phase == Phase.ENDED:
-		return
-	for m in [5, 1]:
-		var at := limit - roundi(m * 60.0 / SimClock.TICK_DT)
-		if tick >= at and not _warned.has(m) and at > 0:
-			_warned[m] = true
-			events.add(tick, "time_warning", {"min": m, "crew": "상황실"})
+# --- 종료 제안 ---
 
 
 ## 살아 있는 구조대상자가 건물 안에 없고 타는 칸이 없는 상태가 이어지면 한 번 종료를 제안한다

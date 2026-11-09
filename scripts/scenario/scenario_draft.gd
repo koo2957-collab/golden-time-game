@@ -66,11 +66,6 @@ func set_dispatch_lines(lines: PackedStringArray) -> void:
 	data["dispatch"] = d
 
 
-func set_time_limit_min(minutes: int) -> void:
-	var ev: Dictionary = data.get("evaluation", {})
-	ev["time_limit_s"] = minutes * 60
-	data["evaluation"] = ev
-
 
 ## 판마다 다른 시드 (구조대상자 위치 등이 바뀐다)
 func set_random_seed(on: bool) -> void:

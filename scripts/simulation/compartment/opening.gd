@@ -25,6 +25,8 @@ var breakable := true
 ## 잠긴 문 (파괴해야 열린다) / 파괴된 문 (다시 닫을 수 없다)
 var locked := false
 var forced := false
+## 도어체크가 걸려 있다 (세대 변형, P2-2) — 안에 사람이 있다는 단서
+var door_check := false
 
 
 func height() -> float:

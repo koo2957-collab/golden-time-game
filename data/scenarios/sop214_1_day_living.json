@@ -63,7 +63,7 @@
       "command.all_clear",
       "fire.placement",
       "fire.water_supply",
-      "fire.overhaul",
+      "fire.overhaul", "fire.overhaul_order",
       "fire.watch",
       "command.declare",
       "command.cards",
@@ -76,7 +76,6 @@
       "command.close_out"
     ],
     "params": {},
-    "time_limit_s": 1500,
     "objectives": [
       "구조대상자(노인·아이) 생존 구조 — 인명검색·구조 최우선 (SOP 214-2.1)",
       "대원 안전: 행동 불능 0, 공기 경보 조 즉시 철수 (SOP 108, 201)",
@@ -84,7 +83,7 @@
       "도착 즉시 지휘권 선언, 둘러보기 후 보완 보고 (SOP 101)"
     ],
     "end_state": "구조대상자 2명 모두 생존 구조, 대원 부상 없음, 화재는 거실과 인접 구획에서 완진, 지휘권 선언·둘러보기·보완 보고가 도착 직후 이루어진 상태",
-    "note": "rules: data/sop/rules.json의 id. params: 규칙 id -> 기준값 덮어쓰기. time_limit_s가 지나면 활동이 자동 종료된다 (추정)"
+    "note": "rules: data/sop/rules.json의 id. params: 규칙 id -> 기준값 덮어쓰기. 제한 시간은 없다 — 지휘관 활동 종료 선언·전소로 끝난다 (기획안 8-3)"
   },
   "site": {
     "note": "현장 정보 (SOP 101-2.2, 102-2.2, 202-2). 면 정보는 지휘관이 그 면을 봐야 알 수 있다. hazard가 있으면 상황보고 ④ 정답에 들어간다",

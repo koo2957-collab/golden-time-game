@@ -82,18 +82,13 @@ func test_close_out_order() -> void:
 	assert_eq(sim2.phases.phase, PhaseSystem.Phase.ENDED, "활동 종료 단계")
 
 
-func test_time_warnings_and_end_suggestion() -> void:
-	var sim := _sim()
-	sim.time_limit_tick = roundi(400.0 / SimClock.TICK_DT)
-	sim.step_ticks(roundi(350.0 / SimClock.TICK_DT))
-	var warns := sim.events.of_type("time_warning")
-	assert_eq(warns.size(), 2, "5분·1분 전 알림")
+func test_end_suggestion() -> void:
 	# 불도 없고 건물 안 생존자도 없으면 종료 제안
 	var quiet := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)
 	quiet.phases._enter(PhaseSystem.Phase.OPERATIONS, 0)
 	# 시뮬레이션을 돌리지 않았으므로 아직 타는 칸이 없다
 	for v in quiet.rescue.victims:
 		v.state = Victim.State.DEAD
-	quiet.phases.step(0.1, 10, true, -1)
-	quiet.phases.step(0.1, 10 + roundi(61.0 / SimClock.TICK_DT), true, -1)
+	quiet.phases.step(0.1, 10, true)
+	quiet.phases.step(0.1, 10 + roundi(61.0 / SimClock.TICK_DT), true)
 	assert_eq(quiet.events.of_type("end_suggested").size(), 1, "종료 제안")

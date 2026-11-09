@@ -100,7 +100,8 @@ func test_training_doubles_time_and_replay_same() -> void:
 	sim.events.add(1, "air_alarm", {"crew": "진압1 1조", "crew_id": 0})
 	sim.cards.step(0.1, 1)
 	var c := sim.cards.active()
-	assert_eq(c.deadline_tick - c.asked_tick, roundi(16.0 / SimClock.TICK_DT), "훈련은 긴급 8초 × 2")
+	# 제한시간은 실제 초 (훈련 2배), 현장 시계가 1.5배로 흐르므로 현장 틱으로는 × 1.5 (기획안 5-8)
+	assert_eq(c.deadline_tick - c.asked_tick, roundi(16.0 * sim.field_scale / SimClock.TICK_DT), "훈련은 긴급 8초 × 2 (실제 초)")
 	var a := SimWorld.from_scenario(DEV_SCENARIO_PATH, true, 5)
 	var b := SimWorld.from_scenario(DEV_SCENARIO_PATH, true, 5)
 	for s in [a, b]:

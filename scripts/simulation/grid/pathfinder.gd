@@ -27,6 +27,16 @@ func _init(building: BuildingData) -> void:
 			for x in building.width:
 				if not building.is_walkable(level, x, y):
 					grid.set_point_solid(Vector2i(x, y))
+		# 가구: 느림·막힘은 지나가기 어렵게 (세대 집기 세트, P2-2). 완전히 막지는 않아 길이 끊기지 않는다
+		for item in building.furniture(level):
+			var wgt := float(item.get("weight", 1.0))
+			if wgt <= 1.0:
+				continue
+			var r: Rect2i = item.rect
+			for y in range(r.position.y, r.end.y):
+				for x in range(r.position.x, r.end.x):
+					if building.is_walkable(level, x, y):
+						grid.set_point_weight_scale(Vector2i(x, y), wgt)
 		_grids[level] = grid
 
 

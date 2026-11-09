@@ -20,6 +20,8 @@ static func chapters() -> Array:
 static func best_grades(list: Array[Dictionary]) -> Dictionary:
 	var best := {}
 	for e in list:
+		if e.get("incomplete", false):
+			continue  # 미완료 판은 진행에 넣지 않는다 (P11-1)
 		var id: String = e.scenario_id
 		if not best.has(id) or GRADE_ORDER.find(e.grade) < GRADE_ORDER.find(best[id]):
 			best[id] = e.grade
@@ -53,3 +55,24 @@ static func progress(list: Array[Dictionary]) -> Array[Dictionary]:
 		out.append({"chapter": ch, "status": status, "grades": grades})
 		prev_done = status == Status.DONE
 	return out
+
+
+## 캠페인 순서에서 이 시나리오 다음 시나리오 id (없으면 "") — 디브리핑 '다음 스테이지' (기획안 8-4, P11-1)
+static func next_id(current: String) -> String:
+	var ids: Array[String] = []
+	for ch: Dictionary in chapters():
+		for id in ch.get("scenarios", []):
+			ids.append(str(id))
+	var i := ids.find(current)
+	return ids[i + 1] if i >= 0 and i + 1 < ids.size() else ""
+
+
+## 다음 시나리오 파일 경로 (없거나 오류가 있으면 "")
+static func next_path(current: String) -> String:
+	var id := next_id(current)
+	if id == "":
+		return ""
+	for s: Dictionary in ScenarioLoader.list():
+		if str(s.id) == id and s.errors.is_empty():
+			return str(s.path)
+	return ""

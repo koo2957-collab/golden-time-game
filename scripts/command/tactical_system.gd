@@ -8,12 +8,13 @@ extends RefCounted
 ##   층 검색·층 진압 (search_floor·attack_floor, R7): 본 적 없는 곳은 층 단위로 맡긴다 (기획안 9-1).
 ##     층 검색은 아직 검색하지 않은 방을 가까운 곳부터 차례로, 층 진압은 그 층에서 타는 방을 찾아 차례로 진압
 ##   임무 조건 (R7): 철수 잔압·화점 발견 시·요구조자 발견 시. 정해 두면 그 질문 카드 없이 그대로 한다
+##   직하층 확인 (check_below, P2-2): 목표 세대 바로 아래 세대를 돌며 구조를 보고 → 위 세대의 '추정 구조'로 기록 (기획안 4-2-1, SOP 202 4.4)
 ## 자동 행동도 SOP 안에서만 움직인다: 백드래프트 징후가 있는 문은 열지 않고 멈춰 보고한다 (210-4.5),
 ## 진입 명령이 없으면 입구에서 기다린다 (102-5.2). 자동화 수준은 난이도에 따라 다르다.
 
 enum Phase { DOORS, ACT, WORKING, DONE }
 const ACTIONS := {"attack": "진압", "exterior": "외부 방수", "search": "수색", "withdraw": "철수",
-	"search_floor": "층 검색", "attack_floor": "층 진압", "hold": "대기"}
+	"search_floor": "층 검색", "attack_floor": "층 진압", "hold": "대기", "check_below": "직하층 확인"}
 const MISSION_PATH := "res://data/command/mission_params.json"
 ## 난이도별 자동화 수준
 const LEVELS := {
@@ -37,6 +38,9 @@ class Task:
 	var floor_action := ""
 	## 멈춰 지시를 기다리는가 (층 임무는 이어 가지 않는다)
 	var halted := false
+	## 직하층 확인: 남은 방 (구획 index)과 위·아래 세대 이름
+	var unit_rooms: Array[int] = []
+	var unit_check: Dictionary = {}
 
 
 var fire: FireSim
@@ -62,6 +66,10 @@ var mission_data: Dictionary = {}
 var _fire_radius := 5.0
 var _fire_seen: Dictionary = {}  # "조:방" -> true
 var _air_withdrawn: Dictionary = {}  # 조 id -> true (철수 잔압으로 철수함)
+## 세대 배치 (P2-2, SimWorld가 넣는다)
+var layout: UnitAssembly
+## 직하층 확인으로 얻은 추정 구조 {위 세대 이름: {from: 아래 세대, variant: 아래 세대 변형, furnish, tick}} — 지휘관이 아는 정보
+var unit_estimates: Dictionary = {}
 
 
 func _init(p_fire: FireSim, p_units: UnitSystem, p_water: WaterSystem, p_doors: DoorSystem, p_rescue: RescueSystem, p_events: SimEventLog) -> void:
@@ -116,6 +124,8 @@ func order(action: String, crew_id: int, target: Vector3i, tick: int) -> bool:
 		return water.start_spray(crew_id, target, HoseLine.Pattern.STRAIGHT, tick)
 	if action in ["search_floor", "attack_floor"]:
 		return _order_floor(action, c, target.z, tick, true)
+	if action == "check_below":
+		return _order_check_below(c, target, tick)
 	var room := fire.compartment_at(target.z, target.x, target.y)
 	if room == null:
 		return false
@@ -147,12 +157,18 @@ func step(tick: int) -> void:
 			_check_fire_found(t, c, tick)
 	# 층 임무: 방 하나를 마치면 다음 방으로 (멈췄거나 구조대상자를 옮기는 중이면 이어 가지 않는다)
 	var next: Array[Task] = []
+	var unit_next: Array[Task] = []
 	for t in tasks:
-		if t.phase == Phase.DONE and t.floor >= 0 and not t.halted and rescue.task_of_crew(t.crew_id) == null:
-			next.append(t)
+		if t.phase == Phase.DONE and not t.halted and rescue.task_of_crew(t.crew_id) == null:
+			if t.floor >= 0:
+				next.append(t)
+			elif not t.unit_check.is_empty():
+				unit_next.append(t)
 	tasks = tasks.filter(func(t: Task) -> bool: return t.phase != Phase.DONE)
 	for t in next:
 		_order_floor(t.floor_action, units.get_crew(t.crew_id), t.floor, tick, false)
+	for t in unit_next:
+		_next_unit_room(units.get_crew(t.crew_id), t.unit_rooms, t.unit_check, tick)
 	_check_air(tick)
 
 
@@ -381,6 +397,45 @@ func _order_floor(action: String, c: Crew, lv: int, tick: int, first: bool) -> b
 	else:
 		events.add(tick, "tactical_next", {"crew": _crew_name(c), "room": room.display_name()})
 	return true
+
+
+## 직하층 확인: 목표 세대 바로 아래 세대의 방을 차례로 돈다
+func _order_check_below(c: Crew, target: Vector3i, tick: int) -> bool:
+	if layout == null:
+		return false
+	var above := layout.unit_at(target.z, Vector2i(target.x, target.y))
+	var below := layout.unit_below(above) if not above.is_empty() else {}
+	if below.is_empty():
+		events.add(tick, "tactical_halt", {"crew": _crew_name(c), "reason": "직하층 세대가 없음 — 지시 바람", "safety": false,
+			"kind": "no_unit", "crew_id": c.id, "action": "check_below", "target": [target.x, target.y, target.z]})
+		return false
+	var rooms: Array[int] = []
+	for room in fire.comps:
+		if room.level == int(below.level) and room.display_name().contains(str(below.name)) and not room.cells.is_empty():
+			rooms.append(room.index)
+	events.add(tick, "tactical_start", {"crew": _crew_name(c), "action": ACTIONS["check_below"], "room": str(below.name)})
+	_next_unit_room(c, rooms, {"above": str(above.name), "below": str(below.name), "start": tick}, tick)
+	return true
+
+
+func _next_unit_room(c: Crew, rooms: Array[int], check: Dictionary, tick: int) -> void:
+	if rooms.is_empty():
+		var below := layout.unit_named(str(check.below))
+		unit_estimates[check.above] = {"from": check.below, "variant": below.get("variant", ""), "furnish": below.get("furnish", ""), "tick": tick}
+		events.add(tick, "below_checked", {"crew": _crew_name(c), "above": check.above, "below": check.below,
+			"text": "%s 확인 — %s도 같은 구조로 추정" % [check.below, check.above]})
+		return
+	var rest := rooms.duplicate()
+	var room := fire.comps[rest.pop_front()]
+	var t := Task.new()
+	t.crew_id = c.id
+	t.action = "search"
+	t.room = room.index
+	t.target = _room_cell(room)
+	t.doors = _closed_doors_to(c, room)
+	t.unit_rooms = rest
+	t.unit_check = check
+	tasks.append(t)
 
 
 ## 층 검색: 아직 검색하지 않은 방 / 층 진압: 타는 방 — 조에게서 가까운 곳부터

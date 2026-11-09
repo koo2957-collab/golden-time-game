@@ -29,6 +29,9 @@
   "lower_layer_visibility_factor": {"value": 4, "source": "추정", "note": "연기층 아래(하부층) 시야는 상부층보다 이만큼 길다"},
   "flame_glow_factor": {"value": 3, "source": "추정", "note": "화염 불빛은 형체보다 이 배수만큼 멀리 보인다"},
   "max_sight_m": {"value": 15, "source": "추정", "note": "맑은 실내에서도 한 번에 살피는 최대 거리"},
+  "window_view_every": {"value": 5, "source": "게임 설정값", "note": "성능(P14): 밖에서 창으로 들여다보는 시선은 시야 갱신 이 횟수마다 한 번만 다시 계산 (약 1.5초). 그 사이 칸의 불·연기 상태는 매번 새로 기록"},
+  "window_view_low_floors": {"value": 2, "source": "게임 설정값", "note": "땅에서 이 층수 안(1·2층)의 창은 밖에서 방 안쪽까지 들여다본다 (R8)"},
+  "window_view_high_range_m": {"value": 2.0, "source": "게임 설정값", "note": "그보다 높은 층의 창은 밖에서 창 바로 안쪽만 보인다 (불꽃·연기는 보이지만 방 구조는 모름). 성능(P14)에도 도움"},
   "thermal_camera_range_m": {"value": 15, "source": "추정", "note": "열화상카메라 탐지 거리 (SOP 202-1.5)"},
 
   "door_open_s": {"value": 3, "source": "추정", "note": "잠기지 않은 문 개방·폐쇄"},

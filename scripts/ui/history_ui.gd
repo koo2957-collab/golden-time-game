@@ -92,6 +92,9 @@ static func text_for(list: Array[Dictionary]) -> String:
 	for i in range(list.size() - 1, maxi(-1, list.size() - 21), -1):
 		var e: Dictionary = list[i]
 		var tags := " · ".join(PackedStringArray([e.mode, e.difficulty].filter(func(x: String) -> bool: return x != "")))
+		if e.get("incomplete", false):
+			lines.append("  %s  %s%s  [color=#fbbf24]미완료[/color] (중간에 나감 — 성장·집계에 넣지 않음)" % [e.saved_at, e.title, "  [%s]" % tags if tags != "" else ""])
+			continue
 		lines.append("  %s  %s%s  등급 [b]%s[/b] (%.1f점)" % [e.saved_at, e.title, "  [%s]" % tags if tags != "" else "", e.grade, e.points])
 		if not e.weak.is_empty():
 			lines.append("      [color=#94a3b8]고칠 점: %s[/color]" % ", ".join(PackedStringArray(e.weak.slice(0, 2))))

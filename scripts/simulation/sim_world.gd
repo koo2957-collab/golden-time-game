@@ -26,6 +26,10 @@ var rng := RandomNumberGenerator.new()
 var building: BuildingData
 var pathfinder: Pathfinder
 var units: UnitSystem
+## 세대별 변형·집기 세트 (기획안 4-2-1, P2-2)
+var unit_layout: UnitAssembly
+## 도어체크를 이미 보고한 문 (opening index)
+var _door_clues_reported: Dictionary = {}
 var fire: FireSim
 var water: WaterSystem
 var doors: DoorSystem
@@ -70,8 +74,18 @@ var scenario: Dictionary = {}
 ## 활동 종료 틱과 사유 (SOP 113-1.1). 끝나기 전이면 -1
 var ended_tick := -1
 var end_reason := ""
-## 이 틱이 되면 활동을 자동으로 끝낸다 (-1: 제한 없음)
-var time_limit_tick := -1
+## 종료 종류 (MissionEndChecker.END_*): 작전 완료 / 조기 종료 / 전소 / 미완료. 끝나기 전이면 ""
+var end_type := ""
+## 종료 조건 (기획안 8-3, P11-1). 시나리오 제한시간은 없다
+var mission_end: MissionEndChecker
+## 게임 메뉴로 멈춘 횟수 (기록만, 감점 없음 — 기획안 8-4)
+var pause_count := 0
+## 현장 시계 배속 (기획안 5-8, 난이도별). 화면(world)이 SimClock.speed로 쓴다. 테스트(난이도 없음)는 1
+var field_scale := 1.0
+## 신고 → 선착대 도착 (출동 단계, 기획안 4-4) / 발화 → 신고 지연(늦은 신고 preburn_s)
+var dispatch_s := 0.0
+var ignition_to_call_s := 0.0
+var _dispatched := false
 ## 시나리오 파일 경로와 실제로 쓴 시드 (다시 하기에 쓴다)
 var scenario_path := ""
 var rng_seed := 0
@@ -86,8 +100,13 @@ var _pending: Array = []
 
 
 ## vehicle_overrides: 차종 -> 제원 일부 (시나리오 vehicles). 기본 제원(vehicles.json)을 덮어쓰거나 새 차종을 더한다
-static func create(building_path: String, roster_path: String, unit_stats_path := DEFAULT_UNIT_STATS_PATH, p_seed := 0, vehicle_overrides: Dictionary = {}) -> SimWorld:
+## unit_setup: 시나리오 units {mix, overrides} — 세대별 변형·집기 세트 (P2-2). 비우면 표준 평면 + 일반 집기
+static func create(building_path: String, roster_path: String, unit_stats_path := DEFAULT_UNIT_STATS_PATH, p_seed := 0, vehicle_overrides: Dictionary = {}, unit_setup: Dictionary = {}) -> SimWorld:
 	var building := BuildingData.from_file(building_path)
+	var building_raw: Variant = JsonData.load_file(building_path)
+	var layout := UnitAssembly.new()
+	if building and building_raw is Dictionary:
+		layout = UnitAssembly.apply(building, building_raw.get("units", {}), p_seed, unit_setup)
 	var roster: Variant = JsonData.load_file(roster_path)
 	var stats_data: Variant = JsonData.load_file(unit_stats_path)
 	var vehicle_stats: Variant = JsonData.load_file(VEHICLES_PATH)
@@ -116,6 +135,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	var sim := SimWorld.new()
 	sim.rng.seed = p_seed
 	sim.building = building
+	sim.unit_layout = layout
 	sim.pathfinder = Pathfinder.new(building)
 	var speed_cells := stats.value("walk_speed_mps") / building.cell_size_m
 	sim.units = UnitSystem.from_roster(roster, speed_cells, vehicle_stats, building.cell_size_m)
@@ -133,6 +153,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.collapse = CollapseSystem.new(sim.fire, sim.units, sim.rescue, hazard_params, sim.events)
 	sim._phase_params = ParamTable.from_dict(phase_data)
 	sim.phases = PhaseSystem.new(sim.fire, sim.units, sim.water, sim.rescue, sim.rekindle, sim.perception, ParamTable.from_dict(phase_data), sim.events)
+	sim.mission_end = MissionEndChecker.new(sim.fire, sim.collapse, sim.phases, sim._phase_params, sim.events)
 	sim.shuttle = ShuttleSystem.new(sim.units, sim.water, sim.events)
 	sim.shafts = ShaftSystem.new(sim.fire, sim.units, sim.water, hazard_params, sim.events)
 	sim.evac = EvacSystem.new(sim.fire, sim.rescue, sim.pathfinder, hazard_params, sim.units.walk_speed_cells, sim.events)
@@ -166,7 +187,14 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.plan = PlanIntel.new(sim.fire, sim.units, sim.perception, sim.command.interior, sim.events)
 	var building_data: Variant = JsonData.load_file(building_path)
 	if building_data is Dictionary:
+		# 세대 변형의 도면 차이를 더한다 (도면은 표준 평면만 보여 준다)
+		var diffs: Array = building_data.get("plan_diffs", []).duplicate()
+		for d in layout.plan_diffs:
+			diffs.append(d)
+		building_data["plan_diffs"] = diffs
 		sim.plan.apply_building(building_data)
+	sim._apply_unit_doors()
+	sim.tactical.layout = layout
 	sim.transfer = CommandTransfer.new(sim)
 	sim.elevator = ElevatorSystem.new(sim.fire, sim.units, sim.pathfinder, sim.events)
 	sim.lifeline = LifelineSystem.new(sim.fire, sim.units, sim.pathfinder, hazard_params, sim.events)
@@ -194,14 +222,14 @@ static func from_scenario(path: String, command_rules := true, seed_override := 
 		str(data.get("roster", "")),
 		str(data.get("unit_stats", DEFAULT_UNIT_STATS_PATH)),
 		seed_override if seed_override >= 0 else int(data.get("seed", 0)),
-		data.get("vehicles", {}))
+		data.get("vehicles", {}),
+		data.get("units", {}))
 	if sim:
 		sim.scenario = data
 		sim.scenario_path = path
 		sim.rng_seed = seed_override if seed_override >= 0 else int(data.get("seed", 0))
-		var limit := float(data.get("evaluation", {}).get("time_limit_s", -1))
-		sim.time_limit_tick = roundi(limit / SimClock.TICK_DT) if limit > 0.0 else -1
 		sim.fire.apply_scenario(data.get("fire", {}))
+		sim.fire.apply_season(str(data.get("season", "")))
 		sim.rescue.add_victims(data.get("victims", []), sim.rng)
 		sim.command.apply_scenario(data)
 		sim.exposure.apply_scenario(data)
@@ -221,6 +249,7 @@ static func from_scenario(path: String, command_rules := true, seed_override := 
 		sim.doors.sync_blocking()
 		# 늦게 신고된 화재: 출동 전에 불만 먼저 진행시킨다 (시나리오 fire.preburn_s, R10). 다시 하기도 같다
 		var pre := float(data.get("fire", {}).get("preburn_s", 0.0))
+		sim.ignition_to_call_s = pre
 		for i in roundi(pre / SimClock.TICK_DT):
 			sim.fire.step(SimClock.TICK_DT, 0)
 		sim.perception.update(0)
@@ -233,10 +262,13 @@ func apply_realism(name: String) -> void:
 	# 임무형 내부 지휘는 모든 난이도에 적용 (R7, 2026-11-08 사용자 결정)
 	command.interior.enabled = true
 	var pp := _phase_params
+	# 현장 시계 배속 (기획안 5-8): 훈련 1.5 · 실전 2 · 악조건 2.5
+	var fts: Dictionary = pp.params.get("field_time_scale", {})
+	field_scale = float(fts.get("by_realism", {}).get(name, fts.get("value", 1.0))) if not fts.is_empty() else 1.0
+	cards.clock_scale = field_scale
+	_begin_dispatch()
 	match name:
 		"훈련":
-			if time_limit_tick > 0:
-				time_limit_tick = roundi(time_limit_tick * pp.value("training_time_factor"))
 			cards.time_factor = _card_training_factor
 		"악조건":
 			var w: Dictionary = scenario.get("wind", {})
@@ -320,11 +352,13 @@ func ended() -> bool:
 
 
 ## 활동 종료. 이후 시뮬레이션은 멈추고 디브리핑(Evaluator)으로 넘어간다.
-func end_activity(reason: String) -> void:
+## p_type: MissionEndChecker.END_* (비우면 지휘관 선언으로 보고 작전 완료/조기 종료를 가린다)
+func end_activity(reason: String, p_type := "") -> void:
 	if ended():
 		return
 	ended_tick = clock.tick
 	end_reason = reason
+	end_type = p_type if p_type != "" else mission_end.declared_type(unsearched_rooms().size())
 	clock.paused = true
 	phases.on_ended(clock.tick)
 	events.add(clock.tick, "activity_ended", {"reason": reason})
@@ -380,7 +414,7 @@ func _step() -> void:
 	gas.step(dt, clock.tick)
 	collapse.step(dt, clock.tick)
 	shuttle.step(dt, clock.tick)
-	phases.step(dt, clock.tick, command.declared(), time_limit_tick)
+	phases.step(dt, clock.tick, command.declared())
 	cards.step(dt, clock.tick)
 	shafts.step(dt, clock.tick)
 	plan.step(dt, clock.tick)
@@ -397,7 +431,114 @@ func _step() -> void:
 	command.step(dt, clock.tick)
 	if clock.tick % PERCEPTION_EVERY_TICKS == 0:
 		perception.update(clock.tick)
+		_check_door_clues(clock.tick)
+		_check_estimates(clock.tick)
 	recorder.step(self, clock.tick)
 	clock.tick += 1
-	if time_limit_tick >= 0 and clock.tick >= time_limit_tick:
-		end_activity("제한 시간 종료")
+	var victims_waiting := false
+	for v in rescue.victims:
+		if v.alive():
+			victims_waiting = true
+	if mission_end.step(clock.tick, victims_waiting) == MissionEndChecker.END_BURNOUT:
+		end_activity("전소 — 건물 %d%% 소실, 불이 스스로 꺼짐" % roundi(mission_end.loss_ratio() * 100.0), MissionEndChecker.END_BURNOUT)
+
+
+## 출동 단계 (기획안 4-4): 신고부터 선착대 도착까지 4분 동안 불이 뒤에서 진행된다.
+## 화면은 이 시간을 실제 약 90초로 보여 주지만, 결과가 늘 같도록(다시 하기·리플레이) 여기서 한 번에 계산한다
+func _begin_dispatch() -> void:
+	if _dispatched:
+		return
+	_dispatched = true
+	dispatch_s = float(scenario.get("dispatch_s", _phase_params.value("dispatch_s")))
+	for i in roundi(dispatch_s / SimClock.TICK_DT):
+		fire.step(SimClock.TICK_DT, 0)
+	perception.update(0)
+
+
+## 신고 후 경과 (초) — 화면 시계 (기획안 4-4)
+func since_call_s() -> float:
+	return dispatch_s + clock.elapsed_seconds()
+
+
+## 발화 후 경과 (초) — 디브리핑
+func since_ignition_s() -> float:
+	return ignition_to_call_s + since_call_s()
+
+
+## 직하층 확인으로 추정한 세대에 들어가 보니 변형이 다르면 보고 (기획안 4-2-1: "구조가 다릅니다")
+func _check_estimates(tick: int) -> void:
+	for name: String in tactical.unit_estimates:
+		var est: Dictionary = tactical.unit_estimates[name]
+		if est.get("reported", false):
+			continue
+		var u := unit_layout.unit_named(name)
+		if u.is_empty() or u.variant == est.variant:
+			continue
+		for c in fire.comps:
+			if c.level == int(u.level) and c.display_name().contains(name) and perception.room_visible(c):
+				est["reported"] = true
+				events.add(tick, "estimate_differs", {"unit": name, "from": est.from, "actual": str(u.variant), "crew": "현장 대원"})
+				break
+
+
+## 세대 현관문 상태 (P2-2): 잠김 → 파괴 필요, 도어체크 → 안에 사람이 있다는 단서
+func _apply_unit_doors() -> void:
+	for u in unit_layout.units:
+		var cell: Vector2i = u.front_door
+		if cell.x < 0 or str(u.door) == "":
+			continue
+		var o := fire.opening_at(Vector3i(cell.x, cell.y, int(u.level)))
+		if o == null:
+			continue
+		if u.door == "locked":
+			o.is_open = false
+			o.locked = true
+		elif u.door == "door_check":
+			o.door_check = true
+	doors.sync_blocking()
+
+
+## 대원이 도어체크 걸린 현관문을 보면 보고한다 (화재1: 요구조자가 있다고 판단)
+func _check_door_clues(tick: int) -> void:
+	for o in fire.openings:
+		if not o.door_check or _door_clues_reported.has(o.index):
+			continue
+		var c: Vector2i = o.cells[0]
+		if perception.enabled and not perception.is_crew_visible(o.level, c.x, c.y):
+			continue
+		_door_clues_reported[o.index] = true
+		var u := unit_layout.unit_at(o.level, c + Vector2i(0, 0))
+		if u.is_empty():
+			for d: Vector2i in [Vector2i.RIGHT, Vector2i.LEFT, Vector2i.UP, Vector2i.DOWN]:
+				u = unit_layout.unit_at(o.level, c + d)
+				if not u.is_empty():
+					break
+		events.add(tick, "door_check_seen", {"unit": str(u.get("name", "세대")), "crew": "현장 대원", "level": o.level, "cell": [c.x, c.y, o.level]})
+
+
+## 지휘관이 아는 미검색 구역: 발화층·직상층과 불이 붙었던 구획 가운데 검색 끝 보고가 없는 곳 (기획안 8-3 종료 경고)
+func unsearched_rooms() -> Array[Compartment]:
+	var levels := {}
+	for c in fire.comps:
+		if c.ever_burned and not fire.is_exposure_comp(c):
+			levels[c.level] = true
+			levels[c.level + 1] = true
+	var out: Array[Compartment] = []
+	for c in phases.search_targets():
+		if c.searched_tick < 0 and (c.ever_burned or levels.has(c.level)):
+			out.append(c)
+	return out
+
+
+## 지휘관이 연소 중으로 본 구획 (마지막으로 본 모습이 타고 있던 칸이 있는 곳, 종료 경고)
+func seen_burning_rooms() -> Array[Compartment]:
+	var out: Array[Compartment] = []
+	for c in fire.comps:
+		if fire.is_exposure_comp(c):
+			continue
+		for cell in c.cells:
+			var i := fire.grid.index(c.level, cell.x, cell.y)
+			if perception.is_seen(c.level, cell.x, cell.y) and perception.seen_burning[i] == 1:
+				out.append(c)
+				break
+	return out

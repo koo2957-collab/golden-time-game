@@ -63,7 +63,7 @@
       "command.all_clear",
       "fire.placement",
       "fire.water_supply",
-      "fire.overhaul",
+      "fire.overhaul", "fire.overhaul_order",
       "fire.watch",
       "command.declare",
       "command.cards",
@@ -76,14 +76,13 @@
       "command.close_out"
     ],
     "params": {},
-    "time_limit_s": 1800,
     "objectives": [
       "안내판의 순서대로 기본 지휘 흐름을 한 번 해 보기",
       "아이 생존 구조와 구급대 처치",
       "대원 부상 없이 완진, 인원점검 후 종료"
     ],
     "end_state": "아이 생존 구조·처치, 대원 부상 없음, 완진 후 인원점검",
-    "note": "rules: data/sop/rules.json의 id. params: 규칙 id -> 기준값 덮어쓰기. time_limit_s가 지나면 활동이 자동 종료된다 (추정)"
+    "note": "rules: data/sop/rules.json의 id. params: 규칙 id -> 기준값 덮어쓰기. 제한 시간은 없다 — 지휘관 활동 종료 선언·전소로 끝난다 (기획안 8-3)"
   },
   "site": {
     "note": "현장 정보 (SOP 101-2.2, 102-2.2, 202-2). 면 정보는 지휘관이 그 면을 봐야 알 수 있다. hazard가 있으면 상황보고 ④ 정답에 들어간다",

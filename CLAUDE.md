@@ -7,9 +7,6 @@
 - 진행 기록: docs/progress.md (작업이 끝날 때마다 한 줄씩 추가)
 - 교재 발췌: docs/sop/ (있으면 카드·수치 근거로 사용)
 - 단계별 프롬프트: .claude/commands/ (사용자가 /p0, /p10-1 처럼 실행)
-- 점검 보고서(기획안 대비 현재 상태·추천 순서): docs/audit.md
-- 이전 수정 로드맵(R1~R17)·결정: docs/plan_gap.md, 단계별 테스트 안내: docs/test_guides/, 그래픽 목표 모습: docs/art_direction.md
-- 근거 자료 PDF 5권과 기획안 원본은 docs/references/ (docs/sop/ 폴더는 아직 없다)
 
 ## 지금 상황: 이미 만든 프로그램을 고치는 중
 - 이 게임은 Claude Code로 만들고 있고, 기획안을 고치기 전 버전까지 프로그램이 이미 만들어져 있다.
@@ -33,31 +30,25 @@
 
 ## 작업 방식
 1. 먼저 관련 코드를 찾아 현재 상태를 보고하고, 계획을 보여 준 뒤 승인을 받아 구현한다.
-2. 작업 단위마다 tests/ 에 headless 테스트를 추가하고 통과시킨다. 작업 중에는 관련 테스트만 돌리고, 전체 테스트(10분 이상)는 단계 끝·푸시 전에 한 번 돌린다 (아래 "실행·테스트").
+2. 작업 단위마다 tests/ 에 headless 테스트를 추가하고 `godot --headless -s tests/run_all.gd` 로 통과시킨다.
 3. 통과하면 git 커밋한다. 커밋 메시지는 "P번호: 내용".
 4. 끝나면 docs/progress.md 에 프롬프트 번호, 바뀐 파일, 남은 문제를 적는다.
 
 ## 코드 규칙
 1. 렌더러는 Compatibility. 3D 노드, 실시간 광원·그림자 금지 (GPU 없는 사무실 PC 대상).
 2. GDScript 정적 타입 필수, 주석은 한국어.
-3. 시뮬레이션 코드(scripts/simulation/, scripts/command/, scripts/evaluation/, scripts/units/)는 Node를 상속하지 않는 순수 클래스(RefCounted)로 쓰고 화면 코드를 참조하지 않는다. 고정 틱(10틱/초) + 시드 결정론 — 다시 하기·리플레이가 깨지면 안 된다.
-4. 수치·카드·유닛·스테이지·명령 목록은 res://data/ 아래 JSON(영역별 하위 폴더)에만 둔다. 코드에 숫자를 박지 않는다.
+3. 시뮬레이션 코드(scripts/sim/)는 Node를 상속하지 않는 순수 클래스(RefCounted)로 쓰고 화면 코드를 참조하지 않는다.
+4. 수치·카드·유닛·스테이지·명령 목록은 res://data/*.json 에만 둔다. 코드에 숫자를 박지 않는다.
 5. 모든 수치에 source 필드(교재 근거 / 공학 표준 / 게임 설정값)를 붙인다.
 6. 시스템 간 통신은 EventBus 오토로드 시그널로 한다.
 7. 화면에 보이는 것과 별개로, 전술상황판·평가는 무전으로 보고된 정보(KnowledgeBoard)만 쓴다.
 8. 시간은 SimClock 현장 시간(time_scale 적용)과 UI용 실제 시간을 구분한다.
 
-## 폴더 구조 (실제)
-- scripts/autoload/ (EventBus, GameManager) · scripts/simulation/ (화재·연기·물·위험, SimClock은 SimWorld 안 클래스) · scripts/command/ (지휘·카드·무전) · scripts/evaluation/ · scripts/scenario/ · scripts/units/ · scripts/ui/ (화면, 층 그리기는 scripts/ui/building/)
-- scenes/ · data/ (buildings, scenarios, cards, units, fire, command, sop, ui …) · tests/ · docs/
-- 기획안 P0의 autoload/·scripts/sim/·scripts/cards/·maps/·DataDB 구조로는 옮기지 않는다 (2026-11-10, 경로만 깨지고 이득 없음)
+## 폴더 구조
+autoload/ scripts/sim/ scripts/units/ scripts/cards/ scripts/ui/ scenes/ data/ maps/ tests/ docs/
 
-## 실행·테스트
-Godot은 PATH에 없고 PC마다 위치가 다르다: `C:\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe` 또는 `C:\Users\koo29\Downloads\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe`
-
-```
-godot --headless --path . -s res://tests/run_tests.gd                  # 전체 단위 테스트 (10분 이상 — 백그라운드로)
-godot --headless --path . -s res://tests/run_tests.gd -- test_fire.gd  # 관련 테스트 파일만
-godot --path . -s res://tests/ui_smoke.gd                              # 조작 점검 (창이 열림)
-```
-새로 클론한 뒤에는 `godot --headless --path . --import`를 한 번 먼저 돌린다.
+## 이 저장소의 실제 경로·테스트 (2026-11-10 덧붙임 — 위 규칙의 경로와 다름)
+- 위 폴더 구조·`scripts/sim/`·`tests/run_all.gd`는 기획안 기준 이름이다. 이 저장소는 `scripts/simulation/`(시뮬레이션), `scripts/command/`(지휘·카드·무전), `scripts/evaluation/`, `scripts/autoload/`(EventBus·GameManager), 수치는 `data/` 아래 영역별 JSON을 쓴다. 옮기지 않는다 (docs/decisions.md).
+- 테스트: `godot --headless --path . -s res://tests/run_tests.gd` (전체 10분 이상), 파일 하나만은 `-- test_fire.gd`, 화면 점검은 `godot --path . -s res://tests/ui_smoke.gd`. 작업 중에는 관련 테스트만, 전체는 단계 끝·푸시 전.
+- Godot: `C:\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe` (PC마다 다름). 새로 클론하면 `--import` 먼저.
+- 점검 보고서 docs/audit.md, 교재 대조 docs/fire_textbook_check.md, 단계별 안내 docs/test_guides/.

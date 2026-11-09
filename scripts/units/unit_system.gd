@@ -135,6 +135,7 @@ static func _make_vehicle(id: int, squad_id: int, type: String, stats: Dictionar
 	v.tank_capacity = float(stats.tank_l)
 	v.tank_l = v.tank_capacity
 	v.nozzle_lpm = float(stats.nozzle_lpm)
+	v.nozzle_65_lpm = float(stats.get("nozzle_65_lpm", stats.nozzle_lpm))
 	v.transfer_lpm = float(stats.transfer_lpm)
 	v.hose_max_cells = float(stats.hose_sections) * float(stats.hose_section_m) / cell_size_m
 	var d: Dictionary = v_data.get("driver", {})

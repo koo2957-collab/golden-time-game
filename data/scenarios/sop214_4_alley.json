@@ -63,7 +63,7 @@
       "command.all_clear",
       "fire.placement",
       "fire.water_supply",
-      "fire.overhaul",
+      "fire.overhaul", "fire.overhaul_order",
       "fire.watch",
       "command.declare",
       "command.cards",
@@ -76,14 +76,13 @@
       "command.close_out"
     ],
     "params": {},
-    "time_limit_s": 1500,
     "objectives": [
       "골목 진입·회차 판단: 회차할 수 없는 골목을 막지 않기 (SOP 101-2.1 ⑨, 200-3.1.1)",
       "최초 상황보고 ⑨ '진입 가능, 회차 불가' 정확히 보고 — 후착대가 골목에 들어오지 않게",
       "골목을 따라 수관 연장, 인명검색과 진압 (SOP 214-2.1)"
     ],
     "end_state": "할머니·손자 생존 구조, 대원 부상 없음, 골목이 막히지 않은 채 완진",
-    "note": "rules: data/sop/rules.json의 id. params: 규칙 id -> 기준값 덮어쓰기. time_limit_s가 지나면 활동이 자동 종료된다 (추정)"
+    "note": "rules: data/sop/rules.json의 id. params: 규칙 id -> 기준값 덮어쓰기. 제한 시간은 없다 — 지휘관 활동 종료 선언·전소로 끝난다 (기획안 8-3)"
   },
   "site": {
     "note": "현장 정보 (SOP 101-2.2, 102-2.2, 202-2). 면 정보는 지휘관이 그 면을 봐야 알 수 있다. hazard가 있으면 상황보고 ④ 정답에 들어간다",

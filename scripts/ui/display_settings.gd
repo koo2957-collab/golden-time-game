@@ -5,6 +5,7 @@ extends RefCounted
 ##   fullscreen: 전체 화면 여부. 전체 화면은 늘 모니터 해상도로 띄운다
 ##     (2D 화면이라 그래픽카드 부담은 작다. 저사양 PC에서 부담이 큰 쪽은 CPU라 fps 상한이 더 효과적이다)
 ##   fps: 화면 갱신 상한 (60 / 30). 30이면 그리는 횟수가 절반이라 저사양 PC의 CPU 부담이 크게 준다.
+##   low_spec: 저사양 모드 (기획안 9-5, P14) — 30프레임 상한 + 효과 축소(단면 보기에서 쌓는 층 수를 줄임)
 ## 화면 배치는 늘 1920×1080 기준으로 만들고, 실제 크기에 맞게 줄이거나 늘린다 (project.godot stretch).
 ## 실제 게임(메인 씬)에서만 적용한다. 자동 테스트는 늘 project.godot의 기본 창으로 돈다.
 
@@ -22,11 +23,13 @@ const RESOLUTION_NAMES := {
 }
 const FPS_OPTIONS: Array[int] = [60, 30]
 ## 파일이 없을 때의 값 = project.godot 기본 (창 1600×900)
-const DEFAULTS := {"resolution": "hd_plus", "fullscreen": false, "fps": 60}
+const DEFAULTS := {"resolution": "hd_plus", "fullscreen": false, "fps": 60, "low_spec": false}
 ## 창 테두리·제목 표시줄 여유 (px). 창이 화면보다 크면 최대화한다
 const WINDOW_MARGIN := Vector2i(16, 64)
 
 static var _applied := false
+## 저사양 모드가 켜져 있는가 (화면 코드가 효과를 줄일 때 본다)
+static var low_spec := false
 
 
 ## 저장된 설정 (없거나 잘못된 값은 기본값으로)
@@ -40,6 +43,7 @@ static func load_settings() -> Dictionary:
 			out.fullscreen = bool(data.get("fullscreen", out.fullscreen))
 			if int(data.get("fps", 0)) in FPS_OPTIONS:
 				out.fps = int(data.fps)
+			out.low_spec = bool(data.get("low_spec", false))
 	return out
 
 
@@ -63,7 +67,8 @@ static func apply_once(window: Window) -> void:
 
 static func apply(window: Window, s: Dictionary) -> void:
 	var size: Vector2i = RESOLUTIONS[s.resolution]
-	Engine.max_fps = int(s.fps)
+	low_spec = bool(s.get("low_spec", false))
+	Engine.max_fps = 30 if low_spec else int(s.fps)
 	if s.fullscreen:
 		window.mode = Window.MODE_FULLSCREEN
 		return

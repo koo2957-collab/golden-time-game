@@ -212,6 +212,13 @@ func _draw_vehicle(v: Vehicle, alpha: float) -> void:
 	draw_colored_polygon(cab, v.color.darkened(0.35))
 	var outline := poly.duplicate()
 	outline.append(poly[0])
+	# 운전원 작업 진행 막대 (기획안 6-1)
+	var wp := sim.water.work_progress(v)
+	if wp >= 0.0:
+		var top := PlanStyle.to_px(v.pos) + Vector2(-30, -28)
+		draw_rect(Rect2(top, Vector2(60, 6)), PlanStyle.TANK_BG)
+		draw_rect(Rect2(top, Vector2(60 * wp, 6)), Color("ffb74d"))
+		draw_string(PlanStyle.font(), top + Vector2(-20, -4), "%s %d초" % [v.work.label, ceili(float(v.work.remain))], HORIZONTAL_ALIGNMENT_CENTER, 100, 12, Color("ffe0b2"))
 	var selected := v.id in selection.selected_vehicles
 	draw_polyline(outline, PlanStyle.SELECTION if selected else PlanStyle.UNIT_OUTLINE, 3.0 if selected else 1.5)
 	var center := PlanStyle.to_px(v.prev_pos.lerp(v.pos, alpha))

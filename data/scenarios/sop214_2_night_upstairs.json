@@ -89,7 +89,7 @@
       "command.all_clear",
       "fire.placement",
       "fire.water_supply",
-      "fire.overhaul",
+      "fire.overhaul", "fire.overhaul_order",
       "fire.watch",
       "command.declare",
       "command.cards",
@@ -102,7 +102,6 @@
       "command.close_out"
     ],
     "params": {},
-    "time_limit_s": 1800,
     "objectives": [
       "2층 구조대상자(아내·딸) 생존 구조 — 화점실·직상층 검색 순서 판단 (SOP 202-3.1.2, 214-2.1)",
       "대원 안전: 2층 진입조의 공기 잔량·롤오버 징후 관리 (SOP 108, 201)",

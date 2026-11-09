@@ -73,7 +73,7 @@
       "fire.standpipe",
       "fire.placement",
       "fire.water_supply",
-      "fire.overhaul",
+      "fire.overhaul", "fire.overhaul_order",
       "fire.watch",
       "command.declare",
       "command.cards",
@@ -95,7 +95,6 @@
         "bad_rooms": 6
       }
     },
-    "time_limit_s": 1800,
     "objectives": [
       "급기측(서쪽) 계단 진입, 배기측 확보 (SOP 217)",
       "라이트라인 설치로 방향감각 상실 방지",

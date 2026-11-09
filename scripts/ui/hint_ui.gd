@@ -105,7 +105,7 @@ func _check() -> void:
 	for type in ["rollover_sign", "backdraft_sign", "air_alarm", "mayday", "victim_found", "tactical_halt"]:
 		if not ev.of_type(type).is_empty():
 			_trigger(type)
-	for type in ["exposure_heating", "collapse_sign", "jump_risk", "debris_zone", "shaft_heat", "sign_warning", "victim_trapped", "hydrant_out", "knockdown_reported", "end_suggested", "time_warning"]:
+	for type in ["exposure_heating", "collapse_sign", "jump_risk", "debris_zone", "shaft_heat", "sign_warning", "victim_trapped", "hydrant_out", "knockdown_reported", "end_suggested"]:
 		if not ev.of_type(type).is_empty():
 			_trigger(type)
 	for p in sim.ems.patients:

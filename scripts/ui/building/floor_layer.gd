@@ -7,6 +7,8 @@ extends Node2D
 ##   3) 연기층: 천장에서 계산된 깊이만큼 내려온 반투명 덩어리
 ## 뒤쪽 외벽(북·서)은 천장 높이로, 나머지 벽은 낮게 잘라 실내가 보이게 한다.
 
+## 위층 노드의 depth 시작값 (IsoView.ABOVE_DEPTH와 같음)
+const ABOVE_DEPTH := 100
 const CEILING_M := 2.4
 const WALL_CUT_M := 0.45
 const WINDOW_SILL_M := 0.9
@@ -801,7 +803,8 @@ func _draw_mask() -> PackedByteArray:
 	var key := ""
 	if _outside():
 		key = "ext:%d" % level
-	elif upper_level >= 0:
+	elif upper_level >= 0 and depth < ABOVE_DEPTH:
+		# 아래층만: 위층 바닥에 가려지는 칸을 뺀다 (위층 노드는 반투명이라 다 그린다)
 		key = "%d:%d" % [level, upper_level]
 	else:
 		return PackedByteArray()
@@ -1246,6 +1249,13 @@ func _draw_vehicle(v: Vehicle, alpha: float) -> void:
 	draw_colored_polygon(_lift(cab, h), Color(color.darkened(0.35), VEHICLE_ALPHA))
 	if not thermal:
 		_vehicle_details(v, fp, h)
+		# 운전원 작업 진행 막대 (기획안 6-1)
+		var wp := sim.water.work_progress(v)
+		if wp >= 0.0:
+			var top := proj.to_screen(center, h + 1.2)
+			draw_rect(Rect2(top + Vector2(-30, 0), Vector2(60, 6)), Color(0.1, 0.1, 0.1, 0.8))
+			draw_rect(Rect2(top + Vector2(-30, 0), Vector2(60 * wp, 6)), Color("ffb74d"))
+			draw_string(ThemeDB.fallback_font, top + Vector2(-50, -4), "%s %d초" % [v.work.label, ceili(float(v.work.remain))], HORIZONTAL_ALIGNMENT_CENTER, 100, 13, Color("ffe0b2"))
 	if v.id in selection.selected_vehicles:
 		var outline := _lift(fp, h)
 		outline.append(outline[0])

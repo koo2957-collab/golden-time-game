@@ -93,7 +93,7 @@
       "fire.placement",
       "fire.water_supply",
       "fire.shuttle",
-      "fire.overhaul",
+      "fire.overhaul", "fire.overhaul_order",
       "fire.watch",
       "command.declare",
       "command.cards",
@@ -111,7 +111,6 @@
         "bad_s": 1320
       }
     },
-    "time_limit_s": 1800,
     "objectives": [
       "위험 요소(LPG) 확인과 보고 — C면 둘러보기나 관계인 진술로 찾고 보완 보고 (SOP 101-2.2, 214-2.2·2.3)",
       "할머니 생존 구조 (SOP 214-2.1)",

@@ -126,6 +126,8 @@ func _verb(cmd: RefCounted) -> String:
 				return "%s 검색" % fire.building.floor_name(cmd.target.z)
 			"attack_floor":
 				return "%s 진압" % fire.building.floor_name(cmd.target.z)
+			"check_below":
+				return "%s 직하층 확인" % _place(cmd.target)
 			"withdraw":
 				return "즉시 철수"
 			"hold":

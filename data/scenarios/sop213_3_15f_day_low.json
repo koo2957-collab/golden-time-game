@@ -12,6 +12,7 @@
     "stage": "2-1"
   },
   "building": "res://data/buildings/apartment_15f.json",
+  "units": {"note": "세대별 변형·집기 세트 (기획안 4-2-1, P2-2). 시드로 고르고, 발화·요구조자 세대는 시나리오 설계대로 고정한다. 가중치는 게임 설정값", "mix": {"variants": {"표준": 6, "발코니확장": 2, "현관잠김": 1, "도어체크": 1, "피난막힘": 1}, "furnishings": {"일반": 5, "노인1인": 1, "짐많음": 2, "공실": 1, "리모델링": 1}}, "overrides": {"301": {"variant": "표준", "furnish": "일반"}, "302": {"variant": "표준", "furnish": "일반"}, "401": {"variant": "표준", "furnish": "일반"}}},
   "roster": "res://data/units/test_roster.json",
   "seed": 2131,
   "dispatch": {
@@ -73,7 +74,7 @@
       "fire.standpipe",
       "fire.placement",
       "fire.water_supply",
-      "fire.overhaul",
+      "fire.overhaul", "fire.overhaul_order",
       "fire.watch",
       "command.declare",
       "command.cards",
@@ -94,7 +95,6 @@
         "bad_rooms": 6
       }
     },
-    "time_limit_s": 1800,
     "objectives": [
       "3층(발화층)·4층(직상층) 주민 우선 대피·구조 (SOP 213-2.4.1)",
       "옥내소화전으로 초기 방수, 송수구 연결로 물 공급 유지 (SOP 235, 213-1.3)",

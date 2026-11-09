@@ -34,8 +34,18 @@ func _water_used(pattern: HoseLine.Pattern) -> float:
 	sim.water.lay_hose(0, 0, 0)
 	var before := sim.units.get_vehicle(0).tank_l
 	sim.water.start_spray(0, Vector3i(12, 16, 1), pattern, 0)
+	_wait_water(sim, 0)  # 수관 준비·방수 개시 시간 (P4-1)
+	before = sim.units.get_vehicle(0).tank_l
 	sim.step_ticks(100)
 	return before - sim.units.get_vehicle(0).tank_l
+
+
+## 수관 준비가 끝나 물이 나올 때까지 기다린다 (P4-1 현장 작업 시간)
+func _wait_water(sim: SimWorld, crew_id: int) -> void:
+	sim.step_ticks(1)
+	var h := sim.water.hose_of_crew(crew_id)
+	if h and h.water_tick > sim.clock.tick:
+		sim.step_ticks(h.water_tick - sim.clock.tick)
 
 
 func test_pencil_uses_less_water() -> void:
@@ -55,6 +65,9 @@ func test_cover_reduces_heat() -> void:
 	var bare := sim.units.get_crew(1).leader.heat_flux
 	sim.water.lay_hose(0, 0, sim.clock.tick)
 	sim.water.start_spray(0, Vector3i(12, 16, 1), HoseLine.Pattern.COVER, sim.clock.tick)
+	_wait_water(sim, 0)
+	_put(sim, 0, Vector2(13.5, 17.5))
+	_put(sim, 1, Vector2(14.5, 18.5))
 	sim.step_ticks(3)
 	assert_true(sim.water.is_covered(1, sim.units.get_crew(1).leader.pos), "옆 조는 엄호 막 안")
 	var ff := sim.units.get_crew(1).leader

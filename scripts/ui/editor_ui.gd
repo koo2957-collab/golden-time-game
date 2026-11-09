@@ -18,7 +18,6 @@ var _title: LineEdit
 var _summary: TextEdit
 var _dispatch: TextEdit
 var _difficulty: OptionButton
-var _limit: SpinBox
 var _random: CheckBox
 var _tool: OptionButton
 var _floor: OptionButton
@@ -150,12 +149,6 @@ func _ready() -> void:
 		_difficulty.add_item(d)
 	_difficulty.item_selected.connect(func(i: int) -> void: if draft: draft.set_difficulty(_difficulty.get_item_text(i)))
 	opts.add_child(_difficulty)
-	opts.add_child(_label("제한 시간(분)", 15))
-	_limit = SpinBox.new()
-	_limit.min_value = 10
-	_limit.max_value = 90
-	_limit.value_changed.connect(func(v: float) -> void: if draft: draft.set_time_limit_min(int(v)))
-	opts.add_child(_limit)
 	_random = CheckBox.new()
 	_random.text = "판마다 다른 시드"
 	_random.toggled.connect(func(on: bool) -> void: if draft: draft.set_random_seed(on))
@@ -217,7 +210,6 @@ func load_draft(d: ScenarioDraft) -> void:
 	_summary.text = str(d.data.get("meta", {}).get("summary", ""))
 	_dispatch.text = "\n".join(d.dispatch_lines())
 	_difficulty.select(maxi(0, ["입문", "중급", "상급"].find(str(d.data.get("meta", {}).get("difficulty", "중급")))))
-	_limit.value = int(d.data.get("evaluation", {}).get("time_limit_s", 2700)) / 60
 	_random.button_pressed = bool(d.data.get("variation", {}).get("random_seed", false))
 	_floor.clear()
 	for lv in d.building.levels():

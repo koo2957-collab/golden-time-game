@@ -11,6 +11,7 @@
     "summary": "평일 낮 3층 301호 거실에서 불이 났습니다. 301호 주민은 대피하면서 현관문을 열어 두어 연기가 계단실로 올라갑니다. 4층 할머니가 연락이 안 됩니다. 현관은 방화문이라 파괴에 오래 걸리고, 상층으로 수관을 끌어올리는 대신 연결송수관(송수구 → 층별 방수구)을 쓸 수 있습니다. 발화층과 상층 주민 대피가 우선입니다."
   },
   "building": "res://data/buildings/apartment_5f.json",
+  "units": {"note": "세대별 변형·집기 세트 (기획안 4-2-1, P2-2). 시드로 고르고, 발화·요구조자 세대는 시나리오 설계대로 고정한다. 가중치는 게임 설정값", "mix": {"variants": {"표준": 6, "발코니확장": 2, "현관잠김": 1, "도어체크": 1, "피난막힘": 1}, "furnishings": {"일반": 5, "노인1인": 1, "짐많음": 2, "공실": 1, "리모델링": 1}}, "overrides": {"301": {"variant": "표준", "furnish": "일반"}, "302": {"variant": "표준", "furnish": "일반"}, "401": {"variant": "표준", "furnish": "일반"}}},
   "roster": "res://data/units/test_roster.json",
   "seed": 3131,
   "dispatch": {
@@ -71,7 +72,7 @@
       "fire.standpipe",
       "fire.placement",
       "fire.water_supply",
-      "fire.overhaul",
+      "fire.overhaul", "fire.overhaul_order",
       "fire.watch",
       "command.declare",
       "command.cards",
@@ -92,7 +93,6 @@
         "bad_rooms": 6
       }
     },
-    "time_limit_s": 1800,
     "objectives": [
       "발화층(3층)·직상층(4층) 주민부터 검색·구조 (SOP 213-2.4.1)",
       "송수구 연결 → 3층 방수구에서 수관 연장으로 빠른 진압 (SOP 200-3.3.1, 213-1.3)",

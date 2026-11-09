@@ -8,7 +8,8 @@ const EXPORT_DIR := "user://export"
 const GRADES := ["S", "A", "B", "C", "D"]
 
 
-## 결과 목록 (오래된 것부터). 각 항목: {file, saved_at, scenario_id, title, mode, difficulty, grade, points, axes{id: score}, weak[]}
+## 결과 목록 (오래된 것부터). 각 항목: {file, saved_at, scenario_id, title, mode, difficulty, grade, points, axes{id: score}, weak[], incomplete}
+## incomplete: 끝까지 마치지 않고 나간 판 (P11-1). 목록에는 보이지만 성장·집계·캠페인 진행에는 넣지 않는다
 static func entries(dir := Evaluator.REPORT_DIR) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	if not DirAccess.dir_exists_absolute(dir):
@@ -33,13 +34,15 @@ static func entries(dir := Evaluator.REPORT_DIR) -> Array[Dictionary]:
 			"scenario_id": str(r.get("scenario_id", "")), "title": str(r.get("scenario_title", "")),
 			"mode": str(r.get("mode", "")), "difficulty": str(r.get("difficulty", "")),
 			"grade": str(r.grade), "points": float(r.get("points", 0.0)), "axes": axes, "weak": weak,
+			"incomplete": str(r.get("result", "완료")) == "미완료",
 		})
 	return out
 
 
 ## 축별 성장: 처음 n판 평균 → 최근 n판 평균 {축 id: [처음, 최근]}
-static func growth(list: Array[Dictionary], n := 3) -> Dictionary:
+static func growth(all: Array[Dictionary], n := 3) -> Dictionary:
 	var out := {}
+	var list := completed(all)
 	if list.is_empty():
 		return out
 	var first := list.slice(0, n)
@@ -53,7 +56,7 @@ static func growth(list: Array[Dictionary], n := 3) -> Dictionary:
 ## 익명 집계: 시나리오별 판 수·등급 분포·축 평균·자주 나온 고칠 점. 이름·날짜별 개인 기록은 넣지 않는다
 static func aggregate(list: Array[Dictionary]) -> Dictionary:
 	var by: Dictionary = {}
-	for e in list:
+	for e in completed(list):
 		var id: String = e.scenario_id
 		if not by.has(id):
 			var grades := {}
@@ -87,6 +90,15 @@ static func aggregate(list: Array[Dictionary]) -> Dictionary:
 		"rules_basis": "2025 재난현장표준작전절차",
 		"scenarios": scenarios,
 	}
+
+
+## 끝까지 마친 판만
+static func completed(list: Array[Dictionary]) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for e in list:
+		if not e.get("incomplete", false):
+			out.append(e)
+	return out
 
 
 ## 익명 집계를 JSON과 CSV로 내보내고 JSON 경로를 돌려준다

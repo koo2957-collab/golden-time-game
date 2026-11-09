@@ -20,6 +20,9 @@ var ignited: Dictionary = {}
 
 var _rise_ticks: int
 var _spread_ticks: int
+var _pvc_toxic := 1.0
+## PVC 배관 샤프트인가 (건물 shafts[].pvc)
+var pvc := false
 
 
 func _init(p_fire: FireSim, p_units: UnitSystem, p_water: WaterSystem, params: ParamTable, p_events: SimEventLog) -> void:
@@ -29,6 +32,10 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_water: WaterSystem, params: P
 	events = p_events
 	_rise_ticks = roundi(params.value("shaft_rise_s") / SimClock.TICK_DT)
 	_spread_ticks = roundi(params.value("shaft_spread_s") / SimClock.TICK_DT)
+	_pvc_toxic = params.value("pvc_shaft_toxic")
+	for shd: Dictionary in p_fire.building.shafts:
+		if shd.get("pvc", false):
+			pvc = true
 	for sh in fire.building.shafts:
 		var r: Rect2i = sh.rect
 		for lv: int in sh.levels:
@@ -58,6 +65,12 @@ func step(_dt: float, tick: int) -> void:
 			if _neighbor_burning(sh) or below_hot:
 				hot[lv] = tick
 				events.add(tick, "shaft_heat" if not below_hot else "shaft_smoke", {"floor": fire.building.floor_name(lv), "crew": "현장 대원"})
+				# PVC 배관이 타면 염화수소 — 샤프트와 맞닿은 구획 연기 독성 증가
+				if pvc:
+					sh.toxicity = maxf(sh.toxicity, _pvc_toxic)
+					for c in fire.comps:
+						if c.level == lv and c != sh and c.rect.grow(1).intersects(sh.rect):
+							c.toxicity = maxf(c.toxicity, _pvc_toxic)
 			continue
 		# 아래층에서 올라온 불이 위층 샤프트 옆 구획으로
 		if hot.has(lv - 1) and not ignited.has(lv) and tick - int(hot[lv]) >= _spread_ticks:

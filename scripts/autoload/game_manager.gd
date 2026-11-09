@@ -12,7 +12,7 @@ var skip_menu := false
 var mode := "평가"
 ## 자동화 수준 (입문·중급·상급). 빈 문자열이면 시나리오 난이도를 따른다
 var difficulty := ""
-## 난이도: "훈련"(제한시간 2배, 일시정지·배속) / "실전"(1배속 고정, 일시정지 없음) / "악조건"(실전 + 강풍·후착대 지연·소화전 고장)
+## 난이도: "훈련"(질문 카드 제한시간 2배, 일시정지·배속) / "실전"(1배속 고정, 일시정지 없음) / "악조건"(실전 + 강풍·후착대 지연·소화전 고장)
 var realism := "실전"
 ## 다시 하기 요청 {entries: [{tick, command}], tick, seed, automation, realism}. 비어 있으면 처음부터
 var replay: Dictionary = {}

@@ -1,0 +1,65 @@
+{
+  "note": "아파트 세대 타입 A(계단식 2세대, 왼쪽 세대 기준 칸 좌표 — 세대 rect 왼쪽 위가 0,0) 집기 세트 (기획안 4-2-1, P2-2). 오른쪽 세대는 좌우를 뒤집어 쓴다. pass: walk(지나감)·slow(느림)·block(막힘). ember: 숨은 잔화 계수(1 기본, 이불·매트·섬유·목재 더미는 큼 — 화재1 260쪽). hide: 요구조자가 숨는 곳 가중치(장롱·이불·창가·화장실·베란다 — SOP 202 4.1~4.2). 수치는 게임 설정값(검수 필요).",
+  "source": "게임 설정값 (기획안 4-2-1, 화재1 260쪽, SOP 202 4.1~4.2)",
+  "sets": {
+    "일반": {
+      "label": "일반 가정",
+      "items": [
+        {"name": "소파", "material": "소파", "rect": [2, 11, 5, 2], "pass": "slow", "ember": 1.5, "hide": 0.5},
+        {"name": "탁자", "material": "목재가구", "rect": [3, 8, 3, 2], "pass": "slow"},
+        {"name": "거실장", "material": "목재가구", "rect": [0, 7, 1, 4], "pass": "block"},
+        {"name": "책장", "material": "목재가구", "rect": [7, 7, 4, 1], "pass": "block", "ember": 1.3},
+        {"name": "1인 소파", "material": "소파", "rect": [8, 10, 2, 2], "pass": "slow"},
+        {"name": "조리대", "material": "주방", "rect": [1, 0, 6, 1], "pass": "block", "ember": 1.2},
+        {"name": "식탁", "material": "목재가구", "rect": [3, 2, 3, 2], "pass": "slow"},
+        {"name": "침대", "material": "침대", "rect": [15, 0, 4, 3], "pass": "slow", "ember": 2.0, "hide": 1.0},
+        {"name": "장롱", "material": "목재가구", "rect": [9, 1, 1, 4], "pass": "block", "ember": 1.3, "hide": 1.5},
+        {"name": "신발장", "material": "목재가구", "rect": [18, 12, 2, 1], "pass": "block"}
+      ]
+    },
+    "노인1인": {
+      "label": "노인 1인 가구",
+      "items": [
+        {"name": "요·이불", "material": "침대", "rect": [3, 9, 3, 3], "pass": "slow", "ember": 2.0, "hide": 1.5},
+        {"name": "탁자", "material": "목재가구", "rect": [7, 8, 2, 2], "pass": "slow"},
+        {"name": "거실장", "material": "목재가구", "rect": [0, 7, 1, 4], "pass": "block"},
+        {"name": "조리대", "material": "주방", "rect": [1, 0, 6, 1], "pass": "block", "ember": 1.2},
+        {"name": "침대", "material": "침대", "rect": [15, 0, 4, 3], "pass": "slow", "ember": 2.0, "hide": 2.0},
+        {"name": "장롱", "material": "목재가구", "rect": [9, 1, 1, 4], "pass": "block", "ember": 1.3, "hide": 1.5},
+        {"name": "신발장", "material": "목재가구", "rect": [18, 12, 2, 1], "pass": "block"}
+      ]
+    },
+    "짐많음": {
+      "label": "짐이 많이 쌓인 세대",
+      "items": [
+        {"name": "소파", "material": "소파", "rect": [2, 11, 5, 2], "pass": "slow", "ember": 1.5, "hide": 0.5},
+        {"name": "탁자", "material": "목재가구", "rect": [3, 8, 3, 2], "pass": "slow"},
+        {"name": "거실장", "material": "목재가구", "rect": [0, 7, 1, 4], "pass": "block"},
+        {"name": "책장", "material": "목재가구", "rect": [7, 7, 4, 1], "pass": "block", "ember": 1.3},
+        {"name": "짐 더미", "material": "적재물", "rect": [8, 9, 3, 3], "pass": "block", "ember": 2.5, "hide": 0.5},
+        {"name": "옷 더미", "material": "적재물", "rect": [11, 1, 3, 2], "pass": "block", "ember": 2.5},
+        {"name": "조리대", "material": "주방", "rect": [1, 0, 6, 1], "pass": "block", "ember": 1.2},
+        {"name": "식탁", "material": "목재가구", "rect": [3, 2, 3, 2], "pass": "slow"},
+        {"name": "상자 더미", "material": "적재물", "rect": [0, 3, 2, 3], "pass": "block", "ember": 2.0},
+        {"name": "침대", "material": "침대", "rect": [15, 0, 4, 3], "pass": "slow", "ember": 2.0, "hide": 1.0},
+        {"name": "장롱", "material": "목재가구", "rect": [9, 1, 1, 4], "pass": "block", "ember": 1.3, "hide": 1.5},
+        {"name": "신발장", "material": "목재가구", "rect": [18, 12, 2, 1], "pass": "block"},
+        {"name": "현관 짐", "material": "적재물", "rect": [16, 8, 2, 2], "pass": "slow", "ember": 2.0}
+      ]
+    },
+    "공실": {
+      "label": "공실·이사 중",
+      "items": [
+        {"name": "이삿짐 상자", "material": "적재물", "rect": [4, 9, 2, 2], "pass": "block", "ember": 1.5}
+      ]
+    },
+    "리모델링": {
+      "label": "리모델링 중 (자재 적치)",
+      "items": [
+        {"name": "합판 더미", "material": "목재가구", "rect": [2, 9, 4, 2], "pass": "block", "ember": 2.5},
+        {"name": "단열재 더미", "material": "방음재", "rect": [8, 8, 3, 2], "pass": "block", "ember": 2.0},
+        {"name": "자재 포대", "material": "적재물", "rect": [12, 1, 3, 2], "pass": "block", "ember": 1.5}
+      ]
+    }
+  }
+}

@@ -57,6 +57,14 @@ var cooling_kw := 0.0
 ## 이 구획에 뿌린 물 / 그중 수손으로 본 양 (L)
 var water_applied_l := 0.0
 var water_damage_l := 0.0
+## 필요 방수량 (기획안 5-4, P6-1): 연소 중 면적(m²)·화재하중 계수, 필요·실제 방수량(L/분), 비율
+var burning_area_m2 := 0.0
+var load_factor := 1.0
+## 연기 독성 배율 (탄 가연물 재질, 화재2 표 4-12). 연기를 따라 옆 구획으로 옮겨진다
+var toxicity := 1.0
+var required_lpm := 0.0
+var applied_lpm := 0.0
+var flow_ratio := 0.0
 var fuel_initial := 0.0
 var fuel_remaining := 0.0
 var flashed := false

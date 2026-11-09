@@ -206,7 +206,7 @@ func assign(kind: String) -> void:
 		cond[k] = key
 		_last[k] = key
 	order_issued.emit(CommandOrder.make("mission_conditions", [], 0, Vector3i.ZERO, cond))
-	var action := kind + ("_floor" if _by_floor() else "")
+	var action := kind + ("_floor" if _by_floor() and kind != "check_below" else "")
 	order_issued.emit(TacticalCommand.make(action, [_drop_crew] as Array[int], _drop_target))
 	notice.emit("%s 임무: %s %s" % [_crew_name(_drop_crew), _target_name(), TacticalSystem.ACTIONS.get(action, action)])
 	panel.visible = false
@@ -254,7 +254,7 @@ func _build_panel() -> void:
 	box.add_child(_hint)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
-	for spec in [["attack", "화점 진압"], ["search", "인명 검색"]]:
+	for spec in [["attack", "화점 진압"], ["search", "인명 검색"], ["check_below", "직하층 확인"]]:
 		var b := Button.new()
 		b.text = spec[1]
 		b.focus_mode = Control.FOCUS_NONE

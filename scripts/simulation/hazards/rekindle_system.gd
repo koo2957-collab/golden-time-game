@@ -38,6 +38,11 @@ var _chance: float
 var _min_fuel: float
 var _min_ticks: int
 var _max_ticks: int
+var _overhaul_water := 0.0
+var _overhaul_damage := 0.0
+var _vent_speedup := 0.0
+## 잔불정리를 마친 순서 [{room, level, tick}] (평가: 위층 → 아래층)
+var overhaul_order: Array[Dictionary] = []
 var _overhaul_s: float
 var _prev_burning := PackedInt32Array()
 
@@ -52,6 +57,9 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, param
 	_min_fuel = params.value("ember_min_fuel_ratio")
 	_min_ticks = roundi(params.value("rekindle_min_s") / SimClock.TICK_DT)
 	_max_ticks = roundi(params.value("rekindle_max_s") / SimClock.TICK_DT)
+	_overhaul_water = params.value("overhaul_water_l")
+	_overhaul_damage = params.value("overhaul_damage_ratio")
+	_vent_speedup = params.value("rekindle_vent_speedup")
 	_overhaul_s = params.value("overhaul_s")
 
 
@@ -102,12 +110,15 @@ func spotted_cells() -> Array[Vector3i]:
 func step(dt: float, tick: int) -> void:
 	var grid := fire.grid
 	for i in _prev_burning:
-		if grid.state[i] == FuelGrid.State.UNBURNED and grid.fuel[i] >= grid.fuel0[i] * _min_fuel and _rng.randf() < _chance:
+		if grid.state[i] == FuelGrid.State.UNBURNED and grid.fuel[i] >= grid.fuel0[i] * _min_fuel and _rng.randf() < minf(1.0, _chance * grid.ember_factor[i]):
 			_add_ember(i, tick)
 	_prev_burning = grid.burning.duplicate()
 	_spot(tick)
 	_step_tasks(dt, tick)
 	for e in embers.duplicate():
+		# 환기(바깥으로 열린 창·문)로 산소가 들어오면 재발화가 빨라진다 (기획안 5-9)
+		if _vent_speedup > 0.0 and e.room >= 0 and _vented(fire.comps[e.room]):
+			e.rekindle_tick -= roundi(_vent_speedup)
 		if tick < e.rekindle_tick:
 			continue
 		embers.erase(e)
@@ -173,7 +184,19 @@ func _step_tasks(dt: float, tick: int) -> void:
 				n += 1
 		embers_cleared += n
 		fire.comps[t.room].overhauled_tick = tick
+		# 감압 주수 물 → 수손 (과잉주수 지양, 화재1 262쪽)
+		fire.comps[t.room].water_applied_l += _overhaul_water
+		fire.comps[t.room].water_damage_l += _overhaul_water * _overhaul_damage
+		overhaul_order.append({"room": room.display_name(), "level": room.level, "tick": tick})
 		events.add(tick, "overhaul_done", {"crew": _crew_name(c), "room": room.display_name(), "embers": n})
+
+
+func _vented(c: Compartment) -> bool:
+	for oi in c.openings:
+		var o: Opening = fire.openings[oi]
+		if (o.is_open or o.broken) and (o.room_a == Opening.OUTSIDE or o.room_b == Opening.OUTSIDE):
+			return true
+	return false
 
 
 func _crew_name(c: Crew) -> String:

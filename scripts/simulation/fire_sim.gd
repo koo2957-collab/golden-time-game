@@ -45,6 +45,17 @@ func _init(p_building: BuildingData, p_config: FireConfig, rng: RandomNumberGene
 	model = CompartmentModel.new(comps, openings, config)
 
 
+## 굴뚝효과 (기획안 5-3-2): 계절과 건물 층수로 계단·승강로 상승 기류 배율을 정한다
+func apply_season(season: String) -> void:
+	var entry: Dictionary = config.params.get("stack_effect_per_10_floors", {})
+	var per10 := float(entry.get("by_season", {}).get(season, 0.0)) if season != "" else 0.0
+	var floors := 0
+	for lv in building.levels():
+		if building.floor_number(lv) >= 1:
+			floors += 1
+	model.stack_factor = maxf(0.3, 1.0 + per10 * floors / 10.0)
+
+
 ## 시나리오의 fire 항목: 발화 일정, 문 열림/닫힘
 func apply_scenario(fire_data: Dictionary) -> void:
 	for ign: Dictionary in fire_data.get("ignitions", []):
@@ -89,6 +100,7 @@ func step(dt: float, tick: int) -> void:
 	grid.step(dt, comps, model)
 	model.step(dt)
 	_check_windows(tick)
+	_check_doors_burnt(tick)
 	_check_flashover(tick)
 	_update_stages(tick)
 	_check_smoke(tick)
@@ -272,6 +284,22 @@ func _check_windows(tick: int) -> void:
 			o.broken = true
 			o.is_open = true
 			events.add(tick, "window_broken", {"room": c.display_name(), "opening": o.index})
+
+
+## 닫힌 나무 문이 다 타면 뚫린 것으로 본다 → 그 너머로 연기·불이 넘어간다 (방화문은 타지 않아 해당 없음)
+func _check_doors_burnt(tick: int) -> void:
+	for o in openings:
+		if o.kind != Opening.Kind.DOOR or o.is_open or o.broken or o.cells.is_empty():
+			continue
+		var all_burnt := true
+		for cell in o.cells:
+			if grid.state[grid.index(o.level, cell.x, cell.y)] != FuelGrid.State.BURNT:
+				all_burnt = false
+				break
+		if all_burnt:
+			o.broken = true
+			o.is_open = true
+			events.add(tick, "door_burnt_through", {"opening": o.index, "level": o.level})
 
 
 func _check_flashover(tick: int) -> void:

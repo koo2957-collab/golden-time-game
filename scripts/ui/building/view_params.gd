@@ -6,6 +6,11 @@ const PATH := "res://data/ui/view_params.json"
 
 var floor_height_px := 143.0
 var visible_floors_below := 2
+var visible_floors_above := 2
+var above_alpha := 0.25
+var pick_w_px := 48.0
+var pick_h_px := 64.0
+var pick_magnet_px := 30.0
 var below_modulate: Array[float] = [0.75, 0.55]
 ## "cut"(잘린 벽) 또는 "hidden"(숨김)
 var front_wall := "cut"
@@ -36,6 +41,15 @@ static func from_file(path: String) -> ViewParams:
 func apply(data: Dictionary) -> void:
 	floor_height_px = float(_value(data, "floor_height_px", floor_height_px))
 	visible_floors_below = int(_value(data, "visible_floors_below", visible_floors_below))
+	visible_floors_above = int(_value(data, "visible_floors_above", visible_floors_above))
+	above_alpha = float(_value(data, "above_alpha", above_alpha))
+	pick_w_px = float(_value(data, "pick_w_px", pick_w_px))
+	pick_h_px = float(_value(data, "pick_h_px", pick_h_px))
+	pick_magnet_px = float(_value(data, "pick_magnet_px", pick_magnet_px))
+	# 저사양 모드: 함께 쌓는 층을 하나로 (효과 축소, P14)
+	if DisplaySettings.low_spec:
+		visible_floors_below = mini(visible_floors_below, 1)
+		visible_floors_above = mini(visible_floors_above, 1)
 	below_modulate.clear()
 	for m: Variant in _value(data, "below_modulate", [0.75, 0.55]):
 		below_modulate.append(float(m))

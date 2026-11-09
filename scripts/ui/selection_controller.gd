@@ -25,6 +25,11 @@ signal crew_menu(crew_id: int, screen_pos: Vector2)
 signal floor_clicked(level: int)
 
 const DRAG_THRESHOLD_PX := 6.0
+## 마우스를 올린 조 (기획안 9-3: 잡힐 조의 윤곽이 빛나고 이름이 뜬다). 없으면 -1
+var hover_crew := -1
+var _last_pick := -1
+var _last_pick_world := Vector2(-99999, -99999)
+var _vp: ViewParams
 const MARKER_DURATION_MS := 500.0
 ## 입체 화면에서 차체를 클릭했는지 볼 때 함께 확인하는 높이 (m)
 const VEHICLE_PICK_HEIGHT_M := 1.0
@@ -118,6 +123,18 @@ func crews_spraying() -> Array[int]:
 func _process(_delta: float) -> void:
 	if _marker_start_ms >= 0.0:
 		queue_redraw()
+	# 올리면 미리 보임: 잡힐 조의 윤곽과 이름 (기획안 9-3)
+	if sim != null:
+		var mouse_world := _to_world(get_viewport().get_mouse_position())
+		var h := -1
+		var hits := crews_under(mouse_world)
+		if not hits.is_empty():
+			h = hits[0]
+		if h != hover_crew:
+			hover_crew = h
+			queue_redraw()
+		elif h >= 0:
+			queue_redraw()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -436,18 +453,82 @@ func _to_world(screen_pos: Vector2) -> Vector2:
 	return get_canvas_transform().affine_inverse() * screen_pos
 
 
-## world_pos 아래(현재 층)에 있는 대원의 조 id. 없으면 -1.
+## world_pos 아래(현재 층)에 있는 대원의 조 id. 없으면 -1. (기획안 9-3, P4-3)
+##   - 대원마다 그림을 덮는 타원 판정 (화면 기준 최소 48×64px, 줌과 상관없이)
+##   - 2인 1조는 한 덩어리: 두 사람 사이(캡슐)를 눌러도 팀 선택
+##   - 맞은 것이 없으면 화면 30px 안의 가장 가까운 조 (자석 선택)
+##   - 겹치면 선택 안 된 조가 우선, 같은 곳을 다시 누르면 다음 조로 넘어간다
+##   - 안개(시야 밖) 속 대원은 고를 수 없다 (상황판 팀 카드로)
 func _crew_at(world_pos: Vector2) -> int:
-	var best := -1
-	var best_d := projection.pick_radius_px
-	for ff in sim.units.firefighters:
-		if ff.level != level or ff.aboard:
+	var hits := crews_under(world_pos)
+	if hits.is_empty():
+		return -1
+	if hits.size() > 1 and _last_pick_world.distance_to(world_pos) < 4.0 and _last_pick in hits:
+		var next: int = hits[(hits.find(_last_pick) + 1) % hits.size()]
+		_last_pick = next
+		return next
+	for id in hits:
+		if not id in selected:
+			_last_pick = id
+			_last_pick_world = world_pos
+			return id
+	_last_pick = hits[0]
+	_last_pick_world = world_pos
+	return hits[0]
+
+
+## world_pos(화면에 그려진 월드 좌표) 아래에 걸리는 조들 (가까운 순). 자석 판정 포함
+func crews_under(world_pos: Vector2) -> Array[int]:
+	var xf := get_canvas_transform()
+	var mouse := xf * world_pos
+	var vp: ViewParams = _view_params()
+	var rx := vp.pick_w_px * 0.5
+	var ry := vp.pick_h_px * 0.5
+	var hits: Array[Dictionary] = []
+	var nearest := -1
+	var nearest_d := vp.pick_magnet_px
+	for c in sim.units.crews:
+		var pts: Array[Vector2] = []
+		for ff in c.members():
+			if ff.level != level or ff.aboard or not _crew_visible(ff):
+				continue
+			pts.append(xf * projection.to_screen(ff.pos, projection.pick_height_m))
+		if pts.is_empty():
 			continue
-		var d := projection.to_screen(ff.pos, projection.pick_height_m).distance_to(world_pos)
-		if d < best_d:
-			best_d = d
-			best = ff.crew_id
-	return best
+		var best := INF
+		for p in pts:
+			# 발밑보다 조금 위를 가운데로 하는 타원 (그림 전체를 덮는다)
+			var d := mouse - (p - Vector2(0, ry * 0.4))
+			var e := (d.x * d.x) / (rx * rx) + (d.y * d.y) / (ry * ry)
+			if e <= 1.0:
+				best = minf(best, d.length())
+			var dist := p.distance_to(mouse)
+			if dist < nearest_d:
+				nearest_d = dist
+				nearest = c.id
+		if pts.size() == 2 and best == INF and Geometry2D.get_closest_point_to_segment(mouse, pts[0], pts[1]).distance_to(mouse) <= rx:
+			best = Geometry2D.get_closest_point_to_segment(mouse, pts[0], pts[1]).distance_to(mouse)
+		if best < INF:
+			hits.append({"id": c.id, "d": best})
+	hits.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.d < b.d)
+	var out: Array[int] = []
+	for h in hits:
+		out.append(int(h.id))
+	if out.is_empty() and nearest >= 0:
+		out.append(nearest)
+	return out
+
+
+func _crew_visible(ff: Firefighter) -> bool:
+	if sim.perception == null or not sim.perception.enabled:
+		return true
+	return sim.perception.is_visible(ff.level, floori(ff.pos.x), floori(ff.pos.y))
+
+
+func _view_params() -> ViewParams:
+	if _vp == null:
+		_vp = ViewParams.load_default()
+	return _vp
 
 
 ## world_pos 아래에 현장지휘관이 있는지
@@ -567,6 +648,7 @@ func _set_selection(ids: Array[int], vehicle_ids: Array[int] = [], with_commande
 
 
 func _draw() -> void:
+	_draw_hover()
 	if _dragging:
 		draw_rect(_drag_rect, Color(PlanStyle.SELECTION, 0.12))
 		draw_rect(_drag_rect, PlanStyle.SELECTION, false, 1.5)
@@ -576,3 +658,29 @@ func _draw() -> void:
 			_marker_start_ms = -1.0
 		else:
 			draw_arc(_marker_world, 6.0 + t * 14.0, 0.0, TAU, 24, Color(PlanStyle.SELECTION, 1.0 - t), 2.0)
+
+
+## 마우스를 올린 조: 두 대원 둘레에 팀 색 윤곽 + 이름. 가려진 대원도 윤곽선으로 비쳐 보인다 (화면 크기 고정)
+func _draw_hover() -> void:
+	if hover_crew < 0 or sim == null:
+		return
+	var c := sim.units.get_crew(hover_crew)
+	if c == null:
+		return
+	var z := get_canvas_transform().get_scale().x
+	var vp := _view_params()
+	var color: Color = sim.units.squads[c.squad_id].color
+	var name_at := Vector2.ZERO
+	for ff in c.members():
+		if ff.level != level or ff.aboard:
+			continue
+		var p := projection.to_screen(ff.pos, projection.pick_height_m) - Vector2(0, vp.pick_h_px * 0.4 / z)
+		var pts := PackedVector2Array()
+		for k in 25:
+			var a := TAU * k / 24.0
+			pts.append(p + Vector2(cos(a) * vp.pick_w_px * 0.5, sin(a) * vp.pick_h_px * 0.5) / z)
+		draw_polyline(pts, Color(color, 0.95), 2.5 / z)
+		draw_polyline(pts, Color(1, 1, 1, 0.5), 1.0 / z)
+		name_at = p - Vector2(0, vp.pick_h_px * 0.55 / z)
+	var label := "%s %d조" % [sim.units.squads[c.squad_id].name, c.number]
+	draw_string(PlanStyle.font(), name_at + Vector2(-60.0 / z, 0), label, HORIZONTAL_ALIGNMENT_CENTER, 120.0 / z, maxi(8, roundi(14.0 / z)), Color(1, 1, 1, 0.95))

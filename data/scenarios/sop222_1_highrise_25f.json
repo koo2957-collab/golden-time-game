@@ -12,6 +12,7 @@
     "summary": "25층 아파트 18층 1801호에서 불이 났습니다. 선착대장으로 초기 대응을 하다가, 8분쯤 지휘대가 도착하면 브리핑하고 지휘권을 이양해 지휘대장으로 계속 지휘합니다. 비상용승강기는 화재층 2개층 아래(16층)까지만 타고, 화점 직하층(17층)에 활동거점을 둡니다. 19·20층(직상층) 주민을 먼저 대피시키고, 단위대(O)를 묶어 두면 이양 뒤 단위지휘관이 질문을 대신 처리합니다."
   },
   "building": "res://data/buildings/highrise_25f.json",
+  "units": {"note": "세대별 변형·집기 세트 (기획안 4-2-1, P2-2). 시드로 고르고, 발화·요구조자 세대는 시나리오 설계대로 고정한다. 가중치는 게임 설정값", "mix": {"variants": {"표준": 6, "발코니확장": 2, "현관잠김": 1, "도어체크": 1, "피난막힘": 1}, "furnishings": {"일반": 5, "노인1인": 1, "짐많음": 2, "공실": 1, "리모델링": 1}}, "overrides": {"1801": {"variant": "표준", "furnish": "일반"}, "1802": {"variant": "표준", "furnish": "일반"}, "1901": {"variant": "표준", "furnish": "일반"}, "2001": {"variant": "표준", "furnish": "일반"}}},
   "roster": "res://data/units/test_roster.json",
   "seed": 2221,
   "dispatch": {
@@ -73,7 +74,7 @@
       "fire.standpipe",
       "fire.placement",
       "fire.water_supply",
-      "fire.overhaul",
+      "fire.overhaul", "fire.overhaul_order",
       "fire.watch",
       "command.declare",
       "command.cards",
@@ -96,7 +97,6 @@
         "bad_rooms": 6
       }
     },
-    "time_limit_s": 1800,
     "objectives": [
       "지휘대 도착 시 지휘권 이양 브리핑 (SOP 112)",
       "비상용승강기는 화재층 2개층 아래(16층)까지, 활동거점은 직하층 (SOP 222)",

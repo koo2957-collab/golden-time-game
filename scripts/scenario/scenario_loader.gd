@@ -151,8 +151,6 @@ static func validate(path: String) -> PackedStringArray:
 		for id in ev.get("rules", []):
 			if not ids.has(str(id)):
 				e.append("평가 규칙 '%s'가 data/sop/rules.json에 없습니다." % id)
-		if float(ev.get("time_limit_s", 1)) <= 0.0:
-			e.append("제한 시간(evaluation.time_limit_s)은 0보다 커야 합니다.")
 	return e
 
 

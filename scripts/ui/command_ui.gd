@@ -43,6 +43,11 @@ signal team_selected(crew_id: int, focus: bool)
 signal team_drag_started(crew_id: int)
 signal team_dropped(crew_id: int, screen_pos: Vector2)
 var _dispatch: PanelContainer
+## 출동 단계 (기획안 4-4): 신고 후 0~4분을 실제 약 90초로 보여 준다. 출동 지령 줄은 시간에 맞춰 차례로 나온다
+var _dispatch_real := 0.0
+var _dispatch_clock: Label
+var _dispatch_bar: ProgressBar
+var _dispatch_lines: Array[Label] = []
 ## 출동 지령 창의 선착 차량 배치 보기 (시나리오 approach가 있을 때)
 var _placement: OptionButton
 ## 출동 준비: 적재 장비 체크 (R10)
@@ -126,6 +131,7 @@ func setup(p_sim: SimWorld) -> void:
 func _process(delta: float) -> void:
 	if sim == null:
 		return
+	_tick_dispatch(delta)
 	_refresh -= delta
 	if _refresh <= 0.0:
 		_refresh = REFRESH_S
@@ -178,6 +184,10 @@ func todo_items() -> Array[String]:
 			out.append("%s — 처치 대기" % sim.rescue.victims[p.victim_id].label())
 	if sim.gas.open and sim.gas.known(cmd.survey):
 		out.append("%s 열림 — 차단 필요" % sim.gas.valve_text)
+	# 물탱크 25% 이하 (운전원 경고 무전, 기획안 5-4)
+	for v in sim.units.vehicles:
+		if v.is_pump() and v.tank_capacity > 0.0 and v.tank_l <= v.tank_capacity * 0.25 and v.hydrant < 0:
+			out.append("%s 물 %d%% — 급수원 확인" % [sim.water._name(v), roundi(v.tank_l / v.tank_capacity * 100.0)])
 	if sim.water.hydrants_out.size() > 0 and sim.events.of_type("hydrant_out").size() > 0 and sim.shuttle.tankers.is_empty():
 		out.append("소화전 고장 — 물탱크차 순환보수 미지정")
 	for lv: int in sim.shafts.hot:
@@ -311,6 +321,21 @@ func show_dispatch() -> void:
 	if sim.command.dispatch.is_empty():
 		return
 	_open(_dispatch)
+
+
+## 출동 단계 시계 (실제 시간으로 진행, 시뮬레이션과 따로 — 불은 이미 계산되어 있다)
+func _tick_dispatch(delta: float) -> void:
+	if _dispatch_clock == null or not _dispatch.visible or sim.dispatch_s <= 0.0:
+		return
+	var real_total := maxf(1.0, float(sim._phase_params.value("dispatch_real_s")))
+	_dispatch_real = minf(real_total, _dispatch_real + delta)
+	var frac := _dispatch_real / real_total
+	var call_s := roundi(sim.dispatch_s * frac)
+	_dispatch_bar.value = frac
+	_dispatch_clock.text = ("선착대 현장 도착 — 신고 후 %02d:%02d. 차량 배치·장비를 확인하고 현장 도착을 누르세요" if frac >= 1.0 else "출동 중 — 신고 후 %02d:%02d (선착 도착 %02d:%02d, 화재는 계속 진행 중)") % ([call_s / 60, call_s % 60] if frac >= 1.0 else [call_s / 60, call_s % 60, int(sim.dispatch_s) / 60, int(sim.dispatch_s) % 60])
+	# 상황실 무전: 지령 줄이 시간에 맞춰 차례로 (첫 줄은 바로)
+	for k in _dispatch_lines.size():
+		_dispatch_lines[k].visible = k == 0 or frac >= float(k) / float(_dispatch_lines.size())
 
 
 func dispatch_visible() -> bool:
@@ -568,11 +593,20 @@ func _build_dispatch() -> void:
 	var box: VBoxContainer = _dispatch.get_child(0)
 	var d := sim.command.dispatch
 	box.add_child(_label(str(d.get("title", "출동 지령")), 24, Color("fca5a5")))
+	_dispatch_clock = _label("출동 중 — 신고 후 00:00", 18, Color("fde68a"))
+	box.add_child(_dispatch_clock)
+	_dispatch_bar = ProgressBar.new()
+	_dispatch_bar.show_percentage = false
+	_dispatch_bar.custom_minimum_size = Vector2(DIALOG_WIDTH - 40, 8)
+	_dispatch_bar.max_value = 1.0
+	box.add_child(_dispatch_bar)
+	_dispatch_lines.clear()
 	for line in d.get("lines", []):
-		var l := _label(str(line), 18, TEXT_COLOR)
+		var l := _label("상황실: " + str(line), 18, TEXT_COLOR)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.custom_minimum_size = Vector2(DIALOG_WIDTH - 40, 0)
 		box.add_child(l)
+		_dispatch_lines.append(l)
 	box.add_child(_label("도착하면 지휘권을 선언하고 최초 상황보고를 하십시오 (C). 내부 진입은 진입 명령(R)을 받은 출동대만 합니다.", 16, DIM_COLOR))
 	var opts := Placement.options(sim)
 	if not opts.is_empty():
@@ -1081,6 +1115,28 @@ func _build_end() -> void:
 	box.add_child(row)
 
 
+## 활동 종료 선언 경고 (기획안 8-3, P11-1): 완진 전 · 연소 중으로 본 구역 · 발화층·직상층 등 미검색 구역.
+## 지휘관이 아는 정보만 쓴다. 비어 있으면 작전 완료로 끝난다
+func end_warnings() -> PackedStringArray:
+	var out: PackedStringArray = []
+	if sim.phases.all_clear.is_empty():
+		out.append("⚠ 아직 완진 선언 전입니다. 그대로 종료하면 지금 상태로 평가합니다 (완진 선언 → 인원점검 → 감시 지정 → 종료가 원칙).")
+	var burning: Array[Compartment] = sim.seen_burning_rooms()
+	if not burning.is_empty():
+		out.append("⚠ 연소 중으로 본 곳 %d곳: %s" % [burning.size(), _room_list(burning)])
+	var unsearched: Array[Compartment] = sim.unsearched_rooms()
+	if not unsearched.is_empty():
+		out.append("⚠ 검색하지 않은 곳 %d곳: %s — 남은 구조대상자는 미구조로 처리됩니다 (기획안 8-3)" % [unsearched.size(), _room_list(unsearched)])
+	return out
+
+
+func _room_list(rooms: Array[Compartment]) -> String:
+	var names: PackedStringArray = []
+	for c in rooms.slice(0, 5):
+		names.append(c.display_name())
+	return ", ".join(names) + (" 외" if rooms.size() > 5 else "")
+
+
 ## 종료 창: 인원점검 상태(200-4.1)와 감시 보기를 지금 상황으로 채운다
 func _rebuild_end() -> void:
 	var cmd := sim.command
@@ -1092,7 +1148,7 @@ func _rebuild_end() -> void:
 	var par_text := "인원점검: %s" % ("하지 않음 — 무전 패널의 인원점검(P)으로 먼저 확인하세요 (SOP 200-4.1)" if pars.is_empty()
 		else "마지막 %s (%s)" % [_time(pars[-1].tick), "이상 없음" if pars[-1].missing == 0 and pars[-1].indoor == 0 else "건물 안 %d명, 미확인 %d명" % [pars[-1].indoor, pars[-1].missing]])
 	_end_status.text = "%s\n지금 건물 안 대원: %d명" % [par_text, inside]
-	_end_warning.text = "" if not sim.phases.all_clear.is_empty() else "⚠ 아직 완진 선언 전입니다. 그대로 종료하면 지금 상태로 평가합니다 (완진 선언 → 인원점검 → 감시 지정 → 종료가 원칙)."
+	_end_warning.text = "\n".join(end_warnings())
 	_end_watch.clear()
 	_end_watch.add_item("지정 안 함")
 	_end_watch.add_item("관계자에게 감시 당부")

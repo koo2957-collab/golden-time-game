@@ -72,7 +72,7 @@
       "fire.standpipe",
       "fire.placement",
       "fire.water_supply",
-      "fire.overhaul",
+      "fire.overhaul", "fire.overhaul_order",
       "fire.watch",
       "command.declare",
       "command.cards",
@@ -94,7 +94,6 @@
         "bad_rooms": 6
       }
     },
-    "time_limit_s": 1800,
     "objectives": [
       "출입구 방향 연소 차단 후 외부 방향 진압 (SOP 232)",
       "창가 주민 공기안전매트·구조 (SOP 213-2.4.3)",

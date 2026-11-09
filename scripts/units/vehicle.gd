@@ -32,6 +32,8 @@ var height_m := 3.0
 var tank_l := 0.0
 var tank_capacity := 0.0
 var nozzle_lpm := 0.0
+## 65mm 관창(외부 방수) 방수량 (기획안 5-4)
+var nozzle_65_lpm := 0.0
 var transfer_lpm := 0.0
 var hose_max_cells := 0.0
 
@@ -42,6 +44,8 @@ var supply_to := -1
 var pending_hydrant := -1
 var pending_supply := -1
 var tank_empty_logged := false
+## 운전원 작업 (기획안 6-1 현장 작업 시간): {kind: hydrant|supply|fdc, label, remain, total, target, people}. 비어 있으면 없음
+var work: Dictionary = {}
 ## 운전원 (기관원). 차량 명령은 운전원에게 내리는 지시다
 var driver_name := ""
 var driver_rank := ""

@@ -28,6 +28,16 @@ var mission_ui: MissionUi
 var _view_entries: Array[Dictionary] = []
 var _view_next := 0
 var _last_report: Dictionary = {}
+## 게임 메뉴 (Esc, 기획안 8-4, P11-1)
+var game_menu: GameMenu
+## 전소가 확실할 때 뜨는 '결과 보기' 버튼 (기획안 8-3)
+var result_button: Button
+var _result_check := 0.0
+var _estimates_drawn := 0
+## 흰 매스 도시 배경 (기획안 4-4) / 도착 연출을 아직 하지 않았는가
+var city: CityMassView
+var _arrival_pending := false
+var _arrival_zoom_to := Vector2.ONE
 ## 성능 표시 (F12, R15): 프레임마다 시뮬레이션에 쓴 시간(ms, 이동 평균)
 var _sim_ms := 0.0
 ## 창(출동 지령·상황보고 등)을 열기 전의 일시정지 상태
@@ -44,6 +54,7 @@ var projections := {ViewMode.ISO: IsoProjection.new(), ViewMode.PLAN: PlanProjec
 
 
 func _ready() -> void:
+	add_to_group("world")
 	InstructorSettings.active = true
 	# 창 모드에서도 가장자리 스크롤이 되도록 게임 중에는 마우스를 창 안에 가둔다 (Esc로 풂, 기획안 9-3)
 	confine_mouse(true)
@@ -65,7 +76,15 @@ func _ready() -> void:
 		push_error("시나리오를 불러오지 못했습니다: %s" % path)
 		return
 	sim.play_mode = GameManager.mode
+	# 현장 시계 배속 (기획안 5-8): 난이도에 따라 고정
+	sim.clock.speed = sim.field_scale
 	floor_view.setup(sim.building)
+	floor_view.tactical = sim.tactical
+	floor_view.layout = sim.unit_layout
+	city = CityMassView.new()
+	$Iso.add_child(city)
+	$Iso.move_child(city, 0)
+	city.setup(sim.building, projections[ViewMode.ISO], sim.rng_seed)
 	fire_view.setup(sim)
 	selection.setup(sim)
 	units_view.setup(sim, selection)
@@ -125,6 +144,15 @@ func _ready() -> void:
 	hud.debrief.replay_requested.connect(func(tick: int) -> void: GameManager.request_replay(sim.issued, tick, sim.rng_seed, sim.tactical.level_name, sim.realism, false, sim.growth))
 	hud.debrief.view_requested.connect(func(tick: int) -> void: GameManager.request_replay(sim.issued, tick, sim.rng_seed, sim.tactical.level_name, sim.realism, true, sim.growth))
 	hud.debrief.export_requested.connect(_export_report)
+	hud.debrief.next_requested.connect(func(next_path: String) -> void:
+		GameManager.scenario_path = next_path
+		GameManager.restart())
+	_build_game_menu()
+	# 출동 단계: 도시를 멀리서 본다 → 도착하면 확대 (기획안 4-4)
+	if not sim.view_only and hud.command_ui.dispatch_visible():
+		_arrival_pending = true
+		_arrival_zoom_to = camera.zoom
+		camera.zoom = camera.zoom * 0.35
 	if replay_tick >= 0:
 		sim.clock.paused = true
 		var t := int(replay_tick * SimClock.TICK_DT)
@@ -181,6 +209,7 @@ func _process(delta: float) -> void:
 
 
 func _process_sim(delta: float) -> void:
+	_refresh_result_button(delta)
 	if sim and sim.view_only:
 		# 리플레이 보기: 한 틱씩 진행하며 기록된 명령을 그 틱에 넣는다
 		for i in sim.clock.consume(delta):
@@ -200,9 +229,11 @@ func _process_sim(delta: float) -> void:
 func _show_debrief() -> void:
 	hud.command_ui.close_all()
 	selection.cancel_mode()
+	if result_button:
+		result_button.visible = false
 	var report := Evaluator.evaluate(sim)
-	# 대원 성장: 끝까지 한 판만 (리플레이 보기·개발용 기능을 쓴 판 제외, R12)
-	if not sim.view_only and sim.replayable:
+	# 대원 성장: 끝까지 한 판만 (리플레이 보기·개발용 기능을 쓴 판·미완료 판 제외, R12·P11-1)
+	if not sim.view_only and sim.replayable and sim.end_type != MissionEndChecker.END_INCOMPLETE:
 		report["growth_lines"] = CrewGrowth.award(sim, report)
 	_last_report = report
 	hud.debrief.show_report(report, Evaluator.save(report) if not sim.view_only else "")
@@ -283,9 +314,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			selection.cancel_mode()
 			if ignite_mode:
 				_set_ignite_mode(false)
+		elif hud.command_ui.any_dialog_open():
+			hud.command_ui.close_all()
+		elif mission_ui and mission_ui.is_open():
+			mission_ui.close_all()
 		else:
-			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-			hud.show_notice("마우스 가둠을 풀었습니다 — 화면을 클릭하면 다시 가둡니다")
+			# 취소할 것이 없으면 게임 메뉴 (게임을 멈추고 마우스 가둠도 푼다, 기획안 8-4)
+			open_game_menu()
+		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("toggle_board"):
 		hud.command_ui.toggle_board()
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_HOME:
@@ -304,10 +340,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	else:
 		for action: String in SPEED_ACTIONS:
 			if event.is_action_pressed(action):
-				if realtime() and SPEED_ACTIONS[action] != 1.0:
-					hud.show_notice("%s 난이도는 1배속 고정입니다" % sim.realism)
-				else:
+				if sim.view_only:
 					sim.clock.speed = SPEED_ACTIONS[action]
+				else:
+					# 현장 시계는 플레이 중에 바꿀 수 없다 (기록 비교, 기획안 5-8)
+					hud.show_notice("현장 시계 ×%.1f 고정 — 난이도(훈련 1.5 · 실전 2 · 악조건 2.5)로 정해집니다" % sim.field_scale)
 
 
 func projection() -> ViewProjection:
@@ -421,7 +458,20 @@ func realtime() -> bool:
 	return sim != null and not sim.view_only and sim.realism in ["실전", "악조건"]
 
 
+## 도착 연출 (기획안 4-4): 출동 단계에는 도시를 멀리서 보고, 선착대가 도착하면(출동 지령 창을 닫으면) 0.8초 동안 화재 건물로 확대
+func _arrival_zoom() -> void:
+	if not _arrival_pending:
+		return
+	_arrival_pending = false
+	var target := _arrival_zoom_to
+	var tw := create_tween()
+	tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_property(camera, "zoom", target, 0.8)
+
+
 func _on_dialog_changed(open: bool) -> void:
+	if not open and _arrival_pending and not hud.command_ui.dispatch_visible():
+		_arrival_zoom()
 	# 실전·악조건에서는 출동 지령(도착 전)만 멈춘다
 	if realtime() and not hud.command_ui.dispatch_visible():
 		if not open and _paused_before_dialog == false:
@@ -623,3 +673,83 @@ func _build_view_banner() -> void:
 	l.position.y = 40
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(l)
+
+
+# --- 게임 메뉴·나가기 (기획안 8-3·8-4, P11-1) ---
+
+func _build_game_menu() -> void:
+	game_menu = GameMenu.new()
+	add_child(game_menu)
+	game_menu.help_text = hud.help_text()
+	game_menu.in_mission = not sim.view_only
+	game_menu.resumed.connect(func() -> void: confine_mouse(true))
+	game_menu.restart_confirmed.connect(func() -> void:
+		save_incomplete("처음부터 다시")
+		GameManager.restart())
+	game_menu.abandon_confirmed.connect(abandon)
+	game_menu.main_menu_confirmed.connect(func() -> void:
+		save_incomplete("메인 메뉴로 나감")
+		GameManager.back_to_menu())
+	game_menu.quit_confirmed.connect(func() -> void:
+		save_incomplete("게임 종료")
+		get_tree().quit())
+	result_button = Button.new()
+	result_button.text = "결과 보기 — 전소가 확실합니다"
+	result_button.tooltip_text = "불붙은 곳이 모두 최성기·쇠퇴기이고 한동안 방수가 없습니다. 지금 상태를 '전소'로 확정하고 디브리핑으로 갑니다 (기획안 8-3)"
+	result_button.focus_mode = Control.FOCUS_NONE
+	result_button.add_theme_font_size_override("font_size", 18)
+	result_button.custom_minimum_size = Vector2(360, 44)
+	result_button.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	result_button.position.y = 120.0
+	result_button.visible = false
+	result_button.pressed.connect(confirm_burnout)
+	hud.add_child(result_button)
+
+
+## 게임 메뉴를 연다 (게임이 멈춘다). 멈춘 횟수는 기록만 한다
+func open_game_menu() -> void:
+	if game_menu == null or game_menu.is_open():
+		return
+	if sim and not sim.ended():
+		sim.pause_count += 1
+	game_menu.open()
+
+
+## 창 닫기(X)·Alt+F4: 게임 종료 확인 창 (main이 부른다)
+func request_quit() -> void:
+	if game_menu:
+		game_menu.open_confirm("quit")
+
+
+## 임무 포기: '미완료'로 끝내고 디브리핑으로 (기록은 디브리핑이 저장)
+func abandon() -> void:
+	if sim and not sim.ended() and not sim.view_only:
+		sim.end_activity("임무 포기", MissionEndChecker.END_INCOMPLETE)
+
+
+## 끝내지 않고 나갈 때 그때까지를 '미완료'로 저장한다. 저장 경로 (이미 끝났거나 리플레이 보기면 "")
+func save_incomplete(reason: String) -> String:
+	if sim == null or sim.view_only or sim.ended():
+		return ""
+	sim.end_activity(reason, MissionEndChecker.END_INCOMPLETE)
+	return Evaluator.save(Evaluator.evaluate(sim))
+
+
+## '결과 보기': 전소가 확실하면 남은 계산 없이 그 자리에서 전소로 확정 (2026-11-10 결정)
+func confirm_burnout() -> void:
+	if sim and not sim.ended() and sim.mission_end.burnout_certain(sim.clock.tick):
+		sim.end_activity("전소 확정 — 결과 보기 (건물 %d%% 소실)" % roundi(sim.mission_end.loss_ratio() * 100.0), MissionEndChecker.END_BURNOUT)
+
+
+func _refresh_result_button(delta: float) -> void:
+	if result_button == null or sim == null:
+		return
+	_result_check -= delta
+	if _result_check > 0.0:
+		return
+	_result_check = 0.5
+	# 직하층 확인 추정 구조가 새로 생기면 평면도에 반영 (P2-2)
+	if sim.tactical.unit_estimates.size() != _estimates_drawn:
+		_estimates_drawn = sim.tactical.unit_estimates.size()
+		floor_view.queue_redraw()
+	result_button.visible = not sim.ended() and not sim.view_only and sim.mission_end.burnout_certain(sim.clock.tick)

@@ -122,13 +122,16 @@ func _pick_spot(level: int, room_id: String, rng: RandomNumberGenerator) -> Vect
 	if room == null:
 		push_error("요구조자 방 '%s'를 찾을 수 없습니다." % room_id)
 		return Vector2i.ZERO
+	# 숨는 곳: 침대(기본) + 집기 세트의 hide 가중치 (장롱·이불·창가 등, SOP 202 4.1~4.2, P2-2)
 	var beds := {}
 	for item in b.furniture(level):
-		if item.name == "침대":
-			var r: Rect2i = item.rect
-			for y in range(r.position.y - 1, r.end.y + 1):
-				for x in range(r.position.x - 1, r.end.x + 1):
-					beds[Vector2i(x, y)] = true
+		var hide := float(item.get("hide", 1.0 if item.name == "침대" else 0.0))
+		if hide <= 0.0:
+			continue
+		var r: Rect2i = item.rect
+		for y in range(r.position.y - 1, r.end.y + 1):
+			for x in range(r.position.x - 1, r.end.x + 1):
+				beds[Vector2i(x, y)] = maxf(float(beds.get(Vector2i(x, y), 0.0)), 1.0 + 2.0 * hide)
 	var cells: Array[Vector2i] = []
 	var weights: Array[float] = []
 	var total := 0.0
@@ -137,7 +140,7 @@ func _pick_spot(level: int, room_id: String, rng: RandomNumberGenerator) -> Vect
 			continue
 		var w := 0.5
 		if beds.has(cell):
-			w = 3.0
+			w = float(beds[cell])
 		var walls := 0
 		for d: Vector2i in [Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP]:
 			var t := b.cell(level, cell.x + d.x, cell.y + d.y)
@@ -461,7 +464,7 @@ func _expose(v: Victim, dt: float, tick: int) -> void:
 	var co_ppm := conc * _co_per_soot / 1.145 * 1e6
 	if co_ppm > 1.0:
 		# 노출시간 / 그 농도의 사망시간을 더한다 (교재 표, 기획안 5-5). fed_death에 이르면 사망
-		v.fed_toxic += _fed_death * dt / 60.0 / co_death_minutes(co_ppm, _co_table)
+		v.fed_toxic += _fed_death * dt / 60.0 / co_death_minutes(co_ppm, _co_table) * c.toxicity
 	var temp := c.t_upper if in_layer else c.t_lower
 	if temp > _heat_min:
 		v.fed_heat += dt / 60.0 / exp(_heat_a - _heat_b * temp)

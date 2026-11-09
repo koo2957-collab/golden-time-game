@@ -73,7 +73,7 @@
       "fire.standpipe",
       "fire.placement",
       "fire.water_supply",
-      "fire.overhaul",
+      "fire.overhaul", "fire.overhaul_order",
       "fire.watch",
       "command.declare",
       "command.cards",
@@ -95,7 +95,6 @@
         "bad_rooms": 6
       }
     },
-    "time_limit_s": 1500,
     "objectives": [
       "2인 1조 진입·호스 연장 (SOP 201-3.7, 208)",
       "진입 전 공기호흡기 점검",

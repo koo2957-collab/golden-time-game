@@ -11,7 +11,9 @@
     "summary": "겨울 저녁 13층 1301호 거실에서 불이 났습니다. 북서풍이 강해 화염이 위층 창을 달굽니다. 1401호 주민이 발코니 창가에서 구조를 기다리고, 뛰어내릴 수도 있습니다. 매트를 창 아래에 펼치고, 13층까지 물을 올리는 방법(옥내소화전·송수구)을 정하세요.",
     "stage": "2-1"
   },
+  "season": "겨울",
   "building": "res://data/buildings/apartment_15f.json",
+  "units": {"note": "세대별 변형·집기 세트 (기획안 4-2-1, P2-2). 시드로 고르고, 발화·요구조자 세대는 시나리오 설계대로 고정한다. 가중치는 게임 설정값", "mix": {"variants": {"표준": 6, "발코니확장": 2, "현관잠김": 1, "도어체크": 1, "피난막힘": 1}, "furnishings": {"일반": 5, "노인1인": 1, "짐많음": 2, "공실": 1, "리모델링": 1}}, "overrides": {"1301": {"variant": "표준", "furnish": "일반"}, "1302": {"variant": "표준", "furnish": "일반"}, "1401": {"variant": "표준", "furnish": "일반"}}},
   "roster": "res://data/units/test_roster.json",
   "seed": 2133,
   "dispatch": {
@@ -73,7 +75,7 @@
       "fire.standpipe",
       "fire.placement",
       "fire.water_supply",
-      "fire.overhaul",
+      "fire.overhaul", "fire.overhaul_order",
       "fire.watch",
       "command.declare",
       "command.cards",
@@ -94,7 +96,6 @@
         "bad_rooms": 6
       }
     },
-    "time_limit_s": 1800,
     "objectives": [
       "1401호 발코니 주민: 창 아래 공기안전매트 + 내부 구조 (SOP 213-2.4.3)",
       "1302호 아이 구조 (발화층 옆 세대)",

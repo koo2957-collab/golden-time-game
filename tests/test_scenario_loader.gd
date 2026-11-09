@@ -58,9 +58,9 @@ func test_broken_scenario_errors() -> void:
 func test_vehicle_override() -> void:
 	var sim := SimWorld.from_scenario("res://data/scenarios/sop214_3_kitchen_lpg.json")
 	assert_eq(sim.units.vehicles[0].tank_capacity, 2400.0, "시나리오가 펌프차 탱크를 덮어쓴다")
-	assert_eq(sim.units.vehicles[1].tank_capacity, 10000.0, "다른 차종은 기본 제원")
+	assert_eq(sim.units.vehicles[1].tank_capacity, 4000.0, "다른 차종은 기본 제원 (기획안 5-4)")
 	var dev := SimWorld.from_scenario(DEV_SCENARIO_PATH)
-	assert_eq(dev.units.vehicles[0].tank_capacity, 3000.0, "덮어쓰지 않으면 기본 제원")
+	assert_eq(dev.units.vehicles[0].tank_capacity, 2800.0, "덮어쓰지 않으면 기본 제원 (기획안 5-4)")
 
 
 func test_random_seed_variation() -> void:

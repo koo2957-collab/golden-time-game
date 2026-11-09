@@ -32,7 +32,7 @@ func test_rule_library_matches_scenario() -> void:
 	assert_eq(w, 100.0, "축 가중치 합 100")
 
 
-func test_end_order_and_time_limit() -> void:
+func test_end_order_and_no_time_limit() -> void:
 	var sim := _sim()
 	sim.issue(CommandOrder.make("end"))
 	sim.step_ticks(1)
@@ -40,10 +40,12 @@ func test_end_order_and_time_limit() -> void:
 	var t := sim.clock.tick
 	sim.step_ticks(10)
 	assert_eq(sim.clock.tick, t, "종료 후에는 시뮬레이션이 멈춘다")
+	assert_eq(sim.end_type, MissionEndChecker.END_EARLY, "완진 전 선언은 조기 종료")
+	# 제한 시간은 없다 (기획안 8-3, P11-1): 시나리오에 값이 없고 시간이 지나도 끝나지 않는다
 	var sim2 := _sim()
-	sim2.time_limit_tick = 20
+	assert_true(not sim2.scenario.get("evaluation", {}).has("time_limit_s"), "시나리오에 제한 시간 없음")
 	sim2.step_ticks(30)
-	assert_eq([sim2.ended(), sim2.end_reason, sim2.ended_tick], [true, "제한 시간 종료", 20], "제한 시간이 지나면 자동 종료")
+	assert_true(not sim2.ended(), "시간으로 끝나지 않음")
 
 
 func test_early_end_report() -> void:
@@ -51,7 +53,7 @@ func test_early_end_report() -> void:
 	sim.step_ticks(600)
 	sim.end_activity("활동 종료 선언")
 	var r := Evaluator.evaluate(sim)
-	assert_eq(r.rules.size(), 28, "규칙 28개 판정 (R1 종료 체계 3개·R3 카드 1개 포함)")
+	assert_eq(r.rules.size(), 29, "규칙 29개 판정 (R1 종료 체계 3개·R3 카드 1개·P3-1 잔화정리 순서 포함)")
 	assert_eq(_rule(r, "safety.ff_down").score, 1.0, "행동 불능 없음")
 	assert_eq(_rule(r, "command.declare").score, 0.0, "선언하지 않으면 0점")
 	assert_eq(_rule(r, "fire.extinguish").score, 0.0, "연소 중 종료면 완진 0점")

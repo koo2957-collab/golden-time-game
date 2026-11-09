@@ -72,7 +72,7 @@
       "fire.standpipe",
       "fire.placement",
       "fire.water_supply",
-      "fire.overhaul",
+      "fire.overhaul", "fire.overhaul_order",
       "fire.watch",
       "command.declare",
       "command.cards",
@@ -94,7 +94,6 @@
         "bad_rooms": 6
       }
     },
-    "time_limit_s": 1800,
     "objectives": [
       "진입 여부 판단: 검은 연기·패널 변위·고온 → 방어·병행 (SOP 240)",
       "화재가스발화 350℃ 대피 (SOP 210)",

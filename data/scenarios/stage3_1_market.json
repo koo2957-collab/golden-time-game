@@ -73,7 +73,7 @@
       "fire.standpipe",
       "fire.placement",
       "fire.water_supply",
-      "fire.overhaul",
+      "fire.overhaul", "fire.overhaul_order",
       "fire.watch",
       "command.declare",
       "command.cards",
@@ -95,7 +95,6 @@
         "bad_rooms": 6
       }
     },
-    "time_limit_s": 1800,
     "objectives": [
       "선착대 화점 진입·후착대 포위 배치 (SOP 233)",
       "아케이드 연기 배출·연소 저지선",

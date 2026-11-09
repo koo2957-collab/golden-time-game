@@ -42,6 +42,20 @@ func visible_levels(current: int) -> Array[int]:
 	return result
 
 
+## 지금 층 위로 보일 층 목록 (가까운 층부터, 기획안 9-4: 위·아래 각 2개 층). 층 번호가 이어질 때만
+func above_levels(current: int) -> Array[int]:
+	var result: Array[int] = []
+	if not building.has_level(current):
+		return result
+	var n := building.floor_number(current)
+	for k in range(1, params.visible_floors_above + 1):
+		var up := level_of_number(n + k)
+		if up < 0 or (n <= -1 and n + k >= 1):
+			break
+		result.append(up)
+	return result
+
+
 ## 층 번호로 level을 찾는다. 없으면 -1
 func level_of_number(number: int) -> int:
 	for lv in order:
@@ -125,6 +139,12 @@ func pick_level(current: int, world_pos: Vector2, proj: ViewProjection) -> int:
 		# 지금 층의 바깥 땅(지상층 도로·인도)도 지금 층이다
 		if depth == 0 and kind != BuildingData.Cell.VOID:
 			return lv
+	# 위층: 지금 층·아래층 어디에도 걸리지 않는 곳에 보이는 위층 구조 (기획안 9-4: 그 층을 누르면 그 층으로)
+	var above := above_levels(current)
+	for k in above.size():
+		var c := Vector2i(proj.to_cell(world_pos + Vector2(0, offset_px(k + 1))).floor())
+		if building.cell(above[k], c.x, c.y) in BuildingData.STRUCTURE:
+			return above[k]
 	return current
 
 

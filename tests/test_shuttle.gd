@@ -51,7 +51,8 @@ func test_shuttle_cycle() -> void:
 	sim.step_ticks(roundi((eta + 5) / SimClock.TICK_DT))
 	assert_true(not tank.away, "복귀")
 	assert_true(tank.tank_l > tank.tank_capacity * 0.9, "가득 채워 옴")
-	sim.step_ticks(roundi(30.0 / SimClock.TICK_DT))
+	# 급수 연결은 현장 작업 시간이 걸린다 (P4-1: 수관 꺼내기·연장·결합)
+	sim.step_ticks(roundi(120.0 / SimClock.TICK_DT))
 	assert_eq(tank.supply_to, pump.id, "다시 펌프차에 급수")
 	assert_eq(sim.shuttle.trips(), 1, "왕복 1회")
 

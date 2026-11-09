@@ -14,6 +14,8 @@ signal replay_requested(tick: int)
 signal view_requested(tick: int)
 ## 인쇄용 보고서·CSV 저장 (R12)
 signal export_requested
+## 다음 스테이지 (캠페인 순서의 다음 시나리오 파일 경로, P11-1)
+signal next_requested(path: String)
 
 const BG := Color(0.05, 0.07, 0.1, 0.97)
 const TEXT := "e2e8f0"
@@ -84,6 +86,9 @@ func show_report(p_report: Dictionary, saved_path: String) -> void:
 	row.add_child(view)
 	row.add_child(_button("보고서 저장 (인쇄·CSV)", func() -> void: export_requested.emit()))
 	row.add_child(_button("다시 시작 (F5)", func() -> void: restart_requested.emit()))
+	var next := Campaign.next_path(str(report.get("scenario_id", "")))
+	if next != "":
+		row.add_child(_button("다음 스테이지 ▶", func() -> void: next_requested.emit(next)))
 	row.add_child(_button("시나리오 선택", func() -> void: menu_requested.emit()))
 	box.add_child(row)
 	visible = true
@@ -105,12 +110,22 @@ func _header(saved_path: String) -> String:
 	var lines: PackedStringArray = []
 	lines.append("[font_size=28][color=#%s]디브리핑[/color][/font_size]  [color=#%s]%s · %s 모드 · 난이도 %s · %s · 활동 시간 %s[/color]" % [
 		WARN, DIM, r.scenario_title, r.get("mode", "평가"), r.get("difficulty", ""), r.end_reason, _clock(r.end_time_s)])
+	if str(r.get("result", "완료")) == "미완료":
+		lines.append("[font_size=22][color=#%s]미완료 — %s. 등급은 참고용이며 내 기록의 성장·캠페인 진행에는 넣지 않습니다[/color][/font_size]" % [WARN, r.end_reason])
+	elif str(r.get("end_type", "")) != "":
+		var note := " — 재산 보호·화재 안정화 0점 (기획안 8-3)" if str(r.end_type) == MissionEndChecker.END_BURNOUT else ""
+		lines.append("[font_size=22][color=#%s]종료: %s%s[/color][/font_size]" % [BAD if str(r.end_type) == MissionEndChecker.END_BURNOUT else TEXT, r.end_type, note])
 	var cap := "  [color=#%s](등급 상한: %s)[/color]" % [BAD, "; ".join(PackedStringArray(r.cap_reasons))] if r.capped else ""
 	lines.append("[font_size=36][color=#%s]%s[/color][/font_size]  [font_size=22]%.1f점[/font_size]%s" % [grade_color, r.grade, r.points, cap])
 	var axes: PackedStringArray = []
 	for a: Dictionary in r.axes:
 		axes.append("%s %s" % [a.name, "%d%%" % roundi(a.score * 100.0) if a.applicable else "해당 없음"])
 	lines.append("[color=#%s]%s   (가중치: 전술 우선순위 순, SOP 106-1.1②)[/color]" % [TEXT, "  ·  ".join(axes)])
+	var kd := float(r.get("knockdown_s", -1.0))
+	var ac := float(r.get("all_clear_s", -1.0))
+	lines.append("[color=#%s]진화 기록: 초진 %s · 완진 선언 %s · 총 사용 수량 %dL · 수손 %dL · 재발화 %d건 · 소실 정도 %s (%d%%)[/color]" % [TEXT,
+		_clock(kd) if kd >= 0.0 else "없음", _clock(ac) if ac >= 0.0 else "없음", int(r.get("water_total_l", 0)), int(r.get("water_damage_l", 0)),
+		int(r.get("rekindles", 0)), str(r.get("loss_class", "")), roundi(float(r.get("loss_ratio", 0.0)) * 100.0)])
 	lines.append("[color=#%s]판정 근거: %s · 결과는 지도·개선 용도로만 씁니다 (SOP 113-3.1.6)[/color]" % [DIM, r.get("basis", "")])
 	if saved_path != "":
 		lines.append("[color=#%s]결과 저장: %s[/color]" % [DIM, ProjectSettings.globalize_path(saved_path)])

@@ -4,15 +4,13 @@ extends TestSuite
 const HOUSE := "res://data/scenarios/sop214_1_day_living.json"
 
 
-func test_training_doubles_time_limit() -> void:
+func test_training_doubles_card_time() -> void:
+	# 시나리오 제한 시간은 없다 (P11-1). 훈련 난이도는 질문 카드 제한시간만 2배
 	var sim := SimWorld.from_scenario(HOUSE)
-	var base := sim.time_limit_tick
-	assert_eq(base, roundi(1500.0 / SimClock.TICK_DT), "실전 기준 제한 시간 25분")
 	sim.apply_realism("훈련")
-	assert_eq(sim.time_limit_tick, base * 2, "훈련은 2배")
 	var real := SimWorld.from_scenario(HOUSE)
 	real.apply_realism("실전")
-	assert_eq(real.time_limit_tick, base, "실전은 그대로")
+	assert_eq(sim.cards.time_factor, real.cards.time_factor * 2.0, "훈련은 카드 시간 2배")
 
 
 func test_harsh_conditions() -> void:
@@ -28,13 +26,13 @@ func test_harsh_conditions() -> void:
 	assert_eq(sim.events.of_type("realism").size(), 1, "난이도 기록")
 
 
-func test_all_scenarios_25_to_30_min() -> void:
+func test_no_scenario_time_limit() -> void:
+	# 제한 시간은 없다 (기획안 8-3, P11-1)
 	for s in ScenarioLoader.list():
-		if str(s.id) == "dev_house_fire" or str(s.source) != "기본":
+		if str(s.source) != "기본":
 			continue
 		var data: Dictionary = JsonData.load_file(s.path)
-		var lim := float(data.evaluation.time_limit_s)
-		assert_true(lim >= 1500.0 and lim <= 1800.0, "%s 제한 시간 25~30분 (%d초)" % [s.id, lim])
+		assert_true(not data.get("evaluation", {}).has("time_limit_s"), "%s 제한 시간 없음" % s.id)
 
 
 func test_replay_keeps_realism() -> void:

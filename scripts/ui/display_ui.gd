@@ -5,6 +5,7 @@ extends Control
 var _resolution: OptionButton
 var _screen_mode: OptionButton
 var _fps: OptionButton
+var _low_spec: CheckBox
 var _status: Label
 
 
@@ -47,6 +48,10 @@ func _ready() -> void:
 	_fps = _option(DisplaySettings.FPS_OPTIONS.map(func(f: int) -> String: return "%d프레임%s" % [f, " (저사양 PC 권장)" if f < 60 else " (기본)"]))
 	_fps.select(DisplaySettings.FPS_OPTIONS.find(int(s.fps)))
 	_row(grid, "화면 갱신", _fps, "30프레임이면 화면을 그리는 횟수가 절반이라 내장그래픽·저사양 PC에서 부드럽게 돕니다 (시뮬레이션 속도는 같음)")
+	_low_spec = CheckBox.new()
+	_low_spec.text = "켜기"
+	_low_spec.button_pressed = bool(s.get("low_spec", false))
+	_row(grid, "저사양 모드", _low_spec, "30프레임 고정 + 효과 축소(단면 보기에서 함께 쌓는 층 수를 줄임). 교육장 PC가 느릴 때 (기획안 9-5)")
 
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -75,6 +80,7 @@ func collect() -> Dictionary:
 		"resolution": DisplaySettings.RESOLUTION_ORDER[_resolution.selected],
 		"fullscreen": _screen_mode.selected == 1,
 		"fps": DisplaySettings.FPS_OPTIONS[_fps.selected],
+		"low_spec": _low_spec.button_pressed,
 	}
 
 
@@ -91,6 +97,7 @@ func _reset() -> void:
 	_screen_mode.select(1 if d.fullscreen else 0)
 	_resolution.disabled = d.fullscreen
 	_fps.select(DisplaySettings.FPS_OPTIONS.find(int(d.fps)))
+	_low_spec.button_pressed = false
 
 
 func _row(grid: GridContainer, name: String, control: Control, note: String) -> void:

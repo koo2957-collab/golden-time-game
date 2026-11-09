@@ -102,6 +102,7 @@ func step(dt: float, tick: int) -> void:
 		var room: Compartment = fire.comps[s.room]
 		room.cooling_kw += liters / dt * _water_kj * _gas_eff
 		room.water_applied_l += liters
+		room.applied_lpm += liters / dt * 60.0
 		# 창 안쪽으로 물줄기가 들어가 타는 칸을 친다 (방 안 반경)
 		var at := Vector2(o.cells[0]) + Vector2(0.5, 0.5)
 		var cells := grid.cells_in_radius(o.level, at, _radius_cells)
@@ -112,7 +113,7 @@ func step(dt: float, tick: int) -> void:
 		var targets: Array = burning if not burning.is_empty() else Array(cells)
 		var wasted := liters
 		for i: int in targets:
-			grid.apply_water(i, liters / targets.size(), _fuel_eff)
+			grid.apply_water(i, liters / targets.size(), _fuel_eff, fire.comps)
 			if grid.state[i] == FuelGrid.State.BURNING:
 				wasted -= liters / targets.size()
 		room.water_damage_l += maxf(0.0, wasted)

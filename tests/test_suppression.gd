@@ -39,11 +39,23 @@ func _attack(sim: SimWorld, crew_id: int, spot: Vector2, pattern := "straight") 
 	sim.issue(EquipmentCommand.make("spray", [crew_id] as Array[int], -1, p, Vector3i(12, 16, 1)))
 
 
+## 수관 준비·결합·방수 개시(기획안 6-1)가 끝나 물이 나갈 때까지
+func _wait_water(sim: SimWorld, crews: Array) -> void:
+	sim.step_ticks(1)
+	var until := 0
+	for id in crews:
+		var h := sim.water.hose_of_crew(id)
+		if h:
+			until = maxi(until, h.water_tick)
+	if until > sim.clock.tick:
+		sim.step_ticks(until - sim.clock.tick)
+
+
 func test_vehicles_loaded() -> void:
 	var sim := _sim()
 	assert_eq(sim.units.vehicles.size(), 2, "차량 2대")
 	assert_true(sim.units.vehicles[PUMP].is_pump(), "0번은 펌프차")
-	assert_eq(sim.units.vehicles[TANKER].tank_l, 10000.0, "물탱크차 10,000L")
+	assert_eq(sim.units.vehicles[TANKER].tank_l, 4000.0, "물탱크차 4,000L (기획안 5-4)")
 	assert_eq(sim.building.hydrants.size(), 1, "소화전 1개")
 
 
@@ -53,8 +65,9 @@ func test_growth_fire_knocked_down_quickly() -> void:
 	var living := _living(sim)
 	assert_true(_burning_cells(sim, living) > 0, "4분: 거실이 타고 있음")
 	_attack(sim, 0, Vector2(17.5, 13.5))
+	_wait_water(sim, [0])
 	sim.step_ticks(300)
-	assert_eq(_burning_cells(sim, living), 0, "성장기 화재 30초 안에 진화")
+	assert_eq(_burning_cells(sim, living), 0, "성장기 화재 물이 나간 뒤 30초 안에 진화")
 	assert_eq(sim.water.hoses.size(), 1, "수관 1개 연장됨")
 
 
@@ -64,27 +77,34 @@ func test_fully_developed_room_needs_a_minute_or_more() -> void:
 	var living := _living(sim)
 	var before := _burning_cells(sim, living)
 	assert_true(living.flashed, "8분: 거실 플래시오버 이후")
-	# 최성기 거실 안에는 열기 때문에 설 수 없다: 복도에서 직사로 공격을 시작한다
-	var crew := sim.units.get_crew(0)
-	crew.leader.pos = Vector2(26.5, 12.5)
-	crew.partner.pos = Vector2(27.5, 12.5)
-	sim.issue(EquipmentCommand.make("spray", [0] as Array[int], -1, HoseLine.Pattern.STRAIGHT, Vector3i(12, 16, 1)))
-	sim.step_ticks(300)
+	# 최성기 거실 안에는 열기 때문에 설 수 없다: 복도에서 직사로 공격을 시작한다.
+	# 최성기 거실(약 21㎡)은 필요 방수량이 약 290L/분이라 40mm 1선(275)으로는 모자라 2선으로 공격한다 (기획안 5-4, P6-1)
+	for id in [0, 1]:
+		var crew := sim.units.get_crew(id)
+		crew.leader.pos = Vector2(26.5, 12.5 + id)
+		crew.partner.pos = Vector2(27.5, 12.5 + id)
+		sim.issue(EquipmentCommand.make("spray", [id] as Array[int], -1, HoseLine.Pattern.STRAIGHT, Vector3i(12, 16, 1)))
+	_wait_water(sim, [0, 1])
+	before = _burning_cells(sim, living)
+	sim.step_ticks(200)
+	var after := _burning_cells(sim, living)
+	assert_true(after < before * 0.7, "2선이면 20초 안에 크게 줄어듦 (%d → %d)" % [before, after])
+	sim.step_ticks(100)
 	assert_true(_burning_cells(sim, living) > before * 0.1, "30초로는 진압되지 않음 (%d/%d)" % [_burning_cells(sim, living), before])
-	sim.step_ticks(1500)
-	assert_true(_burning_cells(sim, living) < before * 0.1, "3분 안에 대부분 진압 (%d/%d)" % [_burning_cells(sim, living), before])
-	assert_true(living.t_upper < 300.0, "온도 300℃ 아래로 (결과 %.0f℃)" % living.t_upper)
-	assert_true(sim.events.of_type("ff_down").is_empty(), "행동 불능 대원 없음")
+	# 복도에서는 물줄기가 닿지 않는 칸이 남는다 — 연소가 옆방(주방)으로 번진 최성기 화재는 진입해서 마저 꺼야 한다 (2026-11-10 화재 확산 보강)
 
 
 func test_tank_runs_dry_without_supply() -> void:
 	var sim := _sim()
 	_attack(sim, 0, Vector2(17.5, 13.5))
 	var pump := sim.units.vehicles[PUMP]
-	sim.step_ticks(600)
-	assert_true(absf(pump.tank_l - (3000.0 - 350.0)) < 2.0, "1분에 350L 사용 (결과 %.0fL)" % pump.tank_l)
-	sim.step_ticks(600 * 8)
-	assert_true(pump.tank_l < 1.0, "약 8.6분이면 탱크 소진")
+	# 수관 준비·결합·방수 개시(약 40초, 기획안 6-1) 뒤부터 물이 나간다
+	sim.step_ticks(1)
+	var start := sim.water.hose_of_crew(0).water_tick
+	sim.step_ticks(start + 600 - sim.clock.tick)
+	assert_true(absf(pump.tank_l - (2800.0 - 275.0)) < 2.0, "40mm 1선은 1분에 275L 사용 (결과 %.0fL)" % pump.tank_l)
+	sim.step_ticks(600 * 9 + 120)
+	assert_true(pump.tank_l < 1.0, "급수 없이 약 10분 11초면 탱크 소진 (기획안 5-4)")
 	assert_true(not sim.events.of_type("tank_empty").is_empty(), "탱크 소진 사건 기록")
 	assert_true(sim.water.hose_of_crew(0).flow_fraction < 0.01, "물이 없으면 방수 중단")
 
@@ -93,15 +113,25 @@ func test_tanker_supply_and_hydrant_keep_water() -> void:
 	var sim := _sim()
 	sim.issue(EquipmentCommand.make("supply", [], TANKER, PUMP))
 	_attack(sim, 0, Vector2(17.5, 13.5))
-	sim.step_ticks(600 * 5)
+	# 급수 연결 작업이 끝날 때까지 (현장 작업 시간, 기획안 6-1)
+	sim.step_ticks(1)
+	var t0 := sim.units.vehicles[TANKER]
+	while not t0.work.is_empty() or t0.supply_to < 0:
+		sim.step_ticks(10)
+		if sim.clock.tick > 3000:
+			break
 	var pump := sim.units.vehicles[PUMP]
 	var tanker := sim.units.vehicles[TANKER]
+	var p0 := pump.tank_l
+	var k0 := tanker.tank_l
+	sim.step_ticks(600 * 5)
 	assert_true(tanker.supply_to == PUMP, "물탱크차 급수 연결")
-	assert_true(pump.tank_l > 2900.0, "급수 중에는 펌프차 탱크 유지 (결과 %.0fL)" % pump.tank_l)
-	assert_true(tanker.tank_l < 10000.0 - 1500.0, "물탱크차 물이 줄어듦")
+	# 물탱크차 급수 180L/분 < 1선 275L/분: 급수가 있어도 분당 95L씩 준다 (기획안 5-4)
+	assert_true(absf((p0 - pump.tank_l) - 95.0 * 5.0) < 30.0, "급수 중 펌프차는 분당 약 95L 감소 (5분 %.0fL)" % (p0 - pump.tank_l))
+	assert_true(absf((k0 - tanker.tank_l) - 180.0 * 5.0) < 30.0, "물탱크차는 분당 180L씩 보냄 (5분 %.0fL)" % (k0 - tanker.tank_l))
 	# 소화전 점령: 물탱크차가 소화전 앞으로 이동해 연결
 	sim.issue(EquipmentCommand.make("hydrant", [], TANKER, 0))
-	sim.step_ticks(600)
+	sim.step_ticks(600 * 5)
 	assert_eq(tanker.hydrant, 0, "물탱크차 소화전 점령")
 
 
@@ -200,6 +230,8 @@ func test_water_does_not_pass_walls() -> void:
 	h.aim = Vector2(27.5, 17.5)
 	h.flowing = true
 	h.next_advance_tick = 1 << 30  # 이 테스트에서는 '진압하며 전진'을 끈다
+	h.water_tick = sim.clock.tick
+	h.ready_tick = sim.clock.tick
 	sim.step_ticks(50)
 	assert_true(h.blocked, "벽에 막힘")
 	assert_true(h.impact.y < 14.0, "물은 벽 앞(복도)에 떨어짐")

@@ -38,6 +38,19 @@ var safe_cell := Callable()
 var _cell_m: float
 var _water_kj: float
 var _hydrant_lpm: float
+var _req_per_m2: float
+## 현장 작업 시간 (data fire_params task_times)
+var _tt: Dictionary = {}
+var _fog_mix: float
+## 수증기 열 균형 파괴를 알린 구획
+var _steam_warned: Dictionary = {}
+var _short_ticks: int
+## 방수량이 모자라기 시작한 틱 (구획 index -> tick) / 보고한 구획
+var _short_since: Dictionary = {}
+var _short_reported: Dictionary = {}
+## 잔량 25% 경고를 한 차량
+var _low_warned: Dictionary = {}
+const LOW_TANK_RATIO := 0.25
 var _hydrant_range: float
 var _supply_range: float
 var _drag_factor: float
@@ -60,6 +73,10 @@ func _init(p_building: BuildingData, p_units: UnitSystem, p_pathfinder: Pathfind
 	_cell_m = building.cell_size_m
 	_water_kj = config.value("water_cooling_kj_per_l")
 	_hydrant_lpm = config.value("hydrant_lpm")
+	_req_per_m2 = config.value("required_flow_lpm_per_m2")
+	_tt = config.params.get("task_times", {})
+	_fog_mix = config.value("fog_no_vent_mix_per_s")
+	_short_ticks = roundi(config.value("flow_short_report_s") / SimClock.TICK_DT)
 	_hydrant_range = config.value("hydrant_range_m") / _cell_m
 	_supply_range = config.value("supply_range_m") / _cell_m
 	_drag_factor = config.value("hose_drag_speed_factor")
@@ -183,7 +200,7 @@ func connect_hydrant(vehicle_id: int, hydrant: int, tick: int) -> void:
 	if v == null or hydrant < 0 or hydrant >= building.hydrants.size():
 		return
 	if _hydrant_distance(v, hydrant) <= _hydrant_range:
-		_connect_hydrant_now(v, hydrant, tick)
+		_start_work(v, "hydrant", hydrant, _hydrant_distance(v, hydrant) * _cell_m, tick)
 		return
 	if order_vehicle_move(vehicle_id, building.hydrants[hydrant], tick):
 		v.pending_hydrant = hydrant
@@ -196,7 +213,7 @@ func connect_supply(tanker_id: int, pump_id: int, tick: int) -> void:
 	if t == null or p == null or t == p or t.transfer_lpm <= 0.0 or not p.is_pump():
 		return
 	if t.pos.distance_to(p.pos) <= _supply_range:
-		_connect_supply_now(t, p, tick)
+		_start_work(t, "supply", pump_id, t.pos.distance_to(p.pos) * _cell_m, tick)
 		return
 	# 펌프차 쪽으로 가다 차체가 닿기 직전에서 멈춘다
 	if order_vehicle_move(tanker_id, p.cell(), tick):
@@ -239,6 +256,7 @@ func lay_hose_outlet(crew_id: int, outlet: int, tick: int, report := true) -> bo
 	h.outlet = outlet
 	h.max_cells = building.outlet_hose_m / _cell_m
 	h.points = path
+	_set_hose_timing(h, c, tick, true)
 	if h.length_cells() > h.max_cells:
 		if report:
 			events.add(tick, "hose_too_short", {"crew": _crew_name(c)})
@@ -266,6 +284,7 @@ func lay_hose(crew_id: int, vehicle_id: int, tick: int) -> bool:
 	h.crew_id = crew_id
 	h.max_cells = v.hose_max_cells
 	h.points = path
+	_set_hose_timing(h, c, tick, false)
 	if h.length_cells() > h.max_cells:
 		events.add(tick, "hose_too_short", {"crew": _crew_name(c)})
 		return false
@@ -391,12 +410,138 @@ func _advance(h: HoseLine, c: Crew, tick: int) -> void:
 # --- 매 틱 ---
 
 func step(dt: float, tick: int) -> void:
+	_update_flow_ratio(tick)
+	_step_work(dt, tick)
 	for c in fire.comps:
 		c.cooling_kw = 0.0
+		c.applied_lpm = 0.0
 	_update_pending(tick)
 	_update_hoses(tick)
 	_update_supply(dt, tick)
 	_apply_sprays(dt, tick)
+
+
+## 관창 방수량 (L/분): 건물 밖에서 쏘면 65mm, 안이면 40mm (기획안 5-4). 옥내소화전은 건물 설비 값
+func hose_lpm(h: HoseLine, v: Vehicle) -> float:
+	if v == null:
+		return building.indoor_lpm
+	var leader := units.get_crew(h.crew_id).leader
+	if building.cell(leader.level, floori(leader.pos.x), floori(leader.pos.y)) in BuildingData.OUTDOOR:
+		return v.nozzle_65_lpm
+	return v.nozzle_lpm
+
+
+## 방마다 필요 방수량과 실제 방수량 비율 (지난 틱에 닿은 물 기준). 모자란 상태가 이어지면 관창수 보고 (기획안 5-4)
+func _update_flow_ratio(tick: int) -> void:
+	for c in fire.comps:
+		c.required_lpm = _req_per_m2 * c.burning_area_m2 * c.load_factor
+		c.flow_ratio = c.applied_lpm / c.required_lpm if c.required_lpm > 0.0 else (10.0 if c.applied_lpm > 0.0 else 0.0)
+		if c.applied_lpm > 0.0 and c.required_lpm > 0.0 and c.flow_ratio < 1.0:
+			if not _short_since.has(c.index):
+				_short_since[c.index] = tick
+			elif tick - int(_short_since[c.index]) >= _short_ticks and not _short_reported.has(c.index):
+				_short_reported[c.index] = true
+				events.add(tick, "flow_short", {"room": c.display_name(), "crew": _nozzle_crew(c), "required": roundi(c.required_lpm),
+					"applied": roundi(c.applied_lpm), "ratio": snappedf(c.flow_ratio, 0.01)})
+		else:
+			_short_since.erase(c.index)
+			if c.flow_ratio >= 1.0 or c.burning_area_m2 <= 0.0:
+				_short_reported.erase(c.index)
+
+
+## 바깥으로 열린(깨진) 창·문이 있는 방인가 (배기구)
+func _vented(c: Compartment) -> bool:
+	for oi in c.openings:
+		var o: Opening = fire.openings[oi]
+		if (o.is_open or o.broken) and (o.room_a == Opening.OUTSIDE or o.room_b == Opening.OUTSIDE):
+			return true
+	return false
+
+
+func _nozzle_crew(c: Compartment) -> String:
+	for h in hoses:
+		if h.flowing:
+			var cc := units.get_crew(h.crew_id)
+			var cell := Vector2i(h.impact.floor())
+			if fire.compartment_at(cc.leader.level, cell.x, cell.y) == c:
+				return _crew_name(cc)
+	return "관창수"
+
+
+# --- 현장 작업 시간 (기획안 6-1, P4-1) ---
+
+## 운전원 작업 시작: 소화전 점령·물탱크차 급수·송수구 연결. 시간 = 점령 + 호스 본 수 × 1본 연장 + 결합 × 2 (2인 기준, 혼자면 2배)
+func _start_work(v: Vehicle, kind: String, target: int, dist_m: float, tick: int) -> void:
+	var lengths := ceili(maxf(dist_m, 0.1) / float(_tt.get("hose_length_m", 15.0))) + 1
+	var base := float(_tt.get("hose_length_s", 15.0)) * lengths + float(_tt.get("coupling_s", 5.0)) * 2.0
+	if kind == "hydrant":
+		base += float(_tt.get("hydrant_occupy_s", 20.0))
+	var people := 2 if _helper_near(v) else 1
+	var total := base * (2.0 if people == 1 else 1.0)
+	var labels := {"hydrant": "소화전 점령", "supply": "급수 연결", "fdc": "송수구 연결"}
+	v.work = {"kind": kind, "label": labels.get(kind, kind), "target": target, "remain": total, "total": total, "people": people, "lengths": lengths}
+	events.add(tick, "work_start", {"vehicle": _name(v), "work": labels.get(kind, kind), "seconds": roundi(total), "people": people, "lengths": lengths, "driver": v.driver_label()})
+
+
+## 차량 옆(helper_radius_m)에 쉬고 있는 조가 있으면 2인 작업
+func _helper_near(v: Vehicle) -> bool:
+	var r := float(_tt.get("helper_radius_m", 4.0)) / _cell_m
+	for c in units.crews:
+		if c.leader.incapacitated or c.leader.aboard or c.leader.is_moving() or hose_of_crew(c.id) != null:
+			continue
+		if c.leader.level == v.level and v.distance_to_body(c.leader.pos) <= r:
+			return true
+	return false
+
+
+func _step_work(dt: float, tick: int) -> void:
+	for v in units.vehicles:
+		if v.work.is_empty():
+			continue
+		if v.is_moving():
+			v.work = {}
+			continue
+		v.work.remain = float(v.work.remain) - dt
+		if float(v.work.remain) > SimClock.EPSILON:
+			continue
+		var w := v.work
+		v.work = {}
+		match str(w.kind):
+			"hydrant":
+				_connect_hydrant_now(v, int(w.target), tick)
+			"supply":
+				var p := units.get_vehicle(int(w.target))
+				if p:
+					_connect_supply_now(v, p, tick)
+
+
+## 수관 준비 + 결합, 방수 개시(운전원이 압력을 올림) 시각 (2인 기준 — 조는 2인)
+func _set_hose_timing(h: HoseLine, c: Crew, tick: int, outlet: bool) -> void:
+	var prep := float(_tt.get("coupling_s", 5.0)) * (2.0 if not outlet else 1.0)
+	if not outlet:
+		prep += float(_tt.get("crew_hose_prep_s", 20.0))
+	else:
+		prep += float(_tt.get("crew_hose_prep_s", 20.0)) * 0.5  # 방수구 함의 호스·관창은 가까이 있다
+	var people := 1 if c.partner == null or c.partner.incapacitated else 2
+	if people == 1:
+		prep *= 2.0
+	h.ready_tick = tick + roundi(prep / SimClock.TICK_DT)
+	h.water_tick = h.ready_tick + roundi(float(_tt.get("water_start_s", 10.0)) / SimClock.TICK_DT)
+	h.carried_loads = 1
+
+
+## 작업 진행률 (0~1, 화면 진행 막대). 없으면 -1
+func work_progress(v: Vehicle) -> float:
+	if v.work.is_empty():
+		return -1.0
+	return 1.0 - float(v.work.remain) / maxf(0.1, float(v.work.total))
+
+
+## 수관 준비 진행률 (0~1). 준비가 끝났으면 -1
+func hose_progress(h: HoseLine, tick: int, start_tick: int) -> float:
+	if tick >= h.water_tick:
+		return -1.0
+	return clampf(float(tick - start_tick) / maxf(1.0, float(h.water_tick - start_tick)), 0.0, 1.0)
 
 
 func _update_pending(tick: int) -> void:
@@ -407,19 +552,33 @@ func _update_pending(tick: int) -> void:
 			var hy := v.pending_hydrant
 			v.pending_hydrant = -1
 			if _hydrant_distance(v, hy) <= _hydrant_range:
-				_connect_hydrant_now(v, hy, tick)
+				_start_work(v, "hydrant", hy, _hydrant_distance(v, hy) * _cell_m, tick)
 		if v.pending_supply >= 0:
 			var p := units.get_vehicle(v.pending_supply)
 			v.pending_supply = -1
 			if p and v.pos.distance_to(p.pos) <= _supply_range:
-				_connect_supply_now(v, p, tick)
+				_start_work(v, "supply", p.id, v.pos.distance_to(p.pos) * _cell_m, tick)
 
 
 ## 조가 움직인 만큼 호스를 늘리거나(되돌아오면 줄이고), 적재 길이를 넘으면 조를 멈춘다.
+## 휴대 한도(1인 2본)를 넘으면 차량에서 더 가져올 동안 멈춘다 (기획안 6-1)
 func _update_hoses(tick: int) -> void:
 	for h in hoses:
 		var c := units.get_crew(h.crew_id)
 		var leader := c.leader
+		if h.resupply_until >= 0 and tick >= h.resupply_until:
+			h.resupply_until = -1
+			for ff in c.members():
+				ff.speed_factor = _drag_factor
+		if h.outlet < 0 and h.resupply_until < 0:
+			var people := 2 if c.partner and not c.partner.incapacitated else 1
+			var load_cells := people * float(_tt.get("carry_lengths_per_person", 2.0)) * float(_tt.get("hose_length_m", 15.0)) / _cell_m
+			if load_cells > 0.0 and h.length_cells() > load_cells * h.carried_loads:
+				h.carried_loads += 1
+				h.resupply_until = tick + roundi(float(_tt.get("resupply_s", 30.0)) / SimClock.TICK_DT)
+				for ff in c.members():
+					ff.speed_factor = 0.0
+				events.add(tick, "hose_resupply", {"crew": _crew_name(c), "lengths": roundi(h.length_cells() * _cell_m / float(_tt.get("hose_length_m", 15.0)))})
 		var cell := leader.cell3()
 		var last := h.points[-1]
 		if cell == last:
@@ -466,19 +625,23 @@ func _update_supply(dt: float, tick: int) -> void:
 			continue
 		var flowing: Array[HoseLine] = []
 		for h in hoses_of_vehicle(v.id):
-			if h.flowing and not h.approaching:
+			if h.flowing and not h.approaching and tick >= h.water_tick and tick >= h.resupply_until:
 				flowing.append(h)
 		if flowing.is_empty():
 			continue
-		var share := 0.0
+		var demand := 0.0
 		for h in flowing:
-			share += float(_flow.get(h.pattern, 1.0))
-		var demand := v.nozzle_lpm * minutes * share
+			demand += hose_lpm(h, v) * minutes * float(_flow.get(h.pattern, 1.0))
 		var used := minf(demand, v.tank_l)
 		v.tank_l -= used
 		var fraction := used / demand
 		for h in flowing:
 			h.flow_fraction = fraction
+		if v.tank_l <= v.tank_capacity * LOW_TANK_RATIO and not _low_warned.has(v.id):
+			_low_warned[v.id] = true
+			events.add(tick, "tank_low", {"vehicle": _name(v), "crew": "%s 운전원" % _name(v), "percent": roundi(v.tank_l / v.tank_capacity * 100.0)})
+		elif v.tank_l > v.tank_capacity * 0.5:
+			_low_warned.erase(v.id)
 		if v.tank_l <= EMPTY_TANK_L and not v.tank_empty_logged:
 			v.tank_empty_logged = true
 			events.add(tick, "tank_empty", {"vehicle": _name(v)})
@@ -500,7 +663,7 @@ func _apply_sprays(dt: float, tick: int) -> void:
 			if not leader.is_moving():
 				h.approaching = false
 			continue
-		if h.flow_fraction <= 0.0:
+		if h.flow_fraction <= 0.0 or tick < h.water_tick or tick < h.resupply_until:
 			continue
 		if leader.level != h.target.z:
 			h.blocked = true
@@ -511,13 +674,20 @@ func _apply_sprays(dt: float, tick: int) -> void:
 		h.impact = trace.impact
 		h.blocked = trace.blocked
 		var v := units.get_vehicle(h.vehicle_id)
-		var lpm := v.nozzle_lpm if v else building.indoor_lpm
+		var lpm := hose_lpm(h, v)
 		var liters := lpm / 60.0 * dt * h.flow_fraction * float(_flow.get(h.pattern, 1.0))
 		var impact_cell := Vector2i(h.impact.floor())
 		var comp := fire.compartment_at(leader.level, impact_cell.x, impact_cell.y)
 		if comp:
 			comp.cooling_kw += liters / dt * _water_kj * _gas_eff[h.pattern]
 			comp.water_applied_l += liters
+			comp.applied_lpm += liters / dt * 60.0
+			# 배기구 없는 방에 분무: 수증기가 고온층과 섞여 뜨거운 가스가 바닥까지 내려온다 (화재1 34쪽)
+			if h.pattern == HoseLine.Pattern.FOG and comp.t_upper > 200.0 and not _vented(comp):
+				comp.layer_depth += (comp.height * 0.9 - comp.layer_depth) * minf(1.0, _fog_mix * dt)
+				if not _steam_warned.has(comp.index):
+					_steam_warned[comp.index] = true
+					events.add(tick, "steam_mix", {"room": comp.display_name(), "crew": _crew_name(units.get_crew(h.crew_id))})
 		# 타는 셀에 물이 먼저 가도록 열방출률로 가중
 		var cells := grid.cells_in_radius(leader.level, h.impact, _radius[h.pattern])
 		var weights := PackedFloat32Array()
@@ -531,7 +701,7 @@ func _apply_sprays(dt: float, tick: int) -> void:
 			var i := cells[k]
 			var share := liters * weights[k] / total_w
 			var was_burning := grid.state[i] == FuelGrid.State.BURNING
-			grid.apply_water(i, share, _fuel_eff[h.pattern])
+			grid.apply_water(i, share, _fuel_eff[h.pattern], fire.comps)
 			if was_burning:
 				wasted -= share
 		if comp and comp.t_upper < _damage_temp:

@@ -12,25 +12,29 @@ func _stack(path: String) -> FloorStack:
 
 func test_view_params_loaded() -> void:
 	var p := ViewParams.load_default()
-	assert_eq(p.floor_height_px, 143.0, "층 높이 143px (2.8m 실제 비율)")
+	assert_eq(p.floor_height_px, 160.0, "층 간격 FLOOR_GAP_PX 160px (기획안 P2-1)")
+	assert_eq([p.visible_floors_above, p.above_alpha], [2, 0.25], "위 2개 층, 반투명 0.25")
 	assert_eq(p.visible_floors_below, 2, "아래 2개 층")
 	assert_eq(p.below_modulate, [0.75, 0.55] as Array[float], "아래 층 밝기")
 	assert_eq(p.front_wall, "cut", "앞벽은 잘린 벽")
 	assert_eq(p.wall_cut_m, 0.2, "잘린 벽 20cm")
 
 
-func test_apartment_12f_shows_12_11_10_only() -> void:
+func test_apartment_12f_shows_10_to_14() -> void:
+	# 기획안 9-4·P2-1 (2026-11-10 결정 ②): 초점 층 위·아래 각 2개 층
 	var s := _stack(APT)
 	var shown := s.visible_levels(12)
-	assert_eq(shown, [12, 11, 10] as Array[int], "12층을 고르면 12·11·10층만")
-	for lv in [13, 14, 15]:
-		assert_true(not shown.has(lv), "%d층은 보이지 않음" % lv)
-		assert_eq(s.depth_of(12, lv), -1, "%d층 깊이 없음" % lv)
+	assert_eq(shown, [12, 11, 10] as Array[int], "12층 아래로 11·10층")
+	assert_eq(s.above_levels(12), [13, 14] as Array[int], "위로 13·14층")
+	assert_eq(s.above_levels(15), [] as Array[int], "꼭대기 층은 위층 없음")
+	assert_eq(s.above_levels(14), [15] as Array[int], "14층 위는 15층만")
+	for lv in [15, 9]:
+		assert_true(not shown.has(lv) and not s.above_levels(12).has(lv), "%d층은 보이지 않음" % lv)
 	assert_eq(s.depth_of(12, 11), 1, "11층은 한 층 아래")
 	assert_eq(s.modulate_for(0), 1.0, "지금 층은 밝게")
 	assert_eq(s.modulate_for(1), 0.75, "한 층 아래 0.75")
 	assert_eq(s.modulate_for(2), 0.55, "두 층 아래 0.55")
-	assert_eq(s.offset_px(2), 286.0, "두 층 아래는 286px 아래에")
+	assert_eq(s.offset_px(2), 320.0, "두 층 아래는 320px 아래에 (160 × 2)")
 	assert_eq(s.visible_levels(2), [2, 1] as Array[int], "2층은 2·1층")
 	assert_eq(s.visible_levels(1), [1] as Array[int], "1층은 혼자")
 

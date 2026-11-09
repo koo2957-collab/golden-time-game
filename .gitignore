@@ -15,3 +15,7 @@
 /docs/references/art/*.png
 /docs/references/art/*.avif
 /docs/ref/cutaway.jpg
+
+# 그래픽 원본 (Kenney 3D 팩 등, P15). 크고 Godot이 가져오지 않는다 (.gdignore)
+/art_source/kenney/
+/art_source/firefighter/

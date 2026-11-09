@@ -62,13 +62,15 @@ static func wrong_sops(report: Dictionary) -> PackedStringArray:
 	return out
 
 
-## CSV 한 줄: 저장 시각, 시나리오, 모드, 난이도, 등급, 점수, 5축, 틀린 SOP
+## CSV 한 줄: 저장 시각, 시나리오, 모드, 난이도, 등급, 점수, 5축, 틀린 SOP, 결과(완료·미완료), 종료 종류, 이름, 소속 (P11-1)
 static func csv_line(report: Dictionary) -> String:
 	var cols: PackedStringArray = [str(report.get("saved_at", Time.get_datetime_string_from_system(false, true))), str(report.get("scenario_title", "")),
 		str(report.get("mode", "")), str(report.get("difficulty", "")), str(report.get("grade", "")), "%.1f" % float(report.get("points", 0.0))]
 	for a: Dictionary in report.get("axes", []):
 		cols.append("%d" % roundi(float(a.score) * 100.0) if a.applicable else "")
 	cols.append(" ".join(wrong_sops(report)))
+	var prof: Dictionary = report.get("profile", {})
+	cols.append_array(PackedStringArray([str(report.get("result", "완료")), str(report.get("end_type", "")), str(prof.get("name", "")), str(prof.get("unit", ""))]))
 	return ",".join(Array(cols).map(func(c: String) -> String: return "\"%s\"" % c.replace("\"", "'")))
 
 
@@ -88,7 +90,7 @@ static func save(report: Dictionary, dir := EXPORT_DIR) -> String:
 	if c:
 		if new_file:
 			# 엑셀에서 한글이 깨지지 않게 BOM과 머리줄
-			c.store_string("﻿\"저장 시각\",\"시나리오\",\"모드\",\"난이도\",\"등급\",\"점수\",\"대원 안전\",\"인명구조\",\"재산 보호\",\"화재 안정화\",\"SOP 준수\",\"틀린 SOP\"\n")
+			c.store_string("﻿\"저장 시각\",\"시나리오\",\"모드\",\"난이도\",\"등급\",\"점수\",\"대원 안전\",\"인명구조\",\"재산 보호\",\"화재 안정화\",\"SOP 준수\",\"틀린 SOP\",\"결과\",\"종료\",\"이름\",\"소속\"\n")
 		else:
 			c.seek_end()
 		c.store_string(csv_line(report) + "\n")

@@ -39,6 +39,10 @@ var _wind_k: float
 var _max_m: float
 var _signed: Dictionary = {}  # 구획 index -> true (창이 여러 개여도 방마다 한 번 알림)
 var _ignited_rooms: Dictionary = {}
+## 비화 (기획안 5-2-2): 풍속 기준·분당 확률, 결정론 난수
+var _brand_wind := 5.0
+var _brand_chance := 0.0
+var _rng := RandomNumberGenerator.new()
 
 
 func _init(p_fire: FireSim, p_water: WaterSystem, params: ParamTable, p_events: SimEventLog) -> void:
@@ -52,6 +56,9 @@ func _init(p_fire: FireSim, p_water: WaterSystem, params: ParamTable, p_events: 
 	_sign_ratio = params.value("exposure_sign_ratio")
 	_wind_k = params.value("wind_k")
 	_max_m = params.value("exposure_max_m")
+	_brand_wind = params.value("firebrand_min_wind_mps")
+	_brand_chance = params.value("firebrand_chance_per_min")
+	_rng.seed = 5225
 	_build_pairs()
 
 
@@ -138,6 +145,25 @@ func step(dt: float, tick: int) -> void:
 			events.add(tick, "exposure_heating", {"target": target, "from": from.display_name(), "crew": "현장 대원"})
 		if d >= _ignite:
 			_ignite_target(t, tick)
+	_firebrands(dt, tick)
+
+
+## 비화: 풍속이 기준 이상이면 최성기 화재실 개구부에서 풍하측 인접 건물 창으로 불티가 날아가 옮겨 붙는다 (확률)
+func _firebrands(dt: float, tick: int) -> void:
+	if wind_mps < _brand_wind:
+		return
+	for p in pairs:
+		if p.vertical or p.wind <= 1.0 or ignited.has(p.target.index):
+			continue
+		var src := _room(p.source)
+		if src == null or not (src.flashed or src.stage == Compartment.Stage.FULLY_DEVELOPED) or not (p.source.is_open or p.source.broken):
+			continue
+		if _protected(p):
+			continue
+		var chance := _brand_chance * (wind_mps / _brand_wind) * dt / 60.0
+		if _rng.randf() < chance:
+			events.add(tick, "firebrand_ignition", {"target": exposure_name(), "from": src.display_name(), "wind_mps": wind_mps, "crew": "현장 대원"})
+			_ignite_target(p.target, tick)
 
 
 # --- 내부 ---

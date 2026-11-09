@@ -16,6 +16,9 @@ var stack: FloorStack
 var layers: Array[FloorLayer] = []
 ## 전환 연출용: 사라지는 이전 맨 위 모습 (맨 위에 그린다)
 var ghost: FloorLayer
+## 위층 노드 (기획안 9-4 위·아래 각 2개 층). depth는 ABOVE_DEPTH부터 (지금 층·아래층과 구별)
+var upper_layers: Array[FloorLayer] = []
+const ABOVE_DEPTH := 100
 
 var level := 1:
 	get:
@@ -48,6 +51,13 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 		move_child(layer, 0)
 		layer.setup(sim, p_selection, p_proj, stack)
 		layers.append(layer)
+	# 위층 (지금 층 위에 반투명으로, 기획안 9-4)
+	for k in params.visible_floors_above:
+		var up := FloorLayer.new()
+		up.name = "Above%d" % (k + 1)
+		add_child(up)
+		up.setup(sim, p_selection, p_proj, stack)
+		upper_layers.append(up)
 	ghost = FloorLayer.new()
 	ghost.name = "Ghost"
 	add_child(ghost)
@@ -123,6 +133,25 @@ func _apply() -> void:
 		layer.position = Vector2(0, stack.offset_px(depth))
 		var m := stack.modulate_for(depth)
 		layer.modulate = Color(m, m, m, 1.0)
+	# 위층: 지금 층 위로 FLOOR_GAP_PX씩 올려 반투명 (외부 보기에서는 숨김)
+	var above: Array[int] = []
+	if not _exterior and stack != null:
+		above = stack.above_levels(_level)
+	for k in upper_layers.size():
+		var up := upper_layers[k]
+		if k >= above.size():
+			up.visible = false
+			continue
+		up.visible = true
+		up.depth = ABOVE_DEPTH + k
+		up.level = above[k]
+		up.exterior = false
+		up.thermal = thermal
+		up.upper_level = above[k + 1] if k + 1 < above.size() else -1
+		up.lower_level = above[k - 1] if k > 0 else _level
+		up.refresh()
+		up.position = Vector2(0, -stack.offset_px(k + 1))
+		up.modulate = Color(1, 1, 1, params.above_alpha)
 
 
 func _configure(layer: FloorLayer, depth: int, shown: Array[int], ext: bool) -> void:

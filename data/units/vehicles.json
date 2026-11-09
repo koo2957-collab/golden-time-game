@@ -1,15 +1,15 @@
 {
-  "note": "차량 제원. 모두 추정값이며 관할 소방서 장비 제원으로 바꿔야 한다. 수관 최대 길이 = hose_sections × hose_section_m",
+  "note": "차량 제원. 물탱크·관창·급수량은 기획안 5-4(P6-1): 펌프차 2,800L, 물탱크차 4,000L, 관창 40mm 275L/분(내부)·65mm 611L/분(외부), 급수 180L/분. 그 밖은 추정값이며 관할 소방서 장비 제원으로 바꿔야 한다. 수관 최대 길이 = hose_sections × hose_section_m",
   "펌프차": {
     "short": "펌프", "color": "#c62828",
-    "tank_l": 3000, "nozzle_lpm": 350, "transfer_lpm": 0,
+    "tank_l": 2800, "nozzle_lpm": 275, "nozzle_65_lpm": 611, "transfer_lpm": 0,
     "hose_sections": 10, "hose_section_m": 15,
     "length_m": 7.0, "width_m": 2.4, "height_m": 3.0, "speed_mps": 2.5,
     "source": "추정"
   },
   "물탱크차": {
     "short": "탱크", "color": "#1565c0",
-    "tank_l": 10000, "nozzle_lpm": 0, "transfer_lpm": 1000,
+    "tank_l": 4000, "nozzle_lpm": 0, "transfer_lpm": 180,
     "hose_sections": 0, "hose_section_m": 15,
     "length_m": 8.0, "width_m": 2.5, "height_m": 3.0, "speed_mps": 2.5,
     "source": "추정"

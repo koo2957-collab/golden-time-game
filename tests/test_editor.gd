@@ -17,7 +17,6 @@ func test_copy_edit_save_validate() -> void:
 	d.set_summary("2층 방2에서 시작하는 화재")
 	d.set_dispatch_lines(PackedStringArray(["대상: 2층 단독주택", "", "신고 내용: 2층 창에서 연기"]))
 	assert_eq(d.dispatch_lines().size(), 2, "빈 줄은 빼고 저장")
-	d.set_time_limit_min(30)
 	d.set_random_seed(true)
 	assert_eq(d.add_ignition(2, Vector2i(12, 6)), "", "2층 방2 발화점")
 	assert_true(d.add_ignition(1, Vector2i(2, 2)) != "", "바깥 칸은 발화점이 될 수 없음")

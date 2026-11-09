@@ -30,6 +30,12 @@ var aim := Vector2.ZERO
 ## 물이 닿는 지점 (셀 좌표)과 벽 등에 막혔는지
 var impact := Vector2.ZERO
 var blocked := false
+## 수관 준비·결합이 끝나는 틱 / 방수 개시(압력) 틱 (기획안 6-1). 그 전에는 물이 나오지 않는다
+var ready_tick := 0
+var water_tick := 0
+## 휴대 호스 한도를 넘어 차량에서 더 가져오는 중이면 끝나는 틱
+var resupply_until := -1
+var carried_loads := 1
 
 
 func pattern_name() -> String:

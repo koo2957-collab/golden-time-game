@@ -133,14 +133,12 @@ func set_debug_visible(on: bool) -> void:
 func _process(delta: float) -> void:
 	if sim == null:
 		return
-	var t := int(sim.clock.elapsed_seconds())
-	var text := "경과 %02d:%02d" % [floori(t / 60.0), t % 60]
-	if sim.time_limit_tick > 0:
-		var left := maxi(0, int((sim.time_limit_tick - sim.clock.tick) * SimClock.TICK_DT))
-		text += " / 남은 %02d:%02d" % [floori(left / 60.0), left % 60]
-	text += "   ×%d" % int(sim.clock.speed)
+	# 시계는 신고 후 경과 (출동 4분 포함, 기획안 4-4) · 현장 시계 배속 (5-8)
+	var t := int(sim.since_call_s())
+	var text := "신고 후 %02d:%02d" % [floori(t / 60.0), t % 60]
+	text += "   현장 시계 ×%s" % (str(snappedf(sim.clock.speed, 0.1)) if fmod(sim.clock.speed, 1.0) != 0.0 else str(int(sim.clock.speed)))
 	if sim.realism != "":
-		text += "   %s%s" % [sim.realism, " · 1배속 고정" if sim.realism != "훈련" else ""]
+		text += "   %s" % sim.realism
 	if sim.clock.paused:
 		text += "   일시정지"
 	if mode_text != "":
@@ -842,6 +840,11 @@ func toggle_perf() -> void:
 		add_child(_perf)
 		_perf.visible = false
 	_perf.visible = not _perf.visible
+
+
+## 조작 안내 문구 (게임 메뉴의 조작 도움말)
+func help_text() -> String:
+	return $HelpLabel.text
 
 
 func perf_visible() -> bool:

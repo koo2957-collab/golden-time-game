@@ -82,11 +82,15 @@ func _run() -> Dictionary:
 	var axes: Array[Dictionary] = []
 	var total_w := 0.0
 	var total := 0.0
+	# 전소: 재산보호·화재진압 0점 (기획안 8-3)
+	var zero_axes: Array = data.get("burnout_zero_axes", []) if sim.end_type == MissionEndChecker.END_BURNOUT else []
 	for a: Dictionary in data.get("axes", []):
 		var scores: Array[float] = []
 		for r in results:
 			if r.axis == a.id and r.applicable:
 				scores.append(r.score)
+		if zero_axes.has(a.id):
+			scores = [0.0]
 		var axis := {"id": a.id, "name": a.name, "weight": float(a.weight), "applicable": not scores.is_empty(), "score": 0.0}
 		if not scores.is_empty():
 			var sum := 0.0
@@ -129,6 +133,20 @@ func _run() -> Dictionary:
 		"realism": sim.realism,
 		"cards": sim.cards.log,
 		"end_reason": sim.end_reason,
+		"end_type": sim.end_type,
+		# 소실 정도 (화재1 5쪽: 전소 70% 이상 · 반소 30~70% · 부분소)
+		"loss_ratio": snappedf(sim.mission_end.loss_ratio(), 0.01),
+		"loss_class": sim.mission_end.loss_class(),
+		# 끝까지 마치지 않고 나간 판 (임무 포기·처음부터 다시·메인 메뉴·게임 종료, 기획안 8-4). 등급은 참고용
+		"result": "미완료" if sim.end_type == MissionEndChecker.END_INCOMPLETE else "완료",
+		"profile": Profile.load_profile(),
+		"pause_count": sim.pause_count,
+		# 진화 기록 (기획안 5-9 디브리핑): 총 사용 수량·수손·초진·완진·재발화
+		"water_total_l": roundi(_sum_comps("water_applied_l")),
+		"water_damage_l": roundi(_sum_comps("water_damage_l")),
+		"knockdown_s": sim.phases.knockdown_tick * SimClock.TICK_DT if sim.phases.knockdown_tick >= 0 else -1.0,
+		"all_clear_s": int(sim.phases.all_clear.get("tick", -1)) * SimClock.TICK_DT if not sim.phases.all_clear.is_empty() else -1.0,
+		"rekindles": sim.rekindle.rekindles,
 		"end_time_s": sim.ended_tick * SimClock.TICK_DT,
 		"points": snappedf(points, 0.1),
 		"grade": grade,
@@ -619,6 +637,22 @@ func _check_extinguish() -> Dictionary:
 	return {"score": _linear(t, _params.good_s, _params.bad_s), "detail": "완진 %s (기준 %d분)" % [_t(roundi(t / SimClock.TICK_DT)), int(_params.good_s / 60)]}
 
 
+## 잔화정리 순서: 위층에서 아래층으로 (화재1 261쪽). 두 층 이상 정리했을 때만
+func _check_overhaul_order() -> Dictionary:
+	var order := sim.rekindle.overhaul_order
+	var levels := {}
+	for o in order:
+		levels[int(o.level)] = true
+	if levels.size() < 2:
+		return {}
+	var wrong := 0
+	for k in range(1, order.size()):
+		if int(order[k].level) > int(order[k - 1].level):
+			wrong += 1
+	return {"score": 1.0 - float(wrong) / (order.size() - 1),
+		"detail": "잔화정리 %d곳, 아래층을 먼저 하고 위층으로 올라간 경우 %d번" % [order.size(), wrong]}
+
+
 func _check_overhaul() -> Dictionary:
 	var rk := sim.rekindle
 	if rk.embers_created == 0:
@@ -1077,3 +1111,10 @@ static func _t(tick: int) -> String:
 		return "--:--"
 	var s := int(tick * SimClock.TICK_DT)
 	return "%02d:%02d" % [floori(s / 60.0), s % 60]
+
+
+func _sum_comps(field: String) -> float:
+	var total := 0.0
+	for c in sim.fire.comps:
+		total += float(c.get(field))
+	return total

@@ -67,6 +67,19 @@ var _vis_lower: PackedFloat32Array
 var _cast_area: Dictionary = {}  # level -> Rect2i (바깥 대원이 시선을 계산하는 범위)
 var _exterior: Array[Opening] = []
 var _normal: Dictionary = {}  # 개구부 index -> 바깥쪽 방향
+## 이번 update에서 시선을 쏜 층 (그 층만 메우기·기록 — 성능, P14)
+var _cast_levels: Dictionary = {}
+## 밖에서 창으로 들여다보기는 window_view_every번에 한 번만 다시 계산하고, 그 사이에는 지난번에 보인 칸을 그대로 쓴다 (성능, P14)
+var _window_every := 1
+## 땅에서 이 층수 위의 창은 창 바로 안쪽(window_view_high_range_m)만 보인다 — 높은 층 방 안은 밖에서 들여다볼 수 없다
+var _window_low_floors := 2
+var _window_high_range := 4.0
+var _window_count := 0
+var _window_cells := PackedInt32Array()
+## 이번 갱신에 보인 칸 / 열화상으로 본 칸 / 대원이 직접 본 칸 목록 (그 칸만 지우고 기록 — 성능, P14)
+var _vis_list := PackedInt32Array()
+var _thermal_list := PackedInt32Array()
+var _crew_list := PackedInt32Array()
 ## 현장지휘관 (밖에서 창을 들여다보는 사람). SimWorld가 넣는다
 var commander: Firefighter
 
@@ -83,6 +96,9 @@ func _init(p_fire: FireSim, p_units: UnitSystem, stats: ParamTable) -> void:
 	_glow = stats.value("flame_glow_factor")
 	_max_sight = stats.value("max_sight_m") / _cell_m
 	_tic_range = stats.value("thermal_camera_range_m") / _cell_m
+	_window_every = maxi(1, roundi(stats.value("window_view_every")))
+	_window_low_floors = roundi(stats.value("window_view_low_floors"))
+	_window_high_range = stats.value("window_view_high_range_m") / _cell_m
 	_extinction = fire.config.value("visibility_coeff_m2_kg")
 	_outdoor_vis_cells = OUTDOOR_VISIBILITY_M / _cell_m
 	_w = building.width
@@ -155,8 +171,14 @@ func room_visible(c: Compartment) -> bool:
 
 
 func update(tick: int) -> void:
-	visible_now.fill(0)
-	thermal_now.fill(0)
+	_cast_levels.clear()
+	# 지난번에 보인 칸만 지운다 (전체 배열을 지우지 않음 — 성능, P14)
+	for i in _vis_list:
+		visible_now[i] = 0
+	_vis_list.clear()
+	for i in _thermal_list:
+		thermal_now[i] = 0
+	_thermal_list.clear()
 	room_visible_now.fill(0)
 	_update_room_visibility()
 	for c in units.crews:
@@ -168,9 +190,33 @@ func update(tick: int) -> void:
 			_cast(ff.level, ff.pos, eye, RAYS, _max_sight, false)
 		if c.thermal_camera and not c.leader.incapacitated and _should_cast(c.leader):
 			_cast(c.leader.level, c.leader.pos, _eye_stand, RAYS, _tic_range, true)
-	crew_visible_now = visible_now.duplicate()
-	# 밖에서 창·열린 문으로 들여다보기 (지휘관·바깥 대원). 화염·연기는 보이지만 바닥에 쓰러진 사람은 보이지 않는다
+	# 대원이 직접 본 칸
+	for i in _crew_list:
+		crew_visible_now[i] = 0
+	_crew_list = _vis_list.duplicate()
+	for i in _crew_list:
+		crew_visible_now[i] = 1
+	var crew_count := _vis_list.size()
+	_window_count += 1
+	if _window_count % _window_every != 0:
+		for i in _window_cells:
+			_see(i)
+	else:
+		_cast_windows()
+		# 창으로 보인 칸 (대원 눈으로 본 칸 다음에 붙은 것)을 다음 갱신 때까지 쓴다
+		_window_cells = _vis_list.slice(crew_count)
+	_fill_gaps()
+	_record(tick)
+
+
+## 밖에서 창·열린 문으로 들여다보기 (지휘관·바깥 대원). 화염·연기는 보이지만 바닥에 쓰러진 사람은 보이지 않는다
+func _cast_windows() -> void:
 	var watchers := _outside_watchers()
+	var ground := building.levels()[0]
+	for lv in building.levels():
+		if building.floor_number(lv) >= 1:
+			ground = lv
+			break
 	for o in _exterior:
 		if o.kind == Opening.Kind.DOOR and not o.is_open:
 			continue
@@ -187,22 +233,38 @@ func update(tick: int) -> void:
 				watched = true
 				break
 		if watched:
-			_cast(o.level, center, _eye_stand, WINDOW_RAYS, WINDOW_RANGE_CELLS, false)
-	_fill_gaps()
-	_record(tick)
+			if o.level - ground < _window_low_floors:
+				_cast(o.level, center, _eye_stand, WINDOW_RAYS, WINDOW_RANGE_CELLS, false)
+			else:
+				_cast(o.level, center, _eye_stand, WINDOW_RAYS / 2, _window_high_range, false)
+
+
+func _see(i: int) -> void:
+	if visible_now[i] == 0:
+		visible_now[i] = 1
+		_vis_list.append(i)
 
 
 ## 시선 사이로 빠진 칸 메우기: 실내에서 안 보이는 칸인데 주변 8칸 중 FILL_MIN_NEIGHBORS 칸 이상 보이면 보이는 것으로 한다
+## 보인 칸의 이웃만 살핀다 (성능, P14)
 func _fill_gaps() -> void:
 	var fill := PackedInt32Array()
+	var checked := {}
+	var w := _w
 	var h := building.height
-	for li in building.levels().size():
-		var base := li * _per_level
-		for y in range(1, h - 1):
-			for x in range(1, _w - 1):
-				var i := base + y * _w + x
-				if visible_now[i] == 1 or (_room[i] < 0 and _type[i] != BuildingData.Cell.DOOR):
+	for v in _vis_list.duplicate():
+		var vy := (v % _per_level) / w
+		var vx := v % w
+		for oy in range(-1, 2):
+			for ox in range(-1, 2):
+				var x := vx + ox
+				var y := vy + oy
+				if x < 1 or y < 1 or x >= w - 1 or y >= h - 1:
 					continue
+				var i := v + oy * w + ox
+				if checked.has(i) or visible_now[i] == 1 or (_room[i] < 0 and _type[i] != BuildingData.Cell.DOOR):
+					continue
+				checked[i] = true
 				# 벽·창 이웃은 보이는 것으로 센다 (벽에 붙은 칸도 메워지도록)
 				var n := 0
 				var seen_any := false
@@ -210,7 +272,7 @@ func _fill_gaps() -> void:
 					for dx in range(-1, 2):
 						if dx == 0 and dy == 0:
 							continue
-						var j := i + dy * _w + dx
+						var j := i + dy * w + dx
 						if visible_now[j] == 1:
 							n += 1
 							seen_any = true
@@ -219,7 +281,7 @@ func _fill_gaps() -> void:
 				if seen_any and n >= FILL_MIN_NEIGHBORS:
 					fill.append(i)
 	for i in fill:
-		visible_now[i] = 1
+		_see(i)
 
 
 ## 바깥 대원은 건물 근처에 있을 때만 계산한다 (바깥은 늘 보이고, 창 안쪽은 창 관찰로 처리)
@@ -241,13 +303,11 @@ func _update_room_visibility() -> void:
 
 func _record(tick: int) -> void:
 	var grid := fire.grid
-	for i in visible_now.size():
-		if visible_now[i] == 0:
-			continue
+	for i in _vis_list:
 		seen_tick[i] = tick
-		var s := grid.state[i]
-		seen_burning[i] = 1 if s == FuelGrid.State.BURNING else 0
-		seen_burnt[i] = 1 if s == FuelGrid.State.BURNT else 0
+		var st := grid.state[i]
+		seen_burning[i] = 1 if st == FuelGrid.State.BURNING else 0
+		seen_burnt[i] = 1 if st == FuelGrid.State.BURNT else 0
 		var r := _room[i]
 		if r >= 0:
 			room_visible_now[r] = 1
@@ -259,17 +319,19 @@ func _record(tick: int) -> void:
 
 
 func _touch(level: int, pos: Vector2) -> void:
+	_cast_levels[level] = true
 	var c := Vector2i(pos.floor())
 	for y in range(c.y - TOUCH_CELLS, c.y + TOUCH_CELLS + 1):
 		for x in range(c.x - TOUCH_CELLS, c.x + TOUCH_CELLS + 1):
 			if building.in_bounds(x, y):
 				var i := fire.grid.index(level, x, y)
 				if _type[i] != BuildingData.Cell.WALL:
-					visible_now[i] = 1
+					_see(i)
 
 
 ## 사방으로 시선을 쏜다. thermal이면 연기를 무시하고 거리로만 제한한다.
 func _cast(level: int, origin: Vector2, eye: float, rays: int, max_cells: float, thermal: bool) -> void:
+	_cast_levels[level] = true
 	var state := fire.grid.state
 	var openings := fire.openings
 	var base := fire.grid.index(level, 0, 0)
@@ -309,14 +371,16 @@ func _cast(level: int, origin: Vector2, eye: float, rays: int, max_cells: float,
 				continue
 			last = i
 			if thermal:
-				thermal_now[i] = 1
+				if thermal_now[i] == 0:
+					thermal_now[i] = 1
+					_thermal_list.append(i)
 				if state[i] == FuelGrid.State.BURNING:
-					visible_now[i] = 1
+					_see(i)
 			elif haze <= 1.0:
-				visible_now[i] = 1
+				_see(i)
 			elif haze <= _glow:
 				if state[i] == FuelGrid.State.BURNING:
-					visible_now[i] = 1
+					_see(i)
 			else:
 				break
 			# 닫힌 문은 시선을 막는다. 깨지지 않은 유리창은 눈에는 투명하지만 열화상(원적외선)은 통과하지 못한다

@@ -46,6 +46,8 @@ var preorders: Dictionary = {}
 var log: Array[Dictionary] = []
 ## 훈련 난이도 제한시간 배율
 var time_factor := 1.0
+## 현장 시계 배속: 제한시간은 실제 초라 현장 틱으로는 이만큼 길다 (기획안 5-8)
+var clock_scale := 1.0
 
 var _seconds: Dictionary = {}
 var _queue_max := 3
@@ -246,7 +248,7 @@ func _raise(spec: Dictionary, e: Dictionary, tick: int) -> void:
 		_log(c, tick, null, "overflow")
 		events.add(tick, "card_overflow", {"crew": _crew_name(c.crew_id), "title": str(spec.get("title", c.id))})
 		return
-	c.deadline_tick = tick + roundi(float(spec.get("time_limit_sec", _seconds.get(c.urgency, 20.0))) * time_factor / SimClock.TICK_DT)
+	c.deadline_tick = tick + roundi(float(spec.get("time_limit_sec", _seconds.get(c.urgency, 20.0))) * time_factor * clock_scale / SimClock.TICK_DT)
 	queue.append(c)
 	queue.sort_custom(func(a: Card, b: Card) -> bool:
 		var ua: int = URGENCY_ORDER.get(a.urgency, 2)

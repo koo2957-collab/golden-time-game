@@ -1,0 +1,10 @@
+{
+  "note": "입체 화면 타일 종류표 (R17). 지금은 단색 도형(color)으로 그린다. 그래픽 교체(G1) 때 sprite에 아틀라스 그림 영역 {\"atlas\": 경로, \"rect\": [x, y, w, h]}을 채우면 그 종류만 그림으로 바꾼다. 목표 모습은 docs/art_direction.md. source: 화면 설정 (기획 요청서 초기 그래픽: 바닥 베이지·뒷벽 회색·벽 단면 흰 띠·슬래브 단면 진회색)",
+  "floor": {"color": "d8c8a6", "sprite": null, "note": "실내 바닥"},
+  "stairs": {"color": "c4b18d", "sprite": null, "note": "계단 칸 바닥"},
+  "stair_step": {"color": "b39d74", "sprite": null, "note": "아래층에서 위층으로 올라가는 계단 디딤판"},
+  "wall": {"color": "8a9099", "sprite": null, "note": "벽 몸체 (뒷벽은 천장까지, 앞벽·실내 벽은 잘린 높이까지)"},
+  "cut_face": {"color": "f2efe8", "sprite": null, "note": "잘린 벽 윗면 — 두께가 보이는 밝은 단면 띠"},
+  "slab_edge": {"color": "3b4048", "sprite": null, "note": "층 사이 바닥판(슬래브) 앞 모서리 단면"},
+  "shaft": {"color": "475569", "sprite": null, "note": "승강로 (여러 층을 관통)"}
+}

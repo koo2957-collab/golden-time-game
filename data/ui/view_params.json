@@ -1,0 +1,14 @@
+{
+  "note": "건물 화면(외부 보기·인형집 단면) 설정 (R17). 화면에만 쓰고 시뮬레이션과는 상관없다. source: 화면 설정 = 보기 좋게 정한 값, 공학식 = 투영 계산. 화면 1m = 51px(IsoProjection.PX_PER_M), 칸 0.5m.",
+  "floor_height_px": {"value": 143, "source": "공학식", "note": "단면 보기에서 한 층을 위로 올려 그리는 높이. 층고 2.8m × 51px/m ≈ 143px (실제 비율). 기획 요청서의 96px로 줄이면 층이 납작해져 아래층이 더 적게 보인다"},
+  "visible_floors_below": {"value": 2, "source": "화면 설정", "note": "지금 층 아래로 함께 쌓아 보일 층 수. 층 번호가 이어진 층만 (초고층의 생략 층·땅 밑은 쌓지 않는다)"},
+  "below_modulate": {"value": [0.75, 0.55], "source": "화면 설정", "note": "아래 층 밝기 (한 층 아래, 두 층 아래)"},
+  "front_wall": {"value": "cut", "source": "화면 설정", "note": "단면 보기의 앞벽(남·동)과 실내 벽 모양: cut(잘린 벽) / hidden(숨김)"},
+  "wall_cut_m": {"value": 0.2, "source": "화면 설정", "note": "잘린 벽 높이. 윗면을 밝은 단면 띠로 그린다"},
+  "slab_m": {"value": 0.3, "source": "추정", "note": "층 사이 바닥판(슬래브) 두께. 앞쪽 모서리에 진회색 띠로 보인다"},
+  "transition_s": {"value": 0.3, "source": "화면 설정", "note": "외부↔단면, 층 이동 전환 연출 시간 (시뮬레이션은 멈추지 않는다)"},
+  "transition_rise_px": {"value": 30, "source": "화면 설정", "note": "전환 때 외벽·위층이 흐려지며 올라가는 거리"},
+  "zoom_switch": {"value": true, "source": "화면 설정", "note": "줌으로 외부↔단면 전환 (끄면 층 막대·PgUp/PgDn으로만)"},
+  "zoom_enter_interior": {"value": 1.3, "source": "화면 설정", "note": "외부 보기에서 건물 위로 이 배율 이상 확대하면 단면으로 (시작 배율 0.75, 휠 한 칸 1.15배)"},
+  "zoom_exit_exterior": {"value": 0.6, "source": "화면 설정", "note": "단면에서 이 배율 이하로 축소하면 외부 보기로. 들어가는 값과 떨어뜨려 경계에서 오락가락하지 않게 한다"}
+}

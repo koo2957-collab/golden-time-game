@@ -2,6 +2,7 @@
  "id": "apartment_15f",
  "name": "15층 계단식 아파트",
  "structure": "철근콘크리트조",
+ "facade_style": {"balcony": true, "note": "외부 보기(화면)에서 위층 창 앞에 발코니 난간을 그린다 (R17)"},
  "cell_size_m": 0.5,
  "width": 72,
  "height": 40,

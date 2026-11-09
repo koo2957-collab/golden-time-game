@@ -81,6 +81,11 @@ func _run() -> void:
 	# 현장지휘관 선택·이동
 	_click(sim.command.commander.pos, MOUSE_BUTTON_LEFT, false, false, true)
 	_check("현장지휘관 클릭 선택", sel.commander_selected, true)
+	_click(Vector2(30, 20), MOUSE_BUTTON_LEFT)
+	_check("빈 곳 클릭 → 지휘관 선택 해제", sel.commander_selected, false)
+	var cpos := sim.command.commander.pos
+	_drag(cpos - Vector2(1.5, 0.5), cpos + Vector2(1.5, 0.5))
+	_check("현장지휘관 드래그 선택", sel.commander_selected, true)
 	_click(Vector2(8.5, 26.5), MOUSE_BUTTON_RIGHT)
 	sim.step_ticks(1)
 	_check("지휘관 우클릭 이동", sim.command_log.entries[-1] is CommandOrder, true)
@@ -133,11 +138,35 @@ func _run() -> void:
 	_key(KEY_1)
 	_check("Ctrl+1 지정 후 1 호출", sel.selected, [2, 3])
 
+	# R16: 시작은 외부 보기. PgUp 순서는 외부 보기 → 1층 단면 → 2층
+	_check("시작은 외부 보기", [world.view_level, world.exterior_view, world.iso_view.exterior], [1, true, true])
+	_key(KEY_PAGEUP)
+	_check("PgUp → 1층 단면", [world.view_level, world.exterior_view], [1, false])
 	_key(KEY_PAGEUP)
 	_check("PgUp → 2층", world.view_level, 2)
 	_click(Vector2(13.5, 17.5), MOUSE_BUTTON_RIGHT)
 	_key(KEY_PAGEDOWN)
-	_check("PgDn → 1층", world.view_level, 1)
+	_check("PgDn → 1층", [world.view_level, world.exterior_view], [1, false])
+	# R16 층 막대(입면도): 층 칸 클릭 → 그 층 단면, 외부 띠 클릭 → 외부 보기, 막대 위 휠 → 한 칸씩
+	var fb = world.hud.floor_bar
+	_check("층 막대: 2개 층 + 외부 띠", fb._rows.size(), 3)
+	var row2: Dictionary = fb._rows.filter(func(it): return it.kind == "floor" and it.level == 2)[0]
+	var ground: Dictionary = fb._rows.filter(func(it): return it.kind == "ground")[0]
+	_press_at(fb.get_global_rect().position + row2.rect.get_center(), MOUSE_BUTTON_LEFT)
+	_check("층 막대 클릭 → 2층", world.view_level, 2)
+	_press_at(fb.get_global_rect().position + row2.rect.get_center(), MOUSE_BUTTON_WHEEL_DOWN)
+	_check("층 막대 휠 아래 → 1층 단면", [world.view_level, world.exterior_view], [1, false])
+	_press_at(fb.get_global_rect().position + ground.rect.get_center(), MOUSE_BUTTON_LEFT)
+	_check("층 막대 외부 띠 → 외부 보기", [world.view_level, world.exterior_view], [1, true])
+	# 여기까지는 상황판(평면) 화면이므로 입체로 바꿔 외관을 본 뒤 되돌린다
+	_key(KEY_M)
+	_check("외부 보기(입체)에서 카메라가 외관 높이까지", world.camera.bounds.position.y < world.projection().bounds(sim.building).position.y, true)
+	await process_frame
+	await process_frame
+	root.get_texture().get_image().save_png("user://smoke_exterior.png")
+	_key(KEY_M)
+	_key(KEY_PAGEUP)
+	_check("외부 보기에서 PgUp → 1층 단면", [world.view_level, world.exterior_view], [1, false])
 	_drag(Vector2(9, 22), Vector2(15, 24))
 	_check("진압1 범위 선택", sel.selected, [0, 1])
 	_click(Vector2(13.5, 15.5), MOUSE_BUTTON_RIGHT)
@@ -395,20 +424,12 @@ func _run() -> void:
 	await process_frame
 	_check("F12 → 성능 표시", world.hud.perf_visible() and world.hud._perf.text.contains("fps"), true)
 	_key(KEY_F12)
-	# R8 미니맵: 도면 전에는 잠김, 얻으면 열리고 클릭하면 그곳으로 이동
+	# R8 → R16 미니맵: 바깥 배치도는 처음부터, 건물 안 평면도는 도면 뒤. 누르기·끌기로 화면 이동, 화면 범위 표시
 	var mm = world.hud.minimap
-	_check("미니맵 잠김 (도면 없음)", mm.unlocked(), false)
+	_check("건물 안 평면도 잠김 (도면 없음)", mm.unlocked(), false)
+	_check("미니맵 화면 범위 (모서리 4개)", mm.view_corners.call().size(), 4)
 	await process_frame
-	root.get_texture().get_image().save_png("C:/Users/koo29/AppData/Local/Temp/claude/9c1a2eec3fcfbc58/49e9c22c-41eb-477e-bb53-a6386426224b/scratchpad/r8_noplan.png")
-	sim.plan.acquire("상황실", sim.clock.tick)
-	_check("도면 → 미니맵 열림", mm.unlocked(), true)
-	_check("도면 → 방 단위 임무", sim.command.interior.plan_known, true)
-	mm.queue_redraw()
-	world.hud.command_ui.toggle_board()
-	await process_frame
-	await process_frame
-	root.get_texture().get_image().save_png("C:/Users/koo29/AppData/Local/Temp/claude/9c1a2eec3fcfbc58/49e9c22c-41eb-477e-bb53-a6386426224b/scratchpad/r8_plan.png")
-	world.hud.command_ui.toggle_board()
+	root.get_texture().get_image().save_png("user://smoke_minimap_noplan.png")
 	var cam_before: Vector2 = world.camera.position
 	var mc := InputEventMouseButton.new()
 	mc.button_index = MOUSE_BUTTON_LEFT
@@ -416,7 +437,27 @@ func _run() -> void:
 	mc.position = mm.get_global_rect().position + mm.size * Vector2(0.8, 0.5)
 	root.push_input(mc, true)
 	await process_frame
-	_check("미니맵 클릭 → 화면 이동", world.camera.position != cam_before, true)
+	_check("도면 전에도 미니맵 클릭 → 화면 이동", world.camera.position != cam_before, true)
+	cam_before = world.camera.position
+	var mmove := InputEventMouseMotion.new()
+	mmove.button_mask = MOUSE_BUTTON_MASK_LEFT
+	mmove.position = mm.get_global_rect().position + mm.size * Vector2(0.3, 0.5)
+	root.push_input(mmove, true)
+	var mup: InputEventMouseButton = mc.duplicate()
+	mup.pressed = false
+	mup.position = mmove.position
+	root.push_input(mup, true)
+	await process_frame
+	_check("미니맵 끌기 → 화면 따라 이동", world.camera.position != cam_before, true)
+	sim.plan.acquire("상황실", sim.clock.tick)
+	_check("도면 → 미니맵 평면도 열림", mm.unlocked(), true)
+	_check("도면 → 방 단위 임무", sim.command.interior.plan_known, true)
+	mm.queue_redraw()
+	world.hud.command_ui.toggle_board()
+	await process_frame
+	await process_frame
+	root.get_texture().get_image().save_png("user://smoke_minimap_plan.png")
+	world.hud.command_ui.toggle_board()
 	# R13 지휘권 이양: 지휘대 도착 → 브리핑 창 → 이양 → 지휘대장
 	sim.transfer.unit = {"name": "점검용 지휘대", "chief": {"name": "한도윤", "rank": "소방령", "title": "지휘대장"}}
 	sim.transfer.arrive_tick = sim.clock.tick + 1
@@ -492,6 +533,18 @@ func _click(cell: Vector2, button: MouseButton, double := false, shift := false,
 	var r: InputEventMouseButton = e.duplicate()
 	r.pressed = false
 	r.double_click = false
+	root.push_input(r, true)
+
+
+## 화면 좌표에서 버튼 누르고 떼기 (HUD 조작용)
+func _press_at(screen_pos: Vector2, button: MouseButton) -> void:
+	var e := InputEventMouseButton.new()
+	e.button_index = button
+	e.pressed = true
+	e.position = screen_pos
+	root.push_input(e, true)
+	var r: InputEventMouseButton = e.duplicate()
+	r.pressed = false
 	root.push_input(r, true)
 
 

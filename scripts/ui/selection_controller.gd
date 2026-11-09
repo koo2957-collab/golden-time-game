@@ -21,6 +21,8 @@ signal witness_clicked(index: int)
 signal notice(text: String)
 ## 건물 안 조를 우클릭함 → 원형 메뉴 (기획안 9-1, R7c)
 signal crew_menu(crew_id: int, screen_pos: Vector2)
+## 단면 보기에서 아래층(보이기만 하는 층)을 눌렀다 — 그 층을 지금 층으로 (R17)
+signal floor_clicked(level: int)
 
 const DRAG_THRESHOLD_PX := 6.0
 const MARKER_DURATION_MS := 500.0
@@ -66,6 +68,8 @@ var mode := Mode.NONE
 var monitor_vehicle := -1
 ## 설정되어 있으면 좌클릭을 선택 대신 이 함수로 넘긴다 (셀 좌표 Vector2i). 개발용 발화 모드 등에 쓴다.
 var click_override := Callable()
+## 설정되어 있으면 빈 곳 클릭 때 화면 위치로 맞은 층을 묻는다 (단면 보기의 아래층, R17). (world_pos) -> level
+var level_picker := Callable()
 
 var _groups: Dictionary = {}  # 숫자 -> Array[int]
 var _pressing := false
@@ -207,6 +211,12 @@ func _click_select(world_pos: Vector2, add: bool) -> void:
 	var crew_id := _crew_at(world_pos)
 	var vehicle_id := -1 if crew_id >= 0 else _vehicle_at(world_pos)
 	if crew_id < 0 and vehicle_id < 0:
+		# 아래층은 보이기만 한다 — 누르면 그 층이 지금 층이 된다 (선택은 그대로 둔다)
+		if not add and level_picker.is_valid():
+			var picked: int = level_picker.call(world_pos)
+			if picked != level:
+				floor_clicked.emit(picked)
+				return
 		if not add:
 			_set_selection([], [])
 		return
@@ -222,7 +232,8 @@ func _click_select(world_pos: Vector2, add: bool) -> void:
 	_set_selection(crews, vehicles)
 
 
-## 범위 안의 조를 고른다. 조가 하나도 없으면 범위 안의 차량을 고른다.
+## 범위 안의 조를 고른다. 조가 하나도 없으면 범위 안의 차량을, 차량도 없으면 현장지휘관을 고른다
+## (지휘관 이동은 대원 이동과 다른 명령이라 조·차량과 섞어 고르지 않는다).
 func _box_select(add: bool) -> void:
 	var ids: Array[int] = []
 	for c in sim.units.crews:
@@ -235,6 +246,11 @@ func _box_select(add: bool) -> void:
 		for v in sim.units.vehicles:
 			if not v.away and _drag_rect.has_point(projection.to_screen(v.pos)):
 				vehicles.append(v.id)
+	if ids.is_empty() and vehicles.is_empty() and not add:
+		var c := sim.command.commander
+		if c.level == level and _drag_rect.has_point(projection.to_screen(c.pos)):
+			_set_selection([], [], true)
+			return
 	if add:
 		_set_selection(_merge(ids), _merge_vehicles(vehicles))
 	else:

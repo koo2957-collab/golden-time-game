@@ -9,3 +9,9 @@
 # 배포용 실행 파일(실행파일_만들기.bat 결과)과 함께 넣는 Godot 실행 파일
 /build/
 /godot/
+
+# 그래픽 참고 그림(G1 목표 모습)은 출처·사용 허락을 확인하기 전까지 이 PC에만 둔다. 설명은 docs/art_direction.md
+/docs/references/art/*.jpg
+/docs/references/art/*.png
+/docs/references/art/*.avif
+/docs/ref/cutaway.jpg

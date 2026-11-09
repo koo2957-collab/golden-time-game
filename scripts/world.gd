@@ -16,6 +16,8 @@ const START_ZOOM := {ViewMode.ISO: 0.75, ViewMode.PLAN: 1.4}
 
 var sim: SimWorld
 var view_level := 1
+## 외부 보기 (바깥 + 건물 외관, R16). 시작은 외부 보기 — 지휘관은 밖에 있다
+var exterior_view := false
 var view_mode := ViewMode.ISO
 var thermal := false
 var ignite_mode := false
@@ -81,13 +83,22 @@ func _ready() -> void:
 	mission_ui.order_issued.connect(sim.issue)
 	mission_ui.notice.connect(hud.show_notice)
 	selection.crew_menu.connect(mission_ui.open_crew_menu)
+	# 단면 보기: 아래층을 누르면 그 층으로 (R17)
+	selection.level_picker = func(world_pos: Vector2) -> int:
+		if view_mode != ViewMode.ISO or exterior_view:
+			return view_level
+		return iso_view.stack.pick_level(view_level, world_pos, projection())
+	selection.floor_clicked.connect(func(lv: int) -> void: set_view_level(lv))
+	camera.zoomed.connect(_on_camera_zoomed)
 	hud.command_ui.team_drag_started.connect(mission_ui.begin_drag)
 	hud.command_ui.team_dropped.connect(mission_ui.drop_crew)
 	hud.command_ui.team_selected.connect(_on_team_selected)
-	# 미니맵 클릭: 그곳으로 화면 이동 (도면을 얻은 뒤, R8)
+	# 미니맵 누르기·끌기: 그곳으로 화면 이동, 지금 화면 범위 표시 (R8 → R16)
 	hud.minimap.jump.connect(func(cell: Vector2, lv: int) -> void:
-		set_view_level(lv)
-		camera.retarget(projection().bounds(sim.building), projection().to_screen(cell)))
+		if lv != view_level:
+			set_view_level(lv)
+		camera.retarget(_view_bounds(), projection().to_screen(cell)))
+	hud.minimap.view_corners = _view_corners
 	var tutorial := str(sim.scenario.get("tutorial", ""))
 	# 튜토리얼은 안내판이 순서를 알려 주므로 멈추는 힌트 카드는 끈다
 	hud.hint_ui.setup(sim, GameManager.mode == "교육" and tutorial == "")
@@ -102,12 +113,13 @@ func _ready() -> void:
 	hud.card_ui.order_issued.connect(sim.issue)
 	hud.command_ui.end_dialog_opened.connect(hud.hint_ui.on_end_dialog)
 	EventBus.command_mode_changed.connect(_on_command_mode_changed)
-	camera.setup(projection().bounds(sim.building), START_ZOOM[view_mode])
+	camera.setup(_view_bounds(), START_ZOOM[view_mode])
 	# 지도가 도로 쪽으로 넓으므로 건물을 화면 가운데에 두고 시작한다
 	var house := Rect2(sim.building.footprint(sim.building.levels()[0]))
-	camera.retarget(projection().bounds(sim.building), projection().to_screen(house.get_center() + Vector2(0, 4)))
+	camera.retarget(_view_bounds(), projection().to_screen(house.get_center() + Vector2(0, 4)))
 	set_view_mode(view_mode)
-	set_view_level(sim.building.levels()[0])
+	set_view_level(sim.building.levels()[0], true)
+	hud.floor_bar.floor_step.connect(_step_level)
 	hud.debrief.restart_requested.connect(GameManager.restart)
 	hud.debrief.menu_requested.connect(GameManager.back_to_menu)
 	hud.debrief.replay_requested.connect(func(tick: int) -> void: GameManager.request_replay(sim.issued, tick, sim.rng_seed, sim.tactical.level_name, sim.realism, false, sim.growth))
@@ -279,8 +291,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_HOME:
 		# 지휘소(현장지휘관 위치)로 돌아오기 (기획안 9-3)
 		var c := sim.command.commander
-		set_view_level(c.level)
-		camera.retarget(projection().bounds(sim.building), projection().to_screen(c.pos))
+		set_view_level(c.level, _outdoors(c.level, c.pos))
+		camera.retarget(_view_bounds(), projection().to_screen(c.pos))
 	elif event.is_action_pressed("toggle_view"):
 		set_view_mode(ViewMode.PLAN if view_mode == ViewMode.ISO else ViewMode.ISO)
 	elif event.is_action_pressed("toggle_thermal"):
@@ -312,22 +324,70 @@ func set_view_mode(mode: ViewMode) -> void:
 	$Effects.visible = not iso
 	$Units.visible = not iso
 	selection.projection = projection()
-	camera.retarget(projection().bounds(sim.building), projection().to_screen(center_cell))
+	camera.retarget(_view_bounds(), projection().to_screen(center_cell))
 	_update_mode_text()
 
 
-func set_view_level(level: int) -> void:
+## level 층 보기. exterior면 외부 보기(바깥 + 건물 외관, 바깥이 있는 맨 아래 층에서만, R16)
+func set_view_level(level: int, exterior := false) -> void:
 	if not sim.building.has_level(level):
 		return
 	view_level = level
+	exterior_view = exterior and level == sim.building.levels()[0]
 	floor_view.set_level(level)
 	fire_view.level = level
 	units_view.level = level
-	iso_view.level = level
+	iso_view.show_view(level, exterior_view)
 	selection.level = level
 	if hud.minimap:
 		hud.minimap.level = level
+	if hud.floor_bar:
+		hud.floor_bar.exterior = exterior_view
+	# 외관 높이만큼 카메라가 올라갈 수 있게 (위치는 그대로)
+	camera.retarget(_view_bounds(), camera.position)
+	_update_mode_text()
 	EventBus.view_floor_changed.emit(level)
+
+
+## 카메라 이동 범위: 지도 + (입체·외부 보기면) 건물 외관 꼭대기
+func _view_bounds() -> Rect2:
+	var r := projection().bounds(sim.building)
+	if view_mode == ViewMode.ISO and exterior_view:
+		var b := sim.building
+		for c: Vector2 in [Vector2(0, 0), Vector2(b.width, 0), Vector2(0, b.height), Vector2(b.width, b.height)]:
+			r = r.expand(projection().to_screen(c, iso_view.shell_top_m()))
+	elif view_mode == ViewMode.ISO:
+		# 단면 보기: 아래로 쌓인 층까지 (R17)
+		r.size.y += iso_view.stack_depth_px()
+	return r
+
+
+## 그 위치(셀)가 건물 밖인가 — 화면 이동 때 외부 보기로 갈지 정한다
+## 줌 전환 (R17): 외부 보기에서 건물 위로 확대하면 단면(선택한 조가 건물 안이면 그 층, 아니면 지상층),
+## 단면에서 크게 축소하면 외부 보기. 들어가는 배율과 나오는 배율을 떨어뜨려 경계에서 오락가락하지 않는다
+func _on_camera_zoomed(world_pos: Vector2) -> void:
+	if view_mode != ViewMode.ISO or not iso_view.params.zoom_switch:
+		return
+	var z := camera.zoom.x
+	var ground := sim.building.levels()[0]
+	if exterior_view and z >= iso_view.params.zoom_enter_interior:
+		if iso_view.building_under(world_pos, projection()):
+			set_view_level(_entry_level(ground))
+	elif not exterior_view and z <= iso_view.params.zoom_exit_exterior:
+		set_view_level(ground, true)
+
+
+## 줌으로 들어갈 층: 선택한 조 중 건물 안에 있는 조의 층, 없으면 지상층
+func _entry_level(ground: int) -> int:
+	for crew_id in selection.selected:
+		var ff := sim.units.get_crew(crew_id).leader
+		if not _outdoors(ff.level, ff.pos):
+			return ff.level
+	return ground
+
+
+func _outdoors(level: int, pos: Vector2) -> bool:
+	return sim.building.cell(level, floori(pos.x), floori(pos.y)) in BuildingData.OUTDOOR
 
 
 func set_thermal(on: bool) -> void:
@@ -467,6 +527,8 @@ func _on_command(id: String) -> void:
 
 func _update_mode_text() -> void:
 	var modes: PackedStringArray = ["입체" if view_mode == ViewMode.ISO else "상황판"]
+	if view_mode == ViewMode.ISO:
+		modes.append("외부 보기" if exterior_view else "%s 단면" % sim.building.floor_name(view_level))
 	if thermal:
 		modes.append("열화상")
 	if not sim.perception.enabled:
@@ -478,10 +540,22 @@ func _update_mode_text() -> void:
 	hud.mode_text = " · ".join(modes)
 
 
+## 층 한 칸 오르내리기 (PgUp·PgDn, 층 막대 휠). 순서는 실제 층 번호대로이고, 외부 보기는 1층 바로 아래 칸
 func _step_level(direction: int) -> void:
-	var levels := sim.building.levels()
-	var i := clampi(levels.find(view_level) + direction, 0, levels.size() - 1)
-	set_view_level(levels[i])
+	var b := sim.building
+	var order := b.levels()
+	order.sort_custom(func(a: int, c: int) -> bool: return b.floor_number(a) < b.floor_number(c))
+	var steps: Array[Array] = []
+	for lv in order:
+		if lv == b.levels()[0]:
+			steps.append([lv, true])
+		steps.append([lv, false])
+	var i := 0
+	for k in steps.size():
+		if steps[k][0] == view_level and steps[k][1] == exterior_view:
+			i = k
+	var j := clampi(i + direction, 0, steps.size() - 1)
+	set_view_level(steps[j][0], steps[j][1])
 
 
 ## 마우스 가둠 (기획안 9-3). 자동 테스트·헤드리스에서는 하지 않는다
@@ -499,6 +573,15 @@ func _input(event: InputEvent) -> void:
 # --- 임무형 내부 지휘 (R7c) ---
 
 ## 화면 좌표 → 칸 (지금 보는 층)
+## 지금 화면 네 모서리(왼위·오른위·오른아래·왼아래)의 칸 좌표 (미니맵의 화면 범위 표시)
+func _view_corners() -> Array:
+	var s := get_viewport().get_visible_rect().size
+	var out: Array = []
+	for p: Vector2 in [Vector2.ZERO, Vector2(s.x, 0), s, Vector2(0, s.y)]:
+		out.append(projection().to_cell(selection._to_world(p)))
+	return out
+
+
 func screen_to_cell(screen_pos: Vector2) -> Vector3i:
 	var c := projection().to_cell(selection._to_world(screen_pos))
 	return Vector3i(floori(c.x), floori(c.y), selection.level)
@@ -509,8 +592,8 @@ func _on_team_selected(crew_id: int, focus: bool) -> void:
 	selection._set_selection([crew_id] as Array[int])
 	if focus:
 		var c := sim.units.get_crew(crew_id)
-		set_view_level(c.leader.level)
-		camera.retarget(projection().bounds(sim.building), projection().to_screen(c.leader.pos))
+		set_view_level(c.leader.level, _outdoors(c.leader.level, c.leader.pos))
+		camera.retarget(_view_bounds(), projection().to_screen(c.leader.pos))
 
 
 # --- 디브리핑 확장 (R12) ---

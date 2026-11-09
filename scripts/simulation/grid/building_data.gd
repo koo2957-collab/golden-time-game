@@ -54,6 +54,8 @@ var fire_doors: Array[Vector2i] = []
 var vertical_exposure := false
 ## 가연성 외장재: 아래층 창 화염이 위층 창을 데우는 속도 배율 (필로티 다세대, SOP 232, R14)
 var facade_factor := 1.0
+## 외관 모양 (화면 전용, R17). {"balcony": true}면 외부 보기에서 위층 창 앞에 발코니 난간을 그린다
+var facade_style: Dictionary = {}
 ## 실제 층 번호 {층 index: 번호} — 초고층처럼 일부 층만 그릴 때 (R14). 없으면 index가 번호
 var floor_numbers: Dictionary = {}
 ## 배관 샤프트 [{name, rect: Rect2i, levels: [층]}] (SOP 212-2.3)
@@ -196,6 +198,7 @@ func _parse(data: Dictionary) -> void:
 		fire_doors.append(Vector2i(int(d[0]), int(d[1])))
 	vertical_exposure = bool(data.get("vertical_exposure", false))
 	facade_factor = float(data.get("facade_factor", 1.0))
+	facade_style = data.get("facade_style", {})
 	for k in data.get("floor_numbers", {}):
 		floor_numbers[int(k)] = int(data.floor_numbers[k])
 	for sh: Dictionary in data.get("shafts", []):

@@ -53,6 +53,7 @@ func test_warehouse_panel_collapse_enabled() -> void:
 func test_basement_disorientation_and_lifeline() -> void:
 	var sim := SimWorld.from_scenario(STAGES["3-2"])
 	assert_true(sim.lifeline.enabled, "지하층 라이트라인 규칙")
+	assert_eq(sim.building.floor_number(2), -1, "index 2 = 지하1층 (층 막대 입면도에서 땅 밑, R16)")
 	var c := sim.units.get_crew(2)
 	var room := sim.fire.compartment_at(2, 30, 13)
 	room.soot = 50.0

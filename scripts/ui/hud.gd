@@ -38,7 +38,8 @@ const DEBUG_COLUMNS: Array[String] = ["구획", "단계", "상부℃", "하부�
 
 var sim: SimWorld
 var mode_text := ""
-var _floor_buttons: Dictionary = {}  # level -> Button
+var floor_bar: FloorBarView
+var _floor_bar_fit_h := 0.0
 var _legend: Control
 var _victim_panel: PanelContainer
 var _debug_panel: PanelContainer
@@ -84,23 +85,12 @@ func setup(p_sim: SimWorld, on_floor_selected: Callable) -> void:
 	phase_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	phase_bar.position = Vector2(-450, 6)
 	add_child(phase_bar)
-	var group := ButtonGroup.new()
-	var levels := sim.building.levels()
-	levels.reverse()
-	for level in levels:
-		var button := Button.new()
-		button.text = sim.building.floor_name(level)
-		button.toggle_mode = true
-		button.button_group = group
-		button.focus_mode = Control.FOCUS_NONE
-		button.custom_minimum_size = Vector2(160, 34)
-		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		button.tooltip_text = "이 층 보기 (PgUp·PgDn)"
-		button.add_theme_color_override("font_pressed_color", PlanStyle.SELECTION)
-		button.add_theme_color_override("font_hover_pressed_color", PlanStyle.SELECTION)
-		button.pressed.connect(on_floor_selected.bind(level))
-		floor_tabs.add_child(button)
-		_floor_buttons[level] = button
+	# 층 막대: 반투명 건물 입면 (R16)
+	floor_bar = FloorBarView.new()
+	floor_bar.setup(sim)
+	floor_bar.tooltip_text = " "  # _get_tooltip이 칸마다 문구를 돌려준다
+	floor_bar.floor_pressed.connect(on_floor_selected)
+	floor_tabs.add_child(floor_bar)
 	$ClockPanel.gui_input.connect(_on_badge_input)
 	$ClockPanel.tooltip_text = "클릭: 전략 변경 (지휘 C)"
 	_build_subtitles()
@@ -180,9 +170,8 @@ func _process(delta: float) -> void:
 
 
 func _on_view_floor_changed(level: int) -> void:
-	# set_pressed_no_signal은 버튼 그룹의 단일 선택을 처리하지 않으므로 전부 직접 맞춘다
-	for lv: int in _floor_buttons:
-		_floor_buttons[lv].set_pressed_no_signal(lv == level)
+	floor_bar.current = level
+	floor_bar.queue_redraw()
 
 
 func _on_selection_changed(crew_ids: Array[int]) -> void:
@@ -641,13 +630,10 @@ func _refresh_floor_bar(delta: float) -> void:
 	for ff in sim.units.firefighters:
 		if not ff.aboard:
 			crews[ff.level] = int(crews.get(ff.level, 0)) + 1
-	var lowest := sim.building.levels()[0]
-	for level: int in _floor_buttons:
-		var b: Button = _floor_buttons[level]
-		var mark := " 불" if fire.has(level) else (" 연기" if smoke.has(level) else "")
-		b.text = "%s%s%s  %d명" % [sim.building.floor_name(level), "·외부" if level == lowest else "", mark, int(crews.get(level, 0))]
-		var color := Color("f87171") if fire.has(level) else (Color("cbd5e1") if smoke.has(level) else Color("e2e8f0"))
-		b.add_theme_color_override("font_color", color)
+	floor_bar.fire = fire
+	floor_bar.smoke = smoke
+	floor_bar.crews = crews
+	floor_bar.queue_redraw()
 
 
 var _subtitles: Label
@@ -757,11 +743,11 @@ func _build_console() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	console.add_child(row)
-	# 미니맵: 도면을 얻기 전에는 잠김, 얻으면 평면·대원·확인한 불 (R8)
+	# 미니맵: 바깥 배치도는 처음부터, 건물 안 평면도는 도면을 얻은 뒤 (R8 → R16)
 	minimap = MinimapView.new()
 	minimap.setup(sim)
 	minimap.custom_minimum_size = Vector2(240, 0)
-	minimap.tooltip_text = "도면은 관리사무소·방재실에 조를 보내거나 지휘대가 도착하면 얻습니다. 얻은 뒤에는 클릭하면 그곳으로 이동"
+	minimap.tooltip_text = "누르거나 끌면 그곳으로 화면 이동. 흰 테두리 = 지금 보이는 범위\n건물 안 평면도는 관리사무소·방재실에 조를 보내거나 지휘대가 도착하면 보입니다"
 	row.add_child(minimap)
 	# 선택 정보
 	var info := ScrollContainer.new()
@@ -823,6 +809,13 @@ func _layout_console() -> void:
 		_minimap_ms = Time.get_ticks_msec()
 		minimap.queue_redraw()
 	console.size = Vector2(size.x - 16.0, h)
+	# 층 막대는 콘솔 위 공간의 60%까지 (아래에 구조대상자 현황·범례 자리)
+	if floor_bar:
+		var max_h := (console.position.y - floor_tabs.position.y) * 0.6
+		if absf(max_h - _floor_bar_fit_h) > 4.0:
+			_floor_bar_fit_h = max_h
+			floor_bar.fit(max_h)
+			floor_tabs.reset_size()
 	var y := floor_tabs.position.y + floor_tabs.size.y + 8.0
 	if _victim_panel:
 		_victim_panel.position = Vector2(16.0, y)

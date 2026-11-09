@@ -179,7 +179,7 @@ func _draw_doors() -> void:
 
 func _draw_smoke_plumes() -> void:
 	var t := Time.get_ticks_msec() / 1000.0
-	for line in IsoView.smoke_outlets(sim, level):
+	for line in FloorLayer.smoke_outlets(sim, level):
 		var at := PlanStyle.to_px(line[0])
 		var strength: float = line[1]
 		for k in 4:

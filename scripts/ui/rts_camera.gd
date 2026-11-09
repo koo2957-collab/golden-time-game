@@ -3,6 +3,9 @@ extends Camera2D
 ## RTS 카메라. 방향키 이동, 휠 버튼 끌기 이동, 마우스 휠로 커서 위치 기준 줌.
 ## 실제 시간으로 움직이므로 일시정지 중에도 조작할 수 있다.
 
+## 휠로 확대·축소했다 (커서 아래 지점의 world 좌표) — 줌으로 외부↔단면 전환에 쓴다 (R17)
+signal zoomed(world_pos: Vector2)
+
 const PAN_SPEED_PX := 900.0
 const ZOOM_STEP := 1.15
 const ZOOM_MIN := 0.5
@@ -63,6 +66,7 @@ func _zoom_at(screen_pos: Vector2, factor: float) -> void:
 	zoom = Vector2(z, z)
 	position = world_under_cursor - offset / z
 	_clamp()
+	zoomed.emit(world_under_cursor)
 
 
 func _clamp() -> void:

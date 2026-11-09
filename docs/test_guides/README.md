@@ -4,18 +4,89 @@
 
 ## 공통 준비
 
-- Godot 실행 파일 (예): `C:\Users\koo29\Downloads\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe`
-- 아래 명령은 프로젝트 폴더(`F:\golden time game\새-게임-프로젝트`)에서 실행한다. `GODOT`은 위 실행 파일 경로.
+- `GODOT`은 이 PC의 Godot 4.7.2 콘솔 실행 파일(`Godot_v4.7.2-stable_win64_console.exe`) 경로다. PC마다 위치가 다르다.
+  - 예: `C:\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe`
+  - 예: `C:\Users\<사용자>\Downloads\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe`
+- 아래 명령은 프로젝트 폴더(`project.godot`이 있는 곳)에서 실행한다.
 - 새 스크립트를 받은 뒤 처음에는 한 번 가져오기를 한다: `GODOT --headless --path . --import`
 
 | 할 일 | 명령 |
 |---|---|
-| 단위 테스트 전체 (약 15분) | `GODOT --headless --path . -s res://tests/run_tests.gd` |
-| 단위 테스트 한 파일 | `GODOT --headless --path . -s res://tests/run_tests.gd -- test_safety` (파일 이름 일부) |
+| 단위 테스트 전체 (약 26분) | `GODOT --headless --path . -s res://tests/run_tests.gd` |
+| 관련 테스트만 (여러 개는 쉼표) | `GODOT --headless --path . -s res://tests/run_tests.gd -- test_cards,test_missions` |
+| 한 파일만 정확히 | `GODOT --headless --path . -s res://tests/run_tests.gd -- test_building.gd` |
 | 조작 점검 (창이 잠깐 열림, 약 3분) | `GODOT --path . -s res://tests/ui_smoke.gd` |
-| 게임 실행 | Godot 편집기에서 프로젝트를 열고 F5, 또는 `Godot_v4.7.2-stable_win64.exe --path .` |
+| 건물 화면 점검 (외부 보기·단면, 스크린샷·프레임 측정, 약 1분 30초) | `GODOT --path . -s res://tests/ui_cutaway.gd` |
+| 게임 실행 | Godot 편집기에서 프로젝트를 열고 F5, 또는 `게임_실행.bat` |
 
-결과 줄이 `결과: N 통과, 0 실패`, 조작 점검은 `조작 점검: 모두 통과`면 정상이다.
+- 이름 일부(`test_cards`)는 파일 이름과 테스트 이름 모두에서 찾는다. 그래서 다른 파일의 같은 이름 테스트도 함께 돈다. 파일 하나만 돌리려면 `.gd`까지 쓴다.
+- 결과 줄이 `결과: N 통과, 0 실패`, 조작 점검은 `조작 점검: 모두 통과`면 정상이다.
+- 끝에 **파일별 시간(느린 순)**과 **실패한 테스트 목록**이 나온다.
+
+## 언제 무엇을 돌리나
+
+| 언제 | 무엇을 |
+|---|---|
+| 기능 하나를 만들거나 고칠 때마다 | 아래 대응표에서 **고친 곳의 테스트 + 그 기능의 새 테스트** |
+| 시뮬레이션 핵심(아래 "핵심" 줄)을 고쳤을 때 | 위에 더해 **핵심 묶음** |
+| 큰 단계(R 번호)가 끝날 때, GitHub에 올리기 전 | **전체 테스트 1회** (백그라운드로) |
+
+핵심 묶음 (약 40초): `test_replay.gd,test_units.gd,test_evaluation.gd,test_scoring.gd,test_building.gd,test_sim_clock.gd`
+(다시 하기 결정론·대원 이동·평가가 깨지지 않았는지 본다. 화재 수치는 느려서 전체 테스트 때 본다 — 화재 계산 자체를 고쳤을 때만 `test_fire.gd`를 더한다)
+
+### 느린 파일 (2026-11-09 측정, 전체 약 26분)
+
+대응표에서 아래 파일이 나오면 몇 분 걸린다. 한 번에 여러 개를 고르지 말고 꼭 필요한 것만 고른다.
+
+| 파일 | 시간 |
+|---|---|
+| test_rescue_hazards | 약 3분 40초 |
+| test_transfer | 약 3분 30초 |
+| test_highrise | 약 2분 40초 |
+| test_ems | 약 2분 30초 |
+| test_suppression | 약 2분 20초 |
+| test_fire | 약 2분 15초 |
+| test_phases | 약 2분 15초 |
+| test_crew_and_vision | 약 1분 10초 |
+| test_overhaul | 약 1분 |
+
+나머지는 모두 40초 이하이고, 대부분 15초 이하다.
+
+## 고친 곳 → 돌릴 테스트 (대응표)
+
+| 고친 곳 | 돌릴 테스트 |
+|---|---|
+| **핵심** `scripts/simulation/sim_world.gd`, `sim_clock.gd`, `replay.gd`, `grid/` | 핵심 묶음 + `test_pathfinder.gd` |
+| 화재 계산 `fire_sim.gd`, `fire_config.gd`, `compartment/`, `data/fire/` | 핵심 묶음 + `test_fire.gd` |
+| `scripts/simulation/suppression/` (수관·방수·방수포·송풍기·물탱크차) | `test_suppression,test_streams,test_shuttle,test_apartment` |
+| `scripts/simulation/hazards/` (붕괴·인접 건물·낙하·가스) | `test_exposure,test_falls,test_general,test_rescue_hazards` |
+| `rescue_system.gd`, `evac_system.gd`, `perception.gd`, `door_system.gd` | `test_rescue_hazards,test_crew_and_vision,test_general,test_plan` |
+| `crew_condition_system.gd`, `lifeline_system.gd` (공기·열·호흡량·라이트라인) | `test_numbers,test_crew_and_vision,test_safety,test_stages` |
+| `ems_system.gd` (구급) | `test_ems,test_falls` |
+| `elevator_system.gd` | `test_transfer,test_stages` |
+| `scripts/units/` (대원 이동·2인 1조·길찾기) | `test_units,test_pathfinder` |
+| `scripts/command/` 지휘·무전·진입 명령 | `test_command,test_safety,test_organization` |
+| `scripts/command/tactical_system.gd` (분대 명령칸) | `test_tactical,test_missions` |
+| `scripts/command/interior_orders.gd`, 임무·임무 조건 | `test_interior,test_missions` |
+| `scripts/command/card_system.gd`, `data/cards/` | `test_cards,test_cards_r4` |
+| `scripts/command/phase_system.gd`, `data/command/phase_params.json` (초진·완진·종료) | `test_phases,test_overhaul` |
+| `scripts/command/command_transfer.gd` (지휘권 이양) | `test_transfer` |
+| `scripts/command/plan_intel.gd` (도면·미니맵 정보) | `test_plan` |
+| `site_survey.gd` (360° 둘러보기·관계인 진술) | `test_site_survey` |
+| 차량 배치·골목 | `test_placement,test_alley` |
+| `scripts/evaluation/` 평가·판정, `data/sop/rules.json` | `test_evaluation,test_scoring,test_debrief_ext` |
+| 보고서·CSV·대원 성장 (`report_export.gd`, `crew_growth.gd`) | `test_debrief_ext,test_campaign` |
+| `data/sop/hints.json`, 교육 힌트 | `test_hints` |
+| 난이도 (훈련·실전·악조건) | `test_realism,test_cards,test_interior` |
+| `scripts/scenario/`, `data/scenarios/` | `test_scenario_loader` + 그 시나리오의 테스트 (예: 스테이지 → `test_stages`, 15층 → `test_highrise`) |
+| `data/buildings/` 건물 지도 | `test_building` + 그 건물을 쓰는 시나리오의 테스트 |
+| `data/campaign/`, 내 기록·교관 설정 | `test_campaign,test_history` |
+| `data/tutorial/`, 튜토리얼 | `test_tutorial` |
+| 시나리오 편집기 | `test_editor` |
+| `data/units/` 대원·차량·장비 수치 | `test_units,test_numbers` |
+| `scripts/ui/building/` 층 쌓기·벽 모양 (`floor_stack.gd`, `view_params.gd`), `data/ui/view_params.json` | `test_cutaway` |
+| `scripts/ui/iso_view.gd`, `scripts/ui/building/floor_layer.gd`, `data/ui/tile_skin.json` (입체 화면 그리기) | 건물 화면 점검(`ui_cutaway.gd`) + 조작 점검 |
+| 화면 코드만 (`scripts/ui/`, `scenes/`) | 단위 테스트 대신 **조작 점검**(`ui_smoke.gd`) + 직접 확인 |
 
 ## 단계별 문서
 
@@ -55,5 +126,7 @@
 | R13 지휘권 이양·지휘대장·비상용승강기 (2-2) | [R13_transfer.md](R13_transfer.md) |
 | R14 나머지 스테이지 (0·1-2·3-1·3-2·3-3·4-1) | [R14_stages.md](R14_stages.md) |
 | R15 배포 (성능 표시·벤치마크·내보내기) | [R15_deploy.md](R15_deploy.md) |
+| R16 화면 개선 (지휘관 드래그·미니맵·입면 층 막대·외부 보기) | [R16_screen.md](R16_screen.md) |
+| R17 건물 두 모습 (외부 보기·인형집 단면·프레임 측정) | [R17_cutaway.md](R17_cutaway.md) |
 | **최종 보고서** (기획서 대비 구현·개선점) | [../최종_보고서.md](../최종_보고서.md) |
 | **R1~R5 빠른 점검 (한 판으로 확인)** | [R1-R5_빠른점검.md](R1-R5_빠른점검.md) |

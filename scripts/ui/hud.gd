@@ -66,8 +66,13 @@ var hint_ui: HintUi
 var phase_bar: RichTextLabel
 ## 튜토리얼 시나리오에서만 만든다
 var tutorial_ui: TutorialUi
-## 질문 카드 (화면 위쪽 가운데)
+## 질문 카드 (화면 위쪽 가운데) — 전술상황판보다 뒤에 더해 위에 뜬다
 var card_ui: CardUi
+## 오른쪽 무전 기록 패널, 팀 초상 줄, 전술상황판 (기획안 9-2·9-2-1, P10-1)
+var radio_log: RadioLogPanel
+var team_strip: TeamStrip
+var board: TacticalBoard
+var _board_button: Button
 
 
 func setup(p_sim: SimWorld, on_floor_selected: Callable) -> void:
@@ -100,10 +105,31 @@ func setup(p_sim: SimWorld, on_floor_selected: Callable) -> void:
 	_build_command_panel()
 	_build_notice_label()
 	_build_victim_panel()
+	# 전술상황판은 지휘 창(command_ui)보다 아래에 깐다 — 상황판을 연 채로 지휘 창·질문 카드가 위에 뜬다
+	board = TacticalBoard.new()
+	add_child(board)
 	command_ui = CommandUi.new()
 	add_child(command_ui)
 	command_ui.setup(sim)
 	_build_console()
+	board.setup(sim, command_ui)
+	# 예전 오른쪽 상황판(무전+요약)은 숨기고 무전 기록 전용 패널로
+	command_ui._radio_panel.visible = false
+	radio_log = RadioLogPanel.new()
+	add_child(radio_log)
+	radio_log.setup(sim)
+	command_ui.right_panel = radio_log
+	team_strip = TeamStrip.new()
+	add_child(team_strip)
+	team_strip.setup(sim)
+	_board_button = Button.new()
+	_board_button.text = "전술상황판 (Tab·M)"
+	_board_button.focus_mode = Control.FOCUS_NONE
+	_board_button.pressed.connect(board.toggle)
+	add_child(_board_button)
+	# 그리는 순서: 지도 위 패널들 < 전술상황판 < 지휘 창 < (나중에 더하는) 힌트·디브리핑·질문 카드
+	move_child(board, get_child_count() - 1)
+	move_child(command_ui, get_child_count() - 1)
 	hint_ui = HintUi.new()
 	add_child(hint_ui)
 	debrief = DebriefUi.new()
@@ -126,7 +152,8 @@ func is_debug_visible() -> bool:
 
 func set_debug_visible(on: bool) -> void:
 	_debug_panel.visible = on
-	command_ui.set_radio_visible(not on)
+	if radio_log:
+		radio_log.visible = not on
 	_debug_timer = 0.0
 
 
@@ -806,6 +833,15 @@ func _layout_console() -> void:
 		return
 	var h := maxf(CONSOLE_MIN_H, size.y * 0.18)
 	console.position = Vector2(8.0, size.y - h - 8.0)
+	if radio_log:
+		radio_log.position = Vector2(size.x - radio_log.size.x - 16.0, 64.0)
+		radio_log._scroll.custom_minimum_size.y = maxf(160.0, console.position.y - 64.0 - 140.0)
+	if team_strip:
+		team_strip.position = Vector2((size.x - team_strip.custom_minimum_size.x) * 0.5, console.position.y - team_strip.custom_minimum_size.y - 4.0)
+		team_strip.size = team_strip.custom_minimum_size
+	if _board_button:
+		var badge: Control = $ClockPanel
+		_board_button.position = badge.position + Vector2(badge.size.x + 8.0, 0)
 	command_ui.board_bottom = console.position.y - 8.0
 	if minimap and Time.get_ticks_msec() - _minimap_ms > 250:
 		_minimap_ms = Time.get_ticks_msec()

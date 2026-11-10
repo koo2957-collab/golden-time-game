@@ -48,6 +48,8 @@ var falls: FallSystem
 var zones: ZoneSystem
 ## 진입구 (P4-2): 바깥 출입문 목록, 급기측·배기측
 var entries: EntryPoints
+## 지휘관이 아는 것 — 무전으로 전달된 보고 (P10-1 전술상황판, CLAUDE.md 규칙 7)
+var knowledge: KnowledgeBoard
 var shafts: ShaftSystem
 var evac: EvacSystem
 var shuttle: ShuttleSystem
@@ -205,6 +207,9 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.entries = EntryPoints.new(sim.fire, sim.exposure, building_data.get("entry_names", {}) if building_data is Dictionary else {})
 	sim.tactical.entries = sim.entries
 	sim.command.interior.entries = sim.entries
+	sim.knowledge = KnowledgeBoard.new(sim.fire, sim.units, sim.rescue)
+	sim.command.radio.on_delivered = sim.knowledge.on_message
+	sim.command.org.on_delivered = sim.knowledge.on_message
 	sim.transfer = CommandTransfer.new(sim)
 	sim.elevator = ElevatorSystem.new(sim.fire, sim.units, sim.pathfinder, sim.events)
 	sim.lifeline = LifelineSystem.new(sim.fire, sim.units, sim.pathfinder, hazard_params, sim.events)

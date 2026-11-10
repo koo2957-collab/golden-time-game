@@ -75,6 +75,8 @@ var _fold_button: Button
 var command_rows: Array[HBoxContainer] = []
 ## 전술상황판을 접었는가 (Tab)
 var board_folded := false
+## 오른쪽 무전 기록 패널 (P10-1, Hud가 넣는다) — 알림·카드를 그 왼쪽 가운데에
+var right_panel: Control
 var _org: PanelContainer
 var _org_name: OptionButton
 var _org_supervisor: OptionButton
@@ -158,6 +160,9 @@ func toggle_board() -> void:
 
 ## 상황판이 가리지 않는 지도 영역의 가운데 x (알림·질문 카드를 여기에 띄운다)
 func map_center_x() -> float:
+	# 무전 기록 패널 자리는 접거나 숨겨도 비워 둔다 (카드·알림 자리가 왔다 갔다 하지 않게)
+	if right_panel:
+		return (size.x - RadioLogPanel.WIDTH - 16.0) * 0.5
 	if _radio_panel == null or not _radio_panel.visible:
 		return size.x * 0.5
 	return (size.x - _radio_panel.size.x - 16.0) * 0.5
@@ -478,7 +483,7 @@ func _refresh_radio() -> void:
 func _entry_text() -> String:
 	var cmd := sim.command
 	var lines: PackedStringArray = ["전략: %s%s" % [CommandSystem.STRATEGY_NAMES[cmd.strategy],
-		"" if cmd.declared() else "  (지휘권 미선언 — C)"]]
+		"" if cmd.declared() else "  (지휘권 미선언 — 지휘관 명령 Q)"]]
 	if cmd.safety.emergency():
 		lines.insert(0, "⚠ 긴급탈출 상황 — 무선 침묵 (SOP 109). 쓰러진 대원에게 RIT·가까운 조 투입 (우클릭)")
 	var res := cmd.resources
@@ -511,7 +516,7 @@ func _entry_text() -> String:
 	return "\n".join(lines)
 
 
-## 오른쪽 전술상황판 (기획안 9-2): 상황 요약(RECEO) · 팀 현황 · 확인 필요 · 무전 기록 · 지휘 버튼. Tab·화살표로 접기
+## (숨김) 예전 오른쪽 상황판. P10-1에서 무전 기록은 RadioLogPanel, 요약·팀 카드·확인 필요는 TacticalBoard로 옮겼다. 여기서 만든 위젯을 그쪽이 가져다 쓴다. 접기
 func _build_radio_panel() -> void:
 	_radio_panel = PanelContainer.new()
 	_radio_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE

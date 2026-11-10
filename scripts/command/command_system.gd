@@ -968,10 +968,14 @@ func _report(e: Dictionary, tick: int) -> void:
 		return
 	var d := org.division_of(_squad_of_sender(sender))
 	# 단위대 소속이면 대원 안전·구조대상자 외의 보고는 단위지휘관에게 작전망으로
+	var m: Radio.Message
 	if d and priority > Radio.Priority.VICTIM:
-		d.radio.send(priority, sender, _division_call(d), body + ".", tick)
+		m = d.radio.send(priority, sender, _division_call(d), body + ".", tick)
 	else:
-		radio.send(priority, sender, COMMANDER, body + ".", tick)
+		m = radio.send(priority, sender, COMMANDER, body + ".", tick)
+	# 상황판(KnowledgeBoard)은 이 보고가 전달될 때 올린다 (P10-1)
+	if m:
+		m.data = e
 
 
 # --- 최초 상황보고 ---

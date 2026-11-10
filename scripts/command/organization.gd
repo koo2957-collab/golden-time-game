@@ -19,6 +19,8 @@ class Division:
 	var radio: Radio
 
 
+## 작전망 무전이 전달될 때 (KnowledgeBoard, P10-1)
+var on_delivered := Callable()
 var divisions: Array[Division] = []
 var span_ideal := 5
 var span_max := 7
@@ -74,6 +76,8 @@ func set_division(name: String, supervisor: int, squads: Array[int]) -> Division
 		d.name = name
 		_channels += 1
 		d.radio = Radio.new(_params, _events, "작전망 %d" % _channels)
+		# 단위지휘관이 받은 보고도 상황판에 오른다 (지휘관에게 전파, P10-1)
+		d.radio.on_delivered = on_delivered
 		divisions.append(d)
 	var members := squads.duplicate()
 	if not supervisor in members:

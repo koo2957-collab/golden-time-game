@@ -8,7 +8,7 @@ extends Node2D
 ## - 우클릭(차량): 이동, 소화전 점령(소화전 우클릭), 급수(물탱크차로 펌프차 우클릭)
 ## - 현장지휘관 클릭: 지휘관 선택 → 우클릭: 이동 (건물 안으로는 들어가지 않는다)
 ## - 관계인 클릭: 진술 창 (witness_clicked)
-## - Ctrl+숫자: 부대 지정 / 숫자: 부대 호출
+## - 숫자 1~9: 팀 초상 줄 순서의 조 선택 (P10-1)
 ## - 대상 지정 명령(begin_mode): 수관 연장(펌프차 클릭), 직사·분무 방수(목표 클릭). 우클릭·Esc로 취소
 ## 선택 단위는 조(2인 1조)와 차량이며, 현재 보고 있는 층의 대원만 선택된다.
 ## 좌표 변환은 projection(상황판/입체)을 따른다.
@@ -25,6 +25,8 @@ signal crew_menu(crew_id: int, screen_pos: Vector2)
 signal floor_clicked(level: int)
 ## 진입 지시 4단계 (P4-2): 진입구를 골랐다 → 그 층 단면으로
 signal entry_chosen(level: int)
+## 진입구 고르기를 시작했다 → 바깥(진입구가 있는 층) 보기로
+signal entry_mode_started(level: int)
 ## 임무 목표를 골랐다 → 임무 창 (임무·조건·지시)
 signal mission_target(crew_ids: Array[int], target: Vector3i, kind: String, via: Vector3i, screen_pos: Vector2)
 ## 건물 안 조를 고른 채 가까운 문을 눌렀다 → 문 앞 휠 (P4-2)
@@ -81,7 +83,7 @@ var click_override := Callable()
 ## 설정되어 있으면 빈 곳 클릭 때 화면 위치로 맞은 층을 묻는다 (단면 보기의 아래층, R17). (world_pos) -> level
 var level_picker := Callable()
 
-var _groups: Dictionary = {}  # 숫자 -> Array[int]
+
 var _pressing := false
 var _dragging := false
 var _skip_release := false
@@ -90,6 +92,8 @@ var _press_world := Vector2.ZERO
 var _drag_rect := Rect2()
 ## 구역 지정 중: 안전구역 끌기 시작 칸, 진입통제선 첫 점 (-1 = 아직)
 var _zone_from := Vector2(-1, -1)
+## 팀 초상 줄 순서 (TeamStrip.crews) — 숫자키 1~9
+var team_order: Callable
 ## 진입 지시 (P4-2): 고를 임무, 고른 진입구, 마우스 아래 칸까지 예상 경로
 var pending_kind := ""
 var chosen_entry: EntryPoints.Entry = null
@@ -233,18 +237,14 @@ func _handle_button(event: InputEventMouseButton) -> void:
 		get_viewport().set_input_as_handled()
 
 
+## 숫자키 1~9: 팀 초상 줄 순서의 조를 고른다 (P10-1). 질문 카드가 떠 있으면 1~4는 카드가 먼저 받는다
 func _handle_group_key(event: InputEventKey) -> void:
-	if event.keycode < KEY_1 or event.keycode > KEY_9:
+	if event.keycode < KEY_1 or event.keycode > KEY_9 or event.ctrl_pressed or not team_order.is_valid():
 		return
-	var n := event.keycode - KEY_0
-	if event.ctrl_pressed:
-		_groups[n] = [selected.duplicate(), selected_vehicles.duplicate()]
-	elif _groups.has(n):
-		var crews: Array[int] = []
-		var vehicles: Array[int] = []
-		crews.assign(_groups[n][0])
-		vehicles.assign(_groups[n][1])
-		_set_selection(crews, vehicles)
+	var order: Array = team_order.call()
+	var n := event.keycode - KEY_1
+	if n < order.size():
+		_set_selection([int(order[n])] as Array[int], [] as Array[int])
 	get_viewport().set_input_as_handled()
 
 
@@ -256,9 +256,10 @@ func _click_select(world_pos: Vector2, add: bool, screen_pos := Vector2(-1, -1))
 	if not add and witness >= 0:
 		witness_clicked.emit(witness)
 		return
-	if not add and _door_wheel(world_pos, screen_pos):
-		return
 	var crew_id := _crew_at(world_pos)
+	# 문 앞 휠: 다른 대원이 잡히면 그 대원 선택이 먼저 (기획안 9-3 우선순위). 이미 고른 그 조로 문을 누르면 휠
+	if not add and (crew_id < 0 or (selected.size() == 1 and selected[0] == crew_id)) and _door_wheel(world_pos, screen_pos):
+		return
 	var vehicle_id := -1 if crew_id >= 0 else _vehicle_at(world_pos)
 	if crew_id < 0 and vehicle_id < 0:
 		# 아래층은 보이기만 한다 — 누르면 그 층이 지금 층이 된다 (선택은 그대로 둔다)
@@ -542,6 +543,7 @@ func begin_mission(kind: String) -> void:
 			outside = false
 	if outside and sim.command.interior.enabled and sim.entries and not sim.entries.list.is_empty():
 		begin_mode(Mode.ENTRY_POINT)
+		entry_mode_started.emit(sim.entries.list[0].level)
 	else:
 		begin_mode(Mode.ATTACK if kind == "attack" else Mode.SEARCH_AUTO)
 

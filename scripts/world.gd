@@ -106,6 +106,7 @@ func _ready() -> void:
 	mission_ui.card = hud.card
 	# 진입 지시 4단계 (P4-2): 진입구 → 그 층 단면 → 목표 → 임무 창, 문 앞 휠
 	selection.entry_chosen.connect(func(lv: int) -> void: set_view_level(lv, false))
+	selection.entry_mode_started.connect(func(lv: int) -> void: set_view_level(lv, true))
 	selection.mission_target.connect(mission_ui.open_mission)
 	selection.door_menu.connect(mission_ui.open_door_menu)
 	mission_ui.press_card = _press_card
@@ -117,7 +118,18 @@ func _ready() -> void:
 	selection.floor_clicked.connect(func(lv: int) -> void: set_view_level(lv))
 	camera.zoomed.connect(_on_camera_zoomed)
 	hud.command_ui.team_drag_started.connect(mission_ui.begin_drag)
-	hud.command_ui.team_dropped.connect(mission_ui.drop_crew)
+	# 팀 카드를 끌어 놓은 곳: 전술상황판 평면도 위면 그 칸, 아니면 지도 (P10-1)
+	hud.command_ui.team_dropped.connect(func(id: int, pos: Vector2) -> void:
+		if hud.board.visible and hud.board.map.get_global_rect().has_point(pos):
+			var cell := hud.board.map.to_cell(pos - hud.board.map.get_global_rect().position)
+			_board_drop(id, Vector3i(floori(cell.x), floori(cell.y), hud.board.map.draw_level()), pos)
+		else:
+			mission_ui.drop_crew(id, pos))
+	hud.board.crew_dropped.connect(_board_drop)
+	hud.radio_log.jump.connect(_jump_to_crew)
+	hud.team_strip.jump.connect(_jump_to_crew)
+	hud.team_strip.picked.connect(func(id: int) -> void: selection._set_selection([id] as Array[int], [] as Array[int]))
+	selection.team_order = hud.team_strip.crews
 	hud.command_ui.team_selected.connect(_on_team_selected)
 	# 미니맵 누르기·끌기: 그곳으로 화면 이동, 지금 화면 범위 표시 (R8 → R16)
 	hud.minimap.jump.connect(func(cell: Vector2, lv: int) -> void:
@@ -305,15 +317,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			# 취소할 것이 없으면 게임 메뉴 (게임을 멈추고 마우스 가둠도 푼다, 기획안 8-4)
 			open_game_menu()
 		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("toggle_board"):
-		hud.command_ui.toggle_board()
+	elif event.is_action_pressed("toggle_board") or event.is_action_pressed("toggle_view"):
+		# Tab·M = 전술상황판 (P10-1)
+		hud.board.toggle()
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_HOME:
 		# 지휘소(현장지휘관 위치)로 돌아오기 (기획안 9-3)
 		var c := sim.command.commander
 		set_view_level(c.level, _outdoors(c.level, c.pos))
 		camera.retarget(_view_bounds(), projection().to_screen(c.pos))
-	elif event.is_action_pressed("toggle_view"):
-		set_view_mode(ViewMode.PLAN if view_mode == ViewMode.ISO else ViewMode.ISO)
 	elif event.is_action_pressed("toggle_thermal"):
 		set_thermal(not thermal)
 	elif event.is_action_pressed("debug_fire_panel") and OS.is_debug_build():
@@ -468,6 +479,25 @@ func _on_dialog_changed(open: bool) -> void:
 		sim.clock.paused = true
 	else:
 		sim.clock.paused = _paused_before_dialog
+
+
+## 전술상황판에서 팀을 방·세대에 놓음 → 임무 창 (진입 지시 3~4단계, 확정하면 무전으로)
+func _board_drop(crew_id: int, target: Vector3i, screen_pos: Vector2) -> void:
+	var room := sim.fire.compartment_at(target.z, target.x, target.y)
+	if room == null:
+		hud.show_notice("상황판의 방이나 세대 위에 놓으세요")
+		return
+	var kind := "attack" if sim.units.squad_of_crew(crew_id).type == "진압대" else "search"
+	mission_ui.open_mission([crew_id] as Array[int], target, kind, Vector3i(-1, -1, -1), screen_pos)
+
+
+## 무전 기록·팀 초상: 그 조로 화면 이동 (층도 바꾼다)
+func _jump_to_crew(crew_id: int) -> void:
+	var c := sim.units.get_crew(crew_id)
+	if c == null or c.leader.aboard:
+		return
+	set_view_level(c.leader.level, _outdoors(c.leader.level, c.leader.pos))
+	camera.retarget(_view_bounds(), projection().to_screen(c.leader.pos))
 
 
 ## 명령 카드 단축키 (Q W E R A S). 입력 칸에 글을 쓰는 중이거나 창이 떠 있으면 쓰지 않는다

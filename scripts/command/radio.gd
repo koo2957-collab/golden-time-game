@@ -21,6 +21,10 @@ class Message:
 	var end_tick := -1
 	## 송신이 끝나면 호출 (tick을 받는다). 명령은 이때 받는 쪽에 전달된다.
 	var on_sent := Callable()
+	## 실린 보고 사건 (대원 보고, P10-1 상황판) — 비어 있으면 일반 무전
+	var data: Dictionary = {}
+	## 지휘관 지시인가 (무전 기록 '내 지시' 필터)
+	var mine := false
 
 	## 무전 문장: "받는 쪽, 보내는 쪽. 본문"
 	func text() -> String:
@@ -33,6 +37,8 @@ var queue: Array[Message] = []
 var current: Message
 ## 송신이 끝난 무전 (오래된 것부터)
 var history: Array[Message] = []
+## 송신이 끝날 때마다 (Message, tick) — 상황판(KnowledgeBoard)이 듣는다
+var on_delivered := Callable()
 var events: SimEventLog
 
 var _call_s: float
@@ -64,6 +70,7 @@ func send(priority: Priority, sender: String, receiver: String, body: String, ti
 	m.duration_s = minf(_max_s, _call_s + body.length() * _per_char_s)
 	m.queued_tick = tick
 	m.on_sent = on_sent
+	m.mine = sender == CommandSystem.COMMANDER
 	queue.append(m)
 	queue.sort_custom(func(a: Message, b: Message) -> bool:
 		return a.priority < b.priority or (a.priority == b.priority and a.seq < b.seq))
@@ -110,5 +117,7 @@ func _finish(m: Message, tick: int) -> void:
 	})
 	var cb := m.on_sent
 	m.on_sent = Callable()
+	if on_delivered.is_valid():
+		on_delivered.call(m, tick)
 	if cb.is_valid():
 		cb.call(tick)

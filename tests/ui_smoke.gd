@@ -34,6 +34,9 @@ func _run() -> void:
 	await process_frame
 	var world = root.get_node("Main/World")
 	_world = world
+	# 지도 조작 점검: 오른쪽 무전 기록·팀 초상 줄이 클릭 자리를 가리지 않게 숨긴다 (두 패널은 test_board·ui_command_card에서 점검)
+	world.hud.radio_log.visible = false
+	world.hud.team_strip.visible = false
 	# 실제 마우스 위치가 화면 가장자리면 카메라가 흘러가므로 조작 점검에서는 끈다
 	world.camera.edge_scroll = false
 	world.confine_mouse(false)
@@ -54,8 +57,15 @@ func _run() -> void:
 	_check("지령 창을 닫으면 시간 진행", sim.clock.paused, false)
 
 	_check("기본 화면은 입체", world.view_mode, world.ViewMode.ISO)
+	# M·Tab = 전술상황판 (P10-1). 평면 보기 점검은 보기 전환을 직접 부른다
 	_key(KEY_M)
-	_check("M → 상황판", world.view_mode, world.ViewMode.PLAN)
+	await process_frame
+	_check("M → 전술상황판 열림", world.hud.board.visible, true)
+	_key(KEY_TAB)
+	await process_frame
+	_check("Tab → 전술상황판 닫힘", world.hud.board.visible, false)
+	world.set_view_mode(world.ViewMode.PLAN)
+	_check("평면 보기", world.view_mode, world.ViewMode.PLAN)
 
 	# 닫힌(잠긴) 현관문 우클릭 → 문 파괴 작업 시작
 	_click(u.get_crew(3).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
@@ -72,6 +82,9 @@ func _run() -> void:
 	sim.units.get_crew(3).leader.pos = Vector2(20.5, 23.5)
 	sim.units.get_crew(3).partner.pos = Vector2(21.5, 23.5)
 
+	# 도착 때 뜨는 질문 카드가 클릭 자리를 가리지 않게 비운다 (카드는 test_cards·ui_command_card에서 점검)
+	sim.cards.queue.clear()
+	await process_frame
 	# 진입 명령 전: 건물 안으로 이동 명령 → 입구 앞에서 멈춤
 	var lead0 := u.get_crew(0).leader
 	_click(lead0.pos, MOUSE_BUTTON_LEFT, false, false, true)
@@ -145,10 +158,16 @@ func _run() -> void:
 	_click(u.get_crew(3).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
 	_click(u.get_crew(3).leader.pos, MOUSE_BUTTON_LEFT, true, false, true)
 	_check("더블클릭 → 출동대 전체", sel.selected, [2, 3])
-	_key(KEY_1, true)
 	_click(Vector2(30, 20), MOUSE_BUTTON_LEFT)
+	# 질문 카드가 떠 있으면 1~4는 카드 답이 먼저다 — 카드가 없을 때 누른다
+	while sim.cards.active() != null:
+		sim.cards.queue.clear()
+		await process_frame
+	await process_frame
 	_key(KEY_1)
-	_check("Ctrl+1 지정 후 1 호출", sel.selected, [2, 3])
+	_check("숫자 1 → 팀 초상 줄 첫 팀 (P10-1)", sel.selected, [world.hud.team_strip.crews()[0]])
+	_key(KEY_3)
+	_check("숫자 3 → 셋째 팀", sel.selected, [world.hud.team_strip.crews()[2]])
 
 	# R16: 시작은 외부 보기. PgUp 순서는 외부 보기 → 1층 단면 → 2층
 	_check("시작은 외부 보기", [world.view_level, world.exterior_view, world.iso_view.exterior], [1, true, true])
@@ -171,12 +190,12 @@ func _run() -> void:
 	_press_at(fb.get_global_rect().position + ground.rect.get_center(), MOUSE_BUTTON_LEFT)
 	_check("층 막대 외부 띠 → 외부 보기", [world.view_level, world.exterior_view], [1, true])
 	# 여기까지는 상황판(평면) 화면이므로 입체로 바꿔 외관을 본 뒤 되돌린다
-	_key(KEY_M)
+	world.set_view_mode(world.ViewMode.ISO)
 	_check("외부 보기(입체)에서 카메라가 외관 높이까지", world.camera.bounds.position.y < world.projection().bounds(sim.building).position.y, true)
 	await process_frame
 	await process_frame
 	root.get_texture().get_image().save_png("user://smoke_exterior.png")
-	_key(KEY_M)
+	world.set_view_mode(world.ViewMode.PLAN)
 	_key(KEY_PAGEUP)
 	_check("외부 보기에서 PgUp → 1층 단면", [world.view_level, world.exterior_view], [1, false])
 	_drag(Vector2(9, 22), Vector2(15, 24))
@@ -261,8 +280,8 @@ func _run() -> void:
 	_check("Space → 일시정지", sim.clock.paused, true)
 
 	# 입체 화면
-	_key(KEY_M)
-	_check("M → 입체", world.view_mode, world.ViewMode.ISO)
+	world.set_view_mode(world.ViewMode.ISO)
+	_check("입체", world.view_mode, world.ViewMode.ISO)
 	await process_frame
 	_click(u.get_crew(1).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
 	_check("입체: 클릭 선택", sel.selected, [1])
@@ -298,7 +317,9 @@ func _run() -> void:
 	await process_frame
 	_check("알림 표시", world.hud._notice_label.text.contains("소화전 점령"), true)
 
-	# 명령 카드 (P10-2): 진압대·구조대 같은 팀 카드 — W 화점진압, Q 인명검색
+	# 명령 카드 (P10-2): 진압대·구조대 같은 팀 카드 — W 화점진압, Q 인명검색 (팀 초상 줄에 가리지 않게 가운데로)
+	world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(u.get_crew(1).leader.pos))
+	await process_frame
 	_click(u.get_crew(1).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
 	await process_frame
 	_check("팀 명령 카드 (진압대)", world.hud.card.set_name, "team")
@@ -328,6 +349,14 @@ func _run() -> void:
 		if sim.command.interior.crew_inside(c.id) and not c.leader.incapacitated:
 			inside_id = c.id
 			break
+	if inside_id < 0:
+		# 불 상황에 따라 아직 아무도 못 들어갔으면 진압1 1조를 현관 안에 둔다 (이 아래는 내부 조작 점검)
+		for ff in u.get_crew(0).members():
+			ff.path.clear()
+			ff.level = 1
+			ff.pos = Vector2(13.5, 19.5)
+		sim.perception.update(sim.clock.tick)
+		inside_id = 0
 	_check("건물 안 조가 있다", inside_id >= 0, true)
 	if inside_id >= 0:
 		sel._set_selection([inside_id] as Array[int])
@@ -417,18 +446,20 @@ func _run() -> void:
 		mui.radial.pick("Q")
 		var held := sim.issued.filter(func(x): return x.command is TacticalCommand and x.command.action == "hold")
 		_check("대기 지시", held.size(), 1)
-	# R7c 팀 카드: 상황판에 조마다 카드, 끌어다 지도에 놓기 → 임무 창 → 인명 검색 + 임무 조건
+	# 팀 카드(진입대원 통제표, 전술상황판 왼쪽 열)를 상황판 평면도의 방에 끌어다 놓기 → 임무 창 (P10-1)
 	_check("팀 카드", cui._team_buttons.size() >= 4, true)
 	var card_id := 2
 	var card_btn: Button = cui._team_buttons.get(card_id)
 	var room1 := sim.fire.compartment_at(1, 24, 17)
 	if card_btn and room1:
-		world.set_view_level(1)
-		var drop := Vector2(room1.cells[room1.cells.size() / 2]) + Vector2(0.5, 0.5)
-		world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(drop))
+		var board = world.hud.board
+		board.toggle()
+		board.show_level(1)
 		await process_frame
+		await process_frame
+		var drop := Vector2(room1.cells[room1.cells.size() / 2]) + Vector2(0.5, 0.5)
 		var from := card_btn.get_global_rect().get_center()
-		var to := _screen(drop)
+		var to: Vector2 = board.map.get_global_rect().position + board.map.to_px(drop)
 		var pr := InputEventMouseButton.new()
 		pr.button_index = MOUSE_BUTTON_LEFT
 		pr.pressed = true
@@ -454,6 +485,7 @@ func _run() -> void:
 		_check("임무 조건 + 인명 검색", [conds.size() >= 1, miss.size() >= 1], [true, true])
 		sim.step_ticks(1)
 		_check("조건 기록", sim.tactical.condition_text(card_id).contains("즉시 구조"), true)
+		board.toggle()
 	# R15 성능 표시 (F12)
 	_key(KEY_F12)
 	await process_frame

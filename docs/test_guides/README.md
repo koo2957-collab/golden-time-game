@@ -100,6 +100,7 @@
 | P10-2 ⓑ 구역 지정·분류소 | [P10-2b_zones.md](P10-2b_zones.md) |
 | P10-2 ⓒ 구조자 운반·START 분류 | [P10-2c_rescue_triage.md](P10-2c_rescue_triage.md) |
 | P4-2 원형 메뉴·진입 지시 4단계·문 앞 휠 | [P4-2_entry_flow.md](P4-2_entry_flow.md) |
+| P10-1 무전 기록·팀 초상 줄·전술상황판 | [P10-1_board.md](P10-1_board.md) |
 | M7b-1 인접 건물·가스·붕괴·후착대 | [M7b1_exposure.md](M7b1_exposure.md) |
 | M7b-2 구급대·운전원 | [M7b2_ems.md](M7b2_ems.md) |
 | M7c-1 튜토리얼 | [M7c1_tutorial.md](M7c1_tutorial.md) |

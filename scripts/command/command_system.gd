@@ -127,6 +127,8 @@ var pathfinder: Pathfinder
 var tactical: TacticalSystem
 ## 구역 지정 (P10-2 ⓑ)
 var zones: ZoneSystem
+## 출동 중 상황실 요청 (P9-1): 예비 소방용수 2개소 이상 선정
+var reserve_water := false
 var rescue: RescueSystem
 var water: WaterSystem
 var doors: DoorSystem

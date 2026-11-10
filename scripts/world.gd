@@ -84,7 +84,7 @@ func _ready() -> void:
 	city = CityMassView.new()
 	$Iso.add_child(city)
 	$Iso.move_child(city, 0)
-	city.setup(sim.building, projections[ViewMode.ISO], sim.rng_seed)
+	city.setup(sim.building, projections[ViewMode.ISO], sim.rng_seed, sim)
 	fire_view.setup(sim)
 	selection.setup(sim)
 	units_view.setup(sim, selection)
@@ -118,6 +118,7 @@ func _ready() -> void:
 	selection.floor_clicked.connect(func(lv: int) -> void: set_view_level(lv))
 	camera.zoomed.connect(_on_camera_zoomed)
 	hud.command_ui.team_drag_started.connect(mission_ui.begin_drag)
+	city.progress = hud.command_ui.dispatch_progress
 	# 팀 카드를 끌어 놓은 곳: 전술상황판 평면도 위면 그 칸, 아니면 지도 (P10-1)
 	hud.command_ui.team_dropped.connect(func(id: int, pos: Vector2) -> void:
 		if hud.board.visible and hud.board.map.get_global_rect().has_point(pos):

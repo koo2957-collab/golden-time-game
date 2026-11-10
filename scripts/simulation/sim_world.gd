@@ -296,6 +296,7 @@ func apply_realism(name: String) -> void:
 	# 없는 장비는 차량에 가서 가져와야 한다, 처음 차량은 한 대씩 들어온다 (P4-1, 실제 플레이에서만)
 	doors.require_equipment = true
 	command.resources.arrival_drive = true
+	command.resources.prepare_arrival()
 	var pp := _phase_params
 	# 현장 시계 배속 (기획안 5-8): 훈련 1.5 · 실전 2 · 악조건 2.5
 	var fts: Dictionary = pp.params.get("field_time_scale", {})
@@ -335,6 +336,106 @@ func apply_growth(xp: Dictionary) -> void:
 		ff.air_factor *= float(l.get("air", 1.0))
 		ff.heat_factor *= float(l.get("heat", 1.0))
 		ff.grade = str(l.get("name", ""))
+
+
+## 도착 후 임무 미리 정하기 (P9-1): {조 id: attack·search·office·officer}. 그 조가 차에서 내리면 바로 지시한다
+var preassign: Dictionary = {}
+
+
+func set_preassign(tasks: Dictionary, tick: int) -> void:
+	for k in tasks:
+		preassign[int(k)] = str(tasks[k])
+	command._decide(tick, "도착 후 임무 미리 정함 — %d개 조" % preassign.size())
+
+
+func _step_preassign(tick: int) -> void:
+	if preassign.is_empty():
+		return
+	for id: int in preassign.keys():
+		var c := units.get_crew(id)
+		if c == null:
+			preassign.erase(id)
+			continue
+		if c.leader.aboard:
+			continue
+		var kind := str(preassign[id])
+		preassign.erase(id)
+		var lv := fire_floor_reported()
+		var ids: Array[int] = [id]
+		match kind:
+			"attack":
+				issue(TacticalCommand.make("attack_floor", ids, Vector3i(0, 0, lv)))
+			"search":
+				issue(TacticalCommand.make("search_floor", ids, Vector3i(0, 0, lv)))
+			"office":
+				if not plan.office.is_empty():
+					var oc: Vector2i = plan.office.cell
+					var lvl := int(plan.office.level)
+					var near := pathfinder.nearest_walkable(lvl, oc)
+					if near != Pathfinder.NO_CELL:
+						issue(MoveCommand.new(ids, Vector3i(near.x, near.y, lvl)))
+			"officer":
+				issue(CommandOrder.make("role", [id] as Array[int], SafetySystem.Role.OFFICER))
+		events.add(tick, "preassign_start", {"crew": "%s %d조" % [units.squads[c.squad_id].name, c.number], "task": kind})
+
+
+## 신고·상황실이 알려 준 발화층 (출동 지령 dispatch.fire_level → 신고된 첫 발화 지점 층 → 가장 뜨거운 구획 층)
+func fire_floor_reported() -> int:
+	var lv := int(command.dispatch.get("fire_level", -1))
+	if lv >= 0 and building.has_level(lv):
+		return lv
+	# 신고 내용의 발화층 = 시나리오 첫 발화 지점 층
+	var ign: Array = scenario.get("fire", {}).get("ignitions", [])
+	if not ign.is_empty() and building.has_level(int(ign[0].get("level", -1))):
+		return int(ign[0].level)
+	var hot: Compartment = null
+	for c in fire.comps:
+		if not fire.is_exposure_comp(c) and (hot == null or c.t_upper > hot.t_upper):
+			hot = c
+	return hot.level if hot else building.levels()[0]
+
+
+## 상황실 관계자 조치 요청 (P9-1, 카드 ARRIVAL-RELAY-01): 가스 차단(도시가스), 발화 위치 확인(신고자·관계인 → 상황판)
+## 요청하지 않은 조치는 현장에 반영되지 않는다
+func relay_request(all: bool, tick: int) -> void:
+	if all and gas.has_gas() and gas.open:
+		gas.open = false
+		gas.closed_tick = tick
+		events.add(tick, "gas_shutoff", {"crew": "도시가스(관계자 조치)", "what": gas.valve_text})
+	# 발화 위치: 시나리오 첫 발화 지점의 구획 (신고자·관계인이 알린 곳)
+	var origin: Compartment = null
+	var igs: Array = scenario.get("fire", {}).get("ignitions", [])
+	if not igs.is_empty():
+		var ig: Dictionary = igs[0]
+		var cell: Array = ig.get("cell", [])
+		if cell.size() >= 2:
+			origin = fire.compartment_at(int(ig.get("level", 1)), int(cell[0]), int(cell[1]))
+	if origin:
+		knowledge.fires[origin.index] = tick
+		knowledge.smoky[origin.index] = tick
+		events.add(tick, "relay_fire_location", {"room": origin.display_name()})
+
+
+## 예비 소방용수 (P9-1): 그 차량을 아직 고장 나지 않은 가장 가까운 다른 소화전에 잇는다. 옮겼으면 true
+func next_hydrant(vehicle_name: String, tick: int) -> bool:
+	for v in units.vehicles:
+		if v.display_name(units.squads[v.squad_id].name) != vehicle_name or not v.is_pump() and v.transfer_lpm <= 0.0:
+			continue
+		var best := -1
+		var best_d := INF
+		for i in building.hydrants.size():
+			if i in water.hydrants_out:
+				continue
+			var d := v.pos.distance_to(Vector2(building.hydrants[i]))
+			if d < best_d:
+				best_d = d
+				best = i
+		if best < 0:
+			return false
+		events.add(tick, "reserve_hydrant", {"vehicle": vehicle_name, "driver": v.driver_label()})
+		water.connect_hydrant(v.id, best, tick)
+		return true
+	return false
 
 
 ## 출동 준비: 고른 적재 장비를 적용한다 (CommandOrder "loadout", 기획안 P9). 한 번만
@@ -468,6 +569,7 @@ func _step() -> void:
 	tactical.step(clock.tick)
 	rescue.step_after_fire(dt, clock.tick)
 	command.step(dt, clock.tick)
+	_step_preassign(clock.tick)
 	if clock.tick % PERCEPTION_EVERY_TICKS == 0:
 		perception.update(clock.tick)
 		_check_door_clues(clock.tick)

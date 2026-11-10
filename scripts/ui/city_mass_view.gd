@@ -22,10 +22,19 @@ var proj: IsoProjection
 ## [{rect: Rect2i(칸), floors}]
 var blocks: Array[Dictionary] = []
 var _map_rect := Rect2i()
+## 출동 진행률 (0~1, 출동 중이 아니면 음수) — World가 넣는다 (P9-1 출동 단계 차량 아이콘)
+var progress: Callable
+var _icons: Node2D
+var _sim: SimWorld
 
 
-func setup(building: BuildingData, p_proj: IsoProjection, p_seed: int) -> void:
+func setup(building: BuildingData, p_proj: IsoProjection, p_seed: int, p_sim: SimWorld = null) -> void:
 	proj = p_proj
+	_sim = p_sim
+	if _icons == null:
+		_icons = Node2D.new()
+		_icons.draw.connect(_draw_icons)
+		add_child(_icons)
 	_map_rect = Rect2i(0, 0, building.width, building.height)
 	blocks.clear()
 	var rng := RandomNumberGenerator.new()
@@ -62,6 +71,40 @@ func _add_block(r: Rect2i, rng: RandomNumberGenerator) -> void:
 			if rng.randf() < 0.15:
 				continue  # 빈터·주차장
 			blocks.append({"rect": sub.grow(-2), "floors": rng.randi_range(1, 12)})
+
+
+func _process(_delta: float) -> void:
+	if _icons and progress.is_valid() and float(progress.call()) >= 0.0:
+		_icons.queue_redraw()
+	elif _icons and _icons.visible:
+		_icons.queue_redraw()
+
+
+## 출동 중: 안전센터 쪽 도시 끝에서 화재 건물 앞 도로로 다가오는 선착 차량 아이콘 (도로를 따라 직선)
+func _draw_icons() -> void:
+	if _sim == null or not progress.is_valid():
+		return
+	var f := float(progress.call())
+	if f < 0.0:
+		return
+	var reach := RINGS * (BLOCK_CELLS + STREET_CELLS)
+	var font := PlanStyle.font()
+	# 화면 배율과 상관없이 같은 크기로 보이게 (멀리 본 도시에서도 아이콘이 보이도록)
+	var k := 1.0 / maxf(0.05, _icons.get_global_transform_with_canvas().get_scale().x)
+	var i := 0
+	for v in _sim.units.vehicles:
+		if v.squad_id != 0:
+			continue
+		var target := v.pos
+		var start := Vector2(_map_rect.end.x + reach / RINGS, target.y)
+		var p := start.lerp(target, clampf(f, 0.0, 1.0)) + Vector2(i * 6.0, 0)
+		var sp := proj.to_screen(p, 0.5)
+		_icons.draw_circle(sp, 12.0 * k, Color(v.color, 0.95))
+		_icons.draw_arc(sp, 12.0 * k, 0.0, TAU, 20, Color.WHITE, 2.0 * k)
+		_icons.draw_set_transform(sp, 0.0, Vector2(k, k))
+		_icons.draw_string(font, Vector2(-40, -18), v.short_name, HORIZONTAL_ALIGNMENT_CENTER, 80, 14, Color.BLACK)
+		_icons.draw_set_transform(Vector2.ZERO)
+		i += 1
 
 
 func _draw() -> void:

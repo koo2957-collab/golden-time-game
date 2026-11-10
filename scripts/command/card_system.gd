@@ -238,6 +238,11 @@ func _raise(spec: Dictionary, e: Dictionary, tick: int) -> void:
 	# 문 앞 휠로 미리 정한 문 처리 (P4-2): 카드 없이 그대로, 등급은 같은 행동의 선택지
 	if _door_preordered(c, opts, tick):
 		return
+	# 예비 소방용수를 정해 두었으면 소화전 고장에 묻지 않고 다음 소화전으로 (P9-1)
+	if str(spec.get("trigger", "")) == "hydrant_out" and sim and sim.command.reserve_water and sim.next_hydrant(str(c.ctx.get("vehicle", "")), tick):
+		_log(c, tick, {"text": "예비 소방용수로 옮김 (출동 중 선정)", "grade": "최선", "effect": "next_hydrant"}, "preordered")
+		events.add(tick, "card_preordered", {"crew": _crew_name(c.crew_id), "title": str(spec.get("title", c.id))})
+		return
 	# 선제지시: 카드 없이 최선 선택을 바로 실행
 	var pre := str(spec.get("skip_if_preordered", ""))
 	if pre != "" and preorders.has(pre):
@@ -379,6 +384,13 @@ func _apply(effect: String, c: Card, tick: int) -> void:
 	var action := str(c.ctx.get("action", ""))
 	var target := _cell(c.ctx.get("target", []))
 	match effect:
+		"reserve_water":
+			if sim:
+				sim.command.reserve_water = true
+				events.add(tick, "dispatch_request", {"what": "예비 소방용수 2개소 선정 — 운전원에게 전파"})
+		"relay_all", "relay_fire":
+			if sim:
+				sim.relay_request(effect == "relay_all", tick)
 		"fetch_equipment":
 			if sim:
 				sim.doors.order_fetch(c.crew_id, str(c.ctx.get("item_key", "")), _cell(c.ctx.get("door", [])), tick)

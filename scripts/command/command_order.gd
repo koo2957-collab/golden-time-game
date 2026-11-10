@@ -85,6 +85,8 @@ func execute(sim: SimWorld) -> void:
 			cmd.order_evacuation(tick)
 		"zone":
 			cmd.order_zone(str(answers.get("kind", "")), answers, tick)
+		"preassign":
+			sim.set_preassign(answers.get("tasks", {}), tick)
 		"arrive":
 			cmd.resources.begin_arrival(tick, float(answers.get("gap_s", 5.0)))
 		"par":

@@ -164,6 +164,21 @@ func commit(squad_id: int, tick: int) -> void:
 ## 이동 뒤: 도착 시각이 된 출동대를 들여보내고, 대기 장소에 선 출동대의 조를 내린다.
 ## 선착대 도착 (출동 지령 창을 닫을 때, CommandOrder "arrive"): 이미 편성된 출동대 차량을 지도 가장자리에서
 ## 한 대씩 들여보낸다 — 펌프차 먼저, 그다음 편성 순서대로 gap_s 간격. 조는 차를 타고 와서 차가 서면 내린다 (기획안 6-1)
+## 출동 중(도착 전)에는 처음 차량·조가 현장에 보이지 않는다 (실제 플레이, apply_realism에서)
+func prepare_arrival() -> void:
+	if not arrival_drive:
+		return
+	for v in units.vehicles:
+		v.away = true
+	for c in units.crews:
+		if not on_scene(c.squad_id):
+			continue
+		_riders[c.id] = c.leader.pos
+		for ff in c.members():
+			ff.aboard = true
+			ff.path.clear()
+
+
 func begin_arrival(tick: int, gap_s: float) -> void:
 	if not arrival_drive or not arriving.is_empty():
 		return
@@ -190,7 +205,7 @@ func begin_arrival(tick: int, gap_s: float) -> void:
 		v.pos = start
 		v.prev_pos = start
 	for c in units.crews:
-		if not on_scene(c.squad_id):
+		if not on_scene(c.squad_id) or _riders.has(c.id):
 			continue
 		_riders[c.id] = c.leader.pos
 		for ff in c.members():

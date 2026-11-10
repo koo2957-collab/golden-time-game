@@ -352,6 +352,13 @@ func dispatch_visible() -> bool:
 	return _dispatch.visible
 
 
+## 출동 진행률 (0~1). 출동 지령 창이 닫혔으면 -1 (도시 지도 차량 아이콘, P9-1)
+func dispatch_progress() -> float:
+	if _dispatch == null or not _dispatch.visible or sim.dispatch_s <= 0.0:
+		return -1.0
+	return clampf(_dispatch_real / maxf(1.0, float(sim._phase_params.value("dispatch_real_s"))), 0.0, 1.0)
+
+
 func close_dispatch() -> void:
 	_arrive()
 
@@ -637,6 +644,7 @@ func _build_dispatch() -> void:
 		_placement.item_selected.connect(func(i: int) -> void: desc.text = str(opts[i].get("text", "")))
 		box.add_child(desc)
 	_build_loadout(box)
+	_build_preassign(box)
 	var go := _button("현장 도착 (Enter)", _arrive)
 	box.add_child(go)
 
@@ -647,6 +655,10 @@ func _arrive() -> void:
 		order_issued.emit(CommandOrder.make("loadout", [], 0, Vector3i.ZERO, {"items": loadout_selection()}))
 	if _placement and sim.command.placement.is_empty() and sim.clock.tick <= Placement.MAX_TICK:
 		order_issued.emit(CommandOrder.make("placement", [], _placement.selected))
+	# 도착 후 임무 미리 정하기 (P9-1): 정한 조는 차에서 내리자마자 움직인다
+	var pre := preassign_selection()
+	if not pre.is_empty():
+		order_issued.emit(CommandOrder.make("preassign", [], 0, Vector3i.ZERO, {"tasks": pre}))
 	# 차량이 지도 가장자리에서 한 대씩 들어온다 (펌프차 먼저, 기획안 6-1·P4-1)
 	order_issued.emit(CommandOrder.make("arrive", [], 0, Vector3i.ZERO, {"gap_s": arrive_gap_s}))
 	_close(_dispatch)
@@ -1475,6 +1487,43 @@ func _build_loadout(box: VBoxContainer) -> void:
 		grid.add_child(cb)
 		_loadout_checks[str(it.key)] = cb
 	box.add_child(grid)
+
+
+## 도착 후 임무 미리 정하기 (기획안 4-4 '도착 후 임무 미리 정하기', P9-1): 처음 현장에 오는 조마다
+const PREASSIGN_KINDS := [["", "도착 후 지시 기다림"], ["attack", "화점진압 (관창)"], ["search", "인명검색"], ["office", "방재실·관리사무소 연락 (도면·수신반)"], ["officer", "현장안전담당"]]
+var _preassign: Dictionary = {}  # 조 id → OptionButton
+
+
+func _build_preassign(box: VBoxContainer) -> void:
+	var crews: Array = sim.units.crews.filter(func(c: Crew) -> bool: return sim.command.resources.on_scene(c.squad_id) and not sim.ems.is_ems_crew(c.id))
+	if crews.is_empty():
+		return
+	box.add_child(_label("도착 후 임무 미리 정하기 — 정한 조는 차에서 내리자마자 움직입니다 (건물 안 임무는 발화층 층 단위, 진입 허가는 입구에서)", 17, Color("fde68a")))
+	var grid := GridContainer.new()
+	grid.columns = 2
+	for c: Crew in crews:
+		grid.add_child(_label("%s %d조" % [sim.units.squads[c.squad_id].name, c.number], 15, TEXT_COLOR))
+		var ob := OptionButton.new()
+		ob.focus_mode = Control.FOCUS_NONE
+		for k: Array in PREASSIGN_KINDS:
+			if k[0] == "office" and sim.plan.office.is_empty():
+				continue
+			ob.add_item(str(k[1]))
+			ob.set_item_metadata(ob.item_count - 1, str(k[0]))
+		grid.add_child(ob)
+		_preassign[c.id] = ob
+	box.add_child(grid)
+
+
+## {조 id(문자열): 임무 키} — 정하지 않은 조는 빠진다
+func preassign_selection() -> Dictionary:
+	var out := {}
+	for id: int in _preassign:
+		var ob: OptionButton = _preassign[id]
+		var k := str(ob.get_item_metadata(ob.selected)) if ob.selected >= 0 else ""
+		if k != "":
+			out[str(id)] = k
+	return out
 
 
 ## 정한 개수를 넘으면 나머지 체크를 막는다

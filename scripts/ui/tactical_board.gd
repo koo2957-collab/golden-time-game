@@ -16,6 +16,7 @@ var sim: SimWorld
 var map: BoardMap
 var _tabs: HBoxContainer
 var _water: Label
+var _dispatch: Label
 var _victims: Label
 var _refresh := 0.0
 
@@ -77,6 +78,7 @@ func setup(p_sim: SimWorld, ui: CommandUi) -> void:
 	var right := _column(row, "확인")
 	_move(ui._receo_label, right)
 	_move(ui._todo_label, right)
+	_dispatch = _text(right)
 	_water = _text(right)
 	_victims = _text(right)
 	_build_tabs()
@@ -162,9 +164,21 @@ func _process(delta: float) -> void:
 	if _refresh > 0.0:
 		return
 	_refresh = REFRESH_S
+	_dispatch.text = dispatch_text()
 	_water.text = water_text()
 	_victims.text = victims_text()
 	map.queue_redraw()
+
+
+## 출동 정보 요약 (P9-1): 상황실 지령 줄 + 출동 중 요청 결과
+func dispatch_text() -> String:
+	var lines: PackedStringArray = ["출동 정보"]
+	for l in sim.command.dispatch.get("lines", []):
+		lines.append("· " + str(l))
+	for e in sim.events.entries:
+		if e.type in ["dispatch_request", "relay_fire_location"] or (e.type == "gas_shutoff" and str(e.get("crew", "")).contains("관계자")):
+			lines.append("· " + SimEventLog.describe_text(e))
+	return "\n".join(lines)
 
 
 ## 물 현황: 펌프차 물탱크 잔량·급수원·예상 고갈

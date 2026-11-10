@@ -205,6 +205,14 @@ static func describe_text(e: Dictionary) -> String:
 			text = "긴급탈출 지시 전파 — 전 대원 탈출"
 		"evacuate":
 			text = "긴급탈출 — %s" % e.crew
+		"preassign_start":
+			text = "미리 정한 임무 시작 — %s (%s)" % [e.crew, {"attack": "화점진압", "search": "인명검색", "office": "방재실 연락", "officer": "현장안전담당"}.get(e.task, e.task)]
+		"dispatch_request":
+			text = "상황실 요청 — %s" % e.what
+		"relay_fire_location":
+			text = "관계자 확인: 발화 위치 %s" % e.room
+		"reserve_hydrant":
+			text = "예비 소방용수로 이동 — %s" % e.vehicle
 		"vehicle_arrived":
 			text = "%s 현장 도착" % e.vehicle
 		"equipment_missing":

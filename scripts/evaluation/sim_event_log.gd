@@ -311,6 +311,18 @@ static func describe_text(e: Dictionary) -> String:
 			text = "송풍기는 바깥 출입문 앞에 놓아야 합니다 — %s" % e.crew
 		"ppv_no_exhaust":
 			text = "배출구가 없어 연기가 빠지지 않음 — 창을 깨거나 열어 배출구 확보"
+		"ppv_exhaust_order":
+			text = "배기구 확보 — %s이(가) %s 창 개방" % [e.crew, e.room]
+		"ppv_exhaust_none":
+			text = "배기구로 열 창을 맡을 조가 없음 — 송풍기 조 외 대원 필요"
+		"fire_not_found":
+			text = "%s %d분째 화점 못 찾음, 시계 0 (%s, 공기 %s)" % [e.crew, e.minutes, e.room, e.air]
+		"evac_priority":
+			text = "대피 안내 순서 — %s" % e.order
+		"rit_misused":
+			text = "RIT(%s)를 %s 호스 연장에 투입 — 대기 RIT 없음 (SSG 9)" % [e.crew, e.helping]
+		"tanker_idle":
+			text = "%s 급수 연결 없이 대기 — 펌프차 물만 사용" % e.vehicle
 		"ppv_fire_push":
 			text = "화점(%s)이 바람길에 있음 — 불이 배출구 쪽으로 커질 수 있다. 배출구 위치·요구조자 확인" % e.room
 		"exit_air_low":

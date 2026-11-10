@@ -1600,6 +1600,156 @@
         "SOP 213-2.3"
       ],
       "debrief": "방화문 파괴기 같은 장비는 출동 단계에서 챙기면(출동 준비판) 현장에서 차량을 오가는 시간을 줄인다. 없으면 본인이 탑승한 차량까지 가서 가져와야 한다."
+    },
+    {
+      "id": "TANKER-FIRST-01",
+      "title": "물탱크차 첫 조치",
+      "phase": "도착",
+      "trigger": "tanker_arrived",
+      "asker": "물탱크차 운전원",
+      "urgency": "중요",
+      "text": "{vehicle} 도착했습니다. 무엇부터 할까요?",
+      "options": [
+        {
+          "text": "펌프차에 급수 연결하고 가까운 소화전을 점령한다",
+          "grade": "최선",
+          "effect": "tanker_supply"
+        },
+        {
+          "text": "소화전부터 점령해 탱크를 채운다",
+          "grade": "허용",
+          "effect": "tanker_hydrant"
+        },
+        {
+          "text": "물탱크차에서 직접 방수한다",
+          "grade": "오답",
+          "effect": "tanker_idle"
+        }
+      ],
+      "sop_ref": [
+        "SOP 200-3.1.1.2"
+      ],
+      "debrief": "물탱크차는 선착 펌프차에 급수(중계)하고 소화전을 점령해 수원을 이어 준다. 직접 방수하면 펌프차 물이 먼저 바닥나 방수가 끊긴다.",
+      "once": true
+    },
+    {
+      "id": "EVAC-ORDER-01",
+      "title": "대피 세대 순서",
+      "phase": "상황평가",
+      "trigger": "evac_order",
+      "asker": "현장 대원",
+      "urgency": "중요",
+      "text": "{floor} 화재입니다. 주민 대피 안내를 어느 세대부터 할까요?",
+      "options": [
+        {
+          "text": "발화세대 → 발화층·직상층 → 노약자 세대 순",
+          "grade": "최선",
+          "effect": "evac_fire_first"
+        },
+        {
+          "text": "1층부터 차례로 올라가며",
+          "grade": "오답",
+          "effect": "evac_bottom_up"
+        },
+        {
+          "text": "방송만 하고 세대 안내는 하지 않는다",
+          "grade": "오답",
+          "effect": "hold"
+        }
+      ],
+      "sop_ref": [
+        "SOP 213-2.4.1"
+      ],
+      "debrief": "대피 우선순위는 발화세대 → 발화층·직상층 → 노약자다. 아래층부터 차례로 하면 연기가 먼저 닿는 위층 주민의 대피가 늦어진다.",
+      "once": true
+    },
+    {
+      "id": "FIRE-LOST-01",
+      "title": "화점 못 찾음 · 시계 0",
+      "phase": "안전",
+      "trigger": "fire_not_found",
+      "asker": "진입 대원",
+      "urgency": "긴급",
+      "text": "{crew}: {minutes}분째 화점을 못 찾았습니다. 앞이 전혀 안 보입니다. 공기 {air}.",
+      "options": [
+        {
+          "text": "철수시키고(진입 금지) 교대조를 투입한다",
+          "grade": "최선",
+          "effect": "withdraw"
+        },
+        {
+          "text": "그 자리에서 대기하며 열화상으로 다시 살핀다",
+          "grade": "허용",
+          "effect": "halt_here"
+        },
+        {
+          "text": "계속 탐색하라",
+          "grade": "오답",
+          "effect": "hold"
+        }
+      ],
+      "sop_ref": [
+        "SOP 102-4.1"
+      ],
+      "debrief": "시계가 없고 오래 화점을 찾지 못하면 공기 고갈·고립 위험이 커진다. 진입 금지 요소로 보고 빼낸 뒤 교대조로 바꾼다.",
+      "multi": true
+    },
+    {
+      "id": "RIT-HELP-01",
+      "title": "RIT 다른 임무",
+      "phase": "안전",
+      "trigger": "rit_help",
+      "asker": "현장 대원",
+      "urgency": "일반",
+      "text": "{crew} 수관 연장이 힘듭니다. 대기 중인 RIT({rit})에게 호스 연장을 돕게 할까요?",
+      "options": [
+        {
+          "text": "돕지 않는다 — RIT는 대기 임무만",
+          "grade": "최선",
+          "effect": "hold"
+        },
+        {
+          "text": "돕게 한다",
+          "grade": "오답",
+          "effect": "rit_help"
+        }
+      ],
+      "sop_ref": [
+        "SSG 9 1.2.2"
+      ],
+      "debrief": "RIT는 다른 임무를 맡지 않는다. 호스 연장에 쓰면 대원이 고립됐을 때 바로 투입할 팀이 없다.",
+      "once": true
+    },
+    {
+      "id": "PPV-EXHAUST-01",
+      "title": "송풍기 배기구",
+      "phase": "배연",
+      "trigger": "ppv_no_exhaust",
+      "asker": "진입 대원",
+      "urgency": "중요",
+      "text": "{crew}: 송풍기를 놓았는데 배기구(열린 창)가 없습니다. 가동할까요?",
+      "options": [
+        {
+          "text": "화점 쪽 창(발코니)을 먼저 열어 배기구를 확보한 뒤 급기",
+          "grade": "최선",
+          "effect": "ppv_exhaust"
+        },
+        {
+          "text": "송풍기를 끄고 자연배연",
+          "grade": "허용",
+          "effect": "ppv_stop"
+        },
+        {
+          "text": "그대로 가동",
+          "grade": "오답",
+          "effect": "ppv_force"
+        }
+      ],
+      "sop_ref": [
+        "소방전술 화재1 배연전술(양압배연)"
+      ],
+      "debrief": "양압배연은 배기구를 먼저 확보하고 급기한다. 배기구 없이 바람을 넣으면 연기가 빠지지 않고 다른 곳으로 밀려 간다.",
+      "once": true
     }
   ]
 }

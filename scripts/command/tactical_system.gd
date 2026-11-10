@@ -84,6 +84,10 @@ var _nozzle_wait_ticks := 300
 var _fire_radius := 5.0
 var _fire_seen: Dictionary = {}  # "조:방" -> true
 var _air_withdrawn: Dictionary = {}  # 조 id -> true (철수 잔압으로 철수함)
+## 화점진압 임무를 받은 틱 {조 id: tick} — 화점에 물을 대면 지운다 (화점 못 찾음 보고, 기획안 7-3)
+var _attack_since: Dictionary = {}
+var _fire_lost_ticks := 9000
+var _fire_lost_vis_m := 1.0
 ## 세대 배치 (P2-2, SimWorld가 넣는다)
 var layout: UnitAssembly
 ## 직하층 확인으로 얻은 추정 구조 {위 세대 이름: {from: 아래 세대, variant: 아래 세대 변형, furnish, tick}} — 지휘관이 아는 정보
@@ -104,6 +108,8 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_water: WaterSystem, p_doors: 
 	_pencil_done_c = float(mission_data.get("nozzle_pencil_done_c", {}).get("value", 150.0))
 	_nozzle_wait_ticks = roundi(float(mission_data.get("nozzle_wait_s", {}).get("value", 30.0)) / SimClock.TICK_DT)
 	_door_check_ticks = roundi(float(mission_data.get("door_check_s", {}).get("value", 10.0)) / SimClock.TICK_DT)
+	_fire_lost_ticks = roundi(float(mission_data.get("fire_lost_s", {}).get("value", 900.0)) / SimClock.TICK_DT)
+	_fire_lost_vis_m = float(mission_data.get("fire_lost_visibility_m", {}).get("value", 1.0))
 	var cmds: Variant = JsonData.load_file("res://data/commands.json")
 	door_specs = cmds.get("sets", {}).get("door", []) if cmds is Dictionary else []
 
@@ -163,6 +169,8 @@ func _order(action: String, crew_id: int, target: Vector3i, tick: int) -> bool:
 	if action == "exterior":
 		events.add(tick, "tactical_start", {"crew": _crew_name(c), "action": ACTIONS[action]})
 		return water.start_spray(crew_id, target, HoseLine.Pattern.STRAIGHT, tick)
+	if action in ["attack", "attack_floor"] and not _attack_since.has(crew_id):
+		_attack_since[crew_id] = tick
 	if action in ["search_floor", "attack_floor"]:
 		return _order_floor(action, c, target.z, tick, true)
 	if action == "check_below":
@@ -221,6 +229,8 @@ func step(tick: int) -> void:
 	for t in unit_next:
 		_next_unit_room(units.get_crew(t.crew_id), t.unit_rooms, t.unit_check, tick)
 	_check_air(tick)
+	if tick % 10 == 0:
+		_check_fire_lost(tick)
 
 
 # --- 단계 ---
@@ -618,6 +628,33 @@ func _check_air(tick: int) -> void:
 
 
 ## 검색 중인 조가 가까이에서 타는 칸을 보면 화점 발견 보고 (방마다 한 번). 질문 카드 FIRE-FOUND-01
+## 화점진압 조가 오래 화점에 물을 대지 못하고 앞이 안 보이면 보고한다 (기획안 7-3 '화점 15분 못 찾음·시계 0', SOP 102-4.1)
+func _check_fire_lost(tick: int) -> void:
+	for crew_id: int in _attack_since.keys():
+		var t := task_of_crew(crew_id)
+		var c := units.get_crew(crew_id)
+		# 임무가 없어졌거나(다른 임무·철수) 쓰러졌으면 잊는다
+		if t == null or c == null or c.leader.incapacitated or not t.action in ["attack", "attack_floor"]:
+			_attack_since.erase(crew_id)
+			continue
+		var h := water.hose_of_crew(crew_id)
+		if h and h.flowing and not h.approaching and tick >= h.water_tick and not h.blocked and h.flow_fraction > 0.0:
+			_attack_since.erase(crew_id)
+			continue
+		var since: int = _attack_since[crew_id]
+		if tick - since < _fire_lost_ticks or not _indoor(c.leader.level, c.leader.pos):
+			continue
+		var room := fire.compartment_at(c.leader.level, floori(c.leader.pos.x), floori(c.leader.pos.y))
+		if room == null or fire.visibility_m(room) >= _fire_lost_vis_m:
+			continue
+		_attack_since.erase(crew_id)
+		var air := PackedStringArray()
+		for ff in c.members():
+			air.append("%d%%" % roundi(ff.air_ratio() * 100.0))
+		events.add(tick, "fire_not_found", {"crew": _crew_name(c), "crew_id": crew_id, "room": room.display_name(),
+			"minutes": roundi(float(tick - since) * SimClock.TICK_DT / 60.0), "air": " · ".join(air)})
+
+
 func _check_fire_found(t: Task, c: Crew, tick: int) -> void:
 	if perception == null:
 		return

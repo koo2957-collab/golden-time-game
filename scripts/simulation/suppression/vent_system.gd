@@ -20,6 +20,8 @@ var _o2_boost: float
 var _warned_exhaust := false
 var _warned_fire := false
 var _pending := false
+## 배기구 없이 그대로 가동하라는 지시를 받았다 (질문 카드 PPV-EXHAUST-01 오답): 연기는 빠지지 않고 불만 커진다
+var forced := false
 
 
 func _init(p_fire: FireSim, p_units: UnitSystem, config: FireConfig, p_events: SimEventLog) -> void:
@@ -44,6 +46,7 @@ func order(p_crew: int, target: Vector3i, pathfinder: Pathfinder, tick: int) -> 
 	_pending = true
 	_warned_exhaust = false
 	_warned_fire = false
+	forced = false
 	var spot := _outside_cell(o)
 	units.order_move([p_crew] as Array[int], Vector3i(spot.x, spot.y, o.level), pathfinder)
 	return true
@@ -82,7 +85,16 @@ func step(dt: float, tick: int) -> void:
 	if not exhaust:
 		if not _warned_exhaust:
 			_warned_exhaust = true
-			events.add(tick, "ppv_no_exhaust", {"crew": _crew_name(crew_id)})
+			events.add(tick, "ppv_no_exhaust", {"crew": _crew_name(crew_id), "crew_id": crew_id})
+		if forced:
+			# 빠질 곳 없이 바람만 들어간다: 타는 구획에 산소가 더해져 불이 커진다 (교재 화재1 양압배연 — 배기구 먼저)
+			for r: int in rooms:
+				var comp: Compartment = fire.comps[r]
+				if comp.q > 0.0:
+					comp.y_o2 = minf(Compartment.O2_AMBIENT_MASS, comp.y_o2 + _o2_boost * dt)
+					if not _warned_fire:
+						_warned_fire = true
+						events.add(tick, "ppv_fire_push", {"crew": _crew_name(crew_id), "room": comp.display_name()})
 		return
 	var k := 1.0 - exp(-dt / _tau_s)
 	for r: int in rooms:
@@ -125,6 +137,22 @@ func _has_exhaust(rooms: Array[int], intake: Opening) -> bool:
 			if (op.kind == Opening.Kind.WINDOW and (op.broken or op.is_open)) or (op.kind == Opening.Kind.DOOR and op.is_open):
 				return true
 	return false
+
+
+## 바람길 구획에서 배기구로 열 만한 닫힌 바깥 창 (타는 구획의 창을 먼저). 없으면 null
+func exhaust_window() -> Opening:
+	if opening < 0:
+		return null
+	var o: Opening = fire.openings[opening]
+	var best: Opening = null
+	for r in _connected(o):
+		for oi in fire.comps[r].openings:
+			var op: Opening = fire.openings[oi]
+			if op.kind != Opening.Kind.WINDOW or op.room_b != Opening.OUTSIDE or op.broken or op.is_open:
+				continue
+			if best == null or fire.comps[r].q > fire.comps[best.room_a].q:
+				best = op
+	return best
 
 
 func _outside_cell(o: Opening) -> Vector2i:

@@ -71,5 +71,6 @@
   "evac_alert_s": {"value": 60, "source": "추정", "note": "자력 대피자가 화재를 알아차리고 움직이기 시작하는 시간 (경보·연기 냄새)"},
   "evac_clear_m": {"value": 1.6, "source": "추정", "note": "연기층 아래 맑은 높이가 이보다 낮으면 그 구획을 지나가지 못하고 갇힌다"},
   "evac_hot_c": {"value": 40, "source": "추정", "note": "연기층이 이보다 뜨거우면서 낮게 내려왔으면 그 구획을 지나가지 않는다"},
-  "evac_speed_factor": {"value": 0.8, "source": "추정", "note": "자력 대피 걷는 속도 (대원 보행 속도 대비)"}
+  "evac_speed_factor": {"value": 0.8, "source": "추정", "note": "자력 대피 걷는 속도 (대원 보행 속도 대비)"},
+  "evac_floor_guide_s": {"value": 45, "source": "게임 설정값", "note": "대원이 세대를 돌며 대피 안내할 때 한 층에 걸리는 시간 — 안내 순서(EVAC-ORDER-01)에 따라 층마다 안내가 늦어진다 (SOP 213-2.4.1)"}
 }

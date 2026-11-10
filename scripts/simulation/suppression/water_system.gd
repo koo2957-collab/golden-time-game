@@ -630,7 +630,7 @@ func _update_hoses(tick: int) -> void:
 				h.resupply_until = tick + roundi(float(_tt.get("resupply_s", 30.0)) / SimClock.TICK_DT)
 				for ff in c.members():
 					ff.speed_factor = 0.0
-				events.add(tick, "hose_resupply", {"crew": _crew_name(c), "lengths": roundi(h.length_cells() * _cell_m / float(_tt.get("hose_length_m", 15.0)))})
+				events.add(tick, "hose_resupply", {"crew": _crew_name(c), "crew_id": c.id, "lengths": roundi(h.length_cells() * _cell_m / float(_tt.get("hose_length_m", 15.0)))})
 		var cell := leader.cell3()
 		var last := h.points[-1]
 		if cell == last:
@@ -654,7 +654,7 @@ func _update_hoses(tick: int) -> void:
 			c.partner.path.clear()
 		if not h.at_limit:
 			h.at_limit = true
-			events.add(tick, "hose_limit", {"crew": _crew_name(c)})
+			events.add(tick, "hose_limit", {"crew": _crew_name(c), "crew_id": c.id})
 
 
 func _update_supply(dt: float, tick: int) -> void:

@@ -27,6 +27,11 @@ var refuge_cell := Vector2i(-1, -1)
 var _o2_slow := 18.0
 var _o2_stop := 10.0
 var _o2_factor := 0.5
+## 대피 안내 순서 (질문 카드 EVAC-ORDER-01, SOP 213-2.4.1): "" 안내 없음 · fire_first 발화층·직상층 먼저 · bottom_up 1층부터
+var priority := ""
+var priority_tick := -1
+var fire_level := -1
+var _floor_guide_ticks := 450
 
 
 func _init(p_fire: FireSim, p_rescue: RescueSystem, p_pathfinder: Pathfinder, params: ParamTable, walk_speed_cells: float, p_events: SimEventLog) -> void:
@@ -41,13 +46,40 @@ func _init(p_fire: FireSim, p_rescue: RescueSystem, p_pathfinder: Pathfinder, pa
 	_o2_slow = params.value("o2_slow_pct")
 	_o2_stop = params.value("o2_immobile_pct")
 	_o2_factor = params.value("o2_slow_factor")
+	_floor_guide_ticks = roundi(params.value("evac_floor_guide_s") / SimClock.TICK_DT)
+
+
+## 대피 안내 순서를 정한다. 발화층·직상층 먼저면 그 층 주민이 곧바로 나서고,
+## 1층부터면 대원이 층마다 돌며 안내하므로 위층일수록 늦게 안다
+func set_priority(p: String, p_fire_level: int, tick: int) -> void:
+	priority = p
+	priority_tick = tick
+	fire_level = p_fire_level
+	events.add(tick, "evac_priority", {"order": "발화층·직상층 먼저" if p == "fire_first" else "1층부터 차례로"})
+
+
+## 이 자력 대피자가 움직이기 시작하는 틱
+func _alert_tick(v: Victim) -> int:
+	var alert := roundi(v.alert_s / SimClock.TICK_DT) if v.alert_s >= 0.0 else _alert_ticks
+	if priority_tick < 0:
+		return alert
+	match priority:
+		"fire_first":
+			if v.level == fire_level or v.level == fire_level + 1:
+				return mini(alert, priority_tick)
+			# 발화층·직상층을 마친 뒤 나머지 층
+			return mini(alert, priority_tick + 2 * _floor_guide_ticks + absi(v.level - fire_level) * _floor_guide_ticks)
+		"bottom_up":
+			# 안내가 그 층에 닿아야 나선다 (스스로 알아차렸어도 위층은 늦은 안내를 기다린다)
+			return maxi(alert, priority_tick + (v.level - 1) * _floor_guide_ticks)
+	return alert
 
 
 func step(dt: float, tick: int) -> void:
 	for v in rescue.victims:
 		if not v.self_evac or v.state != Victim.State.CONSCIOUS or v.carried_by >= 0 or escaped.has(v.id):
 			continue
-		var alert := roundi(v.alert_s / SimClock.TICK_DT) if v.alert_s >= 0.0 else _alert_ticks
+		var alert := _alert_tick(v)
 		if instruction == "evacuate":
 			alert = 0
 		# 세대 안 대기 안내를 받으면 아직 나서지 않은 사람은 그 자리에서 기다린다

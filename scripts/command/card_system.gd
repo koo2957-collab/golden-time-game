@@ -179,9 +179,31 @@ func _trigger_of(e: Dictionary) -> String:
 			return "fire_found"
 		"phase":
 			return "arrival" if int(e.get("index", -1)) == 1 else ""
-		"entry_request", "rescue_no_point", "triage_needed", "nozzle_choice", "equipment_missing":
+		"entry_request", "rescue_no_point", "triage_needed", "nozzle_choice", "equipment_missing", "fire_not_found", "ppv_no_exhaust":
 			return str(e.type)
+		# P9 아파트 카드 (기획안 7-3)
+		"vehicle_arrived":
+			return "tanker_arrived" if str(e.get("vehicle", "")).contains("물탱크") else ""
+		"squad_staged":
+			return "tanker_arrived" if str(e.get("vehicles", "")).contains("물탱크차") else ""
+		"strategy_set":
+			# 5층 이상 공동주택에서 자력 대피할 주민이 있으면, 전략을 정한 뒤 대피 안내 순서를 묻는다
+			if sim and fire.building.levels().size() >= 5 and rescue.victims.any(func(v: Victim) -> bool: return v.self_evac):
+				return "evac_order"
+			return ""
+		"hose_limit", "hose_resupply":
+			# 수관 연장이 힘들 때 대기 중인 RIT가 있으면 "RIT에게 돕게 할까요?" (SSG 9: RIT는 다른 임무 금지)
+			return "rit_help" if sim and not _idle_rit().is_empty() else ""
 	return ""
+
+
+## 투입되지 않고 대기 중인 RIT 조
+func _idle_rit() -> Array[int]:
+	var out: Array[int] = []
+	for id in sim.command.safety.crews_with(SafetySystem.Role.RIT):
+		if not sim.command.safety.deployed.has(id):
+			out.append(id)
+	return out
 
 
 ## 2층보다 높은 층을 진압하러 가고, 연결송수관이 있는데 아직 송수구를 잇지 않았는가
@@ -341,6 +363,17 @@ func _resolve(c: Card) -> void:
 	if c.crew_id < 0:
 		var near := Vector2(room.rect.get_center()) if room else Vector2(fire.building.footprint(1).get_center())
 		c.crew_id = _nearest_crew(near, room.level if room else -1)
+	# 카드 글에 쓰는 값 (P9)
+	match str(c.spec.get("trigger", "")):
+		"evac_order":
+			c.ctx["floor"] = fire.building.floor_name(sim.fire_floor_reported())
+		"rit_help":
+			var rits := _idle_rit()
+			c.ctx["rit"] = _crew_name(rits[0]) if not rits.is_empty() else "RIT"
+			c.ctx["rit_id"] = rits[0] if not rits.is_empty() else -1
+		"tanker_arrived":
+			if not c.ctx.has("vehicle"):
+				c.ctx["vehicle"] = "%s 물탱크차" % str(c.ctx.get("squad", ""))
 
 
 func _room_named(name: String) -> Compartment:
@@ -375,7 +408,8 @@ func _apply(effect: String, c: Card, tick: int) -> void:
 	var crew := units.get_crew(c.crew_id)
 	# 조가 없어도 되는 행동 (차량·대피 방송·안전구역·RIT 등)
 	const NO_CREW := ["entry_grant", "entry_wait", "entry_deny", "dropoff_wait", "dropoff_ambulance", "dropoff_entrance",
-		"tag_urgent", "tag_emergent", "tag_minor", "tag_delayed", "shuttle", "clear_zone", "shelter", "evacuate_now", "note", "hold", "", "connect_fdc", "supply_pump", "rit_deploy", "air_mat"]
+		"tag_urgent", "tag_emergent", "tag_minor", "tag_delayed", "shuttle", "clear_zone", "shelter", "evacuate_now", "note", "hold", "", "connect_fdc", "supply_pump", "rit_deploy", "air_mat",
+		"tanker_supply", "tanker_hydrant", "tanker_idle", "evac_fire_first", "evac_bottom_up", "rit_help"]
 	if crew == null and not effect in NO_CREW:
 		return
 	var here := crew.leader.pos if crew else Vector2(fire.building.footprint(1).get_center())
@@ -526,6 +560,61 @@ func _apply(effect: String, c: Card, tick: int) -> void:
 						best = v.id
 			if best >= 0:
 				water.connect_fdc(best, tick)
+		"tanker_supply", "tanker_hydrant":
+			# 물탱크차 첫 조치 (기획안 7-3, SOP 200-3.1.1.2): 펌프차 급수 연결 또는 소화전 점령
+			var tk := _tanker(str(c.ctx.get("vehicle", "")))
+			if tk:
+				var pump: Vehicle = null
+				for v in units.vehicles:
+					if v.is_pump() and not v.away and (pump == null or v.pos.distance_to(tk.pos) < pump.pos.distance_to(tk.pos)):
+						pump = v
+				if effect == "tanker_supply" and pump:
+					water.connect_supply(tk.id, pump.id, tick)
+				else:
+					var hy := _nearest_hydrant(tk.pos)
+					if hy >= 0:
+						water.connect_hydrant(tk.id, hy, tick)
+		"tanker_idle":
+			events.add(tick, "tanker_idle", {"vehicle": str(c.ctx.get("vehicle", ""))})
+		"evac_fire_first", "evac_bottom_up":
+			sim.evac.set_priority(effect.trim_prefix("evac_"), sim.fire_floor_reported(), tick)
+		"rit_help":
+			# RIT를 호스 연장에 쓴다 → RIT가 없어진다 (SSG 9 1.2.2 위반)
+			var rid := int(c.ctx.get("rit_id", -1))
+			if rid >= 0:
+				sim.command.safety.roles.erase(rid)
+				sim.command.safety.deployed.erase(rid)
+				events.add(tick, "rit_misused", {"crew": _crew_name(rid), "helping": str(c.ctx.get("crew", ""))})
+				var helped := units.get_crew(int(c.ctx.get("crew_id", -1)))
+				if helped:
+					units.order_move([rid] as Array[int], helped.leader.cell3(), sim.pathfinder)
+		"ppv_exhaust":
+			# 배기구(바람길 구획의 창)를 먼저 연다: 그 층에서 송풍기 조가 아닌 가장 가까운 조가 창을 깬다
+			var w := sim.vent.exhaust_window()
+			if w:
+				var center := Vector2(w.cells[0]) + Vector2(0.5, 0.5)
+				var best := -1
+				var best_d := INF
+				for cr in units.crews:
+					if cr.id == sim.vent.crew_id or cr.leader.incapacitated or cr.leader.aboard or cr.leader.level != w.level:
+						continue
+					if units.squads[cr.squad_id].type == "구급대" or sim.command.safety.reserved(cr.id):
+						continue
+					var d := cr.leader.pos.distance_to(center)
+					if d < best_d:
+						best_d = d
+						best = cr.id
+				if best >= 0:
+					doors.request(best, Vector3i(w.cells[0].x, w.cells[0].y, w.level), true, tick)
+					events.add(tick, "ppv_exhaust_order", {"crew": _crew_name(best), "room": fire.comps[w.room_a].display_name()})
+				else:
+					events.add(tick, "ppv_exhaust_none", {})
+			else:
+				events.add(tick, "ppv_exhaust_none", {})
+		"ppv_stop":
+			sim.vent.cancel(sim.vent.crew_id, tick)
+		"ppv_force":
+			sim.vent.forced = true
 		"shelter":
 			sim.evac.instruction = "shelter"
 		"evacuate_now":
@@ -562,6 +651,32 @@ func _hot_window() -> Opening:
 		if float(sim.exposure.dose[i]) > best_d and not sim.exposure.ignited.has(i):
 			best_d = float(sim.exposure.dose[i])
 			best = fire.openings[i]
+	return best
+
+
+## 이름이 맞는 물탱크차 (없으면 아직 급수하지 않는 아무 물탱크차)
+func _tanker(name: String) -> Vehicle:
+	var any: Vehicle = null
+	for v in units.vehicles:
+		if v.transfer_lpm <= 0.0 or v.away:
+			continue
+		if v.display_name(units.squads[v.squad_id].name) == name or name.begins_with(units.squads[v.squad_id].name):
+			return v
+		if any == null and v.supply_to < 0:
+			any = v
+	return any
+
+
+func _nearest_hydrant(p: Vector2) -> int:
+	var best := -1
+	var best_d := INF
+	for i in fire.building.hydrants.size():
+		if i in water.hydrants_out:
+			continue
+		var d := p.distance_to(Vector2(fire.building.hydrants[i]))
+		if d < best_d:
+			best_d = d
+			best = i
 	return best
 
 

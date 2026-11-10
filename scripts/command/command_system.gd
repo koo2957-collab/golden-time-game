@@ -96,6 +96,7 @@ const REPORT_PRIORITY := {
 	"victim_refuge": Radio.Priority.VICTIM,
 	"ppv_start": Radio.Priority.KEY_FACTOR,
 	"ppv_no_exhaust": Radio.Priority.KEY_FACTOR,
+	"fire_not_found": Radio.Priority.SAFETY,
 	"ppv_fire_push": Radio.Priority.SAFETY,
 	"monitor_start": Radio.Priority.KEY_FACTOR,
 	"indoor_hydrant_empty": Radio.Priority.KEY_FACTOR,

@@ -12,6 +12,8 @@ const ABOVE_DEPTH := 100
 const CEILING_M := 2.4
 const WALL_CUT_M := 0.45
 const WINDOW_SILL_M := 0.9
+## 화면 연출: 이 세기(최대 열방출 대비) 넘게 타는 칸은 불꽃 뒤에 불덩이 그림을 깐다
+const FIRE_MASS_FROM := 0.6
 const WINDOW_TOP_M := 2.1
 const DOOR_TOP_M := 2.0
 ## 사람 비율 (방화복·공기호흡기 착용): 어깨 높이, 머리 중심, 이름표 높이 (m)
@@ -476,8 +478,9 @@ func _draw_window_signs(w: Dictionary, h0: float, fh: float) -> void:
 		var half := (_face_point(w.face, b, g1) - _face_point(w.face, a, g1)).length() * 0.5
 		var flick := 0.8 + 0.25 * sin(t * 9.0 + o.index * 1.7)
 		var tip := _face_point(w.face, mid, g1 + fh * 0.9 * flick) + Vector2(sin(t * 5.0 + o.index) * 4.0, 0)
-		draw_colored_polygon(_flame_shape(base, half, tip), Color(1.0, 0.45, 0.1, 0.9))
-		draw_colored_polygon(_flame_shape(base, half * 0.5, base.lerp(tip, 0.6)), Color(1.0, 0.85, 0.3, 0.95))
+		if not _draw_window_fire(o.index, base, half, (base - tip).length(), t):
+			draw_colored_polygon(_flame_shape(base, half, tip), Color(1.0, 0.45, 0.1, 0.9))
+			draw_colored_polygon(_flame_shape(base, half * 0.5, base.lerp(tip, 0.6)), Color(1.0, 0.85, 0.3, 0.95))
 	# 창가·발코니의 사람 (구조대상자)
 	var v := _victim_at_window(o)
 	if v != null:
@@ -523,6 +526,21 @@ func _tile_rect(r: Rect2i, h: float) -> PackedVector2Array:
 	])
 
 
+## 창 밖으로 분출하는 화염 (구운 그림): 창 윗부분에서 불덩이(Kenney Explosion)가 벽을 타고 오르며 사그라들고,
+## 그 위로 셰이더 불꽃이 넘실댄다. 그림이 없으면 false → 도형으로
+func _draw_window_fire(key: int, base: Vector2, half: float, rise: float, t: float) -> bool:
+	if not FxArt.load_all():
+		return false
+	for k in 3:
+		var f := fmod(k / 3.0 + t * 0.6 + key * 0.13, 1.0)
+		var pos := base + Vector2(sin(t * 2.0 + k + key) * half * 0.2, -rise * (0.15 + f * 0.9))
+		var size := half * (1.6 + f * 1.2)
+		if not FxArt.draw_puff(self, pos, size, FxArt.PUFF_FIRE, key + k, Color(1, 1, 1, 0.85 * (1.0 - f * f))):
+			return false
+	FxArt.draw_flame(self, base, half * 2.2, rise * 1.1, key * 5 + 1)
+	return true
+
+
 ## 창·열린 문에서 나오는 연기 (모든 층, 외관 높이에 맞춰)
 func _draw_shell_plumes() -> void:
 	if thermal:
@@ -541,7 +559,9 @@ func _draw_shell_plumes() -> void:
 				var f := fmod(k / 5.0 + t * 0.35, 1.0)
 				var pos := proj.to_screen(at, base + f * 2.5) + Vector2(sin(t + k) * 6.0, 0)
 				var r := (8.0 + f * 18.0) * (0.6 + 0.4 * strength)
-				draw_circle(pos, r, Color(PlanStyle.SMOKE_PLUME, PlanStyle.SMOKE_PLUME.a * (1.0 - f) * strength))
+				var a := PlanStyle.SMOKE_PLUME.a * (1.0 - f) * strength
+				if not FxArt.draw_puff(self, pos, r * 3.2, FxArt.PUFF_BLACK, k + int(t), Color(0.55, 0.55, 0.58, a * 1.6)):
+					draw_circle(pos, r, Color(PlanStyle.SMOKE_PLUME, a))
 
 
 ## 건물 안 조·발견한 구조대상자를 그 층 높이에 표식으로 (벽 너머 위치를 알려 준다)
@@ -1191,6 +1211,11 @@ func _draw_flame(x: int, y: int, base_m: float) -> void:
 	# 셰이더로 구운 불꽃 그림 (tools/bake_fx.gd). 없으면 아래 도형
 	var fh_px := (0.6 + 1.5 * intensity) * IsoProjection.PX_PER_M * flicker
 	var fw_px := IsoProjection.HALF_W * (1.0 + 0.6 * intensity)
+	# 최성기(세게 타는 칸)는 불꽃 뒤에 불덩이(Kenney Explosion)를 깔아 불의 덩어리감을 준다
+	if intensity > FIRE_MASS_FROM:
+		var mass := (intensity - FIRE_MASS_FROM) / (1.0 - FIRE_MASS_FROM)
+		var bob := Vector2(0, -fh_px * 0.35 - sin(t * 1.7 + seed_f) * 3.0)
+		FxArt.draw_puff(self, base + bob, fw_px * (1.3 + 0.4 * mass), FxArt.PUFF_FIRE, x * 7 + y * 3 + int(t * 0.5), Color(1, 1, 1, 0.55 * mass * fade))
 	if FxArt.draw_flame(self, base + Vector2(sin(t * 2.3 + seed_f) * 1.5, 0), fw_px, fh_px, (x * 31 + y * 17), Color(1, 1, 1, fade)):
 		return
 	draw_colored_polygon(_flame_shape(base, w, proj.to_screen(c, base_m + height) + sway), Color(0.95, 0.3, 0.06, 0.9 * fade))
@@ -1548,8 +1573,28 @@ func _draw_blasts() -> void:
 			continue
 		var age := float(sim.clock.tick - int(blast[2])) / HazardSystem.BLAST_SHOW_TICKS
 		var at := proj.to_screen(blast[0], 1.0)
+		if _draw_blast_art(at, age, int(blast[2])):
+			continue
 		draw_circle(at, 20.0 + age * 90.0, Color(1.0, 0.5, 0.1, 0.6 * (1.0 - age)))
 		draw_circle(at, 10.0 + age * 50.0, Color(1.0, 0.9, 0.4, 0.8 * (1.0 - age)))
+
+
+## 폭발(플래시오버·백드래프트) 순간 (구운 그림): 처음엔 흰 섬광, 이어서 불덩이 여럿이 퍼지며 검은 연기로 바뀐다
+func _draw_blast_art(at: Vector2, age: float, key: int) -> bool:
+	if not FxArt.load_all():
+		return false
+	var fade := 1.0 - age
+	for k in 5:
+		var dir := Vector2.from_angle(TAU * k / 5.0 + key) * Vector2(1.0, 0.55)
+		var pos := at + dir * (10.0 + age * 70.0) + Vector2(0, -age * 30.0)
+		var size := 60.0 + age * 110.0
+		# 뒤쪽은 검은 연기로 번진다
+		FxArt.draw_puff(self, pos + Vector2(0, -12), size * 1.15, FxArt.PUFF_BLACK, key + k, Color(0.3, 0.3, 0.32, 0.5 * fade * age))
+		if not FxArt.draw_puff(self, pos, size, FxArt.PUFF_FIRE, key + k, Color(1, 1, 1, 0.95 * fade)):
+			return false
+	if age < 0.35:
+		FxArt.draw_puff(self, at, 90.0 + age * 160.0, FxArt.PUFF_FLASH, key, Color(1, 1, 1, 1.0 - age / 0.35))
+	return true
 
 
 ## 요구조자: 누운 모습, 상태별 색, 이름표. 업혀 있으면 대원 어깨 위에 작게

@@ -68,5 +68,21 @@ func _run() -> void:
 		for i in 8:
 			await process_frame
 		root.get_texture().get_image().save_png(out + "shot_fire.png")
+		# 폭발 순간 (섬광·불덩이): 불난 방 가운데에 막 생긴 폭발 하나를 넣는다
+		sim.hazards.blasts.append([Vector2(hot.rect.get_center()), hot.level, sim.clock.tick - 4])
+		await process_frame
+		await process_frame
+		root.get_texture().get_image().save_png(out + "shot_blast.png")
+		sim.hazards.blasts.clear()
+		# 외부 보기: 불난 방의 바깥 창을 깨서 화염 분출을 본다
+		for o in sim.fire.openings:
+			if o.room_a == hot.index and o.room_b == Opening.OUTSIDE:
+				o.broken = true
+		world.set_view_level(sim.building.levels()[0], true)
+		world.camera.zoom = Vector2(1.0, 1.0)
+		world.camera.retarget(world._view_bounds(), world.projection().to_screen(Vector2(hot.rect.get_center())))
+		for i in 8:
+			await process_frame
+		root.get_texture().get_image().save_png(out + "shot_exterior.png")
 	print("저장 ", out)
 	quit()

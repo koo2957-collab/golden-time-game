@@ -40,13 +40,17 @@ func _run() -> void:
 	var noise := await _grab(vp2)
 	noise.save_png(OUT + "/smoke_noise.png")
 	vp2.queue_free()
-	# 3) Kenney 연기 덩어리 (검은 연기 6장, 흰 김 6장)
-	var puffs := Image.create_empty(PUFF * 6, PUFF * 2, false, Image.FORMAT_RGBA8)
-	for row in 2:
-		var folder := "Black smoke" if row == 0 else "White puff"
-		var prefix := "blackSmoke" if row == 0 else "whitePuff"
+	# 3) Kenney 덩어리 그림 6장씩: 검은 연기 · 흰 김 · 불덩이(Explosion) · 섬광(Flash)
+	var rows := [["Black smoke", "blackSmoke", 25], ["White puff", "whitePuff", 25], ["Explosion", "explosion", 9], ["Flash", "flash", 9]]
+	var puffs := Image.create_empty(PUFF * 6, PUFF * rows.size(), false, Image.FORMAT_RGBA8)
+	for row in rows.size():
+		var folder: String = rows[row][0]
+		var prefix: String = rows[row][1]
+		var count: int = rows[row][2]
 		for k in 6:
-			var path := ProjectSettings.globalize_path("res://") + "%s/%s/%s%02d.png" % [PUFF_DIR, folder, prefix, k * 4]
+			# 팩의 그림 중 고르게 6장
+			var n := roundi(k * (count - 1) / 5.0)
+			var path := ProjectSettings.globalize_path("res://") + "%s/%s/%s%02d.png" % [PUFF_DIR, folder, prefix, n]
 			var img := Image.load_from_file(path)
 			if img == null:
 				continue
@@ -55,8 +59,8 @@ func _run() -> void:
 			puffs.blit_rect(img, Rect2i(0, 0, PUFF, PUFF), Vector2i(k * PUFF, row * PUFF))
 	puffs.save_png(OUT + "/puffs.png")
 	var meta := {"flame": {"w": FLAME_W, "h": FLAME_H, "frames": FRAMES, "variants": VARIANTS},
-		"smoke_noise": {"size": NOISE}, "puffs": {"size": PUFF, "per_row": 6, "rows": ["black", "white"]},
-		"source": "불꽃·연기 질감: shaders/fx_*.gdshader로 구움. 연기 덩어리: Kenney Smoke Particles (CC0)"}
+		"smoke_noise": {"size": NOISE}, "puffs": {"size": PUFF, "per_row": 6, "rows": ["black", "white", "fire", "flash"]},
+		"source": "불꽃·연기 질감: shaders/fx_*.gdshader로 구움. 연기·불덩이·섬광 덩어리: Kenney Smoke Particles (CC0)"}
 	var f := FileAccess.open(OUT + "/fx.json", FileAccess.WRITE)
 	f.store_string(JSON.stringify(meta, "  "))
 	f.close()

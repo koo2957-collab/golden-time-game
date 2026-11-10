@@ -9,12 +9,14 @@
     "per_row": 6,
     "rows": [
       "black",
-      "white"
+      "white",
+      "fire",
+      "flash"
     ],
     "size": 96
   },
   "smoke_noise": {
     "size": 256
   },
-  "source": "불꽃·연기 질감: shaders/fx_*.gdshader로 구움. 연기 덩어리: Kenney Smoke Particles (CC0)"
+  "source": "불꽃·연기 질감: shaders/fx_*.gdshader로 구움. 연기·불덩이·섬광 덩어리: Kenney Smoke Particles (CC0)"
 }

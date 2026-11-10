@@ -87,3 +87,13 @@ func test_direction_and_credits() -> void:
 	assert_eq(SpriteArt.dir8(Vector2(-1, -1)), 5, "-x-y = 5 (화면 위쪽)")
 	var c: Dictionary = JsonData.load_file("res://data/credits.json")
 	assert_true(" ".join(c.lines).contains("Kenney (kenney.nl), CC0"), "자료 출처에 Kenney CC0")
+
+
+func test_fx_puffs_include_fire_and_flash() -> void:
+	assert_true(FxArt.load_all(), "불꽃 그림 불러옴")
+	var rows: Array = FxArt.meta.get("puffs", {}).get("rows", [])
+	assert_eq(rows.size(), 4, "덩어리 그림 4줄: 검은 연기·흰 김·불덩이·섬광 (Kenney Smoke Particles)")
+	assert_eq(FxArt.puffs.get_height(), int(FxArt.meta.puffs.size) * 4, "puffs.png 높이 = 4줄")
+	var ci := Node2D.new()
+	assert_true(not FxArt.draw_puff(ci, Vector2.ZERO, 10.0, 9, 0, Color.WHITE), "없는 종류는 false (도형으로 대체)")
+	ci.free()

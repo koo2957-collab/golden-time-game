@@ -45,11 +45,21 @@ static func draw_flame(ci: CanvasItem, base: Vector2, w: float, h: float, seed: 
 	return true
 
 
-## 연기 덩어리 (kind 0 = 검은 연기, 1 = 흰 김). k: 0~5 모양
+## 덩어리 그림 종류 (art/fx/puffs.png 줄 순서)
+const PUFF_BLACK := 0
+const PUFF_WHITE := 1
+const PUFF_FIRE := 2
+const PUFF_FLASH := 3
+
+
+## 덩어리 그림 (PUFF_* 종류). k: 0~5 모양. 그 종류가 구워져 있지 않으면 false
 static func draw_puff(ci: CanvasItem, center: Vector2, size: float, kind: int, k: int, modulate: Color) -> bool:
 	if not load_all() or puffs == null:
 		return false
 	var p := float(meta.get("puffs", {}).get("size", 96))
-	var src := Rect2(posmod(k, 6) * p, clampi(kind, 0, 1) * p, p, p)
+	var rows: int = (meta.get("puffs", {}).get("rows", ["black", "white"]) as Array).size()
+	if kind < 0 or kind >= rows:
+		return false
+	var src := Rect2(posmod(k, 6) * p, kind * p, p, p)
 	ci.draw_texture_rect_region(puffs, Rect2(center - Vector2(size, size) * 0.5, Vector2(size, size)), src, modulate)
 	return true

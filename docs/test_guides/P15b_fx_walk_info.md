@@ -10,6 +10,10 @@
 | 불빛 번짐 | **실시간 셰이더**(`shaders/fire_glow.gdshader`, 가산 혼합): 타는 칸 둘레 바닥·벽에 주황빛이 칸마다 다르게 일렁인다 | scripts/ui/building/fire_glow_layer.gd |
 | 실내 연기층 | 셰이더로 구운 이음새 없는 연기 질감(`fx_smoke_noise.gdshader`)을 두 겹, 서로 다른 쪽으로 천천히 흘려 연기가 굽이친다 | art/fx/smoke_noise.png |
 | 바깥 연기 기둥 | 동그라미 대신 Kenney 검은 연기 덩어리 그림 | art/fx/puffs.png |
+| 창 화염 분출(외부 보기) | 깨진·열린 창 위로 Kenney 불덩이(Explosion)가 벽을 타고 오르며 사그라들고 셰이더 불꽃이 넘실댄다 | art/fx/puffs.png 3줄 |
+| 플래시오버·백드래프트 순간 | 흰 섬광(Flash) → 불덩이 다섯 개가 퍼지며 검은 연기로 | art/fx/puffs.png 4줄 |
+| 최성기 실내 불 | 세게 타는 칸(최대의 60% 넘게)은 불꽃 뒤에 불덩이를 깔아 덩어리감 | |
+| 외관 연기 기둥(모든 층) | 동그라미 대신 검은 연기 덩어리 | |
 | 열화상(T)·외부 보기 | 불빛 번짐은 끔 | |
 
 다시 굽기: `godot --path . -s res://tools/bake_fx.gd` (창이 잠깐 뜬다).

@@ -60,6 +60,8 @@ var cards: CardSystem
 var plan: PlanIntel
 ## 방수포·송풍기 양압배연 (R11)
 var monitors: MonitorSystem
+## 굴절차 전개·바스켓 구조 (P9)
+var aerial: AerialSystem
 var vent: VentSystem
 ## 지휘권 이양·비상용승강기 (R13)
 var transfer: CommandTransfer
@@ -202,6 +204,9 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.conditions.exits = sim.rescue.exit_cells
 	sim.conditions.covered = sim.water.is_covered
 	sim.monitors = MonitorSystem.new(sim.fire, sim.units, fire_config, sim.events)
+	sim.aerial = AerialSystem.new(sim.fire, sim.units, sim.rescue, sim.falls, sim.events)
+	sim.aerial.zones = sim.zones
+	sim.monitors.aerial = sim.aerial
 	sim.vent = VentSystem.new(sim.fire, sim.units, fire_config, sim.events)
 	sim.plan = PlanIntel.new(sim.fire, sim.units, sim.perception, sim.command.interior, sim.events)
 	var building_data: Variant = JsonData.load_file(building_path)
@@ -280,6 +285,10 @@ static func from_scenario(path: String, command_rules := true, seed_override := 
 			sim.command.auto_slow = false
 			sim.command.resources.clear_schedule()
 		sim.doors.sync_blocking()
+		# 외부 안전구역 안내 거리 (SOP 213-2.7.1): 신고된 발화층·풍속으로
+		var hz := ParamTable.from_dict(JsonData.load_file(HAZARD_PARAMS_PATH))
+		sim.zones.set_guide(sim.fire_floor_reported(), sim.building.levels().max(), float(data.get("wind", {}).get("speed_mps", 0.0)),
+			hz.value("safe_zone_strong_wind_mps"), hz.value("floor_height_m"))
 		# 늦게 신고된 화재: 출동 전에 불만 먼저 진행시킨다 (시나리오 fire.preburn_s, R10). 다시 하기도 같다
 		var pre := float(data.get("fire", {}).get("preburn_s", 0.0))
 		sim.ignition_to_call_s = pre
@@ -558,6 +567,7 @@ func _step() -> void:
 	cards.step(dt, clock.tick)
 	shafts.step(dt, clock.tick)
 	plan.step(dt, clock.tick)
+	aerial.step(clock.tick)
 	monitors.step(dt, clock.tick)
 	transfer.step(clock.tick)
 	elevator.step(clock.tick)

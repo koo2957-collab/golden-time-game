@@ -98,6 +98,7 @@
 | M7a 명령칸·교육 모드 | [M7a_command_cards.md](M7a_command_cards.md) |
 | P9 아파트 봇 점검 — 입구 대기 뒤 재출발·검색 도착 판정·방수구 호스 가방 | [P9_apartment_bots.md](P9_apartment_bots.md) |
 | P9 아파트 카드 5장 (물탱크차·대피 순서·화점 못 찾음·RIT·송풍기) | [P9_apartment_cards.md](P9_apartment_cards.md) |
+| P9 굴절차 (후착·전개·고소 방수포·바스켓 구조·방수포 확인 카드) | [P9_aerial.md](P9_aerial.md) |
 | P10-2 ⓐ 명령 카드·진입 허가 요청·인원 점검 | [P10-2a_command_card_entry.md](P10-2a_command_card_entry.md) |
 | P10-2 ⓑ 구역 지정·분류소 | [P10-2b_zones.md](P10-2b_zones.md) |
 | P10-2 ⓒ 구조자 운반·START 분류 | [P10-2c_rescue_triage.md](P10-2c_rescue_triage.md) |

@@ -533,6 +533,10 @@ func _card_item_enabled(item: Dictionary) -> bool:
 	match str(item.get("need", "")):
 		"pump":
 			return selection.selected_vehicles.any(func(v: int) -> bool: return sim.units.get_vehicle(v).is_pump())
+		"monitor":
+			return selection.selected_vehicles.any(func(v: int) -> bool: return sim.units.get_vehicle(v).is_pump() or sim.units.get_vehicle(v).is_aerial())
+		"aerial":
+			return selection.selected_vehicles.any(func(v: int) -> bool: return sim.units.get_vehicle(v).is_aerial())
 		"tanker":
 			return selection.selected_vehicles.any(func(v: int) -> bool: return sim.units.get_vehicle(v).transfer_lpm > 0.0)
 	match str(item.get("id", "")):
@@ -646,7 +650,7 @@ func _vehicle_command(id: String) -> bool:
 		"vehicle_monitor":
 			var pump := -1
 			for vid in vids:
-				if sim.units.get_vehicle(vid).is_pump():
+				if sim.units.get_vehicle(vid).is_pump() or sim.units.get_vehicle(vid).is_aerial():
 					pump = vid
 					break
 			if pump < 0:
@@ -659,6 +663,12 @@ func _vehicle_command(id: String) -> bool:
 		"shuttle":
 			for vid in vids:
 				sim.issue(EquipmentCommand.make("shuttle", [], vid))
+		"vehicle_basket":
+			for vid in vids:
+				if sim.units.get_vehicle(vid).is_aerial():
+					selection.basket_vehicle = vid
+					selection.begin_mode(SelectionController.Mode.BASKET)
+					break
 		_:
 			return false
 	return true

@@ -78,8 +78,40 @@ func safe_reject_reason(r: Rect2i) -> String:
 	return ""
 
 
-## 낙하물 위험구역과 겹치면 경고 문구 ("" = 겹치지 않음)
+## 외부 안전구역 기본 안내 (SOP 213-2.7.1): 건물에서 발화층 높이의 1/2 이상, 바람이 세면 건물 높이만큼 떨어뜨린다
+var guide_m := 0.0
+var guide_reason := ""
+
+
+func set_guide(fire_level: int, top_level: int, wind_mps: float, strong_wind_mps: float, floor_m: float) -> void:
+	if wind_mps >= strong_wind_mps:
+		guide_m = top_level * floor_m
+		guide_reason = "바람 %dm/s — 건물 높이" % roundi(wind_mps)
+	else:
+		guide_m = fire_level * floor_m * 0.5
+		guide_reason = "발화층 높이의 1/2"
+
+
+## 안내선: 건물 바닥 사각형을 guide_m만큼 넓힌 사각형 (칸)
+func guide_rect() -> Rect2:
+	var cells := guide_m / building.cell_size_m
+	return Rect2(building.footprint(1)).grow(cells)
+
+
+## 건물에서 안전구역까지 가장 가까운 거리 (m)
+func distance_from_building_m(r: Rect2i) -> float:
+	var fp := building.footprint(1)
+	var dx := maxi(0, maxi(fp.position.x - r.end.x, r.position.x - fp.end.x))
+	var dy := maxi(0, maxi(fp.position.y - r.end.y, r.position.y - fp.end.y))
+	return Vector2(dx, dy).length() * building.cell_size_m
+
+
+## 낙하물 위험구역과 겹치거나 건물에 너무 가까우면 경고 문구 ("" = 괜찮음)
 func safe_warning(r: Rect2i) -> String:
+	if guide_m > 0.0:
+		var d := distance_from_building_m(r)
+		if d < guide_m:
+			return "건물에서 %dm — %s(%dm) 이상 떨어뜨릴 것 (SOP 213-2.7.1)" % [roundi(d), guide_reason, roundi(guide_m)]
 	if falls == null:
 		return ""
 	for z in falls.zones:

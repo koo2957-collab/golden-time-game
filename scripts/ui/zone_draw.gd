@@ -14,6 +14,16 @@ static func draw(ci: CanvasItem, zones: ZoneSystem, to_screen: Callable, font_si
 static func draw_ground(ci: CanvasItem, zones: ZoneSystem, to_screen: Callable, font_size := 13) -> void:
 	if zones == null:
 		return
+	# 안전구역을 정하기 전: 건물에서 떨어뜨릴 거리 안내선 (SOP 213-2.7.1)
+	if not zones.has_safe() and zones.guide_m > 0.0:
+		var g := zones.guide_rect()
+		var gp := PackedVector2Array([to_screen.call(g.position), to_screen.call(Vector2(g.end.x, g.position.y)),
+			to_screen.call(g.end), to_screen.call(Vector2(g.position.x, g.end.y)), to_screen.call(g.position)])
+		for i in 4:
+			ci.draw_dashed_line(gp[i], gp[i + 1], Color(PlanStyle.SAFE_ZONE, 0.55), 1.5, 8.0)
+		if font_size > 0:
+			ci.draw_string(PlanStyle.font(), gp[0] + Vector2(4, -4), "안전구역은 이 선 밖 (%s %dm)" % [zones.guide_reason, roundi(zones.guide_m)],
+				HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 2, Color(PlanStyle.SAFE_ZONE, 0.8))
 	if zones.has_safe():
 		var r := Rect2(zones.safe)
 		var pts := PackedVector2Array([to_screen.call(r.position), to_screen.call(Vector2(r.end.x, r.position.y)),

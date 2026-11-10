@@ -179,7 +179,7 @@ func _trigger_of(e: Dictionary) -> String:
 			return "fire_found"
 		"phase":
 			return "arrival" if int(e.get("index", -1)) == 1 else ""
-		"entry_request", "rescue_no_point", "triage_needed", "nozzle_choice", "equipment_missing", "fire_not_found", "ppv_no_exhaust":
+		"entry_request", "rescue_no_point", "triage_needed", "nozzle_choice", "equipment_missing", "fire_not_found", "ppv_no_exhaust", 				"monitor_crew_check":
 			return str(e.type)
 		# P9 아파트 카드 (기획안 7-3)
 		"vehicle_arrived":
@@ -371,6 +371,9 @@ func _resolve(c: Card) -> void:
 			var rits := _idle_rit()
 			c.ctx["rit"] = _crew_name(rits[0]) if not rits.is_empty() else "RIT"
 			c.ctx["rit_id"] = rits[0] if not rits.is_empty() else -1
+		"jump_risk":
+			# 굴절차가 현장에 서 있으면 바스켓 구조 선택지가 있는 변형 (SOP 326-2.13)
+			c.ctx["aerial_ready"] = _aerial() != null
 		"tanker_arrived":
 			if not c.ctx.has("vehicle"):
 				c.ctx["vehicle"] = "%s 물탱크차" % str(c.ctx.get("squad", ""))
@@ -409,7 +412,7 @@ func _apply(effect: String, c: Card, tick: int) -> void:
 	# 조가 없어도 되는 행동 (차량·대피 방송·안전구역·RIT 등)
 	const NO_CREW := ["entry_grant", "entry_wait", "entry_deny", "dropoff_wait", "dropoff_ambulance", "dropoff_entrance",
 		"tag_urgent", "tag_emergent", "tag_minor", "tag_delayed", "shuttle", "clear_zone", "shelter", "evacuate_now", "note", "hold", "", "connect_fdc", "supply_pump", "rit_deploy", "air_mat",
-		"tanker_supply", "tanker_hydrant", "tanker_idle", "evac_fire_first", "evac_bottom_up", "rit_help"]
+		"tanker_supply", "tanker_hydrant", "tanker_idle", "evac_fire_first", "evac_bottom_up", "rit_help", "monitor_now", "aerial_rescue"]
 	if crew == null and not effect in NO_CREW:
 		return
 	var here := crew.leader.pos if crew else Vector2(fire.building.footprint(1).get_center())
@@ -613,6 +616,19 @@ func _apply(effect: String, c: Card, tick: int) -> void:
 				events.add(tick, "ppv_exhaust_none", {})
 		"ppv_stop":
 			sim.vent.cancel(sim.vent.crew_id, tick)
+		"monitor_now":
+			sim.monitors.start(int(c.ctx.get("vehicle_id", -1)), _cell(c.ctx.get("target", [])), tick, true)
+		"aerial_rescue":
+			var av := _aerial()
+			var vid := int(c.ctx.get("victim", -1))
+			if av and vid >= 0:
+				sim.aerial.order_rescue(av.id, vid, tick)
+			# 바스켓이 닿지 않으면(높이·거리) 매트로라도 받친다
+			if vid >= 0 and not sim.falls.held.has(vid):
+				var rc := _nearest_crew(here, 1, "구조대")
+				var below := sim.falls.ground_below(rescue.victims[vid])
+				if rc >= 0 and below.x >= 0:
+					sim.falls.order_mat(rc, Vector2i(below.floor()), tick)
 		"ppv_force":
 			sim.vent.forced = true
 		"shelter":
@@ -652,6 +668,16 @@ func _hot_window() -> Opening:
 			best_d = float(sim.exposure.dose[i])
 			best = fire.openings[i]
 	return best
+
+
+## 현장에 서 있는 굴절차 (없으면 null)
+func _aerial() -> Vehicle:
+	if sim == null:
+		return null
+	for v in units.vehicles:
+		if v.is_aerial() and not v.away and not sim.command.resources.is_en_route(v.squad_id):
+			return v
+	return null
 
 
 ## 이름이 맞는 물탱크차 (없으면 아직 급수하지 않는 아무 물탱크차)

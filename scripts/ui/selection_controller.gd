@@ -13,7 +13,7 @@ extends Node2D
 ## 선택 단위는 조(2인 1조)와 차량이며, 현재 보고 있는 층의 대원만 선택된다.
 ## 좌표 변환은 projection(상황판/입체)을 따른다.
 
-enum Mode { NONE, ATTACK, SEARCH_AUTO, EXTERIOR, TREAT, TRANSPORT, WAYPOINT, MONITOR, PPV, VEHICLE_CONNECT, VEHICLE_MOVE, ZONE_SAFE, ZONE_CASUALTY, ZONE_LINE, TRIAGE_POST, OBSERVE, ENTRY_POINT }
+enum Mode { NONE, ATTACK, SEARCH_AUTO, EXTERIOR, TREAT, TRANSPORT, WAYPOINT, MONITOR, PPV, VEHICLE_CONNECT, VEHICLE_MOVE, ZONE_SAFE, ZONE_CASUALTY, ZONE_LINE, TRIAGE_POST, OBSERVE, ENTRY_POINT, BASKET }
 
 ## 관계인을 클릭했을 때 (world가 진술 창을 연다)
 signal witness_clicked(index: int)
@@ -50,6 +50,7 @@ const MODE_HINTS := {
 	Mode.TRANSPORT: "이송: 처치한 환자를 클릭 (들것으로 구급차에 태워 병원으로)",
 	Mode.WAYPOINT: "경유지: 본 적 있는 곳을 클릭 (건물 안 조에게는 무전으로 전달)",
 	Mode.MONITOR: "방수포: 바깥 창·문을 클릭 — 진입대원이 있는 방에는 쓰지 않는다 (SOP 207-1.1)",
+	Mode.BASKET: "바스켓 구조: 그 층 단면에서 창가의 요구조자를 클릭 (작업 높이·수평 거리 안, 첫 사용은 전개 시간)",
 	Mode.PPV: "송풍기 양압배연: 바깥 출입문을 클릭 — 먼저 반대편 창(배출구)을 확보한다",
 	Mode.ZONE_SAFE: "안전구역: 건물 밖을 끌어서 사각형 (한 번 클릭하면 그 자리에 기본 크기) — 낙하물 위험구역은 피한다",
 	Mode.ZONE_CASUALTY: "환자 집결지: 안전구역 안을 클릭 (구조한 사람을 여기로 옮긴다)",
@@ -78,6 +79,8 @@ var commander_selected := false
 var mode := Mode.NONE
 ## 방수포 모드에서 쓸 펌프차 (R11)
 var monitor_vehicle := -1
+## 바스켓 구조를 맡길 굴절차 (P9)
+var basket_vehicle := -1
 ## 설정되어 있으면 좌클릭을 선택 대신 이 함수로 넘긴다 (셀 좌표 Vector2i). 개발용 발화 모드 등에 쓴다.
 var click_override := Callable()
 ## 설정되어 있으면 빈 곳 클릭 때 화면 위치로 맞은 층을 묻는다 (단면 보기의 아래층, R17). (world_pos) -> level
@@ -524,6 +527,10 @@ func _complete_mode(world_pos: Vector2) -> void:
 			var win := _door_at(world_pos, true)
 			if win and monitor_vehicle >= 0:
 				sim.issue(EquipmentCommand.make("monitor", [], monitor_vehicle, -1, Vector3i(win.cells[0].x, win.cells[0].y, win.level)))
+		Mode.BASKET:
+			var who := _casualty_at(world_pos)
+			if who.x == 0 and basket_vehicle >= 0:
+				sim.issue(EquipmentCommand.make("basket", [], basket_vehicle, who.y))
 		Mode.PPV:
 			var door := _door_at(world_pos)
 			if door and not selected.is_empty():

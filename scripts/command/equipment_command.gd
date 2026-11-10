@@ -19,7 +19,8 @@ extends RefCounted
 ##   gas_off:      가스 밸브 차단 (crew_ids 중 첫 조, SOP 214-2.2)
 ##   ems_treat:    구급대 응급처치 (crew_ids 중 첫 조, other = 요구조자 id, SOP 400-3.2)
 ##   ems_transport: 처치한 환자 이송 (crew_ids 중 첫 조, other = 요구조자 id, SOP 400-3.3)
-##   monitor:      방수포 (vehicle_id = 펌프차, target = 바깥 창·문 칸, SOP 207-1.1) / monitor_stop: 방수포 중지
+##   monitor:      방수포 (vehicle_id = 펌프차·굴절차, target = 바깥 창·문 칸, SOP 207-1.1) / monitor_stop: 방수포 중지
+##   basket:       굴절차 바스켓 구조 (vehicle_id = 굴절차, other = 요구조자 id, SOP 326)
 ##   lifeline:     라이트라인 설치 (crew_ids 중 첫 조, target = 끝 칸, SOP 217)
 ##   elevator:     비상용승강기 (crew_ids, other = 내릴 층, SOP 222)
 ##   ppv:          송풍기 양압배연 (crew_ids 중 첫 조, target = 바깥 문 칸) / ppv_stop: 송풍기 끄기
@@ -70,6 +71,8 @@ func execute(sim: SimWorld) -> void:
 			sim.monitors.start(vehicle_id, target, tick)
 		"monitor_stop":
 			sim.monitors.stop(vehicle_id, tick)
+		"basket":
+			sim.aerial.order_rescue(vehicle_id, other, tick)
 		"ppv":
 			if not crew_ids.is_empty():
 				sim.doors.cancel(crew_ids[0])

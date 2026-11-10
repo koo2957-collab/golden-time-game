@@ -30,6 +30,8 @@ var sign_fallen: Dictionary = {}
 var zone_seconds := 0.0
 var warned: Dictionary = {}  # 요구조자 id -> true (뛰어내리려 함 알림)
 var jumped: Dictionary = {}  # 요구조자 id -> {mat: bool, tick}
+## 굴절차 바스켓이 오고 있어 뛰어내리지 않고 기다리는 사람 {요구조자 id: true} (확성기 안내, SOP 326-2.13)
+var held: Dictionary = {}
 
 var _warn_fed: float
 var _jump_fed: float
@@ -107,7 +109,7 @@ func step(dt: float, tick: int) -> void:
 		return
 	_step_setups(dt, tick)
 	for v in rescue.victims:
-		if v.jumper and v.state == Victim.State.CONSCIOUS and v.carried_by < 0 and v.level >= 3 and not jumped.has(v.id):
+		if v.jumper and v.state == Victim.State.CONSCIOUS and v.carried_by < 0 and v.level >= 3 and not jumped.has(v.id) and not held.has(v.id):
 			_step_jumper(v, tick)
 	_update_zones(tick)
 	_update_signs(tick)
@@ -233,6 +235,11 @@ func _count_zone(dt: float, tick: int) -> void:
 					_zone_warned[ff.crew_id] = true
 					events.add(tick, "debris_zone_entered", {"crew": _crew_name(units.get_crew(ff.crew_id))})
 				break
+
+
+## 요구조자 곁(2칸 안)의 바깥벽 창 칸. 없으면 (-1, -1) — 굴절차 바스켓이 닿을 곳
+func window_near(level: int, c: Vector2i) -> Vector2i:
+	return _window_near(level, c)
 
 
 func _window_near(level: int, c: Vector2i) -> Vector2i:

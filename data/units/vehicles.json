@@ -27,5 +27,6 @@
     "hose_sections": 0, "hose_section_m": 15,
     "length_m": 7.0, "width_m": 2.4, "height_m": 3.2, "speed_mps": 2.5,
     "source": "추정"
-  }
+  },
+  "굴절차": {"short": "굴절", "color": "#b45309", "tank_l": 0, "nozzle_lpm": 0, "transfer_lpm": 0, "hose_sections": 0, "hose_section_m": 15, "length_m": 10.0, "width_m": 2.5, "height_m": 3.6, "speed_mps": 2.5, "reach_m": 27, "outreach_m": 12, "deploy_s": 180, "basket_mps": 0.6, "basket_load_s": 30, "feed_m": 40, "source": "추정", "note": "굴절사다리차 (기획안 6-1, SOP 207·209·326). reach_m 작업 높이(27m급 ≈ 9층 창), outreach_m 차체에서 창까지 수평 거리, deploy_s 아웃트리거·붐 전개 시간, basket_mps 바스켓 오르내리는 속도, basket_load_s 요구조자 태우기, feed_m 방수포 물을 받을 펌프차까지 거리 — 모두 추정, 관할 장비 제원으로 바꿀 것"}
 }

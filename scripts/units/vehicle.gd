@@ -61,6 +61,19 @@ func display_name(squad_name: String) -> String:
 	return "%s %s" % [squad_name, type]
 
 
+## 굴절차 제원 (P9): 작업 높이·수평 거리(m), 전개 시간·바스켓 속도·태우기(초), 방수포 물을 받는 펌프차 거리(m). reach_m 0이면 굴절차 아님
+var reach_m := 0.0
+var outreach_m := 0.0
+var deploy_s := 0.0
+var basket_mps := 0.5
+var basket_load_s := 30.0
+var feed_m := 40.0
+
+
+func is_aerial() -> bool:
+	return reach_m > 0.0
+
+
 func is_pump() -> bool:
 	return nozzle_lpm > 0.0
 

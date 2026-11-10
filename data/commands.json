@@ -122,8 +122,8 @@
         "key": "W",
         "id": "vehicle_monitor",
         "label": "방수포",
-        "need": "pump",
-        "hint": "바깥 창·문 클릭 → 방수포. 다시 누르면 중지"
+        "need": "monitor",
+        "hint": "바깥 창·문 클릭 → 방수포 (펌프차·굴절차). 다시 누르면 중지"
       },
       {
         "key": "E",
@@ -137,6 +137,13 @@
         "id": "vehicle_move",
         "label": "자리 옮기기",
         "hint": "옮길 곳 클릭 (우클릭과 같음)"
+      },
+      {
+        "key": "A",
+        "id": "vehicle_basket",
+        "label": "바스켓 구조",
+        "need": "aerial",
+        "hint": "굴절차: 창가 요구조자 클릭 → 바스켓으로 구조 (SOP 326)"
       }
     ],
     "commander": [

@@ -158,3 +158,18 @@ func test_ppv_exhaust_card() -> void:
 	_answer(sim2, _card(sim2, "PPV-EXHAUST-01"), "최선")
 	var w := sim2.vent.exhaust_window()
 	assert_true(sim2.events.of_type("ppv_exhaust_order").size() + sim2.events.of_type("ppv_exhaust_none").size() == 1, "배기구 확보 지시 (창 %s)" % (w != null))
+
+
+func test_safe_zone_guide_distance() -> void:
+	# SOP 213-2.7.1: 건물에서 발화층 높이의 1/2 이상, 바람이 세면 건물 높이
+	var sim := _sim(APT15)
+	var lv := sim.fire_floor_reported()
+	assert_eq(roundi(sim.zones.guide_m * 10.0), roundi(lv * 3.0 * 0.5 * 10.0), "안내 거리 = %d층 × 3m × 1/2" % lv)
+	var fp := sim.building.footprint(1)
+	var near := Rect2i(fp.position.x, fp.end.y + 1, 4, 4)
+	assert_true(sim.zones.safe_warning(near).contains("1/2"), "건물에 붙인 안전구역은 경고: %s" % sim.zones.safe_warning(near))
+	var gap := ceili(sim.zones.guide_m / sim.building.cell_size_m) + 1
+	var far := Rect2i(fp.position.x, fp.end.y + gap, 4, 4)
+	assert_true(not sim.zones.safe_warning(far).contains("SOP 213"), "안내선 밖이면 거리 경고 없음")
+	var windy := _sim("res://data/scenarios/sop213_5_15f_winter_high.json")
+	assert_true(windy.zones.guide_reason.contains("건물 높이"), "강풍(7m/s)이면 건물 높이 기준: %s" % windy.zones.guide_reason)

@@ -388,10 +388,36 @@
       ],
       "sop_ref": [
         "SOP 213-2.4.3",
-        "SOP 326-2.4"
+        "SOP 326-2.4",
+        "SOP 326-2.13"
       ],
       "debrief": "추락 예상지점에 공기안전매트를 설치하되, 뛰어내리게 하지 말고 내부 구조를 우선한다(매트 이탈 위험).",
-      "skip_if_preordered": "air_mat_ready"
+      "skip_if_preordered": "air_mat_ready",
+      "variants": [
+        {
+          "if": {
+            "aerial_ready": true
+          },
+          "text": "{who}이(가) {room} 창가에서 뛰어내리려 합니다! 굴절차가 현장에 있습니다.",
+          "options": [
+            {
+              "text": "굴절차 바스켓을 올리고 확성기로 기다리라고 안내, 내부 구조조도 그 세대로",
+              "grade": "최선",
+              "effect": "aerial_rescue"
+            },
+            {
+              "text": "창 아래에 공기안전매트를 펴고, 내부 구조조를 그 세대로 보낸다",
+              "grade": "허용",
+              "effect": "air_mat"
+            },
+            {
+              "text": "매트를 펴고 뛰어내리라고 안내",
+              "grade": "오답",
+              "effect": "air_mat"
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "EXPOSURE-01",
@@ -1750,6 +1776,32 @@
       ],
       "debrief": "양압배연은 배기구를 먼저 확보하고 급기한다. 배기구 없이 바람을 넣으면 연기가 빠지지 않고 다른 곳으로 밀려 간다.",
       "once": true
+    },
+    {
+      "id": "MONITOR-CREW-01",
+      "title": "방수포 — 내부 진입대",
+      "phase": "방수",
+      "trigger": "monitor_crew_check",
+      "asker": "차량 운전원",
+      "urgency": "긴급",
+      "text": "{vehicle}: {room}에 방수포를 쏠까요? 그 안에 진입대가 있습니다.",
+      "options": [
+        {
+          "text": "사용 보류 — 진입대와 정보를 나누고 결정",
+          "grade": "최선",
+          "effect": "hold"
+        },
+        {
+          "text": "즉시 방수",
+          "grade": "오답",
+          "effect": "monitor_now"
+        }
+      ],
+      "sop_ref": [
+        "SOP 207-1.1"
+      ],
+      "debrief": "진입대원이 있는 곳에 방수포를 쏘면 열기·수증기가 진입대 쪽으로 밀려 화상을 입는다. 원칙적으로 쓰지 않고, 진입대와 정보를 나눈 뒤 결정한다.",
+      "multi": true
     }
   ]
 }

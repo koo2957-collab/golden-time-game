@@ -81,6 +81,7 @@
   "monitor_lpm": {"value": 1500, "source": "추정", "note": "펌프차 방수포 방수량 (SOP 207, 검수 필요)"},
   "monitor_range_m": {"value": 30, "source": "추정", "note": "방수포 유효 사거리 (높이 포함)"},
   "monitor_radius_m": {"value": 2.5, "source": "추정", "note": "창 안쪽으로 물이 닿는 반경"},
+  "monitor_crew_heat": {"value": 0.35, "source": "추정", "note": "진입대원이 있는 방에 방수포를 쏘면 열기·수증기가 진입대 쪽으로 밀려 그 방 대원의 열 스트레스가 한 번에 이만큼 오른다 (1.0이면 쓰러짐, SOP 207-1.1)"},
   "ppv_clear_tau_s": {"value": 45, "source": "추정", "note": "양압배연: 배출구가 있으면 바람길 구획 연기가 이 시간 상수로 줄어든다 (소방전술 화재1 배연전술)"},
   "ppv_cool_per_s": {"value": 0.01, "source": "추정", "note": "바람길 상부 가스층 온도가 하부 쪽으로 식는 비율 (초당)"},
   "ppv_fire_o2_boost": {"value": 0.002, "source": "추정", "note": "바람길의 타는 구획에 들어가는 산소 (질량분율/초) — 불이 커질 수 있다"},

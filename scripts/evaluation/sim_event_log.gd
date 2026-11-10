@@ -311,6 +311,28 @@ static func describe_text(e: Dictionary) -> String:
 			text = "송풍기는 바깥 출입문 앞에 놓아야 합니다 — %s" % e.crew
 		"ppv_no_exhaust":
 			text = "배출구가 없어 연기가 빠지지 않음 — 창을 깨거나 열어 배출구 확보"
+		"aerial_deploying":
+			text = "%s 전개 시작 — 약 %d초 (%s)" % [e.vehicle, e.seconds, e.driver]
+		"aerial_deployed":
+			text = "%s 전개 완료" % e.vehicle
+		"aerial_stowed":
+			text = "%s 붐 접음 (차량 이동)" % e.vehicle
+		"aerial_debris":
+			text = "%s 낙하물 구역 안 — 전개 보류, 자리를 옮길 것 (SOP 209)" % e.vehicle
+		"aerial_out_of_reach":
+			text = "%s 닿지 않음 (%s) — %s" % [e.vehicle, e.who, e.reason]
+		"aerial_no_target":
+			text = "%s 바스켓 구조 대상 아님 — 발견된 창가 요구조자를 고를 것" % e.vehicle
+		"aerial_no_window":
+			text = "%s %s 곁에 바깥 창이 없어 바스켓이 닿지 않음" % [e.vehicle, e.who]
+		"aerial_busy":
+			text = "%s 바스켓 구조 중" % e.vehicle
+		"aerial_rescue_start":
+			text = "%s 바스켓 구조 시작 — %s %s, 약 %d초" % [e.vehicle, e.floor, e.who, e.eta_s]
+		"aerial_no_feed":
+			text = "%s 방수포 물 없음 — 가까이(40m) 펌프차가 없다" % e.vehicle
+		"monitor_crew_check":
+			text = "%s 방수포 확인 요청 — %s에 진입대 있음 (SOP 207-1.1)" % [e.vehicle, e.room]
 		"ppv_exhaust_order":
 			text = "배기구 확보 — %s이(가) %s 창 개방" % [e.crew, e.room]
 		"ppv_exhaust_none":

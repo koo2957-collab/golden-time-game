@@ -156,8 +156,9 @@ static func validate(path: String) -> PackedStringArray:
 
 static func _check_squad(e: PackedStringArray, b: BuildingData, s: Dictionary, vehicle_stats: Dictionary, need_spawn: bool) -> void:
 	var name := str(s.get("name", s.get("id", "?")))
-	if s.get("crews", []).is_empty():
-		e.append("출동대 '%s'에 조가 없습니다." % name)
+	# 운전원만 있는 출동대(굴절차 등, 기획안 6-1)는 조 없이 차량만 있어도 된다
+	if s.get("crews", []).is_empty() and s.get("vehicles", []).is_empty():
+		e.append("출동대 '%s'에 조도 차량도 없습니다." % name)
 	for v: Dictionary in s.get("vehicles", []):
 		if not vehicle_stats.has(str(v.get("type", ""))):
 			e.append("출동대 '%s'의 차종 '%s'가 차량 제원에 없습니다." % [name, v.get("type", "")])

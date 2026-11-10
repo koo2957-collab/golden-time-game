@@ -243,7 +243,8 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 ## command_rules가 false면 진입 명령 규칙·자동 감속·후착대 도착을 끈다 (지휘 절차와 상관없는 테스트용).
 ## seed_override가 0 이상이면 시나리오 seed 대신 쓴다 (판마다 다른 변형, 다시 하기).
 static func from_scenario(path: String, command_rules := true, seed_override := -1) -> SimWorld:
-	var data: Variant = JsonData.load_file(path)
+	# 발화층 토큰({F})을 시드로 푼다 (P9, ScenarioVariant). 시드를 따로 주지 않으면 기본 발화층
+	var data: Variant = ScenarioVariant.read(path, seed_override)
 	if not data is Dictionary:
 		return null
 	var sim := create(

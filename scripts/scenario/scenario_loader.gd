@@ -24,7 +24,7 @@ static func list() -> Array[Dictionary]:
 
 
 static func info(path: String) -> Dictionary:
-	var data: Variant = JsonData.load_file(path)
+	var data: Variant = ScenarioVariant.read_display(path)
 	var d: Dictionary = data if data is Dictionary else {}
 	return {
 		"path": path,
@@ -43,7 +43,7 @@ static func validate(path: String) -> PackedStringArray:
 	if not FileAccess.file_exists(path):
 		e.append("파일이 없습니다: %s" % path)
 		return e
-	var data: Variant = JsonData.load_file(path)
+	var data: Variant = ScenarioVariant.read(path)
 	if not data is Dictionary:
 		e.append("JSON 형식이 올바르지 않습니다 (쉼표·따옴표·괄호를 확인하세요).")
 		return e

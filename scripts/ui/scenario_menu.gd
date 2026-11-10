@@ -77,29 +77,30 @@ func _ready() -> void:
 	_list.item_selected.connect(_show)
 	_list.item_activated.connect(func(_i: int) -> void: _on_start())
 	row.add_child(_list)
+	# 오른쪽: 설명 → 선택(평가/교육·난이도·자동화) → 큰 시작 버튼 (상용 게임처럼 고른 것 바로 아래)
+	var right := VBoxContainer.new()
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right.add_theme_constant_override("separation", 12)
+	row.add_child(right)
 	_detail = RichTextLabel.new()
 	_detail.bbcode_enabled = true
 	_detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_detail.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_detail.add_theme_font_size_override("normal_font_size", 18)
 	_detail.add_theme_font_size_override("bold_font_size", 19)
-	row.add_child(_detail)
-	var buttons := HBoxContainer.new()
-	buttons.alignment = BoxContainer.ALIGNMENT_END
-	buttons.add_theme_constant_override("separation", 12)
-	for spec in [["캠페인", open_campaign], ["내 기록", open_history], ["교관 설정", open_instructor], ["시나리오 편집기", open_editor], ["화면 설정", open_display], ["게임 종료", func() -> void: quit_requested.emit()]]:
-		var b := Button.new()
-		b.text = spec[0]
-		b.focus_mode = Control.FOCUS_NONE
-		b.custom_minimum_size = Vector2(140, 48)
-		b.pressed.connect(spec[1])
-		buttons.add_child(b)
+	right.add_child(_detail)
+	var opts := HFlowContainer.new()
+	opts.add_theme_constant_override("h_separation", 12)
+	opts.add_theme_constant_override("v_separation", 8)
+	right.add_child(opts)
 	_mode = OptionButton.new()
 	_mode.focus_mode = Control.FOCUS_NONE
 	_mode.custom_minimum_size = Vector2(330, 48)
 	_mode.add_item("평가 모드 — 힌트 없음, 디브리핑에서 공개")
 	_mode.add_item("교육 모드 — 판단할 때 SOP 힌트")
 	_mode.select(1 if GameManager.mode == "교육" else 0)
-	buttons.add_child(_mode)
+	opts.add_child(_mode)
 	_realism = OptionButton.new()
 	_realism.focus_mode = Control.FOCUS_NONE
 	_realism.custom_minimum_size = Vector2(250, 48)
@@ -107,20 +108,43 @@ func _ready() -> void:
 		_realism.add_item(r)
 	_realism.select(maxi(0, ["훈련", "실전", "악조건"].find(GameManager.realism)))
 	_realism.tooltip_text = "실전·악조건은 시간이 멈추지 않습니다 (창·힌트가 떠도 진행, 배속 없음). 출동 지령을 읽는 동안만 멈춥니다."
-	buttons.add_child(_realism)
+	opts.add_child(_realism)
 	_difficulty = OptionButton.new()
 	_difficulty.focus_mode = Control.FOCUS_NONE
 	_difficulty.custom_minimum_size = Vector2(300, 48)
 	for d in ["자동화: 시나리오 난이도", "자동화: 입문 (문·이송 자동)", "자동화: 중급 (보고 후 대기)", "자동화: 상급 (직접 지휘)"]:
 		_difficulty.add_item(d)
 	_difficulty.select(maxi(0, ["", "입문", "중급", "상급"].find(GameManager.difficulty)))
-	buttons.add_child(_difficulty)
+	opts.add_child(_difficulty)
 	_start = Button.new()
-	_start.text = "시작 (Enter)"
+	_start.text = "▶  시작 (Enter)"
 	_start.focus_mode = Control.FOCUS_NONE
-	_start.custom_minimum_size = Vector2(220, 48)
+	_start.custom_minimum_size = Vector2(320, 64)
+	_start.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_start.add_theme_font_size_override("font_size", 24)
+	var go := StyleBoxFlat.new()
+	go.bg_color = Color("b91c1c")
+	go.set_corner_radius_all(8)
+	go.set_content_margin_all(10)
+	_start.add_theme_stylebox_override("normal", go)
+	var go_hover: StyleBoxFlat = go.duplicate()
+	go_hover.bg_color = Color("dc2626")
+	_start.add_theme_stylebox_override("hover", go_hover)
+	_start.add_theme_stylebox_override("pressed", go_hover)
+	_start.add_theme_color_override("font_color", Color.WHITE)
+	_start.add_theme_color_override("font_hover_color", Color.WHITE)
 	_start.pressed.connect(_on_start)
-	buttons.add_child(_start)
+	right.add_child(_start)
+	# 아래 줄: 부가 메뉴
+	var buttons := HFlowContainer.new()
+	buttons.add_theme_constant_override("h_separation", 12)
+	for spec in [["캠페인", open_campaign], ["내 기록", open_history], ["교관 설정", open_instructor], ["시나리오 편집기", open_editor], ["화면 설정", open_display], ["게임 종료", func() -> void: quit_requested.emit()]]:
+		var b := Button.new()
+		b.text = spec[0]
+		b.focus_mode = Control.FOCUS_NONE
+		b.custom_minimum_size = Vector2(140, 44)
+		b.pressed.connect(spec[1])
+		buttons.add_child(b)
 	box.add_child(buttons)
 	reload()
 

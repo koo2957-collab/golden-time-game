@@ -6,7 +6,9 @@
   "max_message_s": {"value": 30, "source": "추정", "note": "한 번 송신의 최대 시간 (최초 상황보고 등 긴 송신)"},
   "gap_s": {"value": 0.5, "source": "추정", "note": "송신과 송신 사이 채널이 비는 시간"},
   "report_repeat_s": {"value": 20, "source": "추정", "note": "같은 조가 같은 내용을 이 시간 안에 다시 보고하지 않는다"},
-  "entry_wait_repeat_s": {"value": 30, "source": "추정", "note": "진입 명령 대기 알림을 같은 조에 다시 띄우는 간격"},
+  "entry_wait_repeat_s": {"value": 30, "source": "추정", "note": "진입 대기 알림 간격이자, 진입 대기를 받은 출동대가 조건이 그대로여도 다시 진입 허가를 요청하는 간격 (P10-2)"},
+  "entry_min_air_ratio": {"value": 0.7, "source": "게임 설정값", "note": "진입 허가 요청 판단(P10-2): 조원 공기가 이 비율 아래면 '진입 대기(교체 후 진입)'가 정답. 현장 검수 필요"},
+  "entry_rit_from_squads": {"value": 3, "source": "게임 설정값", "note": "진입 허가 요청 판단(P10-2): 현장 출동대가 이 수 이상인데 RIT(SSG 9)를 정하지 않았으면 '진입 대기'가 정답. 현장 검수 필요"},
   "span_ideal": {"value": 5, "source": "교재", "note": "통솔범위 적정 수 (용어 정의: 통상 3~7, 1명에 5명이 적절)"},
   "span_max": {"value": 7, "source": "교재", "note": "통솔범위 한계"},
   "span_delay_per_excess_s": {"value": 5, "source": "추정", "note": "적정을 넘은 수 하나당 직접 지휘하는 출동대 명령이 늦어지는 시간 (관리 과부하)"}

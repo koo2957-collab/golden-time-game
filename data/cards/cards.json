@@ -1,5 +1,5 @@
 {
-  "note": "질문 카드 (기획안 7장). 카드 1장 = SOP 조항 1개. trigger: halt_locked·halt_closed·halt_backdraft·halt_victim(전술 명령이 멈춘 자리), air_alarm, knockdown, arrival, rollover_sign, jump_risk, exposure_heating, shaft, sign_warning, debris_zone, hydrant_out, tank_empty, mayday, gas_found, victim_trapped, triage_urgent, stair_smoke, attack_upper, victims_many, first_search, search_mark, end_suggested, fire_found. once: 한 판에 한 번. 선택지 time_cost_sec + then: 정보 확인(시간을 쓴 뒤 then 행동). text·variants의 {이름}은 사건 값으로 채운다 (crew·door_name·victim_name·state·air). effect: force_door·open_door·vent_then_open·rescue_victim·resume·withdraw·overhaul·flood·hold·close_then_resume(화재실 문 닫고 검색 계속)·attack_found(찾은 화점 진압)·halt_here(하던 일 멈춤). 임무 조건(data/command/mission_params.json)이 정해져 있으면 카드 없이 그 행동을 한다. grade: 최선·허용·오답·치명 (화면에는 보이지 않음). skip_if_preordered: 그 선제지시가 켜져 있으면 카드 없이 최선 선택을 실행. stages: 그 스테이지 시나리오에서만 묻는다(R14). 교관이 문구·등급·해설을 고칠 수 있다.",
+  "note": "질문 카드 (기획안 7장). 카드 1장 = SOP 조항 1개. trigger: halt_locked·halt_closed·halt_backdraft·halt_victim(전술 명령이 멈춘 자리), air_alarm, knockdown, arrival, rollover_sign, jump_risk, exposure_heating, shaft, sign_warning, debris_zone, hydrant_out, tank_empty, mayday, gas_found, victim_trapped, triage_urgent, stair_smoke, attack_upper, victims_many, first_search, search_mark, end_suggested, fire_found, entry_request(입구에서 진입 허가 요청 — 사건의 verdict로 variants를 고른다, P10-2). multi: true면 같은 카드가 여러 장(출동대마다) 떠 있을 수 있다. once: 한 판에 한 번. 선택지 time_cost_sec + then: 정보 확인(시간을 쓴 뒤 then 행동). text·variants의 {이름}은 사건 값으로 채운다 (crew·door_name·victim_name·state·air). effect: force_door·open_door·vent_then_open·rescue_victim·resume·withdraw·overhaul·flood·hold·close_then_resume(화재실 문 닫고 검색 계속)·attack_found(찾은 화점 진압)·halt_here(하던 일 멈춤). 임무 조건(data/command/mission_params.json)이 정해져 있으면 카드 없이 그 행동을 한다. grade: 최선·허용·오답·치명 (화면에는 보이지 않음). skip_if_preordered: 그 선제지시가 켜져 있으면 카드 없이 최선 선택을 실행. stages: 그 스테이지 시나리오에서만 묻는다(R14). 교관이 문구·등급·해설을 고칠 수 있다.",
   "preorders": [
     {
       "key": "force_locked",
@@ -1182,6 +1182,107 @@
         "SOP 223"
       ],
       "debrief": "초고층은 전 층 동시 대피가 계단을 막는다. 화재층·직상층부터 가까운 피난안전구역으로 유도하고 방재실 방송으로 순차 대피시킨다(223). 일반 승강기는 쓰지 않는다."
+    },
+    {
+      "id": "ENTRY-01",
+      "title": "진입 허가 요청",
+      "phase": "진입",
+      "trigger": "entry_request",
+      "multi": true,
+      "asker": "진입 조",
+      "urgency": "중요",
+      "text": "{crew}: 입구 앞 도착. 공기 {air}, {hose}. 확인된 위험: {risk}. 진입 허가 요청합니다.",
+      "options": [
+        {
+          "text": "진입 허가 — 진입하라",
+          "effect": "entry_grant",
+          "grade": "최선"
+        },
+        {
+          "text": "진입 대기 — 입구에서 대기하라",
+          "effect": "entry_wait",
+          "grade": "허용"
+        },
+        {
+          "text": "진입 금지 — 건물 밖에서 대기하라",
+          "effect": "entry_deny",
+          "grade": "오답"
+        }
+      ],
+      "variants": [
+        {
+          "if": {
+            "verdict": "grant"
+          },
+          "options": [
+            {
+              "text": "진입 허가 — 진입하라",
+              "effect": "entry_grant",
+              "grade": "최선"
+            },
+            {
+              "text": "진입 대기 — 입구에서 대기하라",
+              "effect": "entry_wait",
+              "grade": "허용"
+            },
+            {
+              "text": "진입 금지 — 건물 밖에서 대기하라",
+              "effect": "entry_deny",
+              "grade": "오답"
+            }
+          ]
+        },
+        {
+          "if": {
+            "verdict": "wait"
+          },
+          "options": [
+            {
+              "text": "진입 허가 — 진입하라",
+              "effect": "entry_grant",
+              "grade": "오답"
+            },
+            {
+              "text": "진입 대기 — 입구에서 대기하라",
+              "effect": "entry_wait",
+              "grade": "최선"
+            },
+            {
+              "text": "진입 금지 — 건물 밖에서 대기하라",
+              "effect": "entry_deny",
+              "grade": "허용"
+            }
+          ]
+        },
+        {
+          "if": {
+            "verdict": "deny"
+          },
+          "options": [
+            {
+              "text": "진입 허가 — 진입하라",
+              "effect": "entry_grant",
+              "grade": "오답"
+            },
+            {
+              "text": "진입 대기 — 입구에서 대기하라",
+              "effect": "entry_wait",
+              "grade": "허용"
+            },
+            {
+              "text": "진입 금지 — 건물 밖에서 대기하라",
+              "effect": "entry_deny",
+              "grade": "최선"
+            }
+          ]
+        }
+      ],
+      "sop_ref": [
+        "SOP 102-4.1",
+        "SOP 201-3.7",
+        "SSG 9"
+      ],
+      "debrief": "진입은 지휘관의 허가로 한다(102-4.1 진입 금지 명령권, 201-3.7 진입 보고). 방어 전략이거나 특수현상·붕괴 징후가 있으면 진입 금지, 공기 부족·수관 충수 전·RIT 미지정처럼 준비가 덜 됐으면 진입 대기, 준비가 됐으면 진입 허가. 정답 근거는 디브리핑 '진입 통제'에 조마다 나온다."
     }
   ]
 }

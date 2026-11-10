@@ -54,9 +54,20 @@ func pick(id: String) -> bool:
 
 
 func _input(event: InputEvent) -> void:
-	if visible and event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+	if not visible:
+		return
+	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 		close()
 		get_viewport().set_input_as_handled()
+	elif event is InputEventMouseButton and event.pressed and (event.button_index != MOUSE_BUTTON_LEFT 			or not _has_point(get_global_transform_with_canvas().affine_inverse() * event.position)):
+		# 메뉴 밖을 누르거나 우클릭하면 닫기만 하고 클릭은 그대로 지도로 간다 (조를 누른 뒤 바로 옆을 우클릭해 이동 등, P10-2)
+		close()
+
+
+## 고리만 메뉴가 받는다. 가운데 구멍(누른 조 자리 — 더블클릭)과 바깥은 지도가 받는다
+func _has_point(point: Vector2) -> bool:
+	var d := point.distance_to(center)
+	return visible and d >= R_IN and d <= R_OUT + 16.0
 
 
 func _gui_input(event: InputEvent) -> void:

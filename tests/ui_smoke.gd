@@ -96,12 +96,14 @@ func _run() -> void:
 	_check("질문하면 창 닫힘", cui.witness_visible(), false)
 	sim.step_ticks(100)
 	_check("진술 들음", sim.events.of_type("statement").size(), 1)
-	_key(KEY_F)
-	_check("F → 현장 정보 창", cui.info_visible(), true)
+	cui.open_info_dialog()
+	_check("현장 정보 버튼 → 현장 정보 창", cui.info_visible(), true)
 	cui._close(cui._info)
-	# C → 지휘권 선언·최초 상황보고 양식
-	_key(KEY_C)
-	_check("C → 상황보고 양식", cui._report.visible, true)
+	# 지휘관 명령 Q 전략 변경 → Q 선언·전략 → 지휘권 선언·최초 상황보고 양식 (P10-2)
+	_check("지휘관 선택 → 지휘관 명령 카드", world.hud.card.set_name, "commander")
+	_key(KEY_Q)
+	_key(KEY_Q)
+	_check("Q → Q → 상황보고 양식", cui._report.visible, true)
 	_check("양식이 떠 있는 동안 일시정지", sim.clock.paused, true)
 	for choice in [["fire", "연기만 확인"], ["victims", "있음"], ["use", "단독주택"], ["floors", "2층"],
 			["structure", "벽돌조"], ["strategy", "공격"], ["support", "불필요"], ["access", "진입 가능, 회차 불가"]]:
@@ -110,12 +112,22 @@ func _run() -> void:
 	_check("송신하면 양식 닫힘·시간 진행", [cui._report.visible, sim.clock.paused], [false, false])
 	sim.step_ticks(400)
 	_check("지휘권 선언", sim.command.declared(), true)
-	# R → 선택한 조의 출동대에 진입 명령
-	_click(lead0.pos, MOUSE_BUTTON_LEFT, false, false, true)
-	_click(u.get_crew(2).leader.pos, MOUSE_BUTTON_LEFT, false, true, true)
-	_key(KEY_R)
-	sim.step_ticks(300)
-	_check("R → 진압1·구조1 진입 허가", [sim.command.can_enter(0), sim.command.can_enter(1)], [true, true])
+	# 진입 허가 요청 카드 (P10-2): 입구에서 멈춘 진압1이 무전으로 요청 → 카드에서 허가 (숫자키)
+	var entry_card = null
+	for qc in sim.cards.queue:
+		if qc.id == "ENTRY-01":
+			entry_card = qc
+	_check("입구에서 진입 허가 요청 카드", entry_card != null, true)
+	if entry_card:
+		await process_frame
+		_check("카드가 화면 맨 앞", sim.cards.active() == entry_card, true)
+		for i in entry_card.options.size():
+			if str(entry_card.options[i].effect) == "entry_grant":
+				_key(KEY_1 + i)
+	# 구조1은 다시 하기용 진입 명령으로 (카드 흐름은 tests/test_entry_request.gd)
+	sim.issue(CommandOrder.make("entry", [1]))
+	_until(func() -> bool: return sim.command.can_enter(0) and sim.command.can_enter(1), 1500)
+	_check("카드 허가 → 진압1·구조1 진입 허가", [sim.command.can_enter(0), sim.command.can_enter(1)], [true, true])
 	for ff in u.get_crew(0).members():
 		ff.path.clear()
 	lead0.pos = Vector2(10.5, 23.5)
@@ -169,67 +181,92 @@ func _run() -> void:
 	_check("외부 보기에서 PgUp → 1층 단면", [world.view_level, world.exterior_view], [1, false])
 	_drag(Vector2(9, 22), Vector2(15, 24))
 	_check("진압1 범위 선택", sel.selected, [0, 1])
+	# 목표 칸이 하단 콘솔·카드 뒤에 가리지 않게 화면 가운데로
+	world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(Vector2(13.5, 15.5)))
+	await process_frame
 	_click(Vector2(13.5, 15.5), MOUSE_BUTTON_RIGHT)
 	await process_frame
 	sim.step_ticks(700)
 	_check("이동 명령 3건 기록 (진입 점검 1건 포함)", sim.command_log.entries.filter(func(c): return c is MoveCommand).size(), 3)
-	_check("구조1 1조장 2층 도착", u.get_crew(2).leader.level, 2)
-	var c0 := u.get_crew(0).leader.cell3()
-	_check("진압1 1조장 거실 도착", sim.building.room_at(1, c0.x, c0.y).get("name"), "거실")
+	# 도착 여부는 화재 상황(입구 열기)에 따라 달라지므로 조작이 맞는 명령으로 나갔는지만 본다
+	var moves := sim.command_log.entries.filter(func(c): return c is MoveCommand)
+	_check("구조1 → 2층 이동 명령", moves[1].target.z if moves.size() > 1 else -1, 2)
+	_check("진압1 → 거실 이동 명령", [moves[-1].crew_ids, Vector2i(moves[-1].target.x, moves[-1].target.y)], [[0, 1], Vector2i(13, 15)])
 
-	# 차량·수관·방수 (상황판)
+	# 차량·수관·방수 (상황판) — 펌프차가 콘솔 뒤에 가리지 않게 화면 가운데로
+	world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(sim.units.vehicles[0].pos))
+	await process_frame
 	_click(sim.units.vehicles[0].pos, MOUSE_BUTTON_LEFT)
 	_check("펌프차 클릭 선택", sel.selected_vehicles, [0])
+	# 입구에 두 조가 겹쳐 서 있으면 다른 조가 잡힌다 (P4-3 겹침 순환) — 2조를 옆으로 비킨다
+	for ff in u.get_crew(1).members():
+		ff.path.clear()
+	u.get_crew(1).leader.pos = Vector2(8.5, 24.5)
+	u.get_crew(1).partner.pos = Vector2(9.5, 24.5)
 	_click(u.get_crew(0).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
-	_key(KEY_H)
-	_check("H → 수관 연장 모드", sel.mode, sel.Mode.HOSE)
+	_check("조 클릭 → 원형 메뉴", world.mission_ui.radial.visible, true)
+	_key(KEY_W)
+	_check("W → 원형 메뉴 닫힘·화점진압 세부 칸", [world.mission_ui.radial.visible, world.hud.card.parent], [false, "attack"])
+	_key(KEY_Q)
+	_check("W → Q → 수관 연장 모드", sel.mode, sel.Mode.HOSE)
 	_click(sim.units.vehicles[0].pos, MOUSE_BUTTON_LEFT)
-	sim.step_ticks(1)
+	# 수관 준비·연장에는 현장 작업 시간이 걸린다 (P4-1)
+	_until(func() -> bool: return sim.water.hose_of_crew(0) != null, 1200)
 	_check("펌프차 클릭 → 수관 연장", sim.water.hose_of_crew(0) != null, true)
-	_key(KEY_A)
-	_check("A → 직사 방수 모드", sel.mode, sel.Mode.STRAIGHT)
+	_key(KEY_W)
+	_key(KEY_W)
+	_check("W → W → 직사 방수 모드", sel.mode, sel.Mode.STRAIGHT)
 	_click(Vector2(12.5, 16.5), MOUSE_BUTTON_LEFT)
 	sim.step_ticks(1)
 	_check("목표 클릭 → 방수 시작(직사)", sim.water.hose_of_crew(0).flowing, true)
-	_key(KEY_S)
+	_key(KEY_W)
+	_key(KEY_E)
 	_click(Vector2(12.5, 16.5), MOUSE_BUTTON_LEFT)
 	sim.step_ticks(1)
-	_check("S → 분무로 다시 지정", sim.water.hose_of_crew(0).pattern, HoseLine.Pattern.FOG)
-	_key(KEY_D)
+	_check("W → E → 분무로 다시 지정", sim.water.hose_of_crew(0).pattern, HoseLine.Pattern.FOG)
+	_key(KEY_W)
+	_key(KEY_S)
 	sim.step_ticks(1)
-	_check("D → 방수 중지", sim.water.hose_of_crew(0).flowing, false)
-	_key(KEY_A)
+	_check("W → S → 방수 중지", sim.water.hose_of_crew(0).flowing, false)
+	_key(KEY_W)
+	_key(KEY_W)
 	_click(Vector2(12.5, 16.5), MOUSE_BUTTON_LEFT)
 	sim.step_ticks(1)
 	_click(Vector2(14.5, 15.5), MOUSE_BUTTON_RIGHT)
 	sim.step_ticks(1)
 	_check("방수 중 우클릭 이동 → 자동 방수 중지", sim.water.hose_of_crew(0).flowing, false)
-	_click(u.get_crew(1).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
+	sel._set_selection([1] as Array[int], [] as Array[int])
 	_click(sim.units.vehicles[0].pos, MOUSE_BUTTON_RIGHT)
-	sim.step_ticks(1)
+	_until(func() -> bool: return sim.water.hose_of_crew(1) != null, 1200)
 	_check("펌프차 우클릭 → 그 펌프차에서 수관 연장", sim.water.hose_of_crew(1) != null, true)
 	_click(sim.units.vehicles[1].pos, MOUSE_BUTTON_LEFT)
 	_click(sim.units.vehicles[0].pos, MOUSE_BUTTON_RIGHT)
-	sim.step_ticks(1)
+	# 급수 연결은 수관 연장·결합 작업 시간이 걸린다 (P4-1)
+	_until(func() -> bool: return sim.units.vehicles[1].supply_to == 0, 1200)
 	_check("물탱크차 → 펌프차 우클릭 → 급수", sim.units.vehicles[1].supply_to, 0)
 
 	_click(u.get_crew(1).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)  # 1층 거실의 진압1 2조
 	_key(KEY_Q)
-	_check("Q → 인명검색 모드", sel.mode, sel.Mode.SEARCH)
+	_key(KEY_Q)
+	_check("Q 인명검색 → Q 이 방 검색 모드", sel.mode, sel.Mode.SEARCH)
 	_click(Vector2(24.5, 17.5), MOUSE_BUTTON_LEFT)
 	sim.step_ticks(1)
 	_check("방 클릭 → 검색 시작", sim.rescue.searches.size(), 1)
 
-	# O → 조직·지원 창, 단위대 지정
-	_key(KEY_O)
-	_check("O → 조직·지원 창", [cui.org_visible(), sim.clock.paused], [true, true])
+	# 지휘관 명령 E 지원 요청 → W 조직 → 조직·지원 창, 단위대 지정
+	sel._set_selection([] as Array[int], [] as Array[int])
+	_key(KEY_E)
+	_key(KEY_W)
+	_check("E → W → 조직·지원 창", [cui.org_visible(), sim.clock.paused], [true, true])
 	cui.assign_division("A면", 0, [1] as Array[int])
 	_check("단위대 지정하면 창 닫힘", [cui.org_visible(), sim.clock.paused], [false, false])
 	sim.step_ticks(200)
 	_check("A면 단위대 지정 (진압1 대장, 구조1)", sim.command.org.division_named("A면").squads if sim.command.org.division_named("A면") else [], [0, 1])
 
+	# 실제 플레이에서는 배속 키를 막고 현장 시계 배속으로 고정 (P9-1)
+	var field_speed: float = sim.clock.speed
 	_key(KEY_F2)
-	_check("F2 → 2배속", sim.clock.speed, 2.0)
+	_check("F2 → 배속 바뀌지 않음 (현장 시계 고정)", sim.clock.speed, field_speed)
 	_key(KEY_SPACE)
 	_check("Space → 일시정지", sim.clock.paused, true)
 
@@ -239,6 +276,8 @@ func _run() -> void:
 	await process_frame
 	_click(u.get_crew(1).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
 	_check("입체: 클릭 선택", sel.selected, [1])
+	world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(Vector2(24.5, 17.5)))
+	await process_frame
 	_click(Vector2(24.5, 17.5), MOUSE_BUTTON_RIGHT)
 	sim.step_ticks(1)
 	var last = sim.command_log.entries[-1]
@@ -263,38 +302,39 @@ func _run() -> void:
 	e.position = root.get_canvas_transform() * proj.to_screen(hydrant_top, 0.7)
 	root.push_input(e, true)
 	sim.clock.paused = false
-	sim.step_ticks(400)
+	_until(func() -> bool: return tanker.hydrant == 0, 1500)
 	_check("입체: 소화전 점령", tanker.hydrant, 0)
 	await process_frame
 	await process_frame
 	_check("알림 표시", world.hud._notice_label.text.contains("소화전 점령"), true)
 
-	# 분대 명령칸: W(주 임무) → 방 클릭 → 진압대는 진압, 구조대는 수색
+	# 명령 카드 (P10-2): 진압대·구조대 같은 팀 카드 — W 화점진압, Q 인명검색
 	_click(u.get_crew(1).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
 	await process_frame
-	_check("명령칸 표시 (진압대)", world.hud._card_type, "진압대")
+	_check("팀 명령 카드 (진압대)", world.hud.card.set_name, "team")
 	_key(KEY_W)
-	_check("W → 주 임무 모드", sel.mode, sel.Mode.PRIMARY)
+	_check("W → 화점진압 모드", sel.mode, sel.Mode.ATTACK)
 	_click(Vector2(24.5, 17.5), MOUSE_BUTTON_LEFT)
 	sim.step_ticks(1)
-	_key(KEY_PAGEUP)
-	_click(u.get_crew(2).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
+	# 구조1 1조는 화재 상황에 따라 2층에 못 갔을 수 있으므로 팀 카드처럼 바로 고른다
+	sel._set_selection([2] as Array[int], [] as Array[int])
 	await process_frame
-	_check("명령칸 표시 (구조대)", world.hud._card_type, "구조대")
-	_key(KEY_W)
+	_check("팀 명령 카드 (구조대도 같음)", world.hud.card.set_name, "team")
+	_key(KEY_Q)
+	_check("Q → 인명검색 모드", sel.mode, sel.Mode.SEARCH_AUTO)
 	_click(Vector2(24.5, 17.5), MOUSE_BUTTON_LEFT)
 	sim.step_ticks(1)
-	_key(KEY_PAGEDOWN)
 	var tacts := sim.command_log.entries.filter(func(c): return c is TacticalCommand)
 	_check("진압대 → 진압, 구조대 → 수색", tacts.map(func(c): return c.action), ["attack", "search"])
 	_check("RECEO 상태판", cui._receo_label.text.contains("R 구조"), true)
-	# 안전 임무 지정(RIT)·인원점검(P)
+	# 안전 임무 지정(RIT)·인원 점검 (지휘관 명령 R)
 	cui.assign_role(3, SafetySystem.Role.RIT)
-	_key(KEY_P)
+	sel._set_selection([] as Array[int], [] as Array[int])
+	_key(KEY_R)
 	sim.clock.paused = false
 	sim.step_ticks(300)
 	_check("RIT 지정 (구조1 2조)", sim.command.safety.role_of(3), SafetySystem.Role.RIT)
-	_check("P → 인원점검", sim.command.safety.par_log.size() >= 1, true)
+	_check("지휘관 R → 인원 점검", sim.command.safety.par_log.size() >= 1, true)
 	# R7a 임무형 내부 지휘: 건물 안 조는 본 곳에만 경유지, 지시는 무전으로 전달
 	sim.command.interior.enabled = true
 	var inside_id := -1
@@ -354,7 +394,7 @@ func _run() -> void:
 			var lt = sim.command_log.entries.filter(func(c): return c is TacticalCommand)
 			_check("본 적 없는 방 W → 층 진압", lt[-1].action if not lt.is_empty() else "", "attack_floor")
 			world.set_view_level(1)
-	# R7c 원형 메뉴: 건물 안 조 우클릭 → 메뉴 → 보고 요청·대기
+	# 원형 메뉴 (P10-2): 건물 안 조 좌클릭 → 명령 카드와 같은 6칸 → A 대기 → W 보고 요청·Q 대기
 	var mui = world.mission_ui
 	if inside_id >= 0:
 		var lv2 := u.get_crew(inside_id).leader.level
@@ -362,15 +402,22 @@ func _run() -> void:
 		var here2 := u.get_crew(inside_id).leader.pos
 		world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(here2))
 		await process_frame
-		_click(here2, MOUSE_BUTTON_RIGHT, false, false, true)
+		_click(here2, MOUSE_BUTTON_LEFT, false, false, true)
 		await process_frame
-		_check("건물 안 조 우클릭 → 원형 메뉴", mui.radial.visible, true)
+		_check("건물 안 조 좌클릭 → 원형 메뉴", mui.radial.visible, true)
 		_check("원형 메뉴 6항목", mui.radial.items.size(), 6)
-		# 항목을 실제로 클릭 (보고 요청 = 5번째)
+		# A 대기(5번째)를 실제로 클릭 → 하위 칸으로 다시 열림 → W 보고 요청(2번째)
+		var ea := InputEventMouseButton.new()
+		ea.button_index = MOUSE_BUTTON_LEFT
+		ea.pressed = true
+		ea.position = mui.radial.item_position(4)
+		root.push_input(ea, true)
+		await process_frame
+		_check("A 대기 → 하위 칸 원형 메뉴", [mui.radial.visible, str(mui.radial.items[1].label)], [true, "W 보고 요청"])
 		var e2 := InputEventMouseButton.new()
 		e2.button_index = MOUSE_BUTTON_LEFT
 		e2.pressed = true
-		e2.position = mui.radial.item_position(4)
+		e2.position = mui.radial.item_position(1)
 		root.push_input(e2, true)
 		await process_frame
 		_check("메뉴 클릭 → 닫힘", mui.radial.visible, false)
@@ -378,7 +425,8 @@ func _run() -> void:
 		var asked := sim.command.radio.queue.any(func(m): return m.body.contains("상황 보고하라")) or (sim.command.radio.current != null and sim.command.radio.current.body.contains("상황 보고하라"))
 		_check("보고 요청 무전", asked, true)
 		mui.open_crew_menu(inside_id, Vector2(600, 400))
-		mui.radial.pick("hold")
+		mui.radial.pick("A")
+		mui.radial.pick("Q")
 		var held := sim.issued.filter(func(x): return x.command is TacticalCommand and x.command.action == "hold")
 		_check("대기 지시", held.size(), 1)
 	# R7c 팀 카드: 상황판에 조마다 카드, 끌어다 지도에 놓기 → 임무 창 → 인명 검색 + 임무 조건
@@ -476,7 +524,8 @@ func _run() -> void:
 	sim.command.interior.enabled = false
 	# 활동 단계 표시줄·남은 시간 (R1)
 	_check("단계 표시줄", world.hud.phase_bar.text.contains("완진 선언"), true)
-	_check("남은 시간 표시", world.hud.clock_label.text.contains("남은"), true)
+	# 제한시간은 없앴다 (P11-1). 시계는 신고 후 시간 (P9-1)
+	_check("신고 후 시계 표시", world.hud.clock_label.text.contains("신고 후"), true)
 	# 완진 선언 창 → 선언 (불이 남아 있어도 막지 않음) → 마무리 단계
 	cui.open_all_clear()
 	_check("완진 선언 창 (확인 목록)", cui.all_clear_checklist().contains("초진 보고"), true)
@@ -561,6 +610,14 @@ func _drag(from_cell: Vector2, to_cell: Vector2) -> void:
 	release.pressed = false
 	release.position = motion.position
 	root.push_input(release, true)
+
+
+## 조건이 될 때까지 시뮬레이션을 진행 (최대 max_ticks)
+func _until(cond: Callable, max_ticks: int) -> void:
+	for i in max_ticks:
+		if cond.call():
+			return
+		_world.sim.step_ticks(1)
 
 
 func _key(keycode: Key, ctrl := false) -> void:

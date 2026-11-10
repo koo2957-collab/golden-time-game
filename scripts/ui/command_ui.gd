@@ -140,6 +140,8 @@ func _process(delta: float) -> void:
 		var t := sim.transfer
 		if _transfer_button:
 			_transfer_button.visible = t.arrived() and not t.transferred()
+		if _all_clear_button:
+			_all_clear_button.visible = sim.phases.knockdown_tick >= 0 and sim.phases.all_clear.is_empty()
 		if t.arrived() and not t.transferred() and not _transfer_prompted and not any_dialog_open():
 			_transfer_prompted = true
 			open_transfer_dialog()
@@ -227,7 +229,7 @@ func open_command_dialog() -> void:
 		_open(_report)
 
 
-## 조직·지원 창 (O): 지원 요청, 단위대 지정·해제
+## 조직·지원 창 (지휘관 명령 E 지원 요청 ▸ 조직): 지원 요청, 단위대 지정·해제
 func open_org_dialog() -> void:
 	if any_dialog_open():
 		return
@@ -270,7 +272,7 @@ func ask_witness(questions: Array[String]) -> void:
 	_submit_ask()
 
 
-## 현장 정보 창 (F): 둘러보기·진술·물증 기록
+## 현장 정보 창 (명령 카드 옆 현장 정보 버튼): 둘러보기·진술·물증 기록
 func open_info_dialog() -> void:
 	if any_dialog_open():
 		return
@@ -417,6 +419,12 @@ func _update_submit() -> void:
 
 
 func _refresh_radio() -> void:
+	var silent: PackedStringArray = []
+	for id in sim.command.safety.par_no_response:
+		var c := sim.units.get_crew(id)
+		silent.append("%s %d조 (%s)" % [sim.units.squads[c.squad_id].name, c.number, sim.building.floor_name(c.leader.level)])
+	_par_alert.text = "⚠ 인원 점검 무응답: %s — 긴급탈출 상황 선포·RIT 투입을 판단하세요" % ", ".join(silent)
+	_par_alert.visible = not silent.is_empty()
 	var bottom := board_bottom if board_bottom > 0.0 else size.y - 16.0
 	var room := maxf(160.0, bottom - 64.0 - 60.0)
 	_board_scroll.custom_minimum_size = Vector2(RADIO_WIDTH, minf(_board_body.get_combined_minimum_size().y, room))
@@ -454,7 +462,7 @@ func _refresh_radio() -> void:
 	var n := cmd.direct_count()
 	var span := "직접 지휘 %d (적정 %d, 한계 %d)" % [n, cmd.org.span_ideal, cmd.org.span_max]
 	if n > cmd.org.span_ideal:
-		span += " — 초과: 명령 %.0f초 지연. 단위대를 지정하세요 (O)" % cmd.span_delay_s()
+		span += " — 초과: 명령 %.0f초 지연. 단위대를 지정하세요 (지휘관 명령 E ▸ 조직)" % cmd.span_delay_s()
 	if cmd.held_count() > 0:
 		span += "  · 실행 대기 명령 %d건" % cmd.held_count()
 	_span_label.text = span
@@ -523,6 +531,12 @@ func _build_radio_panel() -> void:
 	_fold_button = _button("▶ 접기 (Tab)", toggle_board)
 	head.add_child(_fold_button)
 	outer.add_child(head)
+	# 긴급 줄: 인원 점검 무응답 조 (P10-2). 접어도 보인다 — 정식 고정줄은 P10-1
+	_par_alert = _label("", 16, Color("fca5a5"))
+	_par_alert.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_par_alert.custom_minimum_size = Vector2(RADIO_WIDTH - 16, 0)
+	_par_alert.visible = false
+	outer.add_child(_par_alert)
 	var box := VBoxContainer.new()
 	_board_body = box
 	_board_scroll = ScrollContainer.new()
@@ -559,32 +573,23 @@ func _build_radio_panel() -> void:
 	_survey_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_survey_label.custom_minimum_size = Vector2(RADIO_WIDTH - 16, 0)
 	box.add_child(_survey_label)
+	# 명령 카드(Q W E R A S)에 없는 지휘관 기능 (P10-2): 정보는 늘, 완진 선언은 초진 뒤, 지휘권 이양은 지휘대 도착 뒤
 	var row := HBoxContainer.new()
-	var report_button := _button("지휘 (C)", open_command_dialog)
-	var org_button := _button("조직·지원 (O)", open_org_dialog)
-	var info_button := _button("현장 정보 (F)", open_info_dialog)
+	var info_button := _button("현장 정보", open_info_dialog)
 	var walk_button := _button("360° 둘러보기", func() -> void: order_issued.emit(CommandOrder.make("survey")))
-	for b in [report_button, org_button, info_button, walk_button]:
-		b.custom_minimum_size = Vector2(150, 34)
-		row.add_child(b)
-	box.add_child(row)
-	command_rows.append(row)
-	var row2 := HBoxContainer.new()
-	var evac := _button("긴급탈출 지시", func() -> void: order_issued.emit(CommandOrder.make("evacuate")))
-	evac.add_theme_color_override("font_color", WARN_COLOR)
-	var par := _button("인원점검 (P)", func() -> void: order_issued.emit(CommandOrder.make("par")))
-	var clear := _button("완진 선언", open_all_clear)
-	var pre := _button("선제지시", open_preorder)
+	_all_clear_button = _button("완진 선언", open_all_clear)
+	_all_clear_button.visible = false
 	var end := _button("활동 종료", open_end_confirm)
 	# 지휘대가 도착하면 보이는 지휘권 이양 버튼 (SOP 112, R13)
 	_transfer_button = _button("지휘권 이양", open_transfer_dialog)
 	_transfer_button.add_theme_color_override("font_color", Color("fde68a"))
 	_transfer_button.visible = false
-	for b in [evac, par, pre, clear, end, _transfer_button]:
-		b.custom_minimum_size = Vector2(150, 34)
-		row2.add_child(b)
-	box.add_child(row2)
-	command_rows.append(row2)
+	for b in [info_button, walk_button, _all_clear_button, end, _transfer_button]:
+		b.custom_minimum_size = Vector2(118, 30)
+		b.add_theme_font_size_override("font_size", 13)
+		row.add_child(b)
+	box.add_child(row)
+	command_rows.append(row)
 	add_child(_radio_panel)
 
 
@@ -607,7 +612,7 @@ func _build_dispatch() -> void:
 		l.custom_minimum_size = Vector2(DIALOG_WIDTH - 40, 0)
 		box.add_child(l)
 		_dispatch_lines.append(l)
-	box.add_child(_label("도착하면 지휘권을 선언하고 최초 상황보고를 하십시오 (C). 내부 진입은 진입 명령(R)을 받은 출동대만 합니다.", 16, DIM_COLOR))
+	box.add_child(_label("도착하면 지휘권을 선언하고 최초 상황보고를 하십시오 (지휘관 명령 Q 전략 변경). 건물 안 임무를 받은 조는 입구에서 진입 허가를 무전으로 요청합니다.", 16, DIM_COLOR))
 	var opts := Placement.options(sim)
 	if not opts.is_empty():
 		box.add_child(_label("선착 차량 배치 (SOP 200-3.1.1) — 화염·낙하물 피해, 후착대·특수차 공간, 소화전을 생각해 고르세요", 17, Color("fde68a")))
@@ -1145,7 +1150,7 @@ func _rebuild_end() -> void:
 	for ff in sim.units.firefighters:
 		if not sim.building.cell(ff.level, floori(ff.pos.x), floori(ff.pos.y)) in BuildingData.OUTDOOR:
 			inside += 1
-	var par_text := "인원점검: %s" % ("하지 않음 — 무전 패널의 인원점검(P)으로 먼저 확인하세요 (SOP 200-4.1)" if pars.is_empty()
+	var par_text := "인원점검: %s" % ("하지 않음 — 지휘관 명령 R 인원 점검으로 먼저 확인하세요 (SOP 200-4.1)" if pars.is_empty()
 		else "마지막 %s (%s)" % [_time(pars[-1].tick), "이상 없음" if pars[-1].missing == 0 and pars[-1].indoor == 0 else "건물 안 %d명, 미확인 %d명" % [pars[-1].indoor, pars[-1].missing]])
 	_end_status.text = "%s\n지금 건물 안 대원: %d명" % [par_text, inside]
 	_end_warning.text = "\n".join(end_warnings())
@@ -1203,7 +1208,7 @@ func _build_all_clear() -> void:
 	_all_clear = _dialog()
 	var box: VBoxContainer = _all_clear.get_child(0)
 	box.add_child(_label("완진 선언 (소방전술 I 8단계 ⑥, SOP 202-6)", 22, Color("fde68a")))
-	var l := _label("발화층·직상층·각 진압 구역 등 노출된 모든 곳을 확인했으면 완진을 선언합니다. 아직 불이 남아 있어도 선언은 할 수 있지만 그대로 평가됩니다. 선언 뒤에는 인원점검(P)과 활동 종료(재발화 감시 지정)로 마무리합니다.", 16, TEXT_COLOR)
+	var l := _label("발화층·직상층·각 진압 구역 등 노출된 모든 곳을 확인했으면 완진을 선언합니다. 아직 불이 남아 있어도 선언은 할 수 있지만 그대로 평가됩니다. 선언 뒤에는 인원 점검(지휘관 명령 R)과 활동 종료(재발화 감시 지정)로 마무리합니다.", 16, TEXT_COLOR)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.custom_minimum_size = Vector2(DIALOG_WIDTH - 40, 0)
 	box.add_child(l)
@@ -1467,6 +1472,10 @@ func loadout_selection() -> Array:
 
 var _transfer: PanelContainer
 var _transfer_button: Button
+## 초진 뒤에 보이는 완진 선언 버튼
+var _all_clear_button: Button
+## 무전 패널 맨 위 긴급 줄 (인원 점검 무응답)
+var _par_alert: Label
 var _transfer_prompted := false
 var _transfer_opts: Dictionary = {}  # 항목 -> OptionButton
 

@@ -121,12 +121,10 @@ func test_collapse_sign_and_collapse() -> void:
 
 
 func test_late_squad_card_and_rules() -> void:
-	var cards: Dictionary = JsonData.load_file(Hud.COMMAND_CARDS_PATH)
-	assert_true(cards.has("후착 진압대"), "후착 진압대 명령칸")
-	var ids: Array = []
-	for spec: Dictionary in cards["후착 진압대"]:
-		ids.append(spec.id)
-	assert_eq(ids, ["attack", "exterior", "search_auto", "monitor", "elevator", "withdraw"], "포위 진압·경계관창·교차 탐색·방수포·철수")
+	# 출동대별 명령칸은 명령 카드 하나로 합쳤다 (P10-2): 포위 진압·경계관창·교차 탐색·방수포·승강기는 팀 카드 안에 있다
+	var ids := CommandCard.new().all_ids("team")
+	for id in ["attack", "exterior", "search_auto", "monitor", "elevator", "withdraw"]:
+		assert_true(id in ids, "팀 명령 카드에 %s" % id)
 	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH)
 	assert_eq(sim.units.squads[0].arrival, "선착", "처음부터 현장 = 선착")
 	var n := sim.units.squads.size()

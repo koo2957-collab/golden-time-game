@@ -96,6 +96,9 @@ func step(_dt: float, tick: int) -> void:
 			queue.erase(c)
 			_log(c, tick, null, "timeout")
 			events.add(tick, "card_timeout", {"crew": _crew_name(c.crew_id), "title": str(c.spec.get("title", c.id))})
+			# 진입 허가 요청에 답하지 않음: 대원은 입구에서 기다리고 잠시 뒤 다시 묻는다 (P10-2)
+			if c.ctx.has("squad_id") and str(c.spec.get("trigger", "")) == "entry_request" and sim:
+				sim.command.entry_request_expired(int(c.ctx.squad_id), tick)
 
 
 ## 답하기 (CommandOrder "card_answer"). index는 화면에 보인 순서
@@ -137,7 +140,7 @@ func _scan_events(tick: int) -> void:
 			if spec.has("stages") and not (sim and str(sim.scenario.get("meta", {}).get("stage", "")) in spec.stages):
 				continue
 			if bool(spec.get("once", false)) and log.any(func(l: Dictionary) -> bool: return l.id == str(spec.id)) \
-					or queue.any(func(q: Card) -> bool: return q.id == str(spec.id)):
+					or not bool(spec.get("multi", false)) and queue.any(func(q: Card) -> bool: return q.id == str(spec.id)):
 				continue
 			_raise(spec, e, tick)
 
@@ -178,6 +181,8 @@ func _trigger_of(e: Dictionary) -> String:
 			return "fire_found"
 		"phase":
 			return "arrival" if int(e.get("index", -1)) == 1 else ""
+		"entry_request":
+			return "entry_request"
 	return ""
 
 
@@ -246,6 +251,8 @@ func _raise(spec: Dictionary, e: Dictionary, tick: int) -> void:
 		return
 	if queue.size() >= _queue_max:
 		_log(c, tick, null, "overflow")
+		if c.ctx.has("squad_id") and str(spec.get("trigger", "")) == "entry_request" and sim:
+			sim.command.entry_request_expired(int(c.ctx.squad_id), tick)
 		events.add(tick, "card_overflow", {"crew": _crew_name(c.crew_id), "title": str(spec.get("title", c.id))})
 		return
 	c.deadline_tick = tick + roundi(float(spec.get("time_limit_sec", _seconds.get(c.urgency, 20.0))) * time_factor * clock_scale / SimClock.TICK_DT)
@@ -326,7 +333,7 @@ func _nearest_crew(p: Vector2, level := -1, type := "") -> int:
 func _apply(effect: String, c: Card, tick: int) -> void:
 	var crew := units.get_crew(c.crew_id)
 	# 조가 없어도 되는 행동 (차량·대피 방송·안전구역·RIT 등)
-	const NO_CREW := ["shuttle", "clear_zone", "shelter", "evacuate_now", "note", "hold", "", "connect_fdc", "supply_pump", "rit_deploy", "air_mat"]
+	const NO_CREW := ["entry_grant", "entry_wait", "entry_deny", "shuttle", "clear_zone", "shelter", "evacuate_now", "note", "hold", "", "connect_fdc", "supply_pump", "rit_deploy", "air_mat"]
 	if crew == null and not effect in NO_CREW:
 		return
 	var here := crew.leader.pos if crew else Vector2(fire.building.footprint(1).get_center())
@@ -335,6 +342,9 @@ func _apply(effect: String, c: Card, tick: int) -> void:
 	var action := str(c.ctx.get("action", ""))
 	var target := _cell(c.ctx.get("target", []))
 	match effect:
+		"entry_grant", "entry_wait", "entry_deny":
+			if sim:
+				sim.command.answer_entry(int(c.ctx.get("squad_id", -1)), effect.trim_prefix("entry_"), tick)
 		"open_door", "force_door":
 			if door:
 				tactical.allow_door(c.crew_id, door.index)

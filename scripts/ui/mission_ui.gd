@@ -1,7 +1,7 @@
 class_name MissionUi
 extends Control
 ## 임무형 내부 지휘 화면 (기획안 9-1·9-2, R7c)
-##   - 원형 메뉴: 건물 안 조를 우클릭 → 여기로(경유지)·구역 변경·대기·철수·보고 요청·지원 투입
+##   - 원형 메뉴: 지도에서 조를 좌클릭 → 명령 카드와 같은 칸 (data/commands.json, P10-2)
 ##   - 끌어다 놓기: 전술상황판의 팀 카드를 지도의 방·층에 놓으면 임무 창 → 임무(화점 진압·인명 검색) + 임무 조건
 ## 화면만 만든다. 명령은 order_issued로 내보내고 시뮬레이션이 실행한다 (다시 하기에 기록된다).
 
@@ -18,6 +18,10 @@ var radial: RadialMenu
 var panel: PanelContainer
 
 var _menu_crew := -1
+var _menu_center := Vector2.ZERO
+## 명령 카드 (Hud와 같은 것)와 칸 누르기 (World._press_card)
+var card: CommandCard
+var press_card: Callable
 var _drop_crew := -1
 var _drop_target := Vector3i.ZERO
 var _drag_crew := -1
@@ -67,44 +71,39 @@ func close_all() -> void:
 
 # --- 원형 메뉴 ---
 
-## 건물 안 조 우클릭 (SelectionController.crew_menu)
+## 지도에서 조 좌클릭 (SelectionController.crew_menu): 명령 카드와 같은 칸을 커서 둘레에 (기획안 9-1, P10-2)
 func open_crew_menu(crew_id: int, screen_pos: Vector2) -> void:
 	var c := sim.units.get_crew(crew_id)
-	if c == null:
+	if c == null or card == null:
 		return
 	_menu_crew = crew_id
-	var helper := support_crew(crew_id)
-	var items: Array[Dictionary] = [
-		{"id": "waypoint", "label": "여기로", "tip": "본 적 있는 곳을 클릭 — 무전으로 경유지 지시"},
-		{"id": "zone", "label": "구역 변경", "tip": "방이나 층을 클릭해 임무 구역을 바꾼다 (W와 같음)"},
-		{"id": "hold", "label": "대기", "tip": "하던 일을 멈추고 그 자리에서 대기"},
-		{"id": "withdraw", "label": "철수", "tip": "이 조만 가까운 출구로 철수 (대원 안전 우선 무전)"},
-		{"id": "report", "label": "보고 요청", "tip": "위치·임무·공기 잔량 보고를 요청"},
-		{"id": "support", "label": "지원 투입", "enabled": helper >= 0,
-			"tip": ("%s을(를) 같은 임무에 투입" % _crew_name(helper)) if helper >= 0 else "투입할 수 있는 조가 없음 (밖에서 쉬는 조)"},
-	]
-	var task := sim.tactical.mission_text(crew_id)
-	radial.open(screen_pos, "%s · %s" % [_crew_name(crew_id), task if task != "" else "임무 없음"], items)
+	_menu_center = screen_pos
+	_open_radial()
 
 
-func _on_radial(id: String) -> void:
-	var crew := _menu_crew
-	var ids: Array[int] = [crew]
-	match id:
-		"waypoint":
-			selection._set_selection(ids)
-			selection.begin_mode(SelectionController.Mode.WAYPOINT)
-		"zone":
-			selection._set_selection(ids)
-			selection.begin_mode(SelectionController.Mode.PRIMARY)
-		"hold":
-			order_issued.emit(TacticalCommand.make("hold", ids))
-		"withdraw":
-			order_issued.emit(TacticalCommand.make("withdraw", ids))
-		"report":
-			order_issued.emit(CommandOrder.make("report_request", [], 0, Vector3i.ZERO, {"crews": [crew]}))
-		"support":
-			_send_support(crew)
+func _open_radial() -> void:
+	var items: Array[Dictionary] = []
+	var slots := card.slots()
+	for i in slots.size():
+		var it: Dictionary = slots[i]
+		if it.is_empty():
+			continue
+		items.append({"id": CommandCard.KEYS[i], "label": "%s %s" % [CommandCard.KEYS[i], str(it.label)],
+			"tip": str(it.get("hint", "")), "enabled": card.is_enabled(it)})
+	var task := sim.tactical.mission_text(_menu_crew)
+	var head := "%s · %s" % [_crew_name(_menu_crew), task if task != "" else "임무 없음"]
+	if card.parent != "":
+		head += " ▸ " + str(card.parent_item().get("label", ""))
+	radial.open(_menu_center, head, items)
+
+
+## 원형 메뉴에서 칸을 고름 = 명령 카드 칸을 누름 (같은 처리). 하위 칸만 펼쳤으면 그 자리에서 다시 연다
+func _on_radial(key: String) -> void:
+	if not press_card.is_valid():
+		return
+	press_card.call(key)
+	if card.parent != "" and selection.mode == SelectionController.Mode.NONE:
+		_open_radial()
 
 
 ## 지원 투입할 조: 밖에 있고 임무가 없는 조 (같은 출동대 우선, 가까운 순). RIT·안전담당·구급대는 빼고
@@ -128,7 +127,7 @@ func support_crew(crew_id: int) -> int:
 	return best
 
 
-func _send_support(crew_id: int) -> void:
+func send_support(crew_id: int) -> void:
 	var helper := support_crew(crew_id)
 	if helper < 0:
 		notice.emit("투입할 수 있는 조가 없습니다")

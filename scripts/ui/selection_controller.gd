@@ -13,13 +13,13 @@ extends Node2D
 ## 선택 단위는 조(2인 1조)와 차량이며, 현재 보고 있는 층의 대원만 선택된다.
 ## 좌표 변환은 projection(상황판/입체)을 따른다.
 
-enum Mode { NONE, HOSE, STRAIGHT, FOG, DOOR, SEARCH, OVERHAUL, PRIMARY, ATTACK, SEARCH_AUTO, EXTERIOR, RESCUE, TREAT, TRANSPORT, AIR_MAT, WAYPOINT, PENCIL, COVER, MONITOR, PPV, ELEVATOR, LIFELINE }
+enum Mode { NONE, HOSE, STRAIGHT, FOG, DOOR, SEARCH, OVERHAUL, PRIMARY, ATTACK, SEARCH_AUTO, EXTERIOR, RESCUE, TREAT, TRANSPORT, AIR_MAT, WAYPOINT, PENCIL, COVER, MONITOR, PPV, ELEVATOR, LIFELINE, VEHICLE_CONNECT, VEHICLE_MOVE }
 
 ## 관계인을 클릭했을 때 (world가 진술 창을 연다)
 signal witness_clicked(index: int)
 ## 화면 알림 요청 (HUD가 띄운다)
 signal notice(text: String)
-## 건물 안 조를 우클릭함 → 원형 메뉴 (기획안 9-1, R7c)
+## 지도에서 조를 좌클릭함 → 원형 메뉴 (기획안 9-1, P10-2)
 signal crew_menu(crew_id: int, screen_pos: Vector2)
 ## 단면 보기에서 아래층(보이기만 하는 층)을 눌렀다 — 그 층을 지금 층으로 (R17)
 signal floor_clicked(level: int)
@@ -42,9 +42,9 @@ const MODE_HINTS := {
 	Mode.SEARCH: "인명검색: 검색할 방을 클릭",
 	Mode.OVERHAUL: "잔불정리: 방을 클릭 (열화상으로 찾은 불씨를 없앤다)",
 	Mode.PRIMARY: "주 임무: 방을 클릭 (진압대는 진압, 구조대는 수색)",
-	Mode.ATTACK: "진압: 방을 클릭 (문 개방·수관 연장·분무 방수, 불이 잡히면 중지)",
-	Mode.SEARCH_AUTO: "수색: 방을 클릭 (문 개방·인명검색·이송)",
-	Mode.EXTERIOR: "외부 방수: 창이나 개구부를 클릭 (밖에서 직사)",
+	Mode.ATTACK: "화점진압: 방·층을 클릭 (수관 연장·진입·화점 탐색·방수·잔불 확인) — 세부 동작은 명령 카드",
+	Mode.SEARCH_AUTO: "인명검색: 방·층을 클릭 (문 개방·방별 탐색·발견하면 보고 후 구조) — 세부 동작은 명령 카드",
+	Mode.EXTERIOR: "경계: 창·개구부·인접 건물 쪽을 클릭 (관창 배치, 불이 다가오면 방수)",
 	Mode.RESCUE: "구조: 발견한 구조대상자나 쓰러진 대원을 클릭",
 	Mode.TREAT: "처치: 구조된 환자를 클릭 (구급대가 가서 응급처치)",
 	Mode.TRANSPORT: "이송: 처치한 환자를 클릭 (들것으로 구급차에 태워 병원으로)",
@@ -55,6 +55,8 @@ const MODE_HINTS := {
 	Mode.MONITOR: "방수포: 바깥 창·문을 클릭 — 진입대원이 있는 방에는 쓰지 않는다 (SOP 207-1.1)",
 	Mode.PPV: "송풍기 양압배연: 바깥 출입문을 클릭 — 먼저 반대편 창(배출구)을 확보한다",
 	Mode.LIFELINE: "라이트라인: 끝 지점을 클릭 — 조가 지금 자리에서 그곳까지 유도선을 깔며 간다 (시계 0 구역, SOP 217)",
+	Mode.VEHICLE_CONNECT: "급수 연결: 소화전·송수구(펌프차) 또는 펌프차(물탱크차)를 클릭",
+	Mode.VEHICLE_MOVE: "자리 옮기기: 차를 옮길 곳을 클릭",
 	Mode.ELEVATOR: "비상용승강기: 내릴 층으로 화면을 옮긴 뒤(층 막대·PgUp/PgDn) 지도를 클릭 — 화재층 2개층 아래까지 (SOP 222)",
 }
 ## 요구조자·쓰러진 대원을 클릭으로 고를 때 허용 반경 (px)
@@ -185,20 +187,14 @@ func _handle_button(event: InputEventMouseButton) -> void:
 		elif _dragging:
 			_box_select(event.shift_pressed)
 		else:
-			_click_select(world_pos, event.shift_pressed)
+			_click_select(world_pos, event.shift_pressed, event.position)
 		_pressing = false
 		_dragging = false
 		queue_redraw()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("command"):
-		# 건물 안 조를 우클릭하면 원형 메뉴 (임무형 내부 지휘)
-		var menu_crew := _crew_at(world_pos)
-		if menu_crew >= 0 and sim.command.interior.enabled and sim.command.interior.crew_inside(menu_crew) \
-				and not sim.units.get_crew(menu_crew).leader.incapacitated:
-			_set_selection([menu_crew] as Array[int])
-			crew_menu.emit(menu_crew, event.position)
-		else:
-			_issue_right_click(world_pos)
+		# 우클릭은 이동·상황 행동만 (원형 메뉴는 좌클릭, 기획안 9-1)
+		_issue_right_click(world_pos)
 		get_viewport().set_input_as_handled()
 
 
@@ -217,7 +213,7 @@ func _handle_group_key(event: InputEventKey) -> void:
 	get_viewport().set_input_as_handled()
 
 
-func _click_select(world_pos: Vector2, add: bool) -> void:
+func _click_select(world_pos: Vector2, add: bool, screen_pos := Vector2(-1, -1)) -> void:
 	if not add and _commander_at(world_pos):
 		_set_selection([], [], true)
 		return
@@ -240,6 +236,9 @@ func _click_select(world_pos: Vector2, add: bool) -> void:
 	if not add:
 		if crew_id >= 0:
 			_set_selection([crew_id], [])
+			# 지도에서 조를 누르면 그 자리에 원형 메뉴 (명령 카드와 같은 항목, 기획안 9-1)
+			if screen_pos.x >= 0.0 and not sim.view_only and not sim.units.get_crew(crew_id).leader.incapacitated:
+				crew_menu.emit(crew_id, screen_pos)
 		else:
 			_set_selection([], [vehicle_id])
 		return
@@ -286,67 +285,91 @@ func _issue_right_click(world_pos: Vector2) -> void:
 	if selected.is_empty() and selected_vehicles.is_empty():
 		return
 	if not selected_vehicles.is_empty():
-		var hydrant := sim.water.hydrant_near(cell_f, 1.5)
-		if hydrant < 0:
-			# 입체 화면에서 소화전 기둥 윗부분을 누른 경우
-			hydrant = sim.water.hydrant_near(projection.to_cell_at(world_pos, HYDRANT_PICK_HEIGHT_M), 1.5)
-		var target_vehicle := _vehicle_at(world_pos)
-		var on_fdc := sim.building.has_standpipe() and cell_f.distance_to(Vector2(sim.building.fdc) + Vector2(0.5, 0.5)) <= 1.5
-		for vid in selected_vehicles:
-			var v := sim.units.get_vehicle(vid)
-			if on_fdc and v.is_pump():
-				sim.issue(EquipmentCommand.make("fdc", [], vid))
-			elif hydrant >= 0:
-				sim.issue(EquipmentCommand.make("hydrant", [], vid, hydrant))
-			elif target_vehicle >= 0 and target_vehicle != vid and v.transfer_lpm > 0.0:
-				sim.issue(EquipmentCommand.make("supply", [], vid, target_vehicle))
-			else:
-				sim.issue(EquipmentCommand.make("vehicle_move", [], vid, -1, Vector3i(cell.x, cell.y, 1)))
+		_issue_vehicle_click(world_pos)
 	if not selected.is_empty():
-		var pump := _vehicle_at(world_pos)
-		var without_hose: Array[int] = []
-		for id in selected:
-			if sim.water.hose_of_crew(id) == null:
-				without_hose.append(id)
-		var door := _door_at(world_pos)
-		var casualty := _casualty_at(world_pos)
-		var patient := _patient_at(world_pos)
-		if patient >= 0 and sim.ems.is_ems_crew(selected[0]):
-			var p := sim.ems.patient_of(patient)
-			sim.issue(EquipmentCommand.make("ems_transport" if p.stage == EmsSystem.Stage.TREATED else "ems_treat", selected, -1, patient))
-			marker_cell = sim.rescue.victims[patient].pos
-		elif casualty.x >= 0:
-			sim.issue(EquipmentCommand.make("rescue" if casualty.x == 0 else "rescue_ff", selected, -1, casualty.y))
-		elif _outlet_at(cell_f) >= 0 and not without_hose.is_empty():
-			# 방수구 우클릭: 수관이 없는 조는 방수구에서 수관 연장 (연결송수관)
-			sim.issue(EquipmentCommand.make("hose_outlet", without_hose, -1, _outlet_at(cell_f)))
-		elif level == 1 and sim.gas.open and sim.gas.known(sim.command.survey) and sim.gas.valve_near(cell_f):
-			# 가스 밸브 우클릭: 첫 조가 가서 차단 (SOP 214-2.2)
-			sim.issue(EquipmentCommand.make("gas_off", selected))
-			marker_cell = Vector2(sim.gas.valve) + Vector2(0.5, 0.5)
-		elif door and not door.is_open:
-			# 닫힌 문 우클릭: 문 개방 (잠긴 문은 파괴)
-			sim.issue(EquipmentCommand.make("door_open", selected, -1, -1, Vector3i(door.cells[0].x, door.cells[0].y, level)))
-			marker_cell = Vector2(door.cells[0]) + Vector2(0.5, 0.5)
-		elif pump >= 0 and sim.units.get_vehicle(pump).is_pump() and not without_hose.is_empty():
-			# 펌프차 우클릭: 수관이 없는 조는 이 펌프차에서 수관 연장
-			sim.issue(EquipmentCommand.make("hose", without_hose, pump))
-			marker_cell = sim.units.get_vehicle(pump).pos
+		_issue_crew_right_click(world_pos)
+
+
+## 고른 차량에게: 소화전·송수구·펌프차를 누르면 연결, 아니면 그곳으로 이동 (우클릭·명령 카드 급수 연결)
+func _issue_vehicle_click(world_pos: Vector2) -> void:
+	var cell_f := projection.to_cell(world_pos)
+	var cell := Vector2i(cell_f.floor())
+	var hydrant := sim.water.hydrant_near(cell_f, 1.5)
+	if hydrant < 0:
+		# 입체 화면에서 소화전 기둥 윗부분을 누른 경우
+		hydrant = sim.water.hydrant_near(projection.to_cell_at(world_pos, HYDRANT_PICK_HEIGHT_M), 1.5)
+	var target_vehicle := _vehicle_at(world_pos)
+	var on_fdc := sim.building.has_standpipe() and cell_f.distance_to(Vector2(sim.building.fdc) + Vector2(0.5, 0.5)) <= 1.5
+	for vid in selected_vehicles:
+		var v := sim.units.get_vehicle(vid)
+		if on_fdc and v.is_pump():
+			sim.issue(EquipmentCommand.make("fdc", [], vid))
+		elif hydrant >= 0:
+			sim.issue(EquipmentCommand.make("hydrant", [], vid, hydrant))
+		elif target_vehicle >= 0 and target_vehicle != vid and v.transfer_lpm > 0.0:
+			sim.issue(EquipmentCommand.make("supply", [], vid, target_vehicle))
 		else:
-			var target := sim.pathfinder.nearest_walkable(level, cell)
-			if target != Pathfinder.NO_CELL:
-				# 스타크래프트처럼: 이동 명령은 방수를 멈춘다
-				var spraying := crews_spraying()
-				if not spraying.is_empty():
-					sim.issue(EquipmentCommand.make("stop", spraying))
-				sim.issue(MoveCommand.new(selected, Vector3i(target.x, target.y, level)))
-				marker_cell = Vector2(target) + Vector2(0.5, 0.5)
+			sim.issue(EquipmentCommand.make("vehicle_move", [], vid, -1, Vector3i(cell.x, cell.y, 1)))
+	_marker_world = projection.to_screen(Vector2(cell) + Vector2(0.5, 0.5))
+	_marker_start_ms = Time.get_ticks_msec()
+
+
+## 고른 조 우클릭: 펌프차면 수관, 아니면 이동·상황 행동
+func _issue_crew_right_click(world_pos: Vector2) -> void:
+	var cell_f := projection.to_cell(world_pos)
+	var cell := Vector2i(cell_f.floor())
+	var marker_cell := Vector2(cell) + Vector2(0.5, 0.5)
+	var pump := _vehicle_at(world_pos)
+	var without_hose: Array[int] = []
+	for id in selected:
+		if sim.water.hose_of_crew(id) == null:
+			without_hose.append(id)
+	var door := _door_at(world_pos)
+	var casualty := _casualty_at(world_pos)
+	var patient := _patient_at(world_pos)
+	if patient >= 0 and sim.ems.is_ems_crew(selected[0]):
+		var p := sim.ems.patient_of(patient)
+		sim.issue(EquipmentCommand.make("ems_transport" if p.stage == EmsSystem.Stage.TREATED else "ems_treat", selected, -1, patient))
+		marker_cell = sim.rescue.victims[patient].pos
+	elif casualty.x >= 0:
+		sim.issue(EquipmentCommand.make("rescue" if casualty.x == 0 else "rescue_ff", selected, -1, casualty.y))
+	elif _outlet_at(cell_f) >= 0 and not without_hose.is_empty():
+		# 방수구 우클릭: 수관이 없는 조는 방수구에서 수관 연장 (연결송수관)
+		sim.issue(EquipmentCommand.make("hose_outlet", without_hose, -1, _outlet_at(cell_f)))
+	elif level == 1 and sim.gas.open and sim.gas.known(sim.command.survey) and sim.gas.valve_near(cell_f):
+		# 가스 밸브 우클릭: 첫 조가 가서 차단 (SOP 214-2.2)
+		sim.issue(EquipmentCommand.make("gas_off", selected))
+		marker_cell = Vector2(sim.gas.valve) + Vector2(0.5, 0.5)
+	elif door and not door.is_open:
+		# 닫힌 문 우클릭: 문 개방 (잠긴 문은 파괴)
+		sim.issue(EquipmentCommand.make("door_open", selected, -1, -1, Vector3i(door.cells[0].x, door.cells[0].y, level)))
+		marker_cell = Vector2(door.cells[0]) + Vector2(0.5, 0.5)
+	elif pump >= 0 and sim.units.get_vehicle(pump).is_pump() and not without_hose.is_empty():
+		# 펌프차 우클릭: 수관이 없는 조는 이 펌프차에서 수관 연장
+		sim.issue(EquipmentCommand.make("hose", without_hose, pump))
+		marker_cell = sim.units.get_vehicle(pump).pos
+	else:
+		var target := sim.pathfinder.nearest_walkable(level, cell)
+		if target != Pathfinder.NO_CELL:
+			# 스타크래프트처럼: 이동 명령은 방수를 멈춘다
+			var spraying := crews_spraying()
+			if not spraying.is_empty():
+				sim.issue(EquipmentCommand.make("stop", spraying))
+			sim.issue(MoveCommand.new(selected, Vector3i(target.x, target.y, level)))
+			marker_cell = Vector2(target) + Vector2(0.5, 0.5)
 	_marker_world = projection.to_screen(marker_cell)
 	_marker_start_ms = Time.get_ticks_msec()
 
 
 func _complete_mode(world_pos: Vector2) -> void:
 	match mode:
+		Mode.VEHICLE_CONNECT:
+			if not selected_vehicles.is_empty():
+				_issue_vehicle_click(world_pos)
+		Mode.VEHICLE_MOVE:
+			var cell := Vector2i(projection.to_cell(world_pos).floor())
+			for vid in selected_vehicles:
+				sim.issue(EquipmentCommand.make("vehicle_move", [], vid, -1, Vector3i(cell.x, cell.y, 1)))
 		Mode.HOSE:
 			var vid := _vehicle_at(world_pos)
 			if vid >= 0 and sim.units.get_vehicle(vid).is_pump() and not selected.is_empty():

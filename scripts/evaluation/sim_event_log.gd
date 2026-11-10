@@ -142,7 +142,11 @@ static func describe_text(e: Dictionary) -> String:
 		"entry_rejected":
 			text = "진입 명령 불가 (%s) — %s" % [e.reason, e.squad]
 		"entry_wait":
-			text = "진입 명령 대기 (입구 앞에서 멈춤) — %s" % e.crew
+			text = "진입 허가 대기 (입구 앞에서 멈춤) — %s" % e.crew
+		"entry_request":
+			text = "진입 허가 요청 — %s" % e.crew
+		"entry_denied":
+			text = "진입 금지 — %s 밖에서 대기" % e.squad
 		"crew_entered":
 			text = "%s 진입 — %s" % [e.floor, e.crew]
 		"withdraw":
@@ -201,6 +205,8 @@ static func describe_text(e: Dictionary) -> String:
 			text = "긴급탈출 지시 전파 — 전 대원 탈출"
 		"evacuate":
 			text = "긴급탈출 — %s" % e.crew
+		"par_no_response":
+			text = "인원점검 무응답 — %s (%s)" % [e.crew, e.where]
 		"par_done":
 			text = "인원점검 — %s" % ("이상 없음" if e.missing == 0 and e.indoor == 0 else "건물 안 %d명, 미확인 %d명" % [e.indoor, e.missing])
 		"role_assigned":

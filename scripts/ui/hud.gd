@@ -3,11 +3,10 @@ extends Control
 ## 화면 정보: 게임 시계·배속·모드, 층 탭, 선택 정보, 명령 패널, 조작 안내,
 ## 열화상 범례, 개발용 화재 정보 패널. 지휘 화면(무전·상황보고·전략)은 command_ui.gd, 디브리핑은 debrief_ui.gd.
 
-## 명령 패널 버튼을 눌렀을 때 (id: "entry" / "search" / "door" / "hose" / "straight" / "fog" / "stop")
-signal command_pressed(id: String)
+## 명령 카드 칸을 눌렀을 때 (Q W E R A S — 단축키와 같은 처리, P10-2)
+signal card_key_pressed(key: String)
 
 const DEBUG_REFRESH_S := 0.25
-const COMMAND_CARDS_PATH := "res://data/units/command_cards.json"
 const SELECTION_REFRESH_S := 0.25
 ## 화면 위쪽에 알림으로 띄우는 사건. 대원이 무전으로 보고하는 사건(CommandSystem.REPORT_PRIORITY)은
 ## 무전 송신이 끝났을 때 무전 기록에 나오고, 대원 안전·구조대상자 무전은 알림으로도 띄운다.
@@ -18,11 +17,11 @@ const NOTICE_TYPES: Array[String] = [
 	"heat_blocked", "heat_retreat", "air_alarm", "scba_swapped",
 	"victim_found", "victim_state", "victim_rescued", "victim_recovered", "ff_rescued", "rescue_pickup",
 	"rescue_hose_crew", "exit_blocked", "search_done", "rollover_sign", "backdraft_sign", "backdraft",
-	"fgi_warning", "window_vented", "entry_wait", "entry_rejected", "withdraw", "auto_slow",
+	"fgi_warning", "window_vented", "entry_wait", "entry_rejected", "entry_denied", "withdraw", "auto_slow",
 	"squad_dispatched", "staging_full", "order_en_route", "span_warning", "division_set", "division_cleared",
 	"face_seen", "site_info_found", "clue_found", "witness_arrived", "statement", "ask_too_far", "ask_cancelled",
 	"command_post", "report_updated", "overhaul_start", "rekindle",
-	"emergency_cleared", "evacuation_ordered", "par_done", "role_assigned", "role_reserved", "rit_deployed",
+	"emergency_cleared", "evacuation_ordered", "par_done", "par_no_response", "role_assigned", "role_reserved", "rit_deployed",
 	"entry_factors", "order_unseen", "exit_air_low", "indoor_hydrant_empty", "command_unit_arrived", "command_transferred", "lifeline_laid", "crew_disoriented", "crew_reoriented", "victim_refuge", "elevator_ride", "elevator_arrived", "elevator_far", "elevator_too_high", "monitor_start", "monitor_no_target", "monitor_too_far", "monitor_crew_inside", "ppv_start", "ppv_no_door", "ppv_no_exhaust", "ppv_fire_push", "plan_acquired", "panel_fire_floor", "plan_diff_found",
 ]
 ## 알림으로도 띄우는 무전 우선순위
@@ -50,12 +49,12 @@ var _crew_ids: Array[int] = []
 var _vehicle_ids: Array[int] = []
 var _selection_timer := 0.0
 var _victim_label: Label
+## 명령 카드 (기획안 9-1, P10-2): 6칸 Q W E R / A S. 원형 메뉴와 같은 CommandCard를 그린다
+var card: CommandCard
 var _command_panel: VBoxContainer
-var _command_buttons: Dictionary = {}  # id -> Button
-## 분대 명령칸 (위 줄): 출동대 종류별 고수준 명령 (data/units/command_cards.json)
-var _card_row: HBoxContainer
-var _card_type := ""
-var _cards: Dictionary = {}
+var _card_title: Label
+var _card_buttons: Array[Button] = []
+var _card_back: Button
 var _notice_label: Label
 var _notices: Array[Array] = []  # [문장, 남은 시간(실제 초)]
 var _events_seen := 0
@@ -97,6 +96,7 @@ func setup(p_sim: SimWorld, on_floor_selected: Callable) -> void:
 	_build_emergency()
 	_build_legend()
 	_build_debug_panel()
+	card = CommandCard.new()
 	_build_command_panel()
 	_build_notice_label()
 	_build_victim_panel()
@@ -256,52 +256,49 @@ func _refresh_selection() -> void:
 		var cmd := sim.command
 		var ask := cmd.survey.asking()
 		lines.append("현장지휘관 %s %s (%s) — 지휘 위치: %s%s
-    우클릭: 이동 (건물 안으로는 혼자 들어가지 않음) · C: 지휘권 선언·전략 · 관계인 클릭: 질문" % [
+    우클릭: 이동 (건물 안으로는 혼자 들어가지 않음) · Q: 지휘권 선언·전략 · 관계인 클릭: 질문" % [
 			cmd.commander.name, cmd.commander.rank, cmd.commander_title, cmd.commander_position_text(),
 			" · 관계인에게 질문 중 (%d개 남음)" % ask.questions.size() if not ask.is_empty() else ""])
 	selection_label.text = "\n".join(lines) if not lines.is_empty() else _squad_summary()
-	_command_panel.visible = not _crew_ids.is_empty()
-	# 아무 조도 고르지 않았으면 지휘관 명령 (기획안 9-2: 선택 대상에 따라 바뀌는 명령 버튼)
-	_commander_box.visible = _crew_ids.is_empty()
+	# 선택 대상에 따라 명령 카드 세트가 바뀐다 (기획안 9-1: 선택 없음 = 지휘관 명령)
+	card.set_target(card_set())
+	_commander_box.visible = card.set_name == "commander"
+	_refresh_card()
+
+
+## 고른 것 → 명령 카드 세트: 조(구급대면 ems) > 차량 > 지휘관
+func card_set() -> String:
 	if not _crew_ids.is_empty():
 		var squad := sim.units.squad_of_crew(_crew_ids[0])
-		var card := "%s %s" % [squad.arrival, squad.type]
-		_build_card_row(card if _cards.has(card) else squad.type)
-	_command_buttons["stop"].disabled = not any_flowing
-	var entry := _command_buttons["entry"] as Button
-	var need := false
-	var pending := false
-	for crew_id in _crew_ids:
-		var squad_id := sim.units.get_crew(crew_id).squad_id
-		if not sim.command.can_enter(squad_id):
-			need = true
-			pending = pending or sim.command.entry_pending(squad_id)
-	entry.disabled = not need or pending
-	entry.text = "진입 명령 송신 중" if pending else ("진입 명령 (R)" if need else "진입 허가됨")
+		return "ems" if squad and squad.type == "구급대" else "team"
+	if not _vehicle_ids.is_empty():
+		return "vehicle"
+	return "commander"
 
 
-## 분대 명령칸: 첫 번째로 선택한 조의 출동대 종류에 맞춰 다시 만든다
-func _build_card_row(type: String) -> void:
-	if type == _card_type:
+## 명령 카드 6칸을 지금 상태로 다시 쓴다 (칸 이름·쓸 수 있는지·하위 칸)
+func _refresh_card() -> void:
+	if _card_title == null:
 		return
-	_card_type = type
-	for c in _card_row.get_children():
-		c.queue_free()
-		_card_row.remove_child(c)
-	var title := Label.new()
-	title.text = "%s 명령칸" % type
-	title.add_theme_color_override("font_color", Color("fde68a"))
-	_card_row.add_child(title)
-	for spec: Dictionary in _cards.get(type, _cards.get("진압대", [])):
-		var b := Button.new()
-		b.text = "%s (%s)" % [spec.label, spec.key] if str(spec.get("key", "")) != "" else str(spec.label)
-		b.tooltip_text = str(spec.get("hint", ""))
-		b.focus_mode = Control.FOCUS_NONE
-		b.custom_minimum_size = Vector2(170, 44)
-		b.add_theme_color_override("font_color", Color("fde68a"))
-		var id := str(spec.id)
-		b.pressed.connect(func() -> void: command_pressed.emit(id))
-		_card_row.add_child(b)
+	_card_title.text = card.title()
+	var slots := card.slots()
+	for i in _card_buttons.size():
+		var b := _card_buttons[i]
+		var it: Dictionary = slots[i]
+		if it.is_empty():
+			b.text = ""
+			b.tooltip_text = ""
+			b.disabled = true
+			b.modulate.a = 0.35
+			continue
+		var more := "…" if it.get("act", true) == false else ""
+		b.text = "%s  %s%s" % [CommandCard.KEYS[i], str(it.label), more]
+		b.tooltip_text = str(it.get("hint", "")) + ("
+(다음 작업에서 쓸 수 있습니다)" if str(it.get("need", "")) == "later" else "")
+		b.disabled = not card.is_enabled(it)
+		b.modulate.a = 1.0
+		b.add_theme_color_override("font_color", Color("fca5a5") if it.get("danger", false) else Color("f1f5f9"))
+	_card_back.visible = card.parent != ""
 
 
 ## 조 상태 요약: 공기 잔량(낮은 쪽), 복사열, 열 스트레스, 자세, 행동 불능, 열화상카메라, 문 작업
@@ -440,33 +437,35 @@ func _build_notice_label() -> void:
 
 
 func _build_command_panel() -> void:
-	var cards: Variant = JsonData.load_file(COMMAND_CARDS_PATH)
-	_cards = cards if cards is Dictionary else {}
 	_command_panel = VBoxContainer.new()
-	_command_panel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	_command_panel.offset_left = -1200
-	_command_panel.offset_right = -16
-	_command_panel.offset_top = -240
-	_command_panel.offset_bottom = -130
-	_command_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	_command_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_command_panel.alignment = BoxContainer.ALIGNMENT_END
-	_card_row = HBoxContainer.new()
-	_card_row.alignment = BoxContainer.ALIGNMENT_END
-	_command_panel.add_child(_card_row)
-	var detail := HBoxContainer.new()
-	detail.alignment = BoxContainer.ALIGNMENT_END
-	_command_panel.add_child(detail)
-	for spec in [["entry", "진입 명령 (R)"], ["search", "검색 (Q)"], ["door", "문·창 (E)"], ["hose", "수관 연장 (H)"], ["straight", "직사 (A)"], ["fog", "분무 (S)"], ["pencil", "펜슬링·3D (Z)"], ["cover", "엄호 (N)"], ["stop", "방수 중지 (D)"]]:
+	var head := HBoxContainer.new()
+	_card_title = Label.new()
+	_card_title.add_theme_color_override("font_color", Color("fde68a"))
+	_card_title.add_theme_font_size_override("font_size", 15)
+	_card_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(_card_title)
+	_card_back = Button.new()
+	_card_back.text = "◀ 뒤로 (Esc)"
+	_card_back.focus_mode = Control.FOCUS_NONE
+	_card_back.pressed.connect(func() -> void: card_key_pressed.emit("BACK"))
+	head.add_child(_card_back)
+	_command_panel.add_child(head)
+	var grid := GridContainer.new()
+	grid.columns = 4
+	_command_panel.add_child(grid)
+	for i in CommandCard.KEYS.size():
 		var b := Button.new()
-		b.text = spec[1]
 		b.focus_mode = Control.FOCUS_NONE
-		b.custom_minimum_size = Vector2(160, 44)
-		b.pressed.connect(func() -> void: command_pressed.emit(spec[0]))
-		detail.add_child(b)
-		_command_buttons[spec[0]] = b
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.custom_minimum_size = Vector2(150, 40)
+		b.clip_text = true
+		var key := CommandCard.KEYS[i]
+		b.pressed.connect(func() -> void: card_key_pressed.emit(key))
+		grid.add_child(b)
+		_card_buttons.append(b)
 	add_child(_command_panel)
-	_command_panel.visible = false
+	card.changed.connect(_refresh_card)
 
 
 func _build_legend() -> void:

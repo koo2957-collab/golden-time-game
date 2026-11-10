@@ -116,6 +116,9 @@ func choose(index: int) -> void:
 func _unhandled_key_input(event: InputEvent) -> void:
 	if not _panel.visible or not event is InputEventKey or not event.pressed or event.echo:
 		return
+	# 방금 답해서 카드가 없는데 아직 화면이 안 바뀐 사이에는 숫자키를 부대 지정(1~9)에 넘긴다
+	if sim.cards.active() == null:
+		return
 	var k: int = event.keycode
 	if k >= KEY_1 and k <= KEY_4:
 		get_viewport().set_input_as_handled()

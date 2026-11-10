@@ -107,8 +107,7 @@ func test_only_ems_treats_and_move_cancels() -> void:
 func test_driver_and_data() -> void:
 	var sim := _sim()
 	assert_eq(sim.units.vehicles[0].driver_label(), "소방장 김기현", "펌프차 운전원")
-	var cards: Dictionary = JsonData.load_file(Hud.COMMAND_CARDS_PATH)
-	assert_true(cards.has("구급대"), "구급대 명령칸")
+	assert_true(CommandCard.load_sets().has("ems"), "구급대 명령 카드 (P10-2)")
 	var sc := SimWorld.from_scenario("res://data/scenarios/sop214_1_day_living.json")
 	assert_true(sc.ems.hospital.contains("병원"), "시나리오 이송 병원")
 	var rules: Array = sc.scenario.evaluation.rules

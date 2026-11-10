@@ -735,22 +735,37 @@ func _check_officer() -> Dictionary:
 	return {"score": 0.0, "detail": "현장안전담당을 지정하지 않음"}
 
 
+## 진입 통제 (SOP 102-4.1, P10-2): 진입 허가 요청마다 고른 답(허가·대기·금지)이 그때 상황의 정답과 맞는가.
+## 직접 내린 진입 명령(예전 방식)은 특수현상 징후(⑧)가 있었으면 틀린 것으로 본다
+const ENTRY_ANSWER_NAMES := {"grant": "허가", "wait": "대기", "deny": "금지", "": "진입 명령"}
+## 정답과 다른 답의 점수 (지나치게 조심한 쪽은 절반)
+const ENTRY_PARTIAL := {"grant:wait": 0.5, "wait:deny": 0.5, "deny:wait": 0.5}
+
+
 func _check_entry_judgment() -> Dictionary:
 	var checks := sim.command.entry_checks
 	if checks.is_empty():
 		return {}
-	var risky := 0
+	var total := 0.0
 	var parts: PackedStringArray = []
 	for c in checks:
-		var f: PackedStringArray = c.factors
-		var sign := false
-		for x in f:
-			if x.begins_with("⑧"):
-				sign = true
-		if sign:
-			risky += 1
-		parts.append("%s %s 진입 명령%s" % [_t(c.tick), c.squad, " — " + " · ".join(f) if not f.is_empty() else " — 해당 요소 없음"])
-	return {"score": maxf(0.0, 1.0 - 0.5 * risky), "detail": "; ".join(parts)}
+		var answer := str(c.get("answer", ""))
+		var verdict := str(c.get("verdict", ""))
+		if answer == "" or verdict == "":
+			var sign := false
+			for x: String in c.factors:
+				if x.begins_with("⑧"):
+					sign = true
+			total += 0.0 if sign else 1.0
+			var f: PackedStringArray = c.factors
+			parts.append("%s %s %s%s" % [_t(c.tick), c.squad, ENTRY_ANSWER_NAMES.get(answer, answer),
+				" — " + " · ".join(f) if not f.is_empty() else " — 해당 요소 없음"])
+			continue
+		var s := 1.0 if answer == verdict else float(ENTRY_PARTIAL.get("%s:%s" % [verdict, answer], 0.0))
+		total += s
+		var judged := "맞음" if s >= 1.0 else "정답: " + str(ENTRY_ANSWER_NAMES[verdict])
+		parts.append("%s %s 진입 요청 → %s (%s — %s)" % [_t(c.tick), c.squad, ENTRY_ANSWER_NAMES[answer], judged, str(c.get("reason", ""))])
+	return {"score": total / float(checks.size()), "detail": "; ".join(parts)}
 
 
 func _check_water_supply() -> Dictionary:

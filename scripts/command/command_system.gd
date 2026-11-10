@@ -22,7 +22,7 @@ const COMMANDER := "현장지휘관"
 const DISPATCH_CENTER := "119종합상황실"
 ## 이 사건이 생기면 1배속으로 돌아간다
 const AUTO_SLOW_TYPES: Array[String] = [
-	"ff_down", "mayday", "air_alarm", "victim_found", "rollover_sign", "backdraft_sign", "backdraft",
+	"ff_down", "mayday", "par_no_response", "air_alarm", "victim_found", "rollover_sign", "backdraft_sign", "backdraft",
 	"fgi_warning", "flashover", "rekindle", "collapse_sign", "collapse", "gas_explosion", "exposure_ignition", "jump_risk", "sign_warning", "shaft_ignition",
 ]
 ## 대원이 무전으로 보고하는 사건과 우선순위 (107-1.3). 대원 쓰러짐은 SafetySystem의 긴급탈출 선언으로 보고한다
@@ -139,8 +139,12 @@ var safety: SafetySystem
 var interior: InteriorOrders
 ## 주요 의사결정과 그때 알던 정보 [{tick, decision, context}] (SOP 111-2.2)
 var decisions: Array[Dictionary] = []
-## 진입 명령 때의 진입 금지 판단 요소 [{tick, squad, factors}] (SOP 102-4.1)
+## 진입 판단 기록 [{tick, squad, factors, verdict, reason, answer}] (SOP 102-4.1, P10-2)
+##   verdict: 그때 상황으로 본 정답(grant·wait·deny), answer: 지휘관이 고른 것 ("" = 진입 명령을 직접 내림)
 var entry_checks: Array[Dictionary] = []
+## 진입 허가 요청 (P10-2): 입구에서 멈춘 출동대가 무전으로 묻고, 지휘관이 질문 카드로 허가·대기·금지를 답한다
+## {squad id: {tick, crew_id, verdict, reason, factors}} — 답하거나 카드 시간이 지나면 지운다
+var entry_requests: Dictionary = {}
 ## 활동 종료 때 지정한 감시 (202-6.5): 출동대 이름 / "관계자 감시 당부" / ""
 var watch := ""
 
@@ -178,6 +182,14 @@ var _last_report: Dictionary = {}  # "종류:보낸 쪽" -> tick
 ## 조가 마지막으로 무전 보고한 틱 {조 이름: tick} (팀 카드 "마지막 보고 후 경과", 기획안 9-2)
 var last_report_tick: Dictionary = {}
 var _entry_wait_tick: Dictionary = {}  # crew id -> tick
+var _entry_hold: Dictionary = {}  # squad id -> {tick, verdict} (진입 대기를 받음)
+var _entry_denied: Dictionary = {}  # squad id -> tick (진입 금지를 받음 — 새 임무를 받으면 풀림)
+var _entry_asking: Dictionary = {}  # squad id -> true (요청 무전 송신 중)
+var _entry_waiting: Dictionary = {}  # crew id -> {stop: 멈춘 칸, goal: 원래 가려던 칸}
+## 입구에서 멈춘 자리에서 이만큼(칸) 안에 있으면 아직 기다리는 것으로 본다
+const ENTRY_WAIT_RADIUS := 3.0
+var _entry_min_air := 0.7
+var _entry_rit_squads := 3
 var _held: Array[Dictionary] = []  # 실행을 미룬 명령 {cmd, wait: 투입을 기다리는 출동대, release: 실행 틱}
 var _commit_pending: Dictionary = {}  # squad id -> true (투입 무전 송신 중)
 var _span_level := 0  # 0 적정 이하, 1 적정 초과, 2 한계 초과
@@ -198,6 +210,8 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, p_res
 	interior = InteriorOrders.new(p_fire, p_units, p_perception)
 	_report_repeat_ticks = roundi(params.value("report_repeat_s") / SimClock.TICK_DT)
 	_entry_wait_ticks = roundi(params.value("entry_wait_repeat_s") / SimClock.TICK_DT)
+	_entry_min_air = params.value("entry_min_air_ratio")
+	_entry_rit_squads = int(params.value("entry_rit_from_squads"))
 	commander.id = -1
 	commander.squad_id = -1
 	commander.crew_id = -1
@@ -262,6 +276,7 @@ func before_move(tick: int) -> void:
 		if entry_allowed.has(c.squad_id) or safety.deployed.has(c.id) or safety.reserved(c.id):
 			continue
 		var stopped := false
+		var goal: Vector3i = c.leader.path[-1] if not c.leader.path.is_empty() else Vector3i(-1, -1, -1)
 		for ff in c.members():
 			if _gate(ff):
 				stopped = true
@@ -270,6 +285,143 @@ func before_move(tick: int) -> void:
 			if tick - last >= _entry_wait_ticks:
 				_entry_wait_tick[c.id] = tick
 				events.add(tick, "entry_wait", {"crew": _crew_name(c)})
+			# 입구에서 기다리는 조 (다시 묻기·허가 뒤 원래 가려던 곳으로)
+			var stop: Vector3i = c.leader.path[-1] if not c.leader.path.is_empty() else c.leader.cell3()
+			_entry_waiting[c.id] = {"stop": stop, "goal": goal}
+			_request_entry(c, tick)
+	# 입구에서 멈춰 선 조: 대기·시간 초과 뒤 다시 묻는다. 다른 곳으로 가 버렸으면 잊는다
+	for crew_id: int in _entry_waiting.keys():
+		var c := units.get_crew(crew_id)
+		var w: Dictionary = _entry_waiting[crew_id]
+		var stop: Vector3i = w.stop
+		if c == null or entry_allowed.has(c.squad_id) or _entry_denied.has(c.squad_id) or c.leader.incapacitated:
+			_entry_waiting.erase(crew_id)
+		elif c.leader.level != stop.z or c.leader.pos.distance_to(Vector2(stop.x, stop.y) + Vector2(0.5, 0.5)) > ENTRY_WAIT_RADIUS:
+			if not c.leader.is_moving():
+				_entry_waiting.erase(crew_id)
+		elif not c.leader.is_moving():
+			_request_entry(c, tick)
+
+
+# --- 진입 허가 요청 (P10-2, SOP 102-4.1·201-3.7) ---
+
+## 입구에서 멈춘 조가 진입 허가를 무전으로 요청한다. 대기를 받았으면 조건이 바뀌거나 정한 시간이 지나야 다시 묻는다
+func _request_entry(c: Crew, tick: int) -> void:
+	var sid := c.squad_id
+	if _entry_pending.has(sid) or entry_requests.has(sid) or _entry_asking.has(sid) or _entry_denied.has(sid):
+		return
+	if _entry_hold.has(sid):
+		var hold: Dictionary = _entry_hold[sid]
+		# 조건 확인은 1초마다 (사무용 PC)
+		if (tick - int(hold.tick)) % roundi(1.0 / SimClock.TICK_DT) != 0:
+			return
+		if tick - int(hold.tick) < _entry_wait_ticks and str(entry_verdict(c, tick).verdict) == str(hold.verdict):
+			return
+		_entry_hold.erase(sid)
+	var v := entry_verdict(c, tick)
+	var squad := units.squads[sid]
+	var air := PackedStringArray()
+	for ff in c.members():
+		air.append("%d%%" % roundi(ff.air_ratio() * 100.0))
+	var factors: PackedStringArray = v.factors
+	var body := "%s, %s 입구 앞. 공기 %s, %s.%s 진입 허가 요청." % [_crew_name(c), fire.building.floor_name(c.leader.level),
+		" · ".join(air), str(v.hose), (" 확인된 위험: %s." % " · ".join(factors)) if not factors.is_empty() else ""]
+	_entry_asking[sid] = true
+	var ctx := {"crew_id": c.id, "crew": _crew_name(c), "squad": squad.name, "squad_id": sid, "air": " · ".join(air),
+		"hose": v.hose, "risk": " · ".join(factors) if not factors.is_empty() else "특이사항 없음",
+		"verdict": v.verdict, "reason": v.reason}
+	radio.send(Radio.Priority.TACTICS, _crew_name(c), COMMANDER, body, tick, _on_entry_asked.bind(sid, ctx, factors))
+
+
+func _on_entry_asked(tick: int, sid: int, ctx: Dictionary, factors: PackedStringArray) -> void:
+	_entry_asking.erase(sid)
+	if entry_allowed.has(sid):
+		return
+	entry_requests[sid] = {"tick": tick, "crew_id": ctx.crew_id, "verdict": ctx.verdict, "reason": ctx.reason, "factors": factors}
+	events.add(tick, "entry_request", ctx)
+
+
+## 지금 진입해도 되는가 (정답 판단, 화면에는 보이지 않음). 무전·관찰로 알게 된 것만 쓴다
+##   deny: 방어 전략 / 특수현상 징후 / 붕괴 징후 (SOP 102-4.1 ⑧⑨)
+##   wait: 공기 부족 / 진압 임무인데 수관에 물이 아직 안 참 / 출동대가 여럿인데 RIT 미지정 (SSG 9)
+##   grant: 그 밖
+func entry_verdict(c: Crew, tick: int) -> Dictionary:
+	var factors := entry_factors(tick)
+	var hose_text := "수관 없음"
+	var h: HoseLine = water.hose_of_crew(c.id) if water else null
+	if h:
+		hose_text = "수관 충수 완료" if tick >= h.water_tick else "수관 충수 전"
+	var out := {"verdict": "grant", "reason": "준비 완료·진입 금지 요소 없음", "factors": factors, "hose": hose_text}
+	if effective_strategy() == Strategy.DEFENSIVE:
+		out.verdict = "deny"
+		out.reason = "방어 전략 (SOP 106-2)"
+		return out
+	for f in factors:
+		if f.begins_with("⑧") or f.contains("붕괴"):
+			out.verdict = "deny"
+			out.reason = "%s (SOP 102-4.1)" % f
+			return out
+	var low := 1.0
+	for ff in c.members():
+		low = minf(low, ff.air_ratio())
+	if low < _entry_min_air:
+		out.verdict = "wait"
+		out.reason = "공기 %d%% — 교체 후 진입" % roundi(low * 100.0)
+		return out
+	var task: TacticalSystem.Task = tactical.task_of_crew(c.id) if tactical else null
+	if task and task.action in ["attack", "attack_floor"] and (h == null or tick < h.water_tick):
+		out.verdict = "wait"
+		out.reason = "진압 임무인데 %s — 물이 찬 수관으로 진입" % hose_text
+		return out
+	var on_scene := 0
+	for s in units.squads:
+		if resources.on_scene(s.id):
+			on_scene += 1
+	if on_scene >= _entry_rit_squads and safety.crews_with(SafetySystem.Role.RIT).is_empty():
+		out.verdict = "wait"
+		out.reason = "출동대 %d개인데 RIT 미지정 (SSG 9)" % on_scene
+	return out
+
+
+## 진입 허가 요청 카드의 답 (CardSystem effect entry_grant·entry_wait·entry_deny)
+func answer_entry(sid: int, answer: String, tick: int) -> void:
+	if sid < 0 or sid >= units.squads.size():
+		return
+	var req: Dictionary = entry_requests.get(sid, {})
+	entry_requests.erase(sid)
+	var squad := units.squads[sid]
+	entry_checks.append({"tick": tick, "squad": squad.name, "factors": req.get("factors", PackedStringArray()),
+		"verdict": str(req.get("verdict", "")), "reason": str(req.get("reason", "")), "answer": answer})
+	match answer:
+		"grant":
+			order_entry(sid, tick, false)
+		"wait":
+			_entry_hold[sid] = {"tick": tick, "verdict": str(req.get("verdict", ""))}
+			_decide(tick, "%s 진입 대기" % squad.name)
+			radio.send(Radio.Priority.TACTICS, COMMANDER, squad.name, "진입 대기하라. 입구에서 대기.", tick)
+		"deny":
+			_entry_denied[sid] = tick
+			_decide(tick, "%s 진입 금지" % squad.name)
+			radio.send(Radio.Priority.TACTICS, COMMANDER, squad.name, "진입 금지. 건물 밖에서 대기하라.", tick)
+			for cr in squad.crews:
+				if tactical:
+					tactical.cancel(cr.id)
+				for ff in cr.members():
+					if not _indoor(ff.level, ff.pos):
+						ff.path.clear()
+			events.add(tick, "entry_denied", {"squad": squad.name})
+
+
+## 진입 허가 요청 카드에 답하지 않고 시간이 지남: 정한 시간 뒤 다시 묻는다
+func entry_request_expired(sid: int, tick: int) -> void:
+	if entry_requests.has(sid):
+		entry_requests.erase(sid)
+		_entry_hold[sid] = {"tick": tick, "verdict": ""}
+
+
+## 진입 금지를 받은 출동대에 새 임무를 주면 다시 진입 허가를 요청할 수 있다
+func clear_entry_denied(squad_id: int) -> void:
+	_entry_denied.erase(squad_id)
 
 
 func after_move(dt: float, tick: int) -> void:
@@ -294,6 +446,9 @@ func step(dt: float, tick: int) -> void:
 			events.add(tick, "auto_slow", {"reason": SimEventLog.describe_text(e)})
 		if REPORT_PRIORITY.has(e.type):
 			_report(e, tick)
+		# 진입 금지를 받은 출동대가 새 임무를 받으면 다시 진입 허가를 요청할 수 있다 (P10-2)
+		if e.type == "tactical_start" and not _entry_denied.is_empty():
+			clear_entry_denied(_squad_of_sender(str(e.get("crew", ""))))
 	safety.step(tick)
 	_check_span(tick)
 	radio.step(dt, tick)
@@ -423,7 +578,7 @@ func declare(answers: Dictionary, tick: int) -> bool:
 
 
 ## 출동대에 내부 진입 명령. 방어 전략이면 받아들이지 않는다.
-func order_entry(squad_id: int, tick: int) -> bool:
+func order_entry(squad_id: int, tick: int, record := true) -> bool:
 	if squad_id < 0 or squad_id >= units.squads.size():
 		return false
 	var squad := units.squads[squad_id]
@@ -433,8 +588,11 @@ func order_entry(squad_id: int, tick: int) -> bool:
 	if entry_allowed.has(squad_id) or _entry_pending.has(squad_id):
 		return false
 	_entry_pending[squad_id] = true
+	_entry_hold.erase(squad_id)
+	entry_requests.erase(squad_id)
 	var factors := entry_factors(tick)
-	entry_checks.append({"tick": tick, "squad": squad.name, "factors": factors})
+	if record:
+		entry_checks.append({"tick": tick, "squad": squad.name, "factors": factors, "verdict": "", "reason": "", "answer": ""})
 	if not factors.is_empty():
 		events.add(tick, "entry_factors", {"squad": squad.name, "factors": " · ".join(factors)})
 	_decide(tick, "%s 내부 진입 명령" % squad.name)
@@ -635,6 +793,13 @@ func _on_entry_received(tick: int, squad_id: int) -> void:
 	if effective_strategy() == Strategy.DEFENSIVE:
 		return
 	entry_allowed[squad_id] = true
+	# 입구에서 기다리던 조: 임무가 없으면 원래 가려던 곳으로 다시 간다 (임무가 있으면 임무가 길을 다시 찾는다)
+	for cr in units.squads[squad_id].crews:
+		var w: Dictionary = _entry_waiting.get(cr.id, {})
+		var goal: Vector3i = w.get("goal", Vector3i(-1, -1, -1))
+		if goal.x >= 0 and not cr.leader.is_moving() and (tactical == null or tactical.task_of_crew(cr.id) == null):
+			units.order_move([cr.id], goal, pathfinder)
+		_entry_waiting.erase(cr.id)
 	var squad := units.squads[squad_id]
 	events.add(tick, "entry_ordered", {
 		"squad": squad.name,

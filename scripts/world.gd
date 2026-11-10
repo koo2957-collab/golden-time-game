@@ -90,7 +90,8 @@ func _ready() -> void:
 	units_view.setup(sim, selection)
 	iso_view.setup(sim, selection, projections[ViewMode.ISO])
 	hud.setup(sim, set_view_level)
-	hud.command_pressed.connect(_on_command)
+	hud.card_key_pressed.connect(_press_card)
+	hud.card.enabled_fn = _card_item_enabled
 	hud.command_ui.order_issued.connect(sim.issue)
 	hud.command_ui.dialog_changed.connect(_on_dialog_changed)
 	selection.witness_clicked.connect(hud.command_ui.open_witness)
@@ -102,6 +103,8 @@ func _ready() -> void:
 	mission_ui.order_issued.connect(sim.issue)
 	mission_ui.notice.connect(hud.show_notice)
 	selection.crew_menu.connect(mission_ui.open_crew_menu)
+	mission_ui.card = hud.card
+	mission_ui.press_card = _press_card
 	# 단면 보기: 아래층을 누르면 그 층으로 (R17)
 	selection.level_picker = func(world_pos: Vector2) -> int:
 		if view_mode != ViewMode.ISO or exterior_view:
@@ -252,17 +255,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			hud.command_ui.close_dispatch()
 			get_viewport().set_input_as_handled()
 		return
-	if event.is_action_pressed("cmd_report"):
-		hud.command_ui.open_command_dialog()
-	elif event.is_action_pressed("cmd_org"):
-		hud.command_ui.open_org_dialog()
-	elif event.is_action_pressed("cmd_info"):
-		hud.command_ui.open_info_dialog()
-	elif event.is_action_pressed("cmd_par"):
-		sim.issue(CommandOrder.make("par"))
-	elif event.is_action_pressed("cmd_entry"):
-		_on_command("entry")
-	elif event.is_action_pressed("time_pause"):
+	var card_key := _card_key(event)
+	if card_key != "":
+		_press_card(card_key)
+		get_viewport().set_input_as_handled()
+		return
+	if event.is_action_pressed("time_pause"):
 		# 실전·악조건은 일시정지 없음 (다시 하기로 멈춰 있을 때 다시 진행하는 것만 허용)
 		if realtime() and not sim.clock.paused:
 			hud.show_notice("%s 난이도는 일시정지할 수 없습니다 — 현장은 멈추지 않습니다" % sim.realism)
@@ -272,35 +270,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_step_level(1)
 	elif event.is_action_pressed("floor_down"):
 		_step_level(-1)
-	elif event.is_action_pressed("cmd_hose"):
-		_on_command("hose")
-	elif event.is_action_pressed("cmd_straight"):
-		_on_command("straight")
-	elif event.is_action_pressed("cmd_fog"):
-		_on_command("fog")
 	elif event.is_action_pressed("perf_overlay"):
 		hud.toggle_perf()
-	elif event.is_action_pressed("cmd_pencil"):
-		_on_command("pencil")
-	elif event.is_action_pressed("cmd_cover"):
-		_on_command("cover")
-	elif event.is_action_pressed("cmd_stop"):
-		_on_command("stop")
-	elif event.is_action_pressed("cmd_door"):
-		_on_command("door")
-	elif event.is_action_pressed("cmd_search"):
-		_on_command("search")
-	elif event.is_action_pressed("cmd_overhaul"):
-		_on_command("overhaul")
-	elif event.is_action_pressed("cmd_primary"):
-		_on_command("primary")
-	elif event.is_action_pressed("cmd_secondary"):
-		_on_command("secondary")
-	elif event.is_action_pressed("cmd_shuttle"):
-		for vid in selection.selected_vehicles:
-			sim.issue(EquipmentCommand.make("shuttle", [], vid))
-	elif event.is_action_pressed("cmd_withdraw"):
-		_on_command("withdraw")
 	elif event.is_action_pressed("debug_info_fog") and OS.is_debug_build():
 		sim.perception.enabled = not sim.perception.enabled
 		sim.replayable = false
@@ -312,8 +283,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		# 하던 선택 모드가 있으면 취소, 없으면 마우스 가둠을 푼다 (다시 클릭하면 가둠)
 		if selection.mode != SelectionController.Mode.NONE or ignite_mode:
 			selection.cancel_mode()
+			hud.card.back()
 			if ignite_mode:
 				_set_ignite_mode(false)
+		elif hud.card.back():
+			pass
 		elif hud.command_ui.any_dialog_open():
 			hud.command_ui.close_all()
 		elif mission_ui and mission_ui.is_open():
@@ -449,6 +423,9 @@ func _ignite_at(cell: Vector2i) -> void:
 
 func _on_command_mode_changed(hint: String) -> void:
 	command_hint = hint
+	# 대상 고르기가 끝나면(또는 취소) 명령 카드는 첫 칸으로
+	if hint == "" and hud:
+		hud.card.settle(false)
 	_update_mode_text()
 
 
@@ -484,23 +461,61 @@ func _on_dialog_changed(open: bool) -> void:
 		sim.clock.paused = _paused_before_dialog
 
 
-## 명령 패널 버튼 / 단축키 (R 진입 명령, H 수관 연장, A 직사 방수, S 분무 방수, D 방수 중지)
+## 명령 카드 단축키 (Q W E R A S). 입력 칸에 글을 쓰는 중이거나 창이 떠 있으면 쓰지 않는다
+func _card_key(event: InputEvent) -> String:
+	if not (event is InputEventKey) or not event.pressed or event.echo or sim.view_only:
+		return ""
+	if event.ctrl_pressed or event.alt_pressed or hud.command_ui.any_dialog_open():
+		return ""
+	for k in CommandCard.KEYS:
+		if event.is_action_pressed("cmd_" + k.to_lower()):
+			return k
+	return ""
+
+
+## 명령 카드 칸 누르기 (단축키·카드 버튼·원형 메뉴 공통, P10-2). "BACK" = 뒤로
+func _press_card(key: String) -> void:
+	# 단축키·카드 버튼으로 고르면 떠 있던 원형 메뉴는 닫는다 (원형 메뉴에서 고른 것은 이미 닫혀 있다)
+	if mission_ui and mission_ui.radial.visible:
+		mission_ui.radial.close()
+	if key == "BACK":
+		selection.cancel_mode()
+		hud.card.back()
+		return
+	var id := hud.card.press(key)
+	if id != "":
+		_on_command(id)
+		hud.card.settle(selection.mode != SelectionController.Mode.NONE)
+
+
+## 칸을 쓸 수 있는지: 차량 칸은 차종(need), 방수 중지는 쏘는 조가 있을 때
+func _card_item_enabled(item: Dictionary) -> bool:
+	match str(item.get("need", "")):
+		"pump":
+			return selection.selected_vehicles.any(func(v: int) -> bool: return sim.units.get_vehicle(v).is_pump())
+		"tanker":
+			return selection.selected_vehicles.any(func(v: int) -> bool: return sim.units.get_vehicle(v).transfer_lpm > 0.0)
+	match str(item.get("id", "")):
+		"stop":
+			return not selection.crews_spraying().is_empty()
+		"elevator":
+			return sim.elevator.available()
+		"support":
+			return selection.selected.size() == 1 and mission_ui.support_crew(selection.selected[0]) >= 0
+		"response_1":
+			return sim.command.resources.support_level != "대응 1단계 발령"
+		"support_more":
+			return sim.command.resources.support_level == ""
+	return true
+
+
+## 명령 실행. 지휘관·차량 명령은 조를 고르지 않아도 된다
 func _on_command(id: String) -> void:
+	if _commander_command(id) or _vehicle_command(id):
+		return
 	if selection.selected.is_empty():
 		return
 	match id:
-		"entry":
-			var squads: Array[int] = []
-			for crew_id in selection.selected:
-				var squad_id := sim.units.get_crew(crew_id).squad_id
-				if not squad_id in squads and not sim.command.can_enter(squad_id):
-					squads.append(squad_id)
-			if squads.is_empty():
-				return
-			if sim.command.effective_strategy() == CommandSystem.Strategy.DEFENSIVE:
-				hud.command_ui.confirm_defensive_entry(squads)
-			else:
-				sim.issue(CommandOrder.make("entry", squads))
 		"hose":
 			selection.begin_mode(SelectionController.Mode.HOSE)
 		"straight":
@@ -547,10 +562,14 @@ func _on_command(id: String) -> void:
 			selection.begin_mode(SelectionController.Mode.SEARCH)
 		"overhaul":
 			selection.begin_mode(SelectionController.Mode.OVERHAUL)
-		# 분대 명령칸 (고수준 명령)
-		"primary":
-			var lead := sim.units.squad_of_crew(selection.selected[0]) if not selection.selected.is_empty() else null
-			selection.begin_mode(SelectionController.Mode.TREAT if lead and lead.type == "구급대" else SelectionController.Mode.PRIMARY)
+		"hold":
+			sim.issue(TacticalCommand.make("hold", selection.selected))
+		"report":
+			sim.issue(CommandOrder.make("report_request", [], 0, Vector3i.ZERO, {"crews": selection.selected.duplicate()}))
+		"waypoint":
+			selection.begin_mode(SelectionController.Mode.WAYPOINT)
+		"support":
+			mission_ui.send_support(selection.selected[0])
 		"treat":
 			selection.begin_mode(SelectionController.Mode.TREAT)
 		"air_mat":
@@ -565,14 +584,69 @@ func _on_command(id: String) -> void:
 			selection.begin_mode(SelectionController.Mode.EXTERIOR)
 		"rescue":
 			selection.begin_mode(SelectionController.Mode.RESCUE)
-		"secondary":
-			var first := sim.units.squad_of_crew(selection.selected[0])
-			if first.type == "구급대":
-				selection.begin_mode(SelectionController.Mode.TRANSPORT)
-			else:
-				selection.begin_mode(SelectionController.Mode.RESCUE if first.type == "구조대" else SelectionController.Mode.EXTERIOR)
 		"withdraw":
 			sim.issue(TacticalCommand.make("withdraw", selection.selected))
+
+
+## 지휘관 명령 (명령 카드 commander 세트). 처리했으면 true
+func _commander_command(id: String) -> bool:
+	var ui := hud.command_ui
+	match id:
+		"strategy":
+			ui.open_command_dialog()
+		"preorder":
+			ui.open_preorder()
+		"response_1":
+			sim.issue(CommandOrder.make("support", [], 0, Vector3i.ZERO, {"level": "대응 1단계 발령"}))
+		"support_more":
+			sim.issue(CommandOrder.make("support", [], 0, Vector3i.ZERO, {"level": "추가 출동대 요청"}))
+		"org":
+			ui.open_org_dialog()
+		"par":
+			sim.issue(CommandOrder.make("par"))
+		"withdraw_all":
+			var inside: Array[int] = []
+			for c in sim.units.crews:
+				if sim.command.interior.crew_inside(c.id):
+					inside.append(c.id)
+			if inside.is_empty():
+				hud.show_notice("건물 안에 있는 조가 없습니다")
+			else:
+				sim.issue(TacticalCommand.make("withdraw", inside))
+		"evacuate":
+			sim.issue(CommandOrder.make("evacuate"))
+		_:
+			return false
+	return true
+
+
+## 차량 명령 (명령 카드 vehicle 세트). 처리했으면 true
+func _vehicle_command(id: String) -> bool:
+	var vids := selection.selected_vehicles
+	match id:
+		"vehicle_connect":
+			selection.begin_mode(SelectionController.Mode.VEHICLE_CONNECT)
+		"vehicle_move":
+			selection.begin_mode(SelectionController.Mode.VEHICLE_MOVE)
+		"vehicle_monitor":
+			var pump := -1
+			for vid in vids:
+				if sim.units.get_vehicle(vid).is_pump():
+					pump = vid
+					break
+			if pump < 0:
+				return true
+			if sim.monitors.stream_of(pump):
+				sim.issue(EquipmentCommand.make("monitor_stop", [], pump))
+			else:
+				selection.monitor_vehicle = pump
+				selection.begin_mode(SelectionController.Mode.MONITOR)
+		"shuttle":
+			for vid in vids:
+				sim.issue(EquipmentCommand.make("shuttle", [], vid))
+		_:
+			return false
+	return true
 
 
 func _update_mode_text() -> void:

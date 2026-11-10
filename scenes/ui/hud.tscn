@@ -65,8 +65,8 @@ grow_horizontal = 0
 grow_vertical = 0
 theme_override_colors/font_color = Color(0.56, 0.63, 0.7, 1)
 theme_override_font_sizes/font_size = 15
-text = "명령칸 W 진압·수색 · V 외부 방수·구조 · X 철수 · C 지휘권 선언·전략 · O 조직·지원 · F 현장 정보 · P 인원점검 · 관계인 클릭: 질문 · R 진입 명령 · 우클릭 이동(펌프차: 수관, 닫힌 문: 개방·파괴, 요구조자: 구조) · Q 검색 · G 잔불정리 · E 문·창 · H 수관 · A 직사 · S 분무 · D 중지
-화면 가장자리·방향키·휠 버튼 끌기 카메라 · 휠 줌 · PgUp/PgDn 층 · M 입체/평면 · Tab 상황판 접기 · Esc 마우스 풀기 · T 열화상 · F1~F3 배속 · Space 일시정지 · F5 다시 시작"
+text = "명령 카드 Q W E R / A S (원형 메뉴와 같음, 하위 칸은 Esc로 뒤로) · 팀: Q 인명검색 · W 화점진압 · E 경계 · R 배연 · A 대기 · S 철수 · 선택 없음: Q 전략 변경 · W 대응단계 · E 지원 요청 · R 인원 점검 · A 구역 지정 · S 전원 철수·긴급탈출 · 지도에서 조 클릭: 원형 메뉴 · 우클릭: 이동(펌프차: 수관, 닫힌 문: 개방·파괴, 요구조자: 구조) · 관계인 클릭: 질문 · 건물 안 임무를 받은 조는 입구에서 진입 허가 요청 (카드 1~3)
+화면 가장자리·방향키·휠 버튼 끌기 카메라 · 휠 줌 · PgUp/PgDn 층 · M 입체/평면 · Tab 상황판 접기 · Esc 마우스 풀기·메뉴 · T 열화상 · Space 일시정지"
 horizontal_alignment = 2
 autowrap_mode = 3
 vertical_alignment = 2

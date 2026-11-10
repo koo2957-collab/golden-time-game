@@ -35,6 +35,8 @@ var emergency_tick := -1
 var mayday_log: Array[Dictionary] = []  # {tick, crew, cause, silent}
 var evacuation_log: Array[int] = []  # 긴급탈출 지시가 전달된 틱
 var par_log: Array[Dictionary] = []  # {tick, missing, indoor}
+## 인원 점검에 정한 시간 안에 응답하지 않은 조 (P10-2: 무전 패널 맨 위 빨간 줄). 응답하거나 구출되면 빠진다
+var par_no_response: Array[int] = []
 var role_log: Array[Dictionary] = []  # {tick, crew, role}
 var rit_deploy_log: Array[Dictionary] = []  # {tick, crew}
 var suppressed_reports := 0
@@ -47,6 +49,9 @@ var _officer_every: int
 var _mayday_done: Dictionary = {}  # ff id -> true
 var _officer_warned: Dictionary = {}  # ff id -> true
 var _role_pending: Dictionary = {}  # crew id -> Role
+var _par_deadline := -1
+var _par_expect: Dictionary = {}  # crew id -> true (아직 응답하지 않은 조)
+var _par_response_ticks := 600
 
 
 func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, p_rescue: RescueSystem, p_water: WaterSystem, p_doors: DoorSystem, params: ParamTable, p_events: SimEventLog) -> void:
@@ -61,6 +66,7 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, p_res
 	_officer_ratio = params.value("officer_air_ratio")
 	_officer_every = maxi(1, roundi(params.value("officer_check_s") / SimClock.TICK_DT))
 	factor_recent_ticks = roundi(params.value("entry_factor_recent_s") / SimClock.TICK_DT)
+	_par_response_ticks = roundi(params.value("par_response_s") / SimClock.TICK_DT)
 
 
 func emergency() -> bool:
@@ -186,6 +192,7 @@ func step(tick: int) -> void:
 		radio.send(Radio.Priority.SAFETY, CommandSystem.COMMANDER, CommandSystem.DISPATCH_CENTER, "대원 구출 완료, 긴급탈출 상황 해제.", tick)
 	if tick % _officer_every == 0:
 		_officer_check(tick)
+	_check_par_deadline(tick)
 
 
 ## 쓰러진 대원이 생기면 같은 조가 긴급탈출을 선언한다. 조 전원이 쓰러졌으면 무응답 (109-1.1)
@@ -269,10 +276,14 @@ func _on_evacuation_sent(tick: int) -> void:
 	withdraw_all(tick, "evacuate")
 
 
+## 인원 점검 (SOP 109-1.3): 단위대는 단위지휘관이 묶어서, 나머지 출동대는 각자 차례로 보고한다.
+## 건물 안 조는 위치·공기 잔량을 덧붙인다 (P10-2). 조원이 모두 쓰러진 조는 응답하지 못하고,
+## 정한 시간(par_response_s) 안에 응답이 없는 조는 무응답으로 올린다 (무전 패널 긴급 줄)
 func _on_par_sent(tick: int, _sender: String) -> void:
 	var missing := 0
 	var indoor := 0
-	# 단위대는 단위지휘관이 묶어서, 나머지 출동대는 각자 보고한다 (109-1.3 단위지휘관별 점검)
+	_par_expect.clear()
+	_par_deadline = tick + _par_response_ticks
 	var groups: Array = []
 	for d in org.divisions:
 		groups.append(["%s 지휘관" % d.name, d.squads])
@@ -283,14 +294,24 @@ func _on_par_sent(tick: int, _sender: String) -> void:
 		var total := 0
 		var down := 0
 		var inside := 0
+		var where: PackedStringArray = []
+		var answering: Array[int] = []
 		for sid: int in g[1]:
 			for c in units.squads[sid].crews:
+				_par_expect[c.id] = true
+				var able := false
 				for ff in c.members():
 					total += 1
 					if ff.incapacitated:
 						down += 1
-					elif _indoor(ff.level, ff.pos):
-						inside += 1
+					else:
+						able = true
+						if _indoor(ff.level, ff.pos):
+							inside += 1
+				if able:
+					answering.append(c.id)
+					if _indoor(c.leader.level, c.leader.pos):
+						where.append(_crew_where(c))
 		missing += down
 		indoor += inside
 		var body := "인원 %d명 이상 없음, 장비 이상 없음." % total
@@ -298,13 +319,47 @@ func _on_par_sent(tick: int, _sender: String) -> void:
 		if down > 0 or inside > 0:
 			body = "%d명 중 %d명 확인." % [total, total - down - inside]
 			if inside > 0:
-				body += " 건물 안 %d명." % inside
+				body += " 건물 안 %d명 — %s." % [inside, ", ".join(where)]
 			if down > 0:
 				body += " 미확인(행동 불능) %d명." % down
 				pr = Radio.Priority.SAFETY
-		radio.send(pr, str(g[0]), CommandSystem.COMMANDER, body, tick)
+		radio.send(pr, str(g[0]), CommandSystem.COMMANDER, body, tick, _on_par_answered.bind(answering))
 	par_log.append({"tick": tick, "missing": missing, "indoor": indoor})
 	events.add(tick, "par_done", {"missing": missing, "indoor": indoor})
+
+
+## "1조 2층 거실 공기 72%·65%"
+func _crew_where(c: Crew) -> String:
+	var room := fire.compartment_at(c.leader.level, floori(c.leader.pos.x), floori(c.leader.pos.y))
+	var air: PackedStringArray = []
+	for ff in c.members():
+		air.append("%d%%" % roundi(ff.air_ratio() * 100.0))
+	return "%d조 %s 공기 %s" % [c.number, room.display_name() if room else fire.building.floor_name(c.leader.level), "·".join(air)]
+
+
+func _on_par_answered(_tick: int, crew_ids: Array[int]) -> void:
+	for id in crew_ids:
+		_par_expect.erase(id)
+		par_no_response.erase(id)
+
+
+## 인원 점검 응답 시간이 지났는데 응답하지 않은 조 → 무응답 (대원 안전 무전·긴급 줄)
+func _check_par_deadline(tick: int) -> void:
+	# 무응답이던 조가 구출되거나 다시 움직이면 줄에서 뺀다
+	for id in par_no_response.duplicate():
+		var c := units.get_crew(id)
+		if c == null or not c.leader.incapacitated or not _indoor(c.leader.level, c.leader.pos):
+			par_no_response.erase(id)
+	if _par_deadline < 0 or tick < _par_deadline:
+		return
+	_par_deadline = -1
+	for id: int in _par_expect:
+		var c := units.get_crew(id)
+		if c == null or par_no_response.has(id):
+			continue
+		par_no_response.append(id)
+		events.add(tick, "par_no_response", {"crew": _crew_name(c), "where": fire.building.floor_name(c.leader.level)})
+	_par_expect.clear()
 
 
 # --- 도움 ---

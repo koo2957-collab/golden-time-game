@@ -77,7 +77,7 @@
 | `data/units/dev_reinforcements.json` | 후착대·지원 출동대 편성 (차량을 타고 도착) |
 | `data/fire/hazard_params.json` | 요구조자 노출, 특수현상, 불씨·재발화·잔불정리 시간 |
 | `data/sop/hints.json` | 교육 모드 힌트 문구·트리거·조항 |
-| `data/units/command_cards.json` | 출동대 종류별 명령칸 |
+| `data/commands.json` | 명령 카드 (원형 메뉴와 같은 6칸, 팀·구급·차량·지휘관 세트) |
 | `data/sop/rules.json` | SOP 판정 규칙 24개: 2025 SOP 조항·원문, 소방전술 근거·원리, 평가 축·기준값·등급 상한, 축 가중치, 등급 구간 |
 | `data/command/safety_params.json` | 긴급탈출 반복 횟수, 현장안전담당 경고 공기 비율, 진입 판단 요소 유효 시간 |
 | `data/command/survey_params.json` | 면 확인 거리·각도, 질문 시간, 현장지휘소 판정(층 높이, 위험반경 비율) |

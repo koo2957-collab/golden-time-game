@@ -174,3 +174,26 @@ func test_safety_rules_in_evaluation() -> void:
 	assert_true(str(by["safety.rit"].tactic).contains("SSG 9"), "소방전술 근거 함께 표기")
 	assert_eq(r.rules_version, 3, "규칙 판 기록")
 	assert_true(r.decisions.size() >= 2, "의사결정 기록")
+
+
+## P10-2: 인원 점검 — 건물 안 조는 위치·공기 잔량, 조원이 모두 쓰러진 조는 정한 시간 뒤 무응답 (긴급 줄)
+func test_par_location_air_and_no_response() -> void:
+	var sim := _sim()
+	var cmd := sim.command
+	sim.issue(CommandOrder.make("entry", [0, 1]))
+	_quiet(sim)
+	var inside := _place(sim, 0, Vector2(13.5, 15.5))
+	inside.leader.air_l = inside.leader.air_capacity * 0.72
+	var silent := _place(sim, 2, Vector2(11.5, 15.5))
+	_quiet(sim)
+	silent.leader.incapacitated = true
+	silent.partner.incapacitated = true
+	_quiet(sim)
+	sim.issue(CommandOrder.make("par"))
+	_quiet(sim)
+	assert_true(_has(_texts(sim), "1조 ") and _has(_texts(sim), "1층 거실 공기 7"), "건물 안 조는 위치·공기 보고 (%s)" % [_texts(sim).slice(-4)])
+	assert_true(cmd.safety.par_no_response.is_empty(), "응답 시간 전에는 무응답 아님")
+	sim.step_ticks(roundi(65.0 / SimClock.TICK_DT))
+	assert_true(cmd.safety.par_no_response.has(2), "모두 쓰러진 조는 무응답 (%s)" % [cmd.safety.par_no_response])
+	assert_true(not cmd.safety.par_no_response.has(0), "응답한 조는 빠진다")
+	assert_eq(sim.events.of_type("par_no_response").size(), 1, "무응답 사건")

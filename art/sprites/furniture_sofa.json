@@ -1,0 +1,1 @@
+{"anchor":[84.0,85.0],"anims":{"idle":{"cells":{"0_0":[0,0,0,135,128,-67,-78],"1_0":[0,136,0,135,128,-68,-78],"2_0":[0,272,0,135,125,-68,-74],"3_0":[0,408,0,135,125,-67,-74]},"frames":1,"stripe":{}}},"directions":4,"frame":[168.0,152.0],"h_m":0.85,"id":"furniture_sofa","kind":"furniture","nominal":[5.0,2.0],"pages":["res://art/sprites/furniture_sofa_0.png"],"scale":0.75}

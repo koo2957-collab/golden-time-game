@@ -1,0 +1,1 @@
+{"anchor":[52.0,69.0],"anims":{"idle":{"cells":{"0_0":[0,0,0,78,75,-39,-46],"1_0":[0,79,0,78,75,-39,-46],"2_0":[0,158,0,78,75,-39,-46],"3_0":[0,237,0,78,75,-39,-46]},"frames":1,"stripe":{}}},"directions":4,"frame":[104.0,112.0],"h_m":0.75,"id":"furniture_desk","kind":"furniture","nominal":[3.0,1.0],"pages":["res://art/sprites/furniture_desk_0.png"],"scale":0.75}

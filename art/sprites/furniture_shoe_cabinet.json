@@ -1,0 +1,1 @@
+{"anchor":[40.0,69.0],"anims":{"idle":{"cells":{"0_0":[0,0,0,60,83,-30,-62],"1_0":[0,61,0,60,83,-30,-62],"2_0":[0,122,0,60,83,-30,-62],"3_0":[0,183,0,60,83,-30,-62]},"frames":1,"stripe":{}}},"directions":4,"frame":[80.0,104.0],"h_m":1.0,"id":"furniture_shoe_cabinet","kind":"furniture","nominal":[2.0,1.0],"pages":["res://art/sprites/furniture_shoe_cabinet_0.png"],"scale":0.75}

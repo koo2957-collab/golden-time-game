@@ -1,0 +1,10 @@
+{
+  "note": "시작 메뉴 '자료 출처' 창 (P15, 기획안 9-4-1 '크레딧 화면에 쓴 자료의 출처'). 그림을 바꾸면 여기에 한 줄 더한다.",
+  "lines": [
+    "그림: Kenney (kenney.nl), CC0 — Animated Characters Retro, Car Kit, Furniture Kit",
+    "그림 굽기: Blender (blender.org) + tools/blender/bake.py",
+    "엔진: Godot Engine (godotengine.org), MIT",
+    "근거 자료: 소방청 「재난현장 표준작전절차」(2025), 소방전술Ⅰ(화재1·화재2)·소방전술Ⅱ(구조)·소방전술Ⅲ(구급) 교재",
+    "등장 인물·건물·상호는 모두 가상입니다."
+  ]
+}

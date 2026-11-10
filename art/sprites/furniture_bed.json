@@ -1,0 +1,1 @@
+{"anchor":[84.0,77.0],"anims":{"idle":{"cells":{"0_0":[0,0,0,136,125,-68,-75],"1_0":[0,137,0,136,125,-68,-75],"2_0":[0,274,0,136,115,-68,-65],"3_0":[0,411,0,136,115,-68,-65]},"frames":1,"stripe":{}}},"directions":4,"frame":[168.0,144.0],"h_m":0.6,"id":"furniture_bed","kind":"furniture","nominal":[4.0,3.0],"pages":["res://art/sprites/furniture_bed_0.png"],"scale":0.75}

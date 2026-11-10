@@ -138,7 +138,7 @@ func _ready() -> void:
 	# 아래 줄: 부가 메뉴
 	var buttons := HFlowContainer.new()
 	buttons.add_theme_constant_override("h_separation", 12)
-	for spec in [["캠페인", open_campaign], ["내 기록", open_history], ["교관 설정", open_instructor], ["시나리오 편집기", open_editor], ["화면 설정", open_display], ["게임 종료", func() -> void: quit_requested.emit()]]:
+	for spec in [["캠페인", open_campaign], ["내 기록", open_history], ["교관 설정", open_instructor], ["시나리오 편집기", open_editor], ["화면 설정", open_display], ["자료 출처", open_credits], ["게임 종료", func() -> void: quit_requested.emit()]]:
 		var b := Button.new()
 		b.text = spec[0]
 		b.focus_mode = Control.FOCUS_NONE
@@ -147,6 +147,21 @@ func _ready() -> void:
 		buttons.add_child(b)
 	box.add_child(buttons)
 	reload()
+
+
+## 자료 출처 (P15): data/credits.json
+func open_credits() -> void:
+	var d: Variant = JsonData.load_file("res://data/credits.json")
+	var lines: Array = d.get("lines", []) if d is Dictionary else []
+	var dlg := AcceptDialog.new()
+	dlg.title = "자료 출처"
+	dlg.dialog_text = "
+".join(lines)
+	dlg.ok_button_text = "닫기"
+	add_child(dlg)
+	dlg.confirmed.connect(dlg.queue_free)
+	dlg.canceled.connect(dlg.queue_free)
+	dlg.popup_centered()
 
 
 func _refresh_profile() -> void:

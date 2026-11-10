@@ -1,0 +1,1 @@
+{"anchor":[64.0,77.0],"anims":{"idle":{"cells":{"0_0":[0,0,0,98,105,-49,-68],"1_0":[0,198,0,98,101,-49,-64],"2_0":[0,297,0,98,101,-49,-64],"3_0":[0,99,0,98,105,-49,-68]},"frames":1,"stripe":{}}},"directions":4,"frame":[128.0,128.0],"h_m":0.9,"id":"furniture_boxes","kind":"furniture","nominal":[3.0,2.0],"pages":["res://art/sprites/furniture_boxes_0.png"],"scale":0.75}

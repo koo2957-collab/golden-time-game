@@ -1,0 +1,58 @@
+{
+  "note": "P15 그림 굽기 설정 (tools/blender/bake.py). 3D 모델을 게임 입체 화면과 같은 카메라로 찍어 2D 프레임으로 굽는다 (기획안 9-4-1). 경로는 프로젝트 폴더 기준. 카메라는 기획안 64×32 대신 지금 게임 시점(IsoProjection: 칸 반폭 28px·반높이 21px, 칸 0.5m)에 맞춘다 (2026-11-10 사용자 결정). scale = 게임 확대 1일 때 크기 대비 굽는 비율 (게임이 1/scale로 키워 그린다).",
+  "source": "Kenney (kenney.nl) CC0 — Animated Characters Retro, Car Kit, Furniture Kit",
+  "packs": "art_source/kenney",
+  "out_dir": "art_source/baked",
+  "camera": {"half_w_px": 28.0, "half_h_px": 21.0, "cell_m": 0.5, "supersample": 2},
+  "directions": 8,
+  "characters": [
+    {"name": "firefighter", "skin": "humanMaleA", "outfit": "turnout", "scale": 0.75, "frame": [128, 144], "anchor": [64, 96],
+     "anims": ["idle", "walk", "crouch_walk", "carry", "spray", "search", "down"], "stripe": true,
+     "colors": {"coat": "#B8925A", "reflect": "#E8F060", "glove": "#2B2B2B", "boot": "#1E1E1E", "helmet": "#E9E4D8", "stripe": "#FFFFFF", "tank": "#C9CDD2"}},
+    {"name": "civilian_m", "skin": "humanMaleA", "outfit": "plain", "scale": 0.75, "frame": [128, 144], "anchor": [64, 96],
+     "anims": ["idle", "walk", "crouch_walk", "down_up"]},
+    {"name": "civilian_f", "skin": "humanFemaleA", "outfit": "plain", "scale": 0.75, "frame": [128, 144], "anchor": [64, 96],
+     "anims": ["idle", "walk", "crouch_walk", "down_up"]}
+  ],
+  "anims": {
+    "idle": {"source": "idle", "frames": 8, "pose": "arms_down", "note": "서기 (팩의 허리에 손 얹은 자세에서 팔을 내림)"},
+    "walk": {"source": "run", "frames": 8, "note": "걷기 — 팩에 걷기가 없어 뛰기를 느리게 재생"},
+    "crouch_walk": {"source": "run", "frames": 8, "pose": "crouch", "note": "웅크려 걷기 (스크립트 자세)"},
+    "carry": {"source": "run", "frames": 8, "pose": "carry", "note": "요구조자 들고 걷기 (스크립트 자세)"},
+    "spray": {"source": "idle", "frames": 4, "pose": "spray", "note": "방수 — 낮은 자세, 관창을 앞으로 (스크립트 자세)"},
+    "search": {"source": "idle", "frames": 4, "pose": "search", "note": "무릎 꿇고 검색 — 한 팔로 바닥을 더듬음 (스크립트 자세)"},
+    "down": {"source": "idle", "frames": 1, "pose": "down", "note": "쓰러짐 (엎드림)"},
+    "down_up": {"source": "idle", "frames": 1, "pose": "down_up", "note": "누운 요구조자 (반듯이)"}
+  },
+  "vehicles": {
+    "scale": 0.5,
+    "list": [
+      {"type": "펌프차", "name": "pump", "model": "firetruck"},
+      {"type": "물탱크차", "name": "tanker", "model": "firetruck", "tank": true, "note": "소방차 + 지붕 물탱크 (Kenney에 물탱크차 없음)"},
+      {"type": "구급차", "name": "ambulance", "model": "ambulance"},
+      {"type": "구조공작차", "name": "rescue", "model": "firetruck", "hue": 0.035, "note": "소방차를 주황으로 (색상 이동)"},
+      {"type": "굴절차", "name": "aerial", "model": "firetruck", "boom": true, "note": "소방차 + 접힌 붐·바스켓"},
+      {"type": "주차 차량", "name": "sedan", "model": "sedan", "size_m": [4.6, 1.8, 1.5]}
+    ]
+  },
+  "furniture": {
+    "scale": 0.75,
+    "list": [
+      {"name": "sofa", "nominal": [5, 2], "h_m": 0.85, "parts": [["loungeSofa", 0, 0]]},
+      {"name": "armchair", "nominal": [2, 2], "h_m": 0.85, "parts": [["loungeChair", 0, 0]]},
+      {"name": "tv_cabinet", "nominal": [4, 1], "h_m": 1.2, "parts": [["cabinetTelevision", 0, 0], ["televisionModern", 0, 0, 0.31]]},
+      {"name": "coffee_table", "nominal": [3, 2], "h_m": 0.45, "parts": [["tableCoffee", 0, 0]]},
+      {"name": "bookcase", "nominal": [4, 1], "h_m": 1.8, "parts": [["bookcaseOpen", -0.2, 0], ["bookcaseOpen", 0.2, 0]]},
+      {"name": "kitchen", "nominal": [6, 1], "h_m": 0.9, "parts": [["kitchenCabinet", -0.645, 0], ["kitchenSink", -0.215, 0], ["kitchenStove", 0.215, 0], ["kitchenCabinet", 0.645, 0]]},
+      {"name": "dining", "nominal": [3, 2], "h_m": 0.75, "parts": [["table", 0, 0], ["chair", -0.2, 0.3], ["chair", 0.2, 0.3]]},
+      {"name": "bed", "nominal": [4, 3], "h_m": 0.6, "parts": [["bedDouble", 0, 0]]},
+      {"name": "wardrobe", "nominal": [4, 1], "h_m": 2.0, "parts": [["bookcaseClosedDoors", -0.2, 0], ["bookcaseClosedDoors", 0.2, 0]]},
+      {"name": "shoe_cabinet", "nominal": [2, 1], "h_m": 1.0, "parts": [["sideTableDrawers", 0, 0]]},
+      {"name": "bedding", "nominal": [3, 3], "h_m": 0.25, "parts": [["rugRectangle", 0, 0], ["pillowLong", -0.3, -0.3, 0.01, 90]]},
+      {"name": "boxes", "nominal": [3, 2], "h_m": 0.9, "parts": [["cardboardBoxClosed", -0.25, 0], ["cardboardBoxClosed", 0, 0], ["cardboardBoxClosed", 0.25, 0], ["cardboardBoxOpen", -0.1, 0, 0.28], ["cardboardBoxClosed", 0.18, 0, 0.28]]},
+      {"name": "desk", "nominal": [3, 1], "h_m": 0.75, "parts": [["desk", 0, 0], ["computerScreen", 0, 0.05, 0.38]]},
+      {"name": "shelf", "nominal": [4, 2], "h_m": 1.0, "parts": [["bookcaseOpenLow", -0.2, 0], ["bookcaseOpenLow", 0.2, 0]]},
+      {"name": "rack", "nominal": [6, 5], "h_m": 3.0, "parts": [["bookcaseOpen", -0.4, 0], ["bookcaseOpen", 0, 0], ["bookcaseOpen", 0.4, 0]]}
+    ]
+  }
+}

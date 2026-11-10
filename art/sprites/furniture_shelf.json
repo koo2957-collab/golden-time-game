@@ -1,0 +1,1 @@
+{"anchor":[76.0,85.0],"anims":{"idle":{"cells":{"0_0":[0,0,0,118,127,-59,-83],"1_0":[0,119,0,118,127,-59,-83],"2_0":[0,238,0,118,127,-59,-83],"3_0":[0,357,0,118,127,-59,-83]},"frames":1,"stripe":{}}},"directions":4,"frame":[152.0,144.0],"h_m":1.0,"id":"furniture_shelf","kind":"furniture","nominal":[4.0,2.0],"pages":["res://art/sprites/furniture_shelf_0.png"],"scale":0.75}

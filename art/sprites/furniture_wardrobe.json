@@ -1,0 +1,1 @@
+{"anchor":[64.0,117.0],"anims":{"idle":{"cells":{"0_0":[0,0,0,98,153,-49,-116],"1_0":[0,99,0,98,153,-49,-116],"2_0":[0,198,0,98,153,-49,-116],"3_0":[0,297,0,98,153,-49,-116]},"frames":1,"stripe":{}}},"directions":4,"frame":[128.0,168.0],"h_m":2.0,"id":"furniture_wardrobe","kind":"furniture","nominal":[4.0,1.0],"pages":["res://art/sprites/furniture_wardrobe_0.png"],"scale":0.75}

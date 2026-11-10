@@ -1,0 +1,1 @@
+{"anchor":[84.0,85.0],"anims":{"idle":{"cells":{"0_0":[0,0,0,136,134,-68,-84],"1_0":[0,137,0,136,134,-68,-84],"2_0":[0,274,0,136,133,-68,-82],"3_0":[0,411,0,136,133,-68,-82]},"frames":1,"stripe":{}}},"directions":4,"frame":[168.0,152.0],"h_m":0.9,"id":"furniture_kitchen","kind":"furniture","nominal":[6.0,1.0],"pages":["res://art/sprites/furniture_kitchen_0.png"],"scale":0.75}

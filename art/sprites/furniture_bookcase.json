@@ -1,0 +1,1 @@
+{"anchor":[64.0,109.0],"anims":{"idle":{"cells":{"0_0":[0,0,0,98,145,-49,-108],"1_0":[0,99,0,98,145,-49,-108],"2_0":[0,198,0,98,145,-49,-108],"3_0":[0,297,0,98,145,-49,-108]},"frames":1,"stripe":{}}},"directions":4,"frame":[128.0,160.0],"h_m":1.8,"id":"furniture_bookcase","kind":"furniture","nominal":[4.0,1.0],"pages":["res://art/sprites/furniture_bookcase_0.png"],"scale":0.75}

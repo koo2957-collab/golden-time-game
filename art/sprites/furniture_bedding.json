@@ -1,0 +1,1 @@
+{"anchor":[76.0,61.0],"anims":{"idle":{"cells":{"0_0":[0,0,0,116,88,-57,-45],"1_0":[0,117,0,116,88,-59,-45],"2_0":[0,234,0,116,87,-59,-43],"3_0":[0,351,0,116,87,-57,-43]},"frames":1,"stripe":{}}},"directions":4,"frame":[152.0,120.0],"h_m":0.25,"id":"furniture_bedding","kind":"furniture","nominal":[3.0,3.0],"pages":["res://art/sprites/furniture_bedding_0.png"],"scale":0.75}

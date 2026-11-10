@@ -1,0 +1,1 @@
+{"anchor":[64.0,85.0],"anims":{"idle":{"cells":{"0_0":[0,198,0,98,110,-49,-73],"1_0":[0,297,0,98,110,-49,-73],"2_0":[0,0,0,98,111,-49,-74],"3_0":[0,99,0,98,111,-49,-74]},"frames":1,"stripe":{}}},"directions":4,"frame":[128.0,136.0],"h_m":1.2,"id":"furniture_tv_cabinet","kind":"furniture","nominal":[4.0,1.0],"pages":["res://art/sprites/furniture_tv_cabinet_0.png"],"scale":0.75}

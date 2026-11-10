@@ -1,0 +1,1 @@
+{"anchor":[64.0,69.0],"anims":{"idle":{"cells":{"0_0":[0,0,0,90,97,-49,-60],"1_0":[0,91,0,90,97,-41,-60],"2_0":[0,182,0,90,88,-41,-57],"3_0":[0,273,0,90,88,-49,-57]},"frames":1,"stripe":{}}},"directions":4,"frame":[128.0,120.0],"h_m":0.75,"id":"furniture_dining","kind":"furniture","nominal":[3.0,2.0],"pages":["res://art/sprites/furniture_dining_0.png"],"scale":0.75}

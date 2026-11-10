@@ -121,6 +121,11 @@ var _furniture_h: Dictionary = {}  # level -> PackedFloat32Array
 var _opening_of: Dictionary = {}  # Vector3i -> Opening
 var _footprint: Dictionary = {}  # level -> Rect2i
 var _lit: Array[Opening] = []  # 불빛이 보이는 창 (그릴 때마다 갱신)
+## 구운 그림(P15)의 마지막 방향 {대원 id: 0~7} — 멈춰 있으면 마지막으로 움직인 쪽을 본다
+var _facing: Dictionary = {}
+## 가구 그림 (P15): 층 -> {칸 index: 가구 번호} (그림으로 그리는 칸은 블록을 그리지 않는다), 층 -> {앞쪽 칸 index: 그릴 정보}
+var _furn_cells: Dictionary = {}
+var _furn_draw: Dictionary = {}
 var _first_level := 0  # 지상층 (levels()는 부를 때마다 배열을 복사하므로 한 번만 읽는다)
 
 ## 바닥 캐시. 칸 모양은 층별로 고정이고, 색(바닥·그을음·열화상·정보 안개)은 시뮬레이션 틱이 바뀔 때만 달라진다.
@@ -160,6 +165,7 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 					heights[y * b.width + x] = h
 		_furniture_h[lv] = heights
 		_footprint[lv] = b.footprint(lv)
+		_build_furniture_sprites(lv)
 	for o in sim.fire.openings:
 		for c in o.cells:
 			_opening_of[Vector3i(c.x, c.y, o.level)] = o
@@ -1080,9 +1086,12 @@ func _draw_cell_objects(x: int, y: int) -> void:
 	if level == _first_level and not sim.plan.office.is_empty() and Vector2i(x, y) == sim.plan.office.cell:
 		_draw_office(x, y)
 	var fh := _furniture_height(x, y)
-	if fh > 0.0:
+	var ci := y * sim.building.width + x
+	if fh > 0.0 and (thermal or not SpriteArt.enabled() or not _furn_cells.get(level, {}).has(ci)):
 		var color := THERMAL_FURNITURE if thermal else _furniture_color(x, y)
 		_block(x, y, 0.0, fh, color)
+	elif not thermal and SpriteArt.enabled() and _furn_draw.get(level, {}).has(ci):
+		_draw_furniture_sprite(_furn_draw[level][ci], x, y)
 	if upper_level >= 0 and t == BuildingData.Cell.STAIRS:
 		_draw_stair_step(x, y)
 	_draw_flame(x, y, fh)
@@ -1181,17 +1190,59 @@ func _draw_unit(ff: Firefighter, alpha: float) -> void:
 	var body_color := squad.color.lerp(Color(1.0, 0.25, 0.1), clampf(ff.heat_stress, 0.0, 1.0) * 0.7)
 	if ff.incapacitated:
 		# 쓰러진 대원: 바닥에 누운 모습 + 경고 표시
-		draw_colored_polygon(_ellipse(feet, 16, 6), body_color.darkened(0.2))
-		draw_circle(feet + Vector2(14, -2), UNIT_HEAD_R * 0.8, Color.WHITE)
+		if not _draw_unit_sprite(ff, crew, squad, feet):
+			draw_colored_polygon(_ellipse(feet, 16, 6), body_color.darkened(0.2))
+			draw_circle(feet + Vector2(14, -2), UNIT_HEAD_R * 0.8, Color.WHITE)
 		var warn := proj.to_screen(p, 0.9)
 		draw_string(PlanStyle.font(), warn + Vector2(-40, 0), "행동 불능", HORIZONTAL_ALIGNMENT_CENTER, 80, 13, Color("ff6b6b"))
 		return
 	var scale := CROUCH_SCALE if ff.crouched else 1.0
-	var helmet := Color.WHITE if ff == crew.leader else squad.color.lightened(0.45)
-	_draw_figure(p, scale, body_color, helmet)
+	if not _draw_unit_sprite(ff, crew, squad, feet):
+		var helmet := Color.WHITE if ff == crew.leader else squad.color.lightened(0.45)
+		_draw_figure(p, scale, body_color, helmet)
 	var label := proj.to_screen(p, UNIT_LABEL_M * scale)
 	draw_string(PlanStyle.font(), label + Vector2(-20, 0), str(crew.number), HORIZONTAL_ALIGNMENT_CENTER, 40, 12, Color.WHITE)
 	_draw_air_bar(label + Vector2(0, 4), ff)
+
+
+## 구운 그림으로 대원 그리기 (P15). 그림이 없거나 열화상이면 false → 도형
+func _draw_unit_sprite(ff: Firefighter, crew: Crew, squad: Squad, feet: Vector2) -> bool:
+	if thermal:
+		return false
+	var art := SpriteArt.get_set(str(SpriteArt.config().get("crew", "")))
+	if art == null:
+		return false
+	var delta := ff.pos - ff.prev_pos
+	var moving := ff.level == ff.prev_level and delta.length_squared() > 0.000001
+	var anim := "idle"
+	var task := sim.rescue.task_of_crew(crew.id)
+	var hose := sim.water.hose_of_crew(crew.id)
+	if moving:
+		_facing[ff.id] = SpriteArt.dir8(delta)
+	if ff.incapacitated:
+		anim = "down"
+	elif task is RescueSystem.CarryTask and task.carrying:
+		anim = "carry"
+	elif hose and hose.flowing and not hose.approaching and not moving:
+		anim = "spray"
+		_facing[ff.id] = SpriteArt.dir8(hose.aim - ff.pos)
+	elif task is RescueSystem.SearchTask and not moving:
+		anim = "search"
+	elif moving:
+		anim = "crouch_walk" if ff.crouched else "walk"
+	elif ff.crouched:
+		anim = "crouch_walk"
+	var frame := 0
+	if moving or anim in ["idle", "spray", "search"]:
+		frame = SpriteArt.frame_at(anim, art.frames(anim), ff.id * 0.37)
+	var role := squad.type
+	var r := sim.command.safety.role_of(crew.id)
+	if r == SafetySystem.Role.RIT:
+		role = "RIT"
+	elif r == SafetySystem.Role.OFFICER:
+		role = "현장안전담당"
+	var tint := Color.WHITE.lerp(Color(1.0, 0.45, 0.35), clampf(ff.heat_stress, 0.0, 1.0) * 0.6)
+	return art.draw(self, anim, int(_facing.get(ff.id, 1)), frame, feet, tint, SpriteArt.stripe_color(role))
 
 
 ## 현장지휘관: 흰 몸체·빨간 안전모, "지휘" 표시
@@ -1202,7 +1253,15 @@ func _draw_commander(alpha: float) -> void:
 	draw_colored_polygon(_ellipse(feet, 10, 5), Color(0, 0, 0, 0.3))
 	if selection.commander_selected:
 		draw_polyline(_ellipse(feet, 13, 6.5, true), PlanStyle.SELECTION, 2.0)
-	_draw_figure(p, 1.0, PlanStyle.COMMANDER_BODY, PlanStyle.COMMANDER_HELMET)
+	var art := SpriteArt.get_set(str(SpriteArt.config().get("commander", ""))) if not thermal else null
+	var delta := c.pos - c.prev_pos
+	var moving := c.level == c.prev_level and delta.length_squared() > 0.000001
+	if moving:
+		_facing[-1] = SpriteArt.dir8(delta)
+	var anim := "walk" if moving else "idle"
+	if art == null or not art.draw(self, anim, int(_facing.get(-1, 1)), SpriteArt.frame_at(anim, art.frames(anim)), feet,
+			Color.WHITE, SpriteArt.stripe_color("지휘")):
+		_draw_figure(p, 1.0, PlanStyle.COMMANDER_BODY, PlanStyle.COMMANDER_HELMET)
 	var label := proj.to_screen(p, UNIT_LABEL_M)
 	draw_string(PlanStyle.font(), label + Vector2(-30, 0), "지휘", HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color.WHITE)
 
@@ -1211,7 +1270,9 @@ func _draw_commander(alpha: float) -> void:
 func _draw_witness(w: Witness) -> void:
 	var feet := proj.to_screen(w.pos, 0.0)
 	draw_colored_polygon(_ellipse(feet, 10, 5), Color(0, 0, 0, 0.3))
-	_draw_figure(w.pos, 1.0, PlanStyle.WITNESS_BODY, PlanStyle.WITNESS_HEAD, false)
+	var art := SpriteArt.get_set(str(SpriteArt.config().get("witness", ""))) if not thermal else null
+	if art == null or not art.draw(self, "idle", 1, SpriteArt.frame_at("idle", art.frames("idle"), 0.5), feet):
+		_draw_figure(w.pos, 1.0, PlanStyle.WITNESS_BODY, PlanStyle.WITNESS_HEAD, false)
 	var label := proj.to_screen(w.pos, UNIT_LABEL_M)
 	draw_string(PlanStyle.font(), label + Vector2(-60, 0), "관계인 · %s" % w.name, HORIZONTAL_ALIGNMENT_CENTER, 120, 12, PlanStyle.WITNESS_HEAD)
 
@@ -1246,12 +1307,17 @@ func _draw_vehicle(v: Vehicle, alpha: float) -> void:
 	var h := minf(v.height_m, VEHICLE_CUT_M)
 	var color := THERMAL_FURNITURE if thermal else v.color
 	color.a = VEHICLE_ALPHA
-	_prism(fp, 0.0, h, color)
-	# 앞쪽 1/4 운전석 지붕
-	var cab := PackedVector2Array([fp[0].lerp(fp[1], 0.75), fp[1], fp[2], fp[3].lerp(fp[2], 0.75)])
-	draw_colored_polygon(_lift(cab, h), Color(color.darkened(0.35), VEHICLE_ALPHA))
+	var art := SpriteArt.vehicle_set(v.type) if not thermal else null
+	if art != null and art.draw(self, "idle", SpriteArt.dir8(v.heading), 0, proj.to_screen(center, 0.0), Color(1, 1, 1, VEHICLE_ALPHA)):
+		_vehicle_details_sprite(v, center)
+	else:
+		_prism(fp, 0.0, h, color)
+		# 앞쪽 1/4 운전석 지붕
+		var cab := PackedVector2Array([fp[0].lerp(fp[1], 0.75), fp[1], fp[2], fp[3].lerp(fp[2], 0.75)])
+		draw_colored_polygon(_lift(cab, h), Color(color.darkened(0.35), VEHICLE_ALPHA))
+		if not thermal:
+			_vehicle_details(v, fp, h)
 	if not thermal:
-		_vehicle_details(v, fp, h)
 		# 운전원 작업 진행 막대 (기획안 6-1)
 		var wp := sim.water.work_progress(v)
 		if wp >= 0.0:
@@ -1298,6 +1364,18 @@ func _vehicle_details(v: Vehicle, fp: PackedVector2Array, h: float) -> void:
 	var bar_b := fp[1].lerp(fp[0], 0.12).lerp(fp[2].lerp(fp[3], 0.12), 0.7)
 	draw_circle(proj.to_screen(bar_a, h + 0.1), 5.0, Color("ef4444") if on else Color("7f1d1d"))
 	draw_circle(proj.to_screen(bar_b, h + 0.1), 5.0, Color("3b82f6") if not on else Color("1e3a8a"))
+
+
+## 구운 차량 그림 위에 경광등 깜빡임만 (P15). 차체·바퀴·유리는 그림에 있다
+func _vehicle_details_sprite(v: Vehicle, center: Vector2) -> void:
+	if not (v.is_pump() or v.is_aerial() or v.type in ["구급차", "구조공작차", "물탱크차"]):
+		return
+	var t := Time.get_ticks_msec() / 1000.0
+	var on := int(t * 3.0) % 2 == 0
+	var front := center + v.heading * v.length_cells * 0.3
+	var side := Vector2(-v.heading.y, v.heading.x) * v.width_cells * 0.2
+	draw_circle(proj.to_screen(front + side, v.height_m + 0.05), 4.0, Color("ef4444") if on else Color("7f1d1d"))
+	draw_circle(proj.to_screen(front - side, v.height_m + 0.05), 4.0, Color("3b82f6") if not on else Color("1e3a8a"))
 
 
 func _draw_sprays(alpha: float) -> void:
@@ -1451,15 +1529,32 @@ func _draw_victim(v: Victim) -> void:
 			return
 		var tag: Color = sim.ems.shown_color(p)
 		var at := proj.to_screen(v.pos, 0.05)
-		draw_colored_polygon(_ellipse(at + Vector2(0, -3), 13, 5), color)
+		if not _draw_victim_sprite(v, at):
+			draw_colored_polygon(_ellipse(at + Vector2(0, -3), 13, 5), color)
 		draw_circle(at + Vector2(12, -5), 5.0, tag)
 		draw_string(PlanStyle.font(), at + Vector2(-70, -14), "%s · %s · %s" % [v.label(), sim.ems.shown_name(p), EmsSystem.STAGE_NAMES[p.stage]], HORIZONTAL_ALIGNMENT_CENTER, 140, 12, tag.lightened(0.3))
 		return
 	var feet := proj.to_screen(v.pos, 0.05)
 	draw_colored_polygon(_ellipse(feet, 15, 6), Color(0, 0, 0, 0.35))
-	draw_colored_polygon(_ellipse(feet + Vector2(0, -3), 13, 5), color)
-	draw_circle(feet + Vector2(12, -5), 5.0, color.lightened(0.3))
+	if not _draw_victim_sprite(v, feet):
+		draw_colored_polygon(_ellipse(feet + Vector2(0, -3), 13, 5), color)
+		draw_circle(feet + Vector2(12, -5), 5.0, color.lightened(0.3))
 	draw_string(PlanStyle.font(), feet + Vector2(-50, -14), "%s · %s" % [v.label(), v.state_name()], HORIZONTAL_ALIGNMENT_CENTER, 100, 12, color.lightened(0.4))
+
+
+## 구운 그림으로 요구조자 (P15): 의식 있음 = 서 있음(대피 중이면 걷기), 그 밖 = 누움. 사망은 어둡게
+func _draw_victim_sprite(v: Victim, feet: Vector2) -> bool:
+	if thermal:
+		return false
+	var art := SpriteArt.victim_set(v.label())
+	if art == null:
+		return false
+	var walking := sim.evac.paths.has(v.id) and v.state == Victim.State.CONSCIOUS
+	var standing := v.state == Victim.State.CONSCIOUS
+	var anim := "walk" if walking else ("idle" if standing else "down_up")
+	var tint := Color(0.55, 0.55, 0.6) if v.state == Victim.State.DEAD else Color.WHITE
+	var dir := (v.id * 3) % 8
+	return art.draw(self, anim, dir, SpriteArt.frame_at(anim, art.frames(anim), v.id * 0.5), feet, tint)
 
 
 ## 바깥으로 연기가 뿜어져 나오는 창·문 (밖에서 늘 보이는 상황 판단 단서)
@@ -1704,6 +1799,66 @@ func _draw_slab_edges() -> void:
 		if e.z & 2:
 			var ne := proj.to_screen(Vector2(e.x + 1, e.y))
 			_quad(ne, se, se + lo, ne + lo, slab.darkened(0.15))
+
+
+## 가구마다 그림 묶음·방향·이어 붙일 조각을 정해 둔다 (P15). 앞면은 그 방 가운데를 본다
+func _build_furniture_sprites(lv: int) -> void:
+	var b := sim.building
+	var cells := {}
+	var draws := {}
+	var items := b.furniture(lv)
+	for n in items.size():
+		var item: Dictionary = items[n]
+		var art := SpriteArt.furniture_set(str(item.name))
+		if art == null:
+			continue
+		var r: Rect2i = item.rect
+		var center := Vector2(r.position) + Vector2(r.size) * 0.5
+		var room := sim.fire.compartment_at(lv, floori(center.x), floori(center.y))
+		var rc := Vector2(room.rect.get_center()) if room else center
+		var along_x := r.size.x >= r.size.y
+		var long_cells := float(maxi(r.size.x, r.size.y))
+		var info := {"art": art, "rect": r}
+		if art.directions == 8:
+			# 차량 그림 (주차 차량): 긴 쪽 방향, 크기는 실제 길이 비율
+			info.dir = 0 if along_x else 2
+			var size_m: Array = art.meta.get("size_m", [long_cells * b.cell_size_m])
+			info.segments = [center]
+			info.size = long_cells * b.cell_size_m / float(size_m[0])
+		else:
+			if along_x:
+				info.dir = 0 if rc.y >= center.y else 2
+			else:
+				info.dir = 3 if rc.x >= center.x else 1
+			var nominal: Array = art.meta.get("nominal", [long_cells, 1])
+			var count := maxi(1, roundi(long_cells / float(nominal[0])))
+			var seg := long_cells / count
+			var segs: Array[Vector2] = []
+			for k in count:
+				var off := -long_cells * 0.5 + seg * (k + 0.5)
+				segs.append(center + (Vector2(off, 0) if along_x else Vector2(0, off)))
+			info.segments = segs
+			info.size = seg / float(nominal[0])
+		for yy in range(r.position.y, r.end.y):
+			for xx in range(r.position.x, r.end.x):
+				cells[yy * b.width + xx] = n
+		draws[(r.end.y - 1) * b.width + (r.end.x - 1)] = info
+	_furn_cells[lv] = cells
+	_furn_draw[lv] = draws
+
+
+func _draw_furniture_sprite(info: Dictionary, x: int, y: int) -> void:
+	var art: SpriteArt.SpriteSet = info.art
+	# 다 탄 가구는 어둡게, 타는 중이면 붉게
+	var grid := sim.fire.grid
+	var i := grid.index(level, x, y)
+	var tint := Color.WHITE
+	if _cell_burnt(x, y):
+		tint = Color(0.25, 0.22, 0.2)
+	elif grid.state[i] == FuelGrid.State.BURNING and sim.perception.is_visible(level, x, y):
+		tint = Color(0.6, 0.4, 0.3)
+	for c: Vector2 in info.segments:
+		art.draw(self, "idle", int(info.dir), 0, proj.to_screen(c, 0.0), tint, Color(0, 0, 0, 0), float(info.size))
 
 
 func _furniture_height(x: int, y: int) -> float:

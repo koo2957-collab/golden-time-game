@@ -1,0 +1,1 @@
+{"anchor":[64.0,61.0],"anims":{"idle":{"cells":{"0_0":[0,0,0,98,92,-49,-55],"1_0":[0,99,0,98,92,-49,-55],"2_0":[0,198,0,98,92,-49,-55],"3_0":[0,297,0,98,92,-49,-55]},"frames":1,"stripe":{}}},"directions":4,"frame":[128.0,112.0],"h_m":0.45,"id":"furniture_coffee_table","kind":"furniture","nominal":[3.0,2.0],"pages":["res://art/sprites/furniture_coffee_table_0.png"],"scale":0.75}

@@ -1,0 +1,30 @@
+{
+  "note": "그림 연결 (P15, 기획안 9-4-1). 값은 res://art/sprites/<묶음>.json (tools/import_sprites.gd가 만든다). 묶음이 없거나 enabled가 false면 지금처럼 도형으로 그린다. 그림만 갈아 끼우려면 묶음 이름만 바꾼다 (예: firefighter → firefighter_v2, P15-2).",
+  "source": "Kenney (kenney.nl), CC0 — Animated Characters Retro, Car Kit, Furniture Kit",
+  "enabled": true,
+  "dir": "res://art/sprites",
+  "fps": {"idle": 3, "walk": 9, "crouch_walk": 6, "carry": 6, "spray": 6, "search": 3, "_source": "화면 설정"},
+  "crew": "characters_firefighter",
+  "commander": "characters_firefighter",
+  "witness": "characters_civilian_m",
+  "victims": {"male": "characters_civilian_m", "female": "characters_civilian_f", "female_words": ["할머니", "여", "엄마", "딸", "아주머니", "부인", "모", "누나", "언니", "아내", "임산부"]},
+  "helmet_stripe": {
+    "_source": "화면 설정 — 헬멧 띠 색으로 역할 구분 (기획안 9-4)",
+    "진압대": "#E53935", "구조대": "#FB8C00", "구급대": "#43A047", "굴절차·고가사다리차": "#8D6E63",
+    "RIT": "#AB47BC", "현장안전담당": "#FDD835", "지휘": "#FFFFFF"
+  },
+  "vehicles": {"펌프차": "vehicles_pump", "물탱크차": "vehicles_tanker", "구급차": "vehicles_ambulance", "구조공작차": "vehicles_rescue", "굴절차": "vehicles_aerial"},
+  "furniture": {
+    "_note": "가구 이름 → 묶음. 이름이 정확히 없으면 keywords 순서대로 이름에 들어간 낱말로 찾는다. 묶음의 nominal(칸)보다 긴 가구는 긴 쪽으로 이어 붙여 그린다",
+    "names": {
+      "소파": "furniture_sofa", "소파·방음재": "furniture_sofa", "1인 소파": "furniture_armchair", "거실장": "furniture_tv_cabinet",
+      "탁자": "furniture_coffee_table", "책장": "furniture_bookcase", "조리대": "furniture_kitchen", "가스레인지대": "furniture_kitchen",
+      "식탁": "furniture_dining", "침대": "furniture_bed", "훈련용 매트리스": "furniture_bedding", "장롱": "furniture_wardrobe",
+      "신발장": "furniture_shoe_cabinet", "요·이불": "furniture_bedding", "옷 더미": "furniture_bedding",
+      "책상": "furniture_desk", "사무 집기": "furniture_desk", "사무실 집기": "furniture_desk", "회의탁자": "furniture_dining",
+      "선반": "furniture_shelf", "캐비닛": "furniture_wardrobe"
+    },
+    "keywords": [["진열대", "furniture_shelf"], ["적재 랙", "furniture_rack"], ["더미", "furniture_boxes"], ["상자", "furniture_boxes"],
+      ["박스", "furniture_boxes"], ["짐", "furniture_boxes"], ["포대", "furniture_boxes"], ["팔레트", "furniture_boxes"], ["주차 차량", "vehicles_sedan"]]
+  }
+}

@@ -1,0 +1,1 @@
+{"anchor":[132.0,197.0],"anims":{"idle":{"cells":{"0_0":[0,0,0,214,277,-107,-197],"1_0":[0,215,0,214,277,-107,-197],"2_0":[0,430,0,214,277,-107,-197],"3_0":[0,645,0,214,277,-107,-197]},"frames":1,"stripe":{}}},"directions":4,"frame":[264.0,296.0],"h_m":3.0,"id":"furniture_rack","kind":"furniture","nominal":[6.0,5.0],"pages":["res://art/sprites/furniture_rack_0.png"],"scale":0.75}

@@ -34,7 +34,7 @@ func test_card_set() -> void:
 	var sim := _sim(APT)
 	var known := ["halt_locked", "halt_closed", "halt_backdraft", "halt_victim", "fire_found", "air_alarm", "knockdown", "arrival", "rollover_sign",
 		"jump_risk", "exposure_heating", "shaft", "sign_warning", "debris_zone", "hydrant_out", "tank_empty", "mayday", "gas_found",
-		"victim_trapped", "triage_urgent", "stair_smoke", "attack_upper", "victims_many", "first_search", "search_mark", "end_suggested", "entry_request", "rescue_no_point", "triage_needed", "nozzle_choice"]
+		"victim_trapped", "triage_urgent", "stair_smoke", "attack_upper", "victims_many", "first_search", "search_mark", "end_suggested", "entry_request", "rescue_no_point", "triage_needed", "nozzle_choice", "equipment_missing"]
 	for spec: Dictionary in data.cards:
 		assert_true(str(spec.trigger) in known, "%s 트리거 '%s' 처리됨" % [spec.id, spec.trigger])
 	sim.step_ticks(3)

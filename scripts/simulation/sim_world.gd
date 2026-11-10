@@ -50,6 +50,7 @@ var zones: ZoneSystem
 var entries: EntryPoints
 ## 지휘관이 아는 것 — 무전으로 전달된 보고 (P10-1 전술상황판, CLAUDE.md 규칙 7)
 var knowledge: KnowledgeBoard
+var _fetch_s := 10.0
 var shafts: ShaftSystem
 var evac: EvacSystem
 var shuttle: ShuttleSystem
@@ -145,6 +146,15 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.pathfinder = Pathfinder.new(building)
 	var speed_cells := stats.value("walk_speed_mps") / building.cell_size_m
 	sim.units = UnitSystem.from_roster(roster, speed_cells, vehicle_stats, building.cell_size_m)
+	# 휴대 장비 (P4-1): 출동대 종류별 기본 장비. 이미 만든 조에도 나눠 준다
+	var equip: Variant = JsonData.load_file("res://data/units/equipment.json")
+	if equip is Dictionary:
+		sim.units.default_items = equip.get("default_items", {})
+		for c in sim.units.crews:
+			for k in sim.units.default_items.get(sim.units.squads[c.squad_id].type, []):
+				if not str(k) in c.items:
+					c.items.append(str(k))
+		sim._fetch_s = float(equip.get("fetch", {}).get("value", 10.0))
 	sim.fire = FireSim.new(building, fire_config, sim.rng, sim.events)
 	sim.water = WaterSystem.new(building, sim.units, sim.pathfinder, sim.fire, fire_config, sim.events)
 	sim.doors = DoorSystem.new(sim.fire, sim.units, sim.pathfinder, stats, sim.events)
@@ -224,6 +234,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.doors.on_door_opened = sim.hazards.on_door_opened
 	sim.doors.on_door_approach = sim.hazards.on_door_approach
 	sim.doors.window_break_s = hazard_params.value("window_break_s")
+	sim.doors.set_fetch_s(sim._fetch_s)
 	sim.perception.update(0)
 	return sim
 
@@ -282,6 +293,9 @@ func apply_realism(name: String) -> void:
 	realism = name
 	# 임무형 내부 지휘는 모든 난이도에 적용 (R7, 2026-11-08 사용자 결정)
 	command.interior.enabled = true
+	# 없는 장비는 차량에 가서 가져와야 한다, 처음 차량은 한 대씩 들어온다 (P4-1, 실제 플레이에서만)
+	doors.require_equipment = true
+	command.resources.arrival_drive = true
 	var pp := _phase_params
 	# 현장 시계 배속 (기획안 5-8): 훈련 1.5 · 실전 2 · 악조건 2.5
 	var fts: Dictionary = pp.params.get("field_time_scale", {})
@@ -343,7 +357,10 @@ func apply_loadout(items: Array, tick: int) -> void:
 						c.thermal_camera = true
 						break
 			"fire_door_breaker":
-				doors.fire_door_factor_scale = 0.5
+				# 선착 진압대 조가 든다 (P4-1: 없으면 차량에 가서 가져와야 한다)
+				for c in units.crews:
+					if units.squads[c.squad_id].type == "진압대" and c.squad_id == 0 and not c.has_item("fire_door_breaker"):
+						c.items.append("fire_door_breaker")
 			"spare_cylinders":
 				conditions.swap_scale = 0.5
 			"gas_detector":

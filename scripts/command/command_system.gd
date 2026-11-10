@@ -54,6 +54,8 @@ const REPORT_PRIORITY := {
 	"window_vented": Radio.Priority.KEY_FACTOR,
 	"tank_empty": Radio.Priority.KEY_FACTOR,
 	"squad_staged": Radio.Priority.KEY_FACTOR,
+	"vehicle_arrived": Radio.Priority.TACTICS,
+	"equipment_missing": Radio.Priority.TACTICS,
 	"ember_spotted": Radio.Priority.KEY_FACTOR,
 	"tactical_halt": Radio.Priority.KEY_FACTOR,
 	"exposure_heating": Radio.Priority.KEY_FACTOR,

@@ -205,6 +205,14 @@ static func describe_text(e: Dictionary) -> String:
 			text = "긴급탈출 지시 전파 — 전 대원 탈출"
 		"evacuate":
 			text = "긴급탈출 — %s" % e.crew
+		"vehicle_arrived":
+			text = "%s 현장 도착" % e.vehicle
+		"equipment_missing":
+			text = "%s 없음 — %s" % [e.item, e.crew]
+		"equipment_fetch":
+			text = "장비 가지러 %s로 — %s" % [e.vehicle, e.crew]
+		"equipment_fetched":
+			text = "%s 챙김 — %s" % [e.item, e.crew]
 		"entry_route":
 			text = "진입구 %s%s — %s" % [e.entry, " (%s)" % e.side if str(e.side) != "" else "", e.crew]
 		"nozzle_choice":

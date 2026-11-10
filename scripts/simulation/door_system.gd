@@ -36,6 +36,11 @@ var _force_people: int
 var _fire_door_factor: float
 ## 방화문 파괴기를 실었으면 0.5 (출동 준비, R10)
 var fire_door_factor_scale := 1.0
+## 방화문 파괴에 파괴기가 있어야 하는가 (실제 플레이, P4-1). 없으면 질문 카드 → 차량에 가서 가져온다
+var require_equipment := false
+## 장비 가지러 가기 [{crew, item, vehicle, door: Vector3i, phase: "go"/"get", until}]
+var fetches: Array[Dictionary] = []
+var _fetch_s := 10.0
 
 
 func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, stats: ParamTable, p_events: SimEventLog) -> void:
@@ -106,6 +111,11 @@ func request(crew_id: int, door_cell: Vector3i, open: bool, tick: int) -> bool:
 			t.required = window_break_s
 		else:
 			t.required = (_force_s if o.locked else _open_s) if open else _open_s
+			if open and o.locked and fire.building.is_fire_door(o.cells[0]) and require_equipment and not c.has_item("fire_door_breaker"):
+				# 방화문 파괴기가 없다 → 묻는다 (기획안 6-1: 본인이 탑승한 차량까지 왕복 + 꺼내는 시간)
+				events.add(tick, "equipment_missing", {"crew": _crew_name(c), "crew_id": crew_id, "item": "방화문 파괴기",
+					"item_key": "fire_door_breaker", "door": [door_cell.x, door_cell.y, door_cell.z]})
+				return false
 			if open and o.locked and fire.building.is_fire_door(o.cells[0]):
 				t.required *= _fire_door_factor * fire_door_factor_scale  # 방화문: 파괴기·동력절단기로 더 오래 (SOP 213-2.3)
 		tasks.append(t)
@@ -128,7 +138,66 @@ func cancel(crew_id: int) -> void:
 		_remove_crew(t, crew_id)
 
 
+## 장비 가지러 가기 (P4-1): 본인 출동대 첫 차량으로 가서 꺼내고(fetch_s, 1인이면 2배), 다시 그 문을 연다
+func order_fetch(crew_id: int, item_key: String, door_cell: Vector3i, tick: int) -> bool:
+	var c := units.get_crew(crew_id)
+	if c == null:
+		return false
+	var vs := units.vehicles_of_squad(c.squad_id)
+	if vs.is_empty():
+		return false
+	var v := vs[0]
+	cancel(crew_id)
+	fetches = fetches.filter(func(f: Dictionary) -> bool: return int(f.crew) != crew_id)
+	fetches.append({"crew": crew_id, "item": item_key, "vehicle": v.id, "door": door_cell, "phase": "go", "until": -1})
+	_go_vehicle(c, v)
+	events.add(tick, "equipment_fetch", {"crew": _crew_name(c), "vehicle": v.type})
+	return true
+
+
+func set_fetch_s(s: float) -> void:
+	_fetch_s = s
+
+
+func _go_vehicle(c: Crew, v: Vehicle) -> void:
+	var near := pathfinder.nearest_walkable(v.level, Vector2i(v.closest_body_point(c.leader.pos).floor()))
+	if near != Pathfinder.NO_CELL:
+		units.order_move([c.id] as Array[int], Vector3i(near.x, near.y, v.level), pathfinder)
+
+
+func _step_fetches(tick: int) -> void:
+	for f in fetches.duplicate():
+		var c := units.get_crew(int(f.crew))
+		var v := units.get_vehicle(int(f.vehicle))
+		if c == null or v == null or c.leader.incapacitated:
+			fetches.erase(f)
+			continue
+		if f.phase == "go":
+			if c.leader.level == v.level and c.leader.pos.distance_to(v.closest_body_point(c.leader.pos)) <= 2.5 and not c.leader.is_moving():
+				var people := 2 if c.partner and not c.partner.incapacitated else 1
+				f.phase = "get"
+				f.until = tick + roundi(_fetch_s * (1.0 if people >= 2 else 2.0) / SimClock.TICK_DT)
+			elif not c.leader.is_moving():
+				_go_vehicle(c, v)
+		elif tick >= int(f.until):
+			fetches.erase(f)
+			if not c.has_item(str(f.item)):
+				c.items.append(str(f.item))
+			events.add(tick, "equipment_fetched", {"crew": _crew_name(c), "item": "방화문 파괴기" if f.item == "fire_door_breaker" else str(f.item)})
+			request(c.id, f.door, true, tick)
+
+
+## 장비 가지러 가는 중 진행률 (0~1, 꺼내는 중만, 아니면 -1)
+func fetch_progress(crew_id: int, tick: int) -> float:
+	for f in fetches:
+		if int(f.crew) == crew_id and f.phase == "get":
+			var total := roundi(_fetch_s / SimClock.TICK_DT)
+			return clampf(1.0 - float(int(f.until) - tick) / float(maxi(1, total)), 0.0, 1.0)
+	return -1.0
+
+
 func step(dt: float, tick: int) -> void:
+	_step_fetches(tick)
 	for t in tasks.duplicate():
 		var people := _people_at_door(t.opening)
 		var need := _force_people if (t.open and t.opening.locked) else 1

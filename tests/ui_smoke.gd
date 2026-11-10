@@ -55,6 +55,11 @@ func _run() -> void:
 	_key(KEY_ENTER)
 	_check("Enter → 현장 도착", cui.dispatch_visible(), false)
 	_check("지령 창을 닫으면 시간 진행", sim.clock.paused, false)
+	# 처음 차량은 한 대씩 들어오고 조는 차가 서면 내린다 (P4-1)
+	sim.step_ticks(1)
+	_check("차량이 지도 가장자리에서 들어온다", sim.command.resources.arriving.size() > 0, true)
+	_until(func() -> bool: return not sim.command.resources.arriving_now(), 1500)
+	_check("모두 도착·하차", sim.units.crews.filter(func(c): return c.leader.aboard and sim.command.resources.on_scene(c.squad_id)).is_empty(), true)
 
 	_check("기본 화면은 입체", world.view_mode, world.ViewMode.ISO)
 	# M·Tab = 전술상황판 (P10-1). 평면 보기 점검은 보기 전환을 직접 부른다
@@ -126,6 +131,8 @@ func _run() -> void:
 	sim.step_ticks(400)
 	_check("지휘권 선언", sim.command.declared(), true)
 	# 진입 허가 요청 카드 (P10-2): 입구에서 멈춘 진압1이 무전으로 요청 → 카드에서 허가 (숫자키)
+	# 카드 시간이 지났으면 대원이 잠시 뒤 다시 묻는다 — 카드가 뜰 때까지
+	_until(func() -> bool: return sim.cards.queue.any(func(q): return q.id == "ENTRY-01"), 900)
 	var entry_card = null
 	for qc in sim.cards.queue:
 		if qc.id == "ENTRY-01":

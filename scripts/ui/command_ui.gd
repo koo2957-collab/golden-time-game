@@ -75,6 +75,8 @@ var _fold_button: Button
 var command_rows: Array[HBoxContainer] = []
 ## 전술상황판을 접었는가 (Tab)
 var board_folded := false
+## 처음 차량이 들어오는 간격 (data/command/phase_params.json arrival_gap_s)
+var arrive_gap_s := 5.0
 ## 오른쪽 무전 기록 패널 (P10-1, Hud가 넣는다) — 알림·카드를 그 왼쪽 가운데에
 var right_panel: Control
 var _org: PanelContainer
@@ -116,6 +118,7 @@ func setup(p_sim: SimWorld) -> void:
 	sim = p_sim
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	arrive_gap_s = float(sim._phase_params.value("arrival_gap_s"))
 	_build_radio_panel()
 	_build_dispatch()
 	_build_report()
@@ -644,6 +647,8 @@ func _arrive() -> void:
 		order_issued.emit(CommandOrder.make("loadout", [], 0, Vector3i.ZERO, {"items": loadout_selection()}))
 	if _placement and sim.command.placement.is_empty() and sim.clock.tick <= Placement.MAX_TICK:
 		order_issued.emit(CommandOrder.make("placement", [], _placement.selected))
+	# 차량이 지도 가장자리에서 한 대씩 들어온다 (펌프차 먼저, 기획안 6-1·P4-1)
+	order_issued.emit(CommandOrder.make("arrive", [], 0, Vector3i.ZERO, {"gap_s": arrive_gap_s}))
 	_close(_dispatch)
 
 

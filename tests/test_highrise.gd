@@ -84,7 +84,7 @@ func test_loadout() -> void:
 	sim.step_ticks(1)
 	assert_eq(sim.loadout.size(), 3, "최대 3개")
 	assert_eq(sim.units.crews.filter(func(c: Crew) -> bool: return c.thermal_camera).size(), thermal + 1, "열화상카메라 +1")
-	assert_eq(sim.doors.fire_door_factor_scale, 0.5, "방화문 파괴기")
+	assert_true(sim.units.crews.any(func(c: Crew) -> bool: return c.squad_id == 0 and c.has_item("fire_door_breaker")), "방화문 파괴기는 선착 진압대 조가 든다 (P4-1)")
 	assert_eq(sim.building.outlet_hose_m, hose + 15.0, "고층 호스팩")
 	assert_eq(sim.conditions.swap_scale, 1.0, "4번째는 싣지 못함")
 	assert_eq(sim.events.of_type("loadout").size(), 1, "기록")

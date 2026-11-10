@@ -376,6 +376,16 @@ func _crew_status(crew: Crew) -> String:
 	if task:
 		var what := "문 파괴" if task.opening.locked else ("문 개방" if task.open else "문 폐쇄")
 		parts.append("%s %d/%d초%s" % [what, int(task.progress), int(task.required), " (인원 부족)" if task.waiting_people else ""])
+	# 현장 작업 (P4-1): 장비 가지러 감, 차량 타고 오는 중, 휴대 장비
+	var fp := sim.doors.fetch_progress(crew.id, sim.clock.tick)
+	if fp >= 0.0:
+		parts.append("장비 꺼내는 중 %d%%" % roundi(fp * 100.0))
+	elif sim.doors.fetches.any(func(f: Dictionary) -> bool: return int(f.crew) == crew.id):
+		parts.append("장비 가지러 차량으로")
+	if crew.leader.aboard and sim.command.resources.arriving_now():
+		parts.append("차량 타고 오는 중")
+	if crew.has_item("fire_door_breaker"):
+		parts.append("휴대: 방화문 파괴기")
 	return "\n    " + " · ".join(parts)
 
 

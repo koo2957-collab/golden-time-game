@@ -62,12 +62,21 @@ static func traits() -> Dictionary:
 	return _traits
 
 
+## 출동대 종류별 기본 휴대 장비 (data/units/equipment.json default_items)
+var default_items: Dictionary = {}
+
+
 func add_crew(squad: Squad, crew_data: Dictionary, spawn: Vector2i, level := 1) -> Crew:
 	var crew := Crew.new()
 	crew.id = crews.size()
 	crew.squad_id = squad.id
 	crew.number = squad.crews.size() + 1
 	crew.thermal_camera = bool(crew_data.get("thermal_camera", false))
+	for k in default_items.get(squad.type, []):
+		crew.items.append(str(k))
+	for k in crew_data.get("items", []):
+		if not str(k) in crew.items:
+			crew.items.append(str(k))
 	var members: Array = crew_data.get("members", [])
 	for i in members.size():
 		var ff := Firefighter.new()

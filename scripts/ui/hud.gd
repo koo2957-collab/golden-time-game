@@ -17,7 +17,7 @@ const NOTICE_TYPES: Array[String] = [
 	"heat_blocked", "heat_retreat", "air_alarm", "scba_swapped",
 	"victim_found", "victim_state", "victim_rescued", "victim_recovered", "ff_rescued", "rescue_pickup",
 	"rescue_hose_crew", "exit_blocked", "search_done", "rollover_sign", "backdraft_sign", "backdraft",
-	"fgi_warning", "window_vented", "entry_wait", "entry_rejected", "entry_denied", "withdraw", "auto_slow",
+	"fgi_warning", "window_vented", "entry_wait", "entry_rejected", "entry_denied", "zone_set", "zone_rejected", "zone_warning", "triage_post_set", "withdraw", "auto_slow",
 	"squad_dispatched", "staging_full", "order_en_route", "span_warning", "division_set", "division_cleared",
 	"face_seen", "site_info_found", "clue_found", "witness_arrived", "statement", "ask_too_far", "ask_cancelled",
 	"command_post", "report_updated", "overhaul_start", "rekindle",

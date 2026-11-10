@@ -4,6 +4,7 @@
   "mayday_repeat": {"value": 3, "source": "교재", "note": "\"긴급탈출\" 반복 송신 횟수 (SOP 109-1.2)"},
   "officer_air_ratio": {"value": 0.4, "source": "추정", "note": "현장안전담당이 건물 안 대원의 공기 잔량이 이 아래로 내려가면 미리 알린다 (SOP 108-2.3.3 대원 상태 확인)"},
   "officer_check_s": {"value": 5, "source": "추정", "note": "현장안전담당이 진입 대원 상태를 확인하는 간격"},
+  "safe_zone_default_m": {"value": 10, "source": "게임 설정값", "note": "안전구역을 끌지 않고 한 번 클릭하면 그 자리를 가운데로 이 크기(정사각형 한 변, m)의 안전구역 (P10-2)"},
   "par_response_s": {"value": 60, "source": "게임 설정값", "note": "인원 점검(SOP 109-1.3) 지시가 전달된 뒤 이 시간 안에 응답하지 않은 조는 무응답으로 무전 패널 긴급 줄에 올린다 (P10-2). 현장 검수 필요"},
   "entry_factor_recent_s": {"value": 120, "source": "추정", "note": "진입 금지 판단 요소(102-4.1 ⑧ 특수현상 징후)를 '지금 있음'으로 보는 시간"}
 }

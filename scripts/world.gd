@@ -572,6 +572,11 @@ func _on_command(id: String) -> void:
 			mission_ui.send_support(selection.selected[0])
 		"treat":
 			selection.begin_mode(SelectionController.Mode.TREAT)
+		"triage_post":
+			if not sim.zones.has_safe():
+				hud.show_notice("안전구역이 아직 없습니다 — 지휘관이 먼저 안전구역을 지정해야 분류소를 차립니다")
+			else:
+				selection.begin_mode(SelectionController.Mode.TRIAGE_POST)
 		"air_mat":
 			selection.begin_mode(SelectionController.Mode.AIR_MAT)
 		"transport":
@@ -615,6 +620,15 @@ func _commander_command(id: String) -> bool:
 				sim.issue(TacticalCommand.make("withdraw", inside))
 		"evacuate":
 			sim.issue(CommandOrder.make("evacuate"))
+		"zone_safe":
+			selection.begin_mode(SelectionController.Mode.ZONE_SAFE)
+		"zone_casualty":
+			if not sim.zones.has_safe():
+				hud.show_notice("안전구역을 먼저 지정하세요 (A 구역 지정 → Q 안전구역)")
+			else:
+				selection.begin_mode(SelectionController.Mode.ZONE_CASUALTY)
+		"zone_line":
+			selection.begin_mode(SelectionController.Mode.ZONE_LINE)
 		_:
 			return false
 	return true

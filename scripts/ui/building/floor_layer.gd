@@ -721,6 +721,8 @@ func _draw() -> void:
 		if depth == 0:
 			_draw_face_labels()
 		_draw_staging()
+		if depth == 0:
+			ZoneDraw.draw_ground(self, sim.zones, func(p: Vector2) -> Vector2: return proj.to_screen(p, 0.03), 14)
 	if depth == 0:
 		for crew_id in selection.selected:
 			_draw_path(sim.units.get_crew(crew_id).leader, alpha)
@@ -792,6 +794,7 @@ func _draw() -> void:
 			draw_arc(ep, 7.0, 0.0, TAU, 16, PlanStyle.EMBER, 1.5)
 	if level == _first_level and depth == 0:
 		_draw_staging_label()
+		ZoneDraw.draw_marks(self, sim.zones, func(p: Vector2) -> Vector2: return proj.to_screen(p, 0.03), 14, sim.clock.tick)
 
 
 ## 그릴 칸 표 (R17 성능): 가려져 화면에 나오지 않는 칸은 0. 빈 배열이면 모두 그린다.

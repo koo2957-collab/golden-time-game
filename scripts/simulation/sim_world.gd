@@ -44,6 +44,8 @@ var gas: GasSystem
 var collapse: CollapseSystem
 var ems: EmsSystem
 var falls: FallSystem
+## 구역 지정: 안전구역·환자 집결지·진입통제선·분류소 (P10-2 ⓑ)
+var zones: ZoneSystem
 var shafts: ShaftSystem
 var evac: EvacSystem
 var shuttle: ShuttleSystem
@@ -160,6 +162,8 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.falls = FallSystem.new(sim.fire, sim.exposure, sim.units, sim.rescue, sim.pathfinder, hazard_params, sim.events)
 	sim.ems = EmsSystem.new(sim.units, sim.rescue, sim.pathfinder, ParamTable.from_dict(ems_data), sim.events)
 	sim.command = CommandSystem.new(sim.fire, sim.units, sim.pathfinder, sim.rescue, sim.water, sim.doors, sim.perception, sim.clock, ParamTable.from_dict(radio_data), sim.events)
+	sim.zones = ZoneSystem.new(building, sim.units, sim.falls, ParamTable.from_dict(ems_data).value("triage_setup_s"),
+		ParamTable.from_dict(safety_data).value("safe_zone_default_m"), sim.events)
 	sim.command.resources = ResourceSystem.new(sim.units, sim.pathfinder, sim.conditions, building, sim.events)
 	var safety := SafetySystem.new(sim.fire, sim.units, sim.pathfinder, sim.rescue, sim.water, sim.doors, ParamTable.from_dict(safety_data), sim.events)
 	safety.radio = sim.command.radio
@@ -167,6 +171,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	safety.resources = sim.command.resources
 	safety.entry_allowed = sim.command.entry_allowed
 	sim.command.safety = safety
+	sim.command.zones = sim.zones
 	sim.tactical = TacticalSystem.new(sim.fire, sim.units, sim.water, sim.doors, sim.rescue, sim.events)
 	sim.tactical.safety = safety
 	sim.tactical.perception = sim.perception
@@ -426,6 +431,7 @@ func _step() -> void:
 	evac.step(dt, clock.tick)
 	falls.step(dt, clock.tick)
 	ems.step(dt, clock.tick)
+	zones.step(clock.tick)
 	tactical.step(clock.tick)
 	rescue.step_after_fire(dt, clock.tick)
 	command.step(dt, clock.tick)

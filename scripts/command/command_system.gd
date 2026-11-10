@@ -123,6 +123,8 @@ var units: UnitSystem
 var pathfinder: Pathfinder
 ## 임무 이름 (보고 요청 답에 쓴다)
 var tactical: TacticalSystem
+## 구역 지정 (P10-2 ⓑ)
+var zones: ZoneSystem
 var rescue: RescueSystem
 var water: WaterSystem
 var doors: DoorSystem
@@ -664,6 +666,66 @@ func order_evacuation(tick: int) -> void:
 	_decide(tick, "긴급탈출 지시")
 	_entry_pending.clear()
 	safety.order_evacuation(COMMANDER, tick)
+
+
+## 구역 지정 (P10-2 ⓑ): 안전구역·환자 집결지·진입통제선. 확인 → 무전 → 전달되면 적용
+##   answers: safe {rect: [x, y, w, h]}, casualty {cell: [x, y]}, line {a: [x, y], b: [x, y]}
+func order_zone(kind: String, answers: Dictionary, tick: int) -> bool:
+	if zones == null:
+		return false
+	var name: String = ZoneSystem.KIND_NAMES.get(kind, kind)
+	var why := ""
+	var warn := ""
+	var where := ""
+	match kind:
+		"safe":
+			var r: Array = answers.get("rect", [])
+			if r.size() < 4:
+				return false
+			var rect := Rect2i(int(r[0]), int(r[1]), int(r[2]), int(r[3]))
+			why = zones.safe_reject_reason(rect)
+			warn = zones.safe_warning(rect)
+			where = zones.where_text(Vector2(rect.get_center()))
+		"casualty":
+			var c: Array = answers.get("cell", [])
+			if c.size() < 2:
+				return false
+			why = zones.point_reject_reason(Vector2i(int(c[0]), int(c[1])))
+			where = zones.where_text(Vector2(int(c[0]), int(c[1])))
+		"line":
+			var a: Array = answers.get("a", [])
+			var b: Array = answers.get("b", [])
+			if a.size() < 2 or b.size() < 2:
+				return false
+			where = zones.where_text((Vector2(float(a[0]), float(a[1])) + Vector2(float(b[0]), float(b[1]))) * 0.5)
+		_:
+			return false
+	if why != "":
+		events.add(tick, "zone_rejected", {"kind": name, "reason": why})
+		return false
+	if warn != "":
+		events.add(tick, "zone_warning", {"kind": name, "reason": warn})
+	_decide(tick, "%s 지정 — %s" % [name, where])
+	radio.send(Radio.Priority.TACTICS, COMMANDER, "각 출동대", "%s 지정, %s." % [name, where], tick, _on_zone_sent.bind(kind, answers))
+	return true
+
+
+func _on_zone_sent(tick: int, kind: String, answers: Dictionary) -> void:
+	match kind:
+		"safe":
+			var r: Array = answers.rect
+			zones.apply_safe(Rect2i(int(r[0]), int(r[1]), int(r[2]), int(r[3])), tick)
+		"casualty":
+			var c: Array = answers.cell
+			# 무전이 가는 사이 안전구역이 바뀌었으면 다시 확인
+			var cell := Vector2i(int(c[0]), int(c[1]))
+			if zones.point_reject_reason(cell) != "":
+				events.add(tick, "zone_rejected", {"kind": ZoneSystem.KIND_NAMES.casualty, "reason": zones.point_reject_reason(cell)})
+				return
+			zones.apply_casualty(cell, tick)
+		"line":
+			zones.apply_line(Vector2(float(answers.a[0]), float(answers.a[1])), Vector2(float(answers.b[0]), float(answers.b[1])), tick)
+	events.add(tick, "zone_set", {"kind": ZoneSystem.KIND_NAMES.get(kind, kind), "where": zones.log[-1].text if not zones.log.is_empty() else ""})
 
 
 ## 인원점검 (SOP 109-1.3, 200-4.1)

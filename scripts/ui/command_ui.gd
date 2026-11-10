@@ -934,7 +934,22 @@ func _receo_text() -> String:
 		elif it[0]:
 			color = "e2e8f0"
 		lines.append("[color=#%s]%s%s: %s[/color]" % [color, mark, it[1], it[2]])
+	lines.append("[color=#94a3b8]구역: %s[/color]" % zones_text())
 	return "\n".join(lines)
+
+
+## 상황판 외부 구역 한 줄 (P10-2 ⓑ): "안전구역 ✓ · 환자 집결지 – · 진입통제선 – · 분류소 설치 중"
+func zones_text() -> String:
+	var z: ZoneSystem = sim.zones
+	var parts: PackedStringArray = ["안전구역 %s" % ("✓" if z.has_safe() else "–")]
+	if z.triage.x >= 0:
+		parts.append("분류소 ✓ (집결지 대신)")
+	else:
+		parts.append("환자 집결지 %s" % ("✓" if z.casualty.x >= 0 else "–"))
+		if not z.triage_setup.is_empty():
+			parts.append("분류소 설치 중")
+	parts.append("진입통제선 %s" % ("✓" if z.line.size() == 2 else "–"))
+	return " · ".join(parts)
 
 
 ## 둘러보기 현황과 현장지휘소 판정 한 줄

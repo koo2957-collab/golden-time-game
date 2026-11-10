@@ -205,6 +205,16 @@ static func describe_text(e: Dictionary) -> String:
 			text = "긴급탈출 지시 전파 — 전 대원 탈출"
 		"evacuate":
 			text = "긴급탈출 — %s" % e.crew
+		"zone_set":
+			text = "%s 지정 — %s" % [e.kind, e.where]
+		"zone_rejected":
+			text = "%s 지정 안 됨 — %s" % [e.kind, e.reason]
+		"zone_warning":
+			text = "%s 주의 — %s" % [e.kind, e.reason]
+		"triage_post_order":
+			text = "분류소 설치 지시 — %s (%s)" % [e.crew, e.where]
+		"triage_post_set":
+			text = "분류소 설치 — %s (%s)" % [e.crew, e.where]
 		"par_no_response":
 			text = "인원점검 무응답 — %s (%s)" % [e.crew, e.where]
 		"par_done":

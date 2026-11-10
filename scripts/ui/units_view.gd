@@ -57,6 +57,7 @@ func _draw() -> void:
 				draw_circle(wc, wr, PlanStyle.WITNESS_BODY)
 				draw_arc(wc, wr, 0.0, TAU, 24, PlanStyle.WITNESS_HEAD, 2.0)
 				draw_string(PlanStyle.font(), wc + Vector2(-60, -wr - 4.0), "관계인 · %s" % w.name, HORIZONTAL_ALIGNMENT_CENTER, 120, FONT_SIZE, PlanStyle.WITNESS_HEAD)
+		ZoneDraw.draw(self, sim.zones, func(p: Vector2) -> Vector2: return PlanStyle.to_px(p), 13, sim.clock.tick)
 		var rects := sim.command.resources.staging_rects()
 		for r in rects:
 			var px := Rect2(PlanStyle.to_px(r.position), PlanStyle.to_px(r.end) - PlanStyle.to_px(r.position))

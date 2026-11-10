@@ -83,6 +83,8 @@ func execute(sim: SimWorld) -> void:
 			sim.end_activity("활동 종료 선언")
 		"evacuate":
 			cmd.order_evacuation(tick)
+		"zone":
+			cmd.order_zone(str(answers.get("kind", "")), answers, tick)
 		"par":
 			cmd.order_par(tick)
 		"role":

@@ -157,6 +157,8 @@ func _draw() -> void:
 	for ff in sim.units.firefighters:
 		if ff.level == level and not ff.aboard:
 			draw_circle(o + ff.pos * s, dot, Color("f87171") if ff.incapacitated else CREW)
+	if level == ground_level:
+		ZoneDraw.draw(self, sim.zones, func(cell: Vector2) -> Vector2: return o + cell * s, 0, sim.clock.tick)
 	var c := sim.command.commander
 	if c.level == level:
 		draw_circle(o + c.pos * s, maxf(2.5, s * 0.7), COMMANDER)

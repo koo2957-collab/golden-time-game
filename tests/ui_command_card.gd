@@ -36,6 +36,44 @@ func _run() -> void:
 	_check("하위 칸 이름", _labels(card), ["Q 선언·전략", "W 선제지시"])
 	world._press_card("BACK")
 	_check("뒤로 → 첫 칸", card.parent, "")
+	# 구역 지정 (P10-2 ⓑ): A 구역 지정 → Q 안전구역 → 끌기 → 무전 → 지정, W 환자 집결지 클릭
+	world._press_card("A")
+	world._press_card("Q")
+	_check("A → Q → 안전구역 모드", sel.mode, sel.Mode.ZONE_SAFE)
+	var zr := Rect2i()
+	var fp := sim.building.footprint(1)
+	for y in range(fp.end.y + 2, sim.building.height - 8):
+		for x in range(fp.position.x, sim.building.width - 8):
+			if zr.size.x == 0 and sim.zones.safe_reject_reason(Rect2i(x, y, 8, 8)) == "":
+				zr = Rect2i(x, y, 8, 8)
+	var proj = sel.projection
+	var down := InputEventMouseButton.new()
+	down.button_index = MOUSE_BUTTON_LEFT
+	down.pressed = true
+	sel._zone_click(down, proj.to_screen(Vector2(zr.position) + Vector2(0.5, 0.5)))
+	var up: InputEventMouseButton = down.duplicate()
+	up.pressed = false
+	sel._zone_click(up, proj.to_screen(Vector2(zr.end) - Vector2(0.5, 0.5)))
+	for i in 600:
+		if sim.zones.has_safe():
+			break
+		sim.step_ticks(1)
+	_check("끌기 → 안전구역 지정 (무전 후)", sim.zones.safe, zr)
+	world._press_card("A")
+	world._press_card("W")
+	_check("A → W → 환자 집결지 모드", sel.mode, sel.Mode.ZONE_CASUALTY)
+	sel._complete_mode(proj.to_screen(Vector2(zr.get_center())))
+	sel.cancel_mode()
+	for i in 600:
+		if sim.zones.casualty.x >= 0:
+			break
+		sim.step_ticks(1)
+	_check("클릭 → 환자 집결지", sim.zones.casualty, zr.get_center())
+	_check("상황판 구역 줄", world.hud.command_ui.zones_text().begins_with("안전구역 ✓ · 환자 집결지 ✓"), true)
+	world.camera.retarget(proj.bounds(sim.building), proj.to_screen(Vector2(zr.get_center())))
+	for i in 3:
+		await process_frame
+	root.get_texture().get_image().save_png("user://ui_zones.png")
 	# 팀 선택 → 팀 세트, 원형 메뉴 = 명령 카드
 	var crew_id := 0
 	sel._set_selection([crew_id] as Array[int], [] as Array[int])

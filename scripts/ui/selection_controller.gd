@@ -13,7 +13,7 @@ extends Node2D
 ## 선택 단위는 조(2인 1조)와 차량이며, 현재 보고 있는 층의 대원만 선택된다.
 ## 좌표 변환은 projection(상황판/입체)을 따른다.
 
-enum Mode { NONE, HOSE, STRAIGHT, FOG, DOOR, SEARCH, OVERHAUL, PRIMARY, ATTACK, SEARCH_AUTO, EXTERIOR, RESCUE, TREAT, TRANSPORT, AIR_MAT, WAYPOINT, PENCIL, COVER, MONITOR, PPV, ELEVATOR, LIFELINE, VEHICLE_CONNECT, VEHICLE_MOVE }
+enum Mode { NONE, HOSE, STRAIGHT, FOG, DOOR, SEARCH, OVERHAUL, PRIMARY, ATTACK, SEARCH_AUTO, EXTERIOR, RESCUE, TREAT, TRANSPORT, AIR_MAT, WAYPOINT, PENCIL, COVER, MONITOR, PPV, ELEVATOR, LIFELINE, VEHICLE_CONNECT, VEHICLE_MOVE, ZONE_SAFE, ZONE_CASUALTY, ZONE_LINE, TRIAGE_POST }
 
 ## 관계인을 클릭했을 때 (world가 진술 창을 연다)
 signal witness_clicked(index: int)
@@ -55,6 +55,10 @@ const MODE_HINTS := {
 	Mode.MONITOR: "방수포: 바깥 창·문을 클릭 — 진입대원이 있는 방에는 쓰지 않는다 (SOP 207-1.1)",
 	Mode.PPV: "송풍기 양압배연: 바깥 출입문을 클릭 — 먼저 반대편 창(배출구)을 확보한다",
 	Mode.LIFELINE: "라이트라인: 끝 지점을 클릭 — 조가 지금 자리에서 그곳까지 유도선을 깔며 간다 (시계 0 구역, SOP 217)",
+	Mode.ZONE_SAFE: "안전구역: 건물 밖을 끌어서 사각형 (한 번 클릭하면 그 자리에 기본 크기) — 낙하물 위험구역은 피한다",
+	Mode.ZONE_CASUALTY: "환자 집결지: 안전구역 안을 클릭 (구조한 사람을 여기로 옮긴다)",
+	Mode.ZONE_LINE: "진입통제선: 선의 두 끝을 차례로 클릭",
+	Mode.TRIAGE_POST: "분류소 설치: 안전구역 안을 클릭 — 구급대가 가서 차린다 (환자 집결지를 대신)",
 	Mode.VEHICLE_CONNECT: "급수 연결: 소화전·송수구(펌프차) 또는 펌프차(물탱크차)를 클릭",
 	Mode.VEHICLE_MOVE: "자리 옮기기: 차를 옮길 곳을 클릭",
 	Mode.ELEVATOR: "비상용승강기: 내릴 층으로 화면을 옮긴 뒤(층 막대·PgUp/PgDn) 지도를 클릭 — 화재층 2개층 아래까지 (SOP 222)",
@@ -85,6 +89,9 @@ var _skip_release := false
 var _press_screen := Vector2.ZERO
 var _press_world := Vector2.ZERO
 var _drag_rect := Rect2()
+## 구역 지정 중: 안전구역 끌기 시작 칸, 진입통제선 첫 점 (-1 = 아직)
+var _zone_from := Vector2(-1, -1)
+var _zone_to := Vector2(-1, -1)
 var _marker_world := Vector2.ZERO
 var _marker_start_ms := -1.0
 
@@ -99,6 +106,7 @@ func begin_mode(p_mode: Mode) -> void:
 
 
 func cancel_mode() -> void:
+	_zone_from = Vector2(-1, -1)
 	if mode != Mode.NONE:
 		mode = Mode.NONE
 		EventBus.command_mode_changed.emit("")
@@ -144,6 +152,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton:
 		_handle_button(event)
+	elif event is InputEventMouseMotion and _zone_from.x >= 0:
+		_zone_to = projection.to_cell(_to_world(event.position))
+		queue_redraw()
 	elif event is InputEventMouseMotion and _pressing:
 		if (event.position - _press_screen).length() > DRAG_THRESHOLD_PX:
 			_dragging = true
@@ -158,6 +169,9 @@ func _handle_button(event: InputEventMouseButton) -> void:
 	var world_pos := _to_world(event.position)
 	if event.is_action_pressed("select") and click_override.is_valid():
 		click_override.call(Vector2i(projection.to_cell(world_pos).floor()))
+		get_viewport().set_input_as_handled()
+		return
+	if mode in [Mode.ZONE_SAFE, Mode.ZONE_LINE] and _zone_click(event, world_pos):
 		get_viewport().set_input_as_handled()
 		return
 	if mode != Mode.NONE and (event.is_action_pressed("select") or event.is_action_pressed("command")):
@@ -361,8 +375,52 @@ func _issue_crew_right_click(world_pos: Vector2) -> void:
 	_marker_start_ms = Time.get_ticks_msec()
 
 
+## 안전구역(끌기)·진입통제선(두 번 클릭). 처리했으면 true
+func _zone_click(event: InputEventMouseButton, world_pos: Vector2) -> bool:
+	if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+		cancel_mode()
+		return true
+	if event.button_index != MOUSE_BUTTON_LEFT:
+		return false
+	var cell := projection.to_cell(world_pos)
+	if mode == Mode.ZONE_SAFE:
+		if event.pressed:
+			_zone_from = cell
+			_zone_to = cell
+		elif _zone_from.x >= 0:
+			var a := Vector2i(_zone_from.floor())
+			var b := Vector2i(cell.floor())
+			var r := Rect2i(Vector2i(mini(a.x, b.x), mini(a.y, b.y)), (a - b).abs() + Vector2i.ONE)
+			if r.size.x <= 2 and r.size.y <= 2:
+				r = sim.zones.default_safe(a)
+			sim.issue(CommandOrder.make("zone", [], 0, Vector3i.ZERO, {"kind": "safe", "rect": [r.position.x, r.position.y, r.size.x, r.size.y]}))
+			cancel_mode()
+		return true
+	# 진입통제선: 첫 클릭은 한 끝, 두 번째 클릭으로 지정
+	if not event.pressed:
+		return true
+	if _zone_from.x < 0:
+		_zone_from = cell
+		_zone_to = cell
+		return true
+	sim.issue(CommandOrder.make("zone", [], 0, Vector3i.ZERO, {"kind": "line", "a": [_zone_from.x, _zone_from.y], "b": [cell.x, cell.y]}))
+	cancel_mode()
+	return true
+
+
 func _complete_mode(world_pos: Vector2) -> void:
 	match mode:
+		Mode.ZONE_CASUALTY:
+			var c := Vector2i(projection.to_cell(world_pos).floor())
+			sim.issue(CommandOrder.make("zone", [], 0, Vector3i.ZERO, {"kind": "casualty", "cell": [c.x, c.y]}))
+		Mode.TRIAGE_POST:
+			var tc := Vector2i(projection.to_cell(world_pos).floor())
+			var ems_ids: Array[int] = []
+			for id in selected:
+				if sim.ems.is_ems_crew(id):
+					ems_ids.append(id)
+			if not ems_ids.is_empty():
+				sim.issue(EquipmentCommand.make("triage_post", ems_ids, -1, -1, Vector3i(tc.x, tc.y, 1)))
 		Mode.VEHICLE_CONNECT:
 			if not selected_vehicles.is_empty():
 				_issue_vehicle_click(world_pos)
@@ -672,6 +730,19 @@ func _set_selection(ids: Array[int], vehicle_ids: Array[int] = [], with_commande
 
 func _draw() -> void:
 	_draw_hover()
+	# 구역 지정 미리 보기: 안전구역 사각형·진입통제선
+	if _zone_from.x >= 0 and projection:
+		if mode == Mode.ZONE_SAFE:
+			var a := _zone_from.floor()
+			var b := _zone_to.floor()
+			var lo := Vector2(minf(a.x, b.x), minf(a.y, b.y))
+			var hi := Vector2(maxf(a.x, b.x), maxf(a.y, b.y)) + Vector2.ONE
+			var pts := PackedVector2Array([projection.to_screen(lo), projection.to_screen(Vector2(hi.x, lo.y)), projection.to_screen(hi), projection.to_screen(Vector2(lo.x, hi.y))])
+			draw_colored_polygon(pts, Color(PlanStyle.SAFE_ZONE, 0.18))
+			pts.append(pts[0])
+			draw_polyline(pts, PlanStyle.SAFE_ZONE, 2.0)
+		elif mode == Mode.ZONE_LINE:
+			draw_dashed_line(projection.to_screen(_zone_from), projection.to_screen(_zone_to), PlanStyle.CONTROL_LINE, 3.0, 10.0)
 	if _dragging:
 		draw_rect(_drag_rect, Color(PlanStyle.SELECTION, 0.12))
 		draw_rect(_drag_rect, PlanStyle.SELECTION, false, 1.5)

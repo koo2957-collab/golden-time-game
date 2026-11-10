@@ -127,6 +127,9 @@ func execute(sim: SimWorld) -> void:
 				sim.tactical.cancel(id)
 				if sim.gas.order_off(id, tick):
 					break
+		"triage_post":
+			if not crew_ids.is_empty():
+				sim.zones.order_triage(crew_ids[0], Vector2i(target.x, target.y), sim.pathfinder, tick)
 		"ems_treat", "ems_transport":
 			for id in crew_ids:
 				sim.doors.cancel(id)

@@ -17,7 +17,7 @@ const NOTICE_TYPES: Array[String] = [
 	"heat_blocked", "heat_retreat", "air_alarm", "scba_swapped",
 	"victim_found", "victim_state", "victim_rescued", "victim_recovered", "ff_rescued", "rescue_pickup",
 	"rescue_hose_crew", "exit_blocked", "search_done", "rollover_sign", "backdraft_sign", "backdraft",
-	"fgi_warning", "window_vented", "entry_wait", "entry_rejected", "entry_denied", "zone_set", "zone_rejected", "zone_warning", "triage_post_set", "withdraw", "auto_slow",
+	"fgi_warning", "window_vented", "entry_wait", "entry_rejected", "entry_denied", "zone_set", "zone_rejected", "zone_warning", "triage_post_set", "victim_handover", "rescue_no_point", "triage_tagged", "withdraw", "auto_slow",
 	"squad_dispatched", "staging_full", "order_en_route", "span_warning", "division_set", "division_cleared",
 	"face_seen", "site_info_found", "clue_found", "witness_arrived", "statement", "ask_too_far", "ask_cancelled",
 	"command_post", "report_updated", "overhaul_start", "rekindle",
@@ -197,7 +197,12 @@ func _refresh_victims() -> void:
 		if v.carried_by >= 0:
 			where = "이송 중"
 		var t := int(v.discovered_tick * SimClock.TICK_DT)
-		lines.append("%s · %s · %s · 발견 %02d:%02d" % [v.label(), where, v.state_name(), floori(t / 60.0), t % 60])
+		var extra := ""
+		var p := sim.ems.patient_of(v.id)
+		if p and sim.ems.on_scene(p):
+			where = v.dropoff if v.dropoff != "" else "바깥"
+			extra = " · 분류 %s" % sim.ems.tag_name(p)
+		lines.append("%s · %s · %s · 발견 %02d:%02d%s" % [v.label(), where, v.state_name(), floori(t / 60.0), t % 60, extra])
 	_victim_label.text = "요구조자 현황
 " + "
 ".join(lines) if not lines.is_empty() else ""

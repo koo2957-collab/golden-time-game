@@ -208,6 +208,9 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.command.survey = SiteSurvey.new(sim.fire, sim.units, sim.pathfinder, sim.command.resources, sim.command.commander, ParamTable.from_dict(survey_data), sim.events)
 	sim.water.safe_cell = sim.conditions.safe_to_enter
 	sim.rescue.water = sim.water
+	sim.rescue.zones = sim.zones
+	sim.ems.zones = sim.zones
+	sim.ems.fed_death = sim.rescue.fed_death()
 	sim.doors.on_door_opened = sim.hazards.on_door_opened
 	sim.doors.on_door_approach = sim.hazards.on_door_approach
 	sim.doors.window_break_s = hazard_params.value("window_break_s")
@@ -247,6 +250,8 @@ static func from_scenario(path: String, command_rules := true, seed_override := 
 		if ev.has("refuge_level"):
 			sim.evac.refuge_level = int(ev.refuge_level)
 			sim.evac.refuge_cell = Vector2i(int(ev.refuge_cell[0]), int(ev.refuge_cell[1]))
+		# 구조자 운반·집결지 카드는 지휘 규칙을 켠 판에서만 (P10-2 ⓒ)
+		sim.rescue.dropoff_enabled = command_rules
 		if not command_rules:
 			sim.command.entry_order_required = false
 			sim.command.auto_slow = false

@@ -164,7 +164,8 @@ func step(tick: int) -> void:
 				next.append(t)
 			elif not t.unit_check.is_empty():
 				unit_next.append(t)
-	tasks = tasks.filter(func(t: Task) -> bool: return t.phase != Phase.DONE)
+	# 구조자를 옮기는 중인 층·세대 임무는 남겨 두었다가 인계 뒤 이어 간다 (원래 임무 복귀, P10-2 ⓒ)
+	tasks = tasks.filter(func(t: Task) -> bool: return t.phase != Phase.DONE 		or ((t.floor >= 0 or not t.unit_check.is_empty()) and not t.halted and rescue.task_of_crew(t.crew_id) != null))
 	for t in next:
 		_order_floor(t.floor_action, units.get_crew(t.crew_id), t.floor, tick, false)
 	for t in unit_next:

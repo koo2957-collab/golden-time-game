@@ -1449,11 +1449,11 @@ func _draw_victim(v: Victim) -> void:
 		var p := sim.ems.patient_of(v.id)
 		if p == null or not sim.ems.on_scene(p):
 			return
-		var tag: Color = EmsSystem.TRIAGE_COLORS[p.triage]
+		var tag: Color = sim.ems.shown_color(p)
 		var at := proj.to_screen(v.pos, 0.05)
 		draw_colored_polygon(_ellipse(at + Vector2(0, -3), 13, 5), color)
 		draw_circle(at + Vector2(12, -5), 5.0, tag)
-		draw_string(PlanStyle.font(), at + Vector2(-70, -14), "%s · %s · %s" % [v.label(), sim.ems.triage_name(p), EmsSystem.STAGE_NAMES[p.stage]], HORIZONTAL_ALIGNMENT_CENTER, 140, 12, tag.lightened(0.3))
+		draw_string(PlanStyle.font(), at + Vector2(-70, -14), "%s · %s · %s" % [v.label(), sim.ems.shown_name(p), EmsSystem.STAGE_NAMES[p.stage]], HORIZONTAL_ALIGNMENT_CENTER, 140, 12, tag.lightened(0.3))
 		return
 	var feet := proj.to_screen(v.pos, 0.05)
 	draw_colored_polygon(_ellipse(feet, 15, 6), Color(0, 0, 0, 0.35))

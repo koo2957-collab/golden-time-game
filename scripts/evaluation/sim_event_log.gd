@@ -205,6 +205,18 @@ static func describe_text(e: Dictionary) -> String:
 			text = "긴급탈출 지시 전파 — 전 대원 탈출"
 		"evacuate":
 			text = "긴급탈출 — %s" % e.crew
+		"victim_handover":
+			text = "구조자 인계 — %s → %s (%s)" % [e.who, e.where, e.by]
+		"rescue_no_point":
+			text = "환자 집결지 없음 — %s가 %s를 업고 입구에서 대기" % [e.crew, e.who]
+		"dropoff_policy":
+			text = "구조자 둘 곳 — %s" % e.policy
+		"triage_needed":
+			text = "1차 분류 요청 — %s" % e.who
+		"triage_auto":
+			text = "걸을 수 있음 → 비응급(녹색) — %s" % e.who
+		"triage_tagged":
+			text = "중증도 분류 %s — %s" % [e.tag, e.who]
 		"zone_set":
 			text = "%s 지정 — %s" % [e.kind, e.where]
 		"zone_rejected":

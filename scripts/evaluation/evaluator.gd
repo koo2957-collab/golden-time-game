@@ -506,6 +506,44 @@ func _check_ems_treat() -> Dictionary:
 	return {"score": sum / ems.patients.size(), "detail": ", ".join(parts)}
 
 
+## 중증도 분류 (START, P10-2 ⓒ): 분류 카드로 물은 환자마다 고른 분류가 실제와 맞는가. 사람마다 한 줄
+## 실제보다 높게 분류(과분류)는 절반, 살릴 수 있는 사람을 지연으로 분류하면 0
+func _check_triage() -> Dictionary:
+	var ems := sim.ems
+	var asked: Array = ems.patients.filter(func(p: EmsSystem.Patient) -> bool: return p.asked)
+	if asked.is_empty():
+		return {}
+	var sum := 0.0
+	var parts: PackedStringArray = []
+	for p: EmsSystem.Patient in asked:
+		var v := sim.rescue.victims[p.victim_id]
+		var s := 0.0
+		if p.tag == p.triage:
+			s = 1.0
+		elif p.tag >= 0 and p.tag != EmsSystem.Triage.DELAYED and int(EmsSystem.TAG_ORDER.get(p.tag, 9)) < int(EmsSystem.TAG_ORDER.get(p.triage, 9)):
+			s = 0.5
+		sum += s
+		var result: String = "사망" if v.state == Victim.State.DEAD else str(EmsSystem.STAGE_NAMES[p.stage])
+		var wait := "처치 못함" if p.treat_start_tick < 0 else "구조 후 %d초에 처치" % roundi((p.treat_start_tick - v.rescued_tick) * SimClock.TICK_DT)
+		parts.append("%s 실제 %s · 분류 %s%s · %s · %s" % [v.label(), EmsSystem.TRIAGE_NAMES[p.triage], ems.tag_name(p),
+			"" if s >= 1.0 else " (틀림)", wait, result])
+	return {"score": sum / asked.size(), "detail": "; ".join(parts)}
+
+
+## 구조자 인계 장소 (P10-2 ⓒ): 환자 집결지·분류소(·구급차 옆)로 옮겼는가. 입구에 두면 0
+func _check_dropoff() -> Dictionary:
+	var done: Array = sim.rescue.victims.filter(func(v: Victim) -> bool: return v.dropoff != "")
+	if done.is_empty():
+		return {}
+	var sum := 0.0
+	var parts: PackedStringArray = []
+	for v: Victim in done:
+		var s := {"환자 집결지": 1.0, "분류소": 1.0, "구급차 옆": 0.5}.get(v.dropoff, 0.0) as float
+		sum += s
+		parts.append("%s → %s%s" % [v.label(), v.dropoff, "" if s > 0.0 else " (연기·동선 방해)"])
+	return {"score": sum / done.size(), "detail": ", ".join(parts)}
+
+
 ## 처치 후 이송 (SOP 400-3.3·3.4): 구조 → 이송 출발 시간
 func _check_ems_transport() -> Dictionary:
 	var ems := sim.ems

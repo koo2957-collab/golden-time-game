@@ -115,10 +115,10 @@ func _draw_victims() -> void:
 		if level != sim.building.levels()[0] or not sim.ems.on_scene(p) or pv.carried_by >= 0:
 			continue
 		var pc := PlanStyle.to_px(pv.pos)
-		var tag: Color = EmsSystem.TRIAGE_COLORS[p.triage]
+		var tag: Color = sim.ems.shown_color(p)
 		draw_rect(Rect2(pc - Vector2(7, 7), Vector2(14, 14)), tag)
 		draw_rect(Rect2(pc - Vector2(7, 7), Vector2(14, 14)), Color.WHITE, false, 1.5)
-		draw_string(PlanStyle.font(), pc + Vector2(-80, -12), "%s · %s · %s" % [pv.label(), sim.ems.triage_name(p), EmsSystem.STAGE_NAMES[p.stage]], HORIZONTAL_ALIGNMENT_CENTER, 160, 12, tag.lightened(0.3))
+		draw_string(PlanStyle.font(), pc + Vector2(-80, -12), "%s · %s · %s" % [pv.label(), sim.ems.shown_name(p), EmsSystem.STAGE_NAMES[p.stage]], HORIZONTAL_ALIGNMENT_CENTER, 160, 12, tag.lightened(0.3))
 	for v in sim.rescue.victims:
 		if not v.discovered or v.level != level or v.state == Victim.State.RESCUED:
 			continue

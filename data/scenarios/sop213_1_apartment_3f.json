@@ -64,6 +64,8 @@
       "rescue.search_order",
       "search.secondary",
       "rescue.ems_treat",
+      "rescue.triage",
+      "rescue.dropoff",
       "rescue.ems_transport",
       "property.spread",
       "property.water",

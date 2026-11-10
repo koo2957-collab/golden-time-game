@@ -40,6 +40,12 @@ func _init(building: BuildingData) -> void:
 		_grids[level] = grid
 
 
+## 지나가기 어렵게 (입구에 내려놓은 구조자 등): 길찾기가 돌아가는 비용 배율. 1이면 원래대로
+func set_weight(level: int, cell: Vector2i, w: float) -> void:
+	if _grids.has(level) and _building.is_walkable(level, cell.x, cell.y):
+		_grids[level].set_point_weight_scale(cell, w)
+
+
 ## 셀을 막거나 연다 (닫힌 문). 원래 걸을 수 없는 셀은 무시한다.
 func set_blocked(level: int, cell: Vector2i, blocked: bool) -> void:
 	if not _building.is_walkable(level, cell.x, cell.y) or not _grids.has(level):

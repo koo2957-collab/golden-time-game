@@ -161,8 +161,6 @@ func _trigger_of(e: Dictionary) -> String:
 			return "shaft"
 		"site_info_found":
 			return "gas_found" if str(e.get("text", "")).contains("가스") or str(e.get("text", "")).contains("LPG") else ""
-		"ems_triage":
-			return "triage_urgent" if str(e.get("triage", "")) == "긴급" else ""
 		"smoke":
 			return "stair_smoke" if str(e.get("room", "")).contains("계단실") and fire.building.levels().size() >= 3 else ""
 		"victim_found":
@@ -181,8 +179,8 @@ func _trigger_of(e: Dictionary) -> String:
 			return "fire_found"
 		"phase":
 			return "arrival" if int(e.get("index", -1)) == 1 else ""
-		"entry_request":
-			return "entry_request"
+		"entry_request", "rescue_no_point", "triage_needed":
+			return str(e.type)
 	return ""
 
 
@@ -333,7 +331,8 @@ func _nearest_crew(p: Vector2, level := -1, type := "") -> int:
 func _apply(effect: String, c: Card, tick: int) -> void:
 	var crew := units.get_crew(c.crew_id)
 	# 조가 없어도 되는 행동 (차량·대피 방송·안전구역·RIT 등)
-	const NO_CREW := ["entry_grant", "entry_wait", "entry_deny", "shuttle", "clear_zone", "shelter", "evacuate_now", "note", "hold", "", "connect_fdc", "supply_pump", "rit_deploy", "air_mat"]
+	const NO_CREW := ["entry_grant", "entry_wait", "entry_deny", "dropoff_wait", "dropoff_ambulance", "dropoff_entrance",
+		"tag_urgent", "tag_emergent", "tag_minor", "tag_delayed", "shuttle", "clear_zone", "shelter", "evacuate_now", "note", "hold", "", "connect_fdc", "supply_pump", "rit_deploy", "air_mat"]
 	if crew == null and not effect in NO_CREW:
 		return
 	var here := crew.leader.pos if crew else Vector2(fire.building.footprint(1).get_center())
@@ -342,6 +341,13 @@ func _apply(effect: String, c: Card, tick: int) -> void:
 	var action := str(c.ctx.get("action", ""))
 	var target := _cell(c.ctx.get("target", []))
 	match effect:
+		"dropoff_wait", "dropoff_ambulance", "dropoff_entrance":
+			if sim:
+				sim.rescue.set_dropoff_policy(effect.trim_prefix("dropoff_"), tick)
+		"tag_urgent", "tag_emergent", "tag_minor", "tag_delayed":
+			if sim:
+				var tags := {"tag_urgent": EmsSystem.Triage.URGENT, "tag_emergent": EmsSystem.Triage.EMERGENT, "tag_minor": EmsSystem.Triage.MINOR, "tag_delayed": EmsSystem.Triage.DELAYED}
+				sim.ems.set_tag(int(c.ctx.get("victim_id", -1)), int(tags[effect]), tick)
 		"entry_grant", "entry_wait", "entry_deny":
 			if sim:
 				sim.command.answer_entry(int(c.ctx.get("squad_id", -1)), effect.trim_prefix("entry_"), tick)

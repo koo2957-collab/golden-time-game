@@ -5,6 +5,46 @@
     "source": "게임 설정값",
     "note": "구급대가 분류소 자리에 도착해 분류소를 차리는 데 걸리는 시간 (P10-2). 현장 검수 필요"
   },
+  "emergent_worsen_s": {
+    "value": 900,
+    "source": "게임 설정값",
+    "note": "응급 환자가 처치 없이 이만큼 지나면 긴급으로 나빠진다 (P10-2, 구급대를 언제 부를지 판단거리). 현장 검수 필요"
+  },
+  "observe_factor": {
+    "value": 0.5,
+    "source": "게임 설정값",
+    "note": "구조자 곁에 대원이 서 있으면(구조자 관찰) 악화 시간이 이 배율로 흐른다 (P10-2)"
+  },
+  "observe_range_m": {
+    "value": 2,
+    "source": "게임 설정값",
+    "note": "구조자 관찰로 보는 거리"
+  },
+  "post_range_m": {
+    "value": 6,
+    "source": "게임 설정값",
+    "note": "분류소·환자 집결지에서 이 거리 안의 구급대·환자는 분류표 순서대로 자동 처치한다"
+  },
+  "start_rr_threshold": {
+    "value": 30,
+    "source": "교재",
+    "note": "START 분류: 분당 호흡 30회 초과면 긴급(적색) (구급 START, 기획안 5번 구급)"
+  },
+  "start_crt_s": {
+    "value": 2,
+    "source": "교재",
+    "note": "START 분류: 모세혈관 재충혈 2초 초과면 긴급 (구급 START)"
+  },
+  "start_urgent_fed": {
+    "value": 0.6,
+    "source": "게임 설정값",
+    "note": "의식이 있어도 연기·열 노출량(FED)이 이 이상이면 호흡이 빨라 긴급으로 본다 (단서 생성용)"
+  },
+  "start_delayed_fed_ratio": {
+    "value": 0.9,
+    "source": "게임 설정값",
+    "note": "의식이 없고 노출량이 사망 판정의 이 비율 이상이면 숨을 쉬지 않는 것으로 보아 지연(흑색)"
+  },
   "treat_urgent_s": {
     "value": 180,
     "source": "추정",

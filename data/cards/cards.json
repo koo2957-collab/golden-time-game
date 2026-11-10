@@ -1,5 +1,5 @@
 {
-  "note": "질문 카드 (기획안 7장). 카드 1장 = SOP 조항 1개. trigger: halt_locked·halt_closed·halt_backdraft·halt_victim(전술 명령이 멈춘 자리), air_alarm, knockdown, arrival, rollover_sign, jump_risk, exposure_heating, shaft, sign_warning, debris_zone, hydrant_out, tank_empty, mayday, gas_found, victim_trapped, triage_urgent, stair_smoke, attack_upper, victims_many, first_search, search_mark, end_suggested, fire_found, entry_request(입구에서 진입 허가 요청 — 사건의 verdict로 variants를 고른다, P10-2). multi: true면 같은 카드가 여러 장(출동대마다) 떠 있을 수 있다. once: 한 판에 한 번. 선택지 time_cost_sec + then: 정보 확인(시간을 쓴 뒤 then 행동). text·variants의 {이름}은 사건 값으로 채운다 (crew·door_name·victim_name·state·air). effect: force_door·open_door·vent_then_open·rescue_victim·resume·withdraw·overhaul·flood·hold·close_then_resume(화재실 문 닫고 검색 계속)·attack_found(찾은 화점 진압)·halt_here(하던 일 멈춤). 임무 조건(data/command/mission_params.json)이 정해져 있으면 카드 없이 그 행동을 한다. grade: 최선·허용·오답·치명 (화면에는 보이지 않음). skip_if_preordered: 그 선제지시가 켜져 있으면 카드 없이 최선 선택을 실행. stages: 그 스테이지 시나리오에서만 묻는다(R14). 교관이 문구·등급·해설을 고칠 수 있다.",
+  "note": "질문 카드 (기획안 7장). 카드 1장 = SOP 조항 1개. trigger: halt_locked·halt_closed·halt_backdraft·halt_victim(전술 명령이 멈춘 자리), air_alarm, knockdown, arrival, rollover_sign, jump_risk, exposure_heating, shaft, sign_warning, debris_zone, hydrant_out, tank_empty, mayday, gas_found, victim_trapped, triage_urgent, stair_smoke, attack_upper, victims_many, first_search, search_mark, end_suggested, fire_found, rescue_no_point(집결지 없이 구조자가 입구 밖에 나옴, P10-2), triage_needed(걷지 못하는 구조자 START 분류, P10-2), entry_request(입구에서 진입 허가 요청 — 사건의 verdict로 variants를 고른다, P10-2). multi: true면 같은 카드가 여러 장(출동대마다) 떠 있을 수 있다. once: 한 판에 한 번. 선택지 time_cost_sec + then: 정보 확인(시간을 쓴 뒤 then 행동). text·variants의 {이름}은 사건 값으로 채운다 (crew·door_name·victim_name·state·air). effect: force_door·open_door·vent_then_open·rescue_victim·resume·withdraw·overhaul·flood·hold·close_then_resume(화재실 문 닫고 검색 계속)·attack_found(찾은 화점 진압)·halt_here(하던 일 멈춤). 임무 조건(data/command/mission_params.json)이 정해져 있으면 카드 없이 그 행동을 한다. grade: 최선·허용·오답·치명 (화면에는 보이지 않음). skip_if_preordered: 그 선제지시가 켜져 있으면 카드 없이 최선 선택을 실행. stages: 그 스테이지 시나리오에서만 묻는다(R14). 교관이 문구·등급·해설을 고칠 수 있다.",
   "preorders": [
     {
       "key": "force_locked",
@@ -673,37 +673,6 @@
       "debrief": "입체적으로 발생하는 구조대상자는 갇힌 위치가 곧 검색 우선 위치다. 위치가 확인되면 바로 구조조를 보낸다."
     },
     {
-      "id": "TRIAGE-01",
-      "title": "중증도 분류",
-      "phase": "구급",
-      "trigger": "triage_urgent",
-      "asker": "현장 대원",
-      "urgency": "일반",
-      "text": "구급대: {who} — 의식 저하, 호흡이 빠르고 얕습니다. 분류는?",
-      "options": [
-        {
-          "text": "긴급(적색)",
-          "grade": "최선",
-          "effect": "note"
-        },
-        {
-          "text": "응급(황색)",
-          "grade": "오답",
-          "effect": "note"
-        },
-        {
-          "text": "비응급(녹색)",
-          "grade": "오답",
-          "effect": "note"
-        }
-      ],
-      "sop_ref": [
-        "SOP 402",
-        "구급 START"
-      ],
-      "debrief": "의식 저하·호흡 이상(분당 30회 초과) 환자는 긴급(적색)으로 분류해 먼저 처치·이송한다."
-    },
-    {
       "id": "STAIR-SMOKE-01",
       "title": "계단실 연기 — 주민 안내",
       "phase": "상황평가",
@@ -1283,6 +1252,176 @@
         "SSG 9"
       ],
       "debrief": "진입은 지휘관의 허가로 한다(102-4.1 진입 금지 명령권, 201-3.7 진입 보고). 방어 전략이거나 특수현상·붕괴 징후가 있으면 진입 금지, 공기 부족·수관 충수 전·RIT 미지정처럼 준비가 덜 됐으면 진입 대기, 준비가 됐으면 진입 허가. 정답 근거는 디브리핑 '진입 통제'에 조마다 나온다."
+    },
+    {
+      "id": "START-01",
+      "title": "중증도 분류 (START)",
+      "phase": "구급",
+      "trigger": "triage_needed",
+      "multi": true,
+      "asker": "구급대·구조한 조",
+      "urgency": "중요",
+      "text": "{crew}: {who} 1차 분류합니다. {clues}. 분류는?",
+      "options": [
+        {
+          "text": "긴급(적색) — 먼저 처치·이송",
+          "effect": "tag_urgent",
+          "grade": "최선"
+        },
+        {
+          "text": "응급(황색)",
+          "effect": "tag_emergent",
+          "grade": "오답"
+        },
+        {
+          "text": "비응급(녹색)",
+          "effect": "tag_minor",
+          "grade": "오답"
+        },
+        {
+          "text": "지연(흑색) — 처치하지 않음",
+          "effect": "tag_delayed",
+          "grade": "치명"
+        }
+      ],
+      "variants": [
+        {
+          "if": {
+            "verdict": "urgent"
+          },
+          "options": [
+            {
+              "text": "긴급(적색) — 먼저 처치·이송",
+              "effect": "tag_urgent",
+              "grade": "최선"
+            },
+            {
+              "text": "응급(황색)",
+              "effect": "tag_emergent",
+              "grade": "오답"
+            },
+            {
+              "text": "비응급(녹색)",
+              "effect": "tag_minor",
+              "grade": "오답"
+            },
+            {
+              "text": "지연(흑색) — 처치하지 않음",
+              "effect": "tag_delayed",
+              "grade": "치명"
+            }
+          ]
+        },
+        {
+          "if": {
+            "verdict": "emergent"
+          },
+          "options": [
+            {
+              "text": "긴급(적색) — 먼저 처치·이송",
+              "effect": "tag_urgent",
+              "grade": "허용"
+            },
+            {
+              "text": "응급(황색)",
+              "effect": "tag_emergent",
+              "grade": "최선"
+            },
+            {
+              "text": "비응급(녹색)",
+              "effect": "tag_minor",
+              "grade": "오답"
+            },
+            {
+              "text": "지연(흑색) — 처치하지 않음",
+              "effect": "tag_delayed",
+              "grade": "치명"
+            }
+          ]
+        },
+        {
+          "if": {
+            "verdict": "delayed"
+          },
+          "options": [
+            {
+              "text": "긴급(적색) — 먼저 처치·이송",
+              "effect": "tag_urgent",
+              "grade": "허용"
+            },
+            {
+              "text": "응급(황색)",
+              "effect": "tag_emergent",
+              "grade": "오답"
+            },
+            {
+              "text": "비응급(녹색)",
+              "effect": "tag_minor",
+              "grade": "오답"
+            },
+            {
+              "text": "지연(흑색) — 처치하지 않음",
+              "effect": "tag_delayed",
+              "grade": "최선"
+            }
+          ]
+        }
+      ],
+      "sop_ref": [
+        "SOP 402",
+        "구급 START"
+      ],
+      "debrief": "START: 걸을 수 있으면 비응급(녹색). 숨을 쉬지 않으면 기도를 열고, 그래도 없으면 지연(흑색). 호흡 30회 초과, 요골맥박 없음·모세혈관 재충혈 2초 초과, 지시를 따르지 못하면 긴급(적색). 그 밖은 응급(황색). 분류표 순서대로 처치·이송하므로 긴급을 낮게 분류하면 처치가 늦어진다."
+    },
+    {
+      "id": "RESCUE-DROPOFF-01",
+      "title": "구조자 둘 곳",
+      "phase": "구조",
+      "trigger": "rescue_no_point",
+      "asker": "구조한 조",
+      "urgency": "중요",
+      "text": "{crew}: {who} 업고 입구 밖으로 나왔습니다. 환자 집결지가 없습니다. 어디에 둘까요?",
+      "options": [
+        {
+          "text": "안전구역에 환자 집결지를 지정한다",
+          "effect": "dropoff_wait",
+          "grade": "최선"
+        },
+        {
+          "text": "입구에 두고 복귀한다",
+          "effect": "dropoff_entrance",
+          "grade": "오답"
+        }
+      ],
+      "variants": [
+        {
+          "if": {
+            "ambulance": true
+          },
+          "options": [
+            {
+              "text": "안전구역에 환자 집결지를 지정한다",
+              "effect": "dropoff_wait",
+              "grade": "최선"
+            },
+            {
+              "text": "구급차 옆에 둔다",
+              "effect": "dropoff_ambulance",
+              "grade": "허용"
+            },
+            {
+              "text": "입구에 두고 복귀한다",
+              "effect": "dropoff_entrance",
+              "grade": "오답"
+            }
+          ]
+        }
+      ],
+      "sop_ref": [
+        "소방전술 II 구출 및 운반",
+        "SOP 402"
+      ],
+      "debrief": "연기가 나오는 입구는 아직 위험한 곳이다. 구조대상자는 먼저 위험에서 벗어난 곳(안전구역 안 환자 집결지·분류소)으로 옮겨 인계한다. 입구에 두면 연기를 계속 마시고 진입 동선을 막는다."
     }
   ]
 }

@@ -13,7 +13,7 @@ extends Node2D
 ## 선택 단위는 조(2인 1조)와 차량이며, 현재 보고 있는 층의 대원만 선택된다.
 ## 좌표 변환은 projection(상황판/입체)을 따른다.
 
-enum Mode { NONE, HOSE, STRAIGHT, FOG, DOOR, SEARCH, OVERHAUL, PRIMARY, ATTACK, SEARCH_AUTO, EXTERIOR, RESCUE, TREAT, TRANSPORT, AIR_MAT, WAYPOINT, PENCIL, COVER, MONITOR, PPV, ELEVATOR, LIFELINE, VEHICLE_CONNECT, VEHICLE_MOVE, ZONE_SAFE, ZONE_CASUALTY, ZONE_LINE, TRIAGE_POST }
+enum Mode { NONE, HOSE, STRAIGHT, FOG, DOOR, SEARCH, OVERHAUL, PRIMARY, ATTACK, SEARCH_AUTO, EXTERIOR, RESCUE, TREAT, TRANSPORT, AIR_MAT, WAYPOINT, PENCIL, COVER, MONITOR, PPV, ELEVATOR, LIFELINE, VEHICLE_CONNECT, VEHICLE_MOVE, ZONE_SAFE, ZONE_CASUALTY, ZONE_LINE, TRIAGE_POST, OBSERVE }
 
 ## 관계인을 클릭했을 때 (world가 진술 창을 연다)
 signal witness_clicked(index: int)
@@ -58,6 +58,7 @@ const MODE_HINTS := {
 	Mode.ZONE_SAFE: "안전구역: 건물 밖을 끌어서 사각형 (한 번 클릭하면 그 자리에 기본 크기) — 낙하물 위험구역은 피한다",
 	Mode.ZONE_CASUALTY: "환자 집결지: 안전구역 안을 클릭 (구조한 사람을 여기로 옮긴다)",
 	Mode.ZONE_LINE: "진입통제선: 선의 두 끝을 차례로 클릭",
+	Mode.OBSERVE: "구조자 관찰: 구조된 사람을 클릭 — 곁에 서 있으면 구급대가 올 때까지 악화가 느려진다",
 	Mode.TRIAGE_POST: "분류소 설치: 안전구역 안을 클릭 — 구급대가 가서 차린다 (환자 집결지를 대신)",
 	Mode.VEHICLE_CONNECT: "급수 연결: 소화전·송수구(펌프차) 또는 펌프차(물탱크차)를 클릭",
 	Mode.VEHICLE_MOVE: "자리 옮기기: 차를 옮길 곳을 클릭",
@@ -413,6 +414,13 @@ func _complete_mode(world_pos: Vector2) -> void:
 		Mode.ZONE_CASUALTY:
 			var c := Vector2i(projection.to_cell(world_pos).floor())
 			sim.issue(CommandOrder.make("zone", [], 0, Vector3i.ZERO, {"kind": "casualty", "cell": [c.x, c.y]}))
+		Mode.OBSERVE:
+			var pid := _patient_at(world_pos)
+			if pid >= 0 and not selected.is_empty():
+				var vp := Vector2i(sim.rescue.victims[pid].pos.floor())
+				var near := sim.pathfinder.nearest_walkable(1, vp + Vector2i(1, 0))
+				if near != Pathfinder.NO_CELL:
+					sim.issue(MoveCommand.new([selected[0]] as Array[int], Vector3i(near.x, near.y, 1)))
 		Mode.TRIAGE_POST:
 			var tc := Vector2i(projection.to_cell(world_pos).floor())
 			var ems_ids: Array[int] = []

@@ -29,6 +29,12 @@ var carried_by := -1
 ## 구조될 때의 상태 (의식 있음·의식 잃음)
 var state_at_rescue := State.CONSCIOUS
 var rescued_tick := -1
+## 구조해 내려놓은 곳 (P10-2 ⓒ): "환자 집결지"·"분류소"·"구급차 옆"·"입구"·"" (예전 방식: 출구 밖)
+var dropoff := ""
+## 입구에 두고 온 사람: 문으로 나오는 연기를 계속 마신다
+var left_at_entrance := false
+## 구조한 조 (분류 카드를 묻는 조)
+var rescued_by := -1
 ## 창가에서 뛰어내릴 수 있는 사람 (시나리오 window: true, SOP 213-2.4.3)
 var jumper := false
 ## 창에서 떨어졌음 (매트 착지 포함)

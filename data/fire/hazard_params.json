@@ -17,6 +17,10 @@
   "lower_layer_exposure_ratio": {"value": 0.1, "source": "추정", "note": "연기층 아래(하부층)의 연기 농도 비율"},
 
   "voice_range_m": {"value": 3, "source": "추정", "note": "의식 있는 요구조자가 부르는 소리를 듣는 거리 (벽 너머 포함)"},
+  "entrance_smoke_ratio": {"value": 0.3, "source": "게임 설정값", "note": "입구에 두고 온 구조자가 마시는 연기 = 열린 현관문 안쪽 방 연기층 농도 × 이 비율 (P10-2). 현장 검수 필요"},
+  "entrance_path_weight": {"value": 4, "source": "게임 설정값", "note": "입구에 둔 구조자 칸을 지나는 길찾기 비용 배율 — 진입 동선 방해 (P10-2)"},
+  "handover_range_m": {"value": 1.5, "source": "게임 설정값", "note": "환자 집결지·분류소에서 이 거리 안이면 인계한 것으로 본다 (P10-2)"},
+  "dropoff_ask_repeat_s": {"value": 30, "source": "게임 설정값", "note": "집결지가 없어 입구에서 멈춘 조가 답을 못 받으면 다시 묻는 간격 (P10-2)"},
   "carry_speed_factor": {"value": 0.5, "source": "추정", "note": "2인 운반 시 이동 속도 비율"},
   "window_break_s": {"value": 5, "source": "추정", "note": "창 파괴(배연)에 걸리는 시간 (1명)"},
 

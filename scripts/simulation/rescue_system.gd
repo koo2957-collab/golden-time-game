@@ -32,6 +32,10 @@ class CarryTask:
 	## 출구로 자동 이동 중인지 (지휘관이 다른 곳으로 보내면 false)
 	var auto_exit := true
 	var next_exit_try := 0
+	## 밖으로 나온 뒤 옮겨 갈 곳 (P10-2 ⓒ, -1 = 아직)
+	var dest := Vector2i(-1, -1)
+	## 집결지가 없어 입구에서 다시 물을 틱
+	var next_ask := 0
 
 
 var fire: FireSim
@@ -44,6 +48,17 @@ var searches: Array[SearchTask] = []
 var carries: Array[CarryTask] = []
 ## 수관을 든 조는 구조할 수 없다 (WaterSystem으로 확인)
 var water: WaterSystem
+## 구조자 운반 (P10-2 ⓒ): 밖으로 나온 뒤 환자 집결지·분류소로 옮겨 인계한다. 꺼져 있으면 예전처럼 출구 밖에 내려놓는다
+var dropoff_enabled := false
+var zones: ZoneSystem
+## 집결지가 없을 때 (질문 카드 답): "" 묻기 / "wait" 집결지 지정을 기다림 / "ambulance" 구급차 옆 / "entrance" 입구에 두고 복귀
+var dropoff_policy := ""
+## 카드에서 '집결지 지정'을 골랐다 → 화면이 구역 지정 모드를 열고 끈다
+var zone_prompt := false
+var _ask_repeat_ticks := 300
+var _entrance_ratio := 0.3
+var _entrance_weight := 4.0
+var _handover_cells := 3.0
 
 var _cell_m: float
 var _co_per_soot: float
@@ -82,6 +97,10 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, p_per
 	_lower_ratio = params.value("lower_layer_exposure_ratio")
 	_voice_cells = params.value("voice_range_m") / _cell_m
 	_carry_factor = params.value("carry_speed_factor")
+	_entrance_ratio = params.value("entrance_smoke_ratio")
+	_entrance_weight = params.value("entrance_path_weight")
+	_handover_cells = params.value("handover_range_m") / _cell_m
+	_ask_repeat_ticks = roundi(params.value("dropoff_ask_repeat_s") / SimClock.TICK_DT)
 
 
 # --- 배치 ---
@@ -286,6 +305,8 @@ func step_after_fire(dt: float, tick: int) -> void:
 	for v in victims:
 		if v.alive():
 			_expose(v, dt, tick)
+		elif v.left_at_entrance and v.state == Victim.State.RESCUED:
+			_expose_entrance(v, dt, tick)
 		if not v.discovered and v.state != Victim.State.RESCUED:
 			_check_discovery(v, tick)
 
@@ -327,18 +348,81 @@ func _step_carry(t: CarryTask, tick: int) -> void:
 		ff.prev_pos = ff.pos
 		ff.level = c.leader.level
 	if _is_outdoor(c.leader.level, Vector2i(c.leader.pos.floor())):
-		_complete(t, c, tick)
+		if t.kind == "victim" and dropoff_enabled:
+			_step_outdoor(t, c, tick)
+		else:
+			_complete(t, c, tick)
 	elif t.auto_exit and not c.leader.is_moving() and tick >= t.next_exit_try:
 		_go_exit(t, c, tick)
 
 
-func _complete(t: CarryTask, c: Crew, tick: int) -> void:
+## 밖으로 나온 구조자 (P10-2 ⓒ): 분류소·환자 집결지(·구급차 옆)로 옮겨 인계한다.
+## 갈 곳이 없으면 입구에서 멈추고 무전으로 묻는다 (질문 카드 rescue_no_point)
+func _step_outdoor(t: CarryTask, c: Crew, tick: int) -> void:
+	var dest := dropoff_target()
+	if dest.is_empty():
+		if dropoff_policy == "entrance":
+			_complete(t, c, tick, "입구")
+			return
+		if c.leader.is_moving():
+			return
+		if dropoff_policy == "" and tick >= t.next_ask:
+			t.next_ask = tick + _ask_repeat_ticks
+			var v := victims[t.target_id]
+			events.add(tick, "rescue_no_point", {"crew": _crew_name(c), "crew_id": c.id, "who": v.label(), "victim_id": v.id,
+				"ambulance": _ambulance() != null})
+		return
+	var cell: Vector2i = dest.cell
+	if c.leader.level == 1 and c.leader.pos.distance_to(Vector2(cell) + Vector2(0.5, 0.5)) <= _handover_cells:
+		_complete(t, c, tick, str(dest.kind))
+	elif t.dest != cell or not c.leader.is_moving():
+		t.dest = cell
+		units.order_move([c.id] as Array[int], Vector3i(cell.x, cell.y, 1), pathfinder)
+
+
+## 구조자를 옮겨 갈 곳 {cell, kind} (없으면 빈 사전): 분류소 > 환자 집결지 > (카드 답) 구급차 옆
+func dropoff_target() -> Dictionary:
+	if zones and zones.destination().x >= 0:
+		return {"cell": zones.destination(), "kind": "분류소" if zones.triage.x >= 0 else "환자 집결지"}
+	if dropoff_policy == "ambulance":
+		var amb := _ambulance()
+		if amb:
+			var near := pathfinder.nearest_walkable(1, Vector2i(amb.closest_body_point(amb.pos + Vector2(0, 3)).floor()) + Vector2i(0, 1))
+			if near != Pathfinder.NO_CELL:
+				return {"cell": near, "kind": "구급차 옆"}
+	return {}
+
+
+## 질문 카드 답 (CardSystem effect dropoff_wait·dropoff_ambulance·dropoff_entrance)
+func set_dropoff_policy(policy: String, tick: int) -> void:
+	dropoff_policy = policy
+	if policy == "wait":
+		zone_prompt = true
+	events.add(tick, "dropoff_policy", {"policy": {"wait": "환자 집결지 지정 대기", "ambulance": "구급차 옆", "entrance": "입구에 두고 복귀"}.get(policy, policy)})
+
+
+func _ambulance() -> Vehicle:
+	for v in units.vehicles:
+		if v.type == "구급차" and not v.away:
+			return v
+	return null
+
+
+func _complete(t: CarryTask, c: Crew, tick: int, where := "") -> void:
 	for ff in c.members():
 		ff.carry_factor = 1.0
 	carries.erase(t)
 	if t.kind == "victim":
 		var v := victims[t.target_id]
 		v.carried_by = -1
+		v.dropoff = where
+		v.rescued_by = c.id
+		if where == "입구":
+			# 입구에 두고 오면 진입 동선을 막는다 (돌아가야 한다)
+			v.left_at_entrance = true
+			pathfinder.set_weight(1, Vector2i(v.pos.floor()), _entrance_weight)
+		if where != "" and v.alive():
+			events.add(tick, "victim_handover", {"who": v.label(), "where": where, "by": _crew_name(c)})
 		if v.alive():
 			v.state_at_rescue = v.state
 			v.state = Victim.State.RESCUED
@@ -472,6 +556,36 @@ func _expose(v: Victim, dt: float, tick: int) -> void:
 		_set_state(v, Victim.State.DEAD, tick, "연기·열 노출")
 	elif v.fed() >= _fed_unconscious and v.state == Victim.State.CONSCIOUS:
 		_set_state(v, Victim.State.UNCONSCIOUS, tick, "연기·열 노출")
+
+
+## 입구에 두고 온 구조자: 열린 현관문으로 나오는 연기를 마신다 (안쪽 방 연기 × entrance_smoke_ratio, 게임 설정값)
+func _expose_entrance(v: Victim, dt: float, tick: int) -> void:
+	var cell := Vector2i(v.pos.floor())
+	var room: Compartment = null
+	for o in fire.openings:
+		if o.kind != Opening.Kind.DOOR or o.room_b != Opening.OUTSIDE or not o.is_open or o.level != v.level:
+			continue
+		for oc in o.cells:
+			if oc.distance_to(cell) <= 2.0:
+				room = fire.comps[o.room_a]
+	if room == null:
+		return
+	var conc := room.soot / maxf(room.layer_volume(), 0.05 * room.volume) * _entrance_ratio
+	var co_ppm := conc * _co_per_soot / 1.145 * 1e6
+	if co_ppm <= 1.0:
+		return
+	v.fed_toxic += _fed_death * dt / 60.0 / co_death_minutes(co_ppm, _co_table) * room.toxicity
+	if v.fed() >= _fed_death:
+		v.state = Victim.State.DEAD
+		events.add(tick, "victim_state", {"who": v.label(), "state": Victim.STATE_NAMES[Victim.State.DEAD], "reason": "입구에서 연기 흡입"})
+	elif v.fed() >= _fed_unconscious and v.state_at_rescue == Victim.State.CONSCIOUS:
+		v.state_at_rescue = Victim.State.UNCONSCIOUS
+		events.add(tick, "victim_state", {"who": v.label(), "state": Victim.STATE_NAMES[Victim.State.UNCONSCIOUS], "reason": "입구에서 연기 흡입"})
+
+
+## 사망 판정 노출량 (분류 카드의 '지연' 판단에 쓴다)
+func fed_death() -> float:
+	return _fed_death
 
 
 func _set_state(v: Victim, state: Victim.State, tick: int, reason: String) -> void:

@@ -94,7 +94,7 @@ func _orders(sim: SimWorld, fire_lv: int) -> void:
 		if sim.tactical.task_of_crew(c.id) != null:
 			n += 1
 			continue
-		if sim.command.safety.role_of(c.id) != SafetySystem.Role.NONE:
+		if sim.command.safety.role_of(c.id) != SafetySystem.Role.NONE or sim.command.post.busy(c.id):
 			continue
 		var ids: Array[int] = [c.id]
 		if n == 0:

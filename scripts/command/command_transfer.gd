@@ -123,6 +123,9 @@ func transfer(answers: Dictionary, tick: int) -> bool:
 		sim.command.commander.rank = str(chief.get("rank", ""))
 	events.add(tick, "command_transferred", {"crew": sim.command.commander_title, "accuracy": roundi(accuracy * 100.0),
 		"delay_s": roundi((tick - arrived_tick) * SimClock.TICK_DT)})
+	# 이양받은 현장지휘관은 고정지휘 (SOP 101-3, 기획안 9-1-1): 지금 자리를 지휘소로
+	if sim.command.post:
+		sim.command.post.set_post(Vector2i(sim.command.commander.pos.floor()), tick, "지휘권 이양")
 	# 지휘대 도착과 함께 상황실 도면 수신 (SOP 112, R8)
 	sim.plan.acquire("상황실 (지휘대 도착)", tick)
 	return true

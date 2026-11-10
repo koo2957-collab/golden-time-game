@@ -81,7 +81,7 @@ const REPORT_PRIORITY := {
 	"shaft_smoke": Radio.Priority.KEY_FACTOR,
 	"shaft_ignition": Radio.Priority.KEY_FACTOR,
 	"shaft_checked": Radio.Priority.KEY_FACTOR,
-	"victim_trapped": Radio.Priority.KEY_FACTOR,
+	"victim_trapped": Radio.Priority.VICTIM,
 	"victim_self_evac": Radio.Priority.KEY_FACTOR,
 	"tactical_done": Radio.Priority.TACTICS,
 	"fire_found": Radio.Priority.KEY_FACTOR,
@@ -144,6 +144,8 @@ var survey: SiteSurvey
 var safety: SafetySystem
 ## 임무형 내부 지휘: 건물 안 조에게는 무전으로, 경유지는 본 곳에만 (기획안 9-1, R7)
 var interior: InteriorOrders
+## 지휘소·후착대 임무 받기·구역 설치 (P4-4, SimWorld가 만든다)
+var post: CommandPost
 ## 주요 의사결정과 그때 알던 정보 [{tick, decision, context}] (SOP 111-2.2)
 var decisions: Array[Dictionary] = []
 ## 진입 판단 기록 [{tick, squad, factors, verdict, reason, answer}] (SOP 102-4.1, P10-2)
@@ -449,11 +451,13 @@ func after_move(dt: float, tick: int) -> void:
 
 ## 사건을 보고 무전·자동 감속으로 바꾸고 무전 채널을 진행한다.
 func step(dt: float, tick: int) -> void:
+	if post:
+		post.step(tick)
 	var entries := events.entries
 	while _events_seen < entries.size():
 		var e := entries[_events_seen]
 		_events_seen += 1
-		if auto_slow and e.type in AUTO_SLOW_TYPES and clock.speed > 1.0:
+		if auto_slow and e.type in AUTO_SLOW_TYPES and clock.speed > 1.0 and observable(e):
 			clock.speed = 1.0
 			events.add(tick, "auto_slow", {"reason": SimEventLog.describe_text(e)})
 		if REPORT_PRIORITY.has(e.type):
@@ -587,6 +591,9 @@ func declare(answers: Dictionary, tick: int) -> bool:
 	report = grade_report(answers)
 	report["submitted_tick"] = tick
 	report["support_answer"] = str(answers.get("support", ""))
+	# 지휘 위치 (P4-4): 지도에서 고른 칸, 없으면 지금 선 자리
+	var pc: Array = answers.get("post", [])
+	report["post_cell"] = Vector2i(int(pc[0]), int(pc[1])) if pc.size() >= 2 else Vector2i(commander.pos.floor())
 	_decide(tick, "지휘권 선언, %s 전략" % STRATEGY_NAMES[s])
 	radio.send(Radio.Priority.KEY_FACTOR, COMMANDER, "%s, 각 출동대" % DISPATCH_CENTER, _report_text(answers), tick, _on_declared)
 	return true
@@ -711,6 +718,16 @@ func order_zone(kind: String, answers: Dictionary, tick: int) -> bool:
 			if a.size() < 2 or b.size() < 2:
 				return false
 			where = zones.where_text((Vector2(float(a[0]), float(a[1])) + Vector2(float(b[0]), float(b[1]))) * 0.5)
+		"post", "forward":
+			# 지휘소 옮기기·직전대기 장소 (P4-4, SOP 104·103-2.1.3): 건물 밖이어야 한다
+			var c: Array = answers.get("cell", [])
+			if c.size() < 2:
+				return false
+			var cell := Vector2i(int(c[0]), int(c[1]))
+			if not fire.building.cell(1, cell.x, cell.y) in BuildingData.OUTDOOR:
+				why = "건물 밖에만 정할 수 있음"
+			name = "현장지휘소" if kind == "post" else "직전대기 장소"
+			where = zones.where_text(Vector2(cell))
 		_:
 			return false
 	if why != "":
@@ -724,6 +741,24 @@ func order_zone(kind: String, answers: Dictionary, tick: int) -> bool:
 
 
 func _on_zone_sent(tick: int, kind: String, answers: Dictionary) -> void:
+	match kind:
+		"post":
+			if post:
+				post.set_post(Vector2i(int(answers.cell[0]), int(answers.cell[1])), tick, "지휘소 이동")
+			return
+		"forward":
+			if post:
+				post.set_forward(Vector2i(int(answers.cell[0]), int(answers.cell[1])), tick)
+			return
+	# 안전구역·환자 집결지·통제선은 대원이 가서 설치한다 (P4-4). 설치가 끝나면 apply_zone
+	if post:
+		post.install(kind, answers, tick)
+	else:
+		apply_zone(kind, answers, tick)
+
+
+## 구역을 실제로 놓는다 (설치 완료)
+func apply_zone(kind: String, answers: Dictionary, tick: int) -> void:
 	match kind:
 		"safe":
 			var r: Array = answers.rect
@@ -797,6 +832,27 @@ func entry_factors(tick: int) -> PackedStringArray:
 
 
 ## 주요 의사결정과 그때 알던 정보를 기록한다 (SOP 111-2.2 주요 의사결정 근거)
+## 지휘관이 알 수 있는 사건인가: 방 이름이 있으면 그 방이 보이거나 곁에 대원이 있어야 한다 (플래시오버·재발화 등 정답 누출 방지)
+func observable(e: Dictionary) -> bool:
+	var name := str(e.get("room", ""))
+	if name == "" or str(e.get("type", "")) in ["victim_found", "victim_trapped", "jump_risk", "collapse", "gas_explosion", "backdraft"]:
+		return true
+	for c in fire.comps:
+		if c.display_name() == name:
+			if perception.room_visible(c):
+				return true
+			for ff in units.firefighters:
+				if not ff.incapacitated and ff.level == c.level and c.rect.grow(1).has_point(Vector2i(ff.pos.floor())):
+					return true
+			return false
+	return true
+
+
+## 판단 기록 (다른 시스템용)
+func decide(tick: int, what: String) -> void:
+	_decide(tick, what)
+
+
 func _decide(tick: int, what: String) -> void:
 	var t := observed_truth()
 	var hz: Array = t.hazards
@@ -850,6 +906,8 @@ func _on_declared(tick: int) -> void:
 	strategy = report.get("strategy_answer", Strategy.OFFENSIVE)
 	_pending_strategy = -1
 	var support := str(report.get("support_answer", ""))
+	if post:
+		post.set_post(report.get("post_cell", Vector2i(commander.pos.floor())), tick, "지휘권 선언")
 	events.add(tick, "command_declared", {
 		"strategy": STRATEGY_NAMES[strategy],
 		"correct": report.correct,

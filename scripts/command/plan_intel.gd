@@ -77,7 +77,7 @@ func step(dt: float, tick: int) -> void:
 			if i in found_diffs:
 				continue
 			for cell: Vector2i in diffs[i].cells:
-				if perception.is_seen(int(diffs[i].level), cell.x, cell.y):
+				if perception.is_crew_visible(int(diffs[i].level), cell.x, cell.y):
 					found_diffs.append(i)
 					events.add(tick, "plan_diff_found", {"note": diffs[i].note, "floor": fire.building.floor_name(int(diffs[i].level)),
 						"known": known})

@@ -151,6 +151,10 @@ func _ready() -> void:
 	hud.card_ui.setup(sim)
 	hud.card_ui.order_issued.connect(sim.issue)
 	hud.command_ui.end_dialog_opened.connect(hud.hint_ui.on_end_dialog)
+	# 지휘권 선언: 지휘 위치를 지도에서 고르면 클릭으로 선언을 마친다 (P4-4)
+	hud.command_ui.post_pick_requested.connect(func(a: Dictionary) -> void:
+		selection.pending_declare = a
+		selection.begin_mode(SelectionController.Mode.POST))
 	EventBus.command_mode_changed.connect(_on_command_mode_changed)
 	camera.setup(_view_bounds(), START_ZOOM[view_mode])
 	# 지도가 도로 쪽으로 넓으므로 건물을 화면 가운데에 두고 시작한다
@@ -634,6 +638,11 @@ func _commander_command(id: String) -> bool:
 				selection.begin_mode(SelectionController.Mode.ZONE_CASUALTY)
 		"zone_line":
 			selection.begin_mode(SelectionController.Mode.ZONE_LINE)
+		"zone_post":
+			selection.pending_declare = {}
+			selection.begin_mode(SelectionController.Mode.POST)
+		"zone_forward":
+			selection.begin_mode(SelectionController.Mode.FORWARD)
 		_:
 			return false
 	return true

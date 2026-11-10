@@ -49,6 +49,20 @@ static func draw_marks(ci: CanvasItem, zones: ZoneSystem, to_screen: Callable, f
 		_marker(ci, to_screen.call(Vector2(zones.casualty) + Vector2(0.5, 0.5)), PlanStyle.CASUALTY_POINT, "환자 집결지" if font_size > 0 else "", font_size)
 	if zones.triage.x >= 0:
 		_marker(ci, to_screen.call(Vector2(zones.triage) + Vector2(0.5, 0.5)), PlanStyle.TRIAGE_POST, "분류소" if font_size > 0 else "", font_size)
+	# 현장지휘소·직전대기 장소 깃발, 구역 설치 중 표시 (P4-4)
+	var cp := zones.post
+	if cp:
+		if cp.has_post():
+			_flag(ci, to_screen.call(Vector2(cp.post) + Vector2(0.5, 0.5)), Color("f59e0b"),
+				("지휘소 · %s" % CommandPost.MODE_NAMES[cp.mode]) if font_size > 0 else "", font_size)
+		if cp.forward.x >= 0:
+			_flag(ci, to_screen.call(Vector2(cp.forward) + Vector2(0.5, 0.5)), Color("38bdf8"), "직전대기" if font_size > 0 else "", font_size)
+		for j: Dictionary in cp.jobs:
+			var at: Vector2 = to_screen.call(Vector2(j.target) + Vector2(0.5, 0.5))
+			ci.draw_arc(at, 10.0, 0.0, TAU, 20, Color(PlanStyle.SAFE_ZONE, 0.6), 2.0)
+			if font_size > 0:
+				ci.draw_string(PlanStyle.font(), at + Vector2(-70, -16), "%s 설치%s" % [ZoneSystem.KIND_NAMES.get(j.kind, j.kind), " 중" if int(j.start) >= 0 else " 대기"],
+					HORIZONTAL_ALIGNMENT_CENTER, 140, font_size - 1, PlanStyle.SAFE_ZONE.lightened(0.3))
 	elif not zones.triage_setup.is_empty():
 		var c: Vector2 = to_screen.call(Vector2(zones.triage_setup.cell) + Vector2(0.5, 0.5))
 		var prog := zones.triage_progress(tick)
@@ -57,6 +71,15 @@ static func draw_marks(ci: CanvasItem, zones: ZoneSystem, to_screen: Callable, f
 			ci.draw_arc(c, 9.0, -PI / 2.0, -PI / 2.0 + TAU * prog, 20, PlanStyle.TRIAGE_POST, 3.0)
 		if font_size > 0:
 			ci.draw_string(font, c + Vector2(-60, -14), "분류소 설치 중", HORIZONTAL_ALIGNMENT_CENTER, 120, font_size, PlanStyle.TRIAGE_POST)
+
+
+## 깃발 (지휘소·직전대기)
+static func _flag(ci: CanvasItem, c: Vector2, color: Color, label: String, font_size: int) -> void:
+	var h := 22.0 if font_size > 0 else 6.0
+	ci.draw_line(c, c - Vector2(0, h), Color.WHITE, 2.0)
+	ci.draw_colored_polygon(PackedVector2Array([c - Vector2(0, h), c - Vector2(-h * 0.6, h * 0.8), c - Vector2(0, h * 0.6)]), color)
+	if label != "":
+		ci.draw_string(PlanStyle.font(), c + Vector2(-70, -h - 4.0), label, HORIZONTAL_ALIGNMENT_CENTER, 140, font_size, color.lightened(0.3))
 
 
 ## 흰 바탕 십자 표시 + 이름

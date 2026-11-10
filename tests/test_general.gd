@@ -47,7 +47,17 @@ func test_trapped_when_corridor_smoky() -> void:
 	sim.evac.step(0.1, 1)
 	assert_eq(sim.evac.escaped.size(), 0, "1층 복도에 연기가 차 있으면 아무도 못 나감")
 	assert_eq(sim.evac.trapped.size(), 5, "제자리에서 구조를 기다림")
-	assert_eq(sim.events.of_type("victim_trapped").size(), 5, "갇힘 무전")
+	# 아무도 보지 못했다: 기록만 남고, 전화할 수 있는 사람의 119 신고가 상황실을 거쳐 늦게 들어온다
+	assert_eq(sim.events.of_type("evac_trapped").size(), 5, "갇힘 기록 (디브리핑용)")
+	assert_eq(sim.events.of_type("victim_trapped").size(), 0, "바로는 아무도 모른다")
+	var callers := sim.evac.calls.size()
+	assert_true(callers > 0, "전화할 수 있는 사람 %d명" % callers)
+	for i in roundi(50.0 / SimClock.TICK_DT):
+		sim.evac.step(0.1, 2 + i)
+	var calls := sim.events.of_type("victim_trapped")
+	assert_eq(calls.size(), callers, "45초 뒤 상황실이 119 신고를 전함")
+	assert_eq(str(calls[0].crew), "119종합상황실", "보낸 쪽 = 상황실")
+	assert_true(str(calls[0].unit) != "", "세대·층만 알린다: %s" % calls[0].unit)
 
 
 func test_shaft_spreads_and_check_stops() -> void:

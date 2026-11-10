@@ -226,7 +226,16 @@ func _check_withdraw() -> Dictionary:
 
 
 func _check_command_post() -> Dictionary:
+	# 지휘소를 정했으면(P4-4) 정한 지휘소들을, 아니면 지휘관이 30초 이상 머문 자리를 본다
 	var posts := sim.command.survey.post_log
+	var designated: Array[Dictionary] = []
+	if sim.command.post:
+		for p: Dictionary in sim.command.post.log:
+			var e: Dictionary = p.eval.duplicate()
+			e["tick"] = p.tick
+			designated.append(e)
+	if not designated.is_empty():
+		posts = designated
 	if posts.is_empty():
 		return {}
 	var sum := 0.0
@@ -237,7 +246,14 @@ func _check_command_post() -> Dictionary:
 		var r := 1.0 if p.route == "양호" else 0.0
 		sum += (o + s + r) / 3.0
 		parts.append("%s 관찰 %s · 안전 %s(%.1fm) · 동선 %s" % [_t(p.tick), p.observe, p.safety, p.distance_m, p.route])
-	return {"score": sum / posts.size(), "detail": "; ".join(parts)}
+	var detail := "; ".join(parts)
+	if sim.command.post:
+		var w := sim.command.post.wait_summary(sim.clock.tick)
+		if not sim.command.post.waits.is_empty():
+			detail += " / 후착대 임무 대기 총 %d초 (%s)" % [w.total_s, w.detail]
+		if designated.is_empty():
+			detail += " / 지휘소를 정하지 않음"
+	return {"score": sum / posts.size(), "detail": detail}
 
 
 func _check_survival() -> Dictionary:

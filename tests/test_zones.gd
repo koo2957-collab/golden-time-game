@@ -35,9 +35,14 @@ func _outdoor_rect(sim: SimWorld) -> Rect2i:
 	return Rect2i()
 
 
+## 구역 지정 무전 → 대원이 가서 설치(P4-4)까지 기다린다
 func _zone(sim: SimWorld, answers: Dictionary) -> void:
 	sim.issue(CommandOrder.make("zone", [], 0, Vector3i.ZERO, answers))
 	_quiet(sim)
+	for i in roundi(150.0 / SimClock.TICK_DT):
+		if sim.command.post.jobs.is_empty():
+			break
+		sim.step_ticks(1)
 
 
 func test_safe_zone_outside_only() -> void:

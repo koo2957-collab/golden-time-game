@@ -21,6 +21,9 @@ ONLY_KIND = ARGS[1] if len(ARGS) > 1 else ""
 ONLY_NAME = ARGS[2] if len(ARGS) > 2 else ""
 # 미리보기: 동작마다 첫 프레임만, 방향 0·2·5만 (빠른 확인용)
 QUICK = len(ARGS) > 3 and ARGS[3] == "quick"
+# 동작 확인: only=walk,carry → 그 동작만, 방향 1만, 모든 프레임
+ONLY_ANIMS = ARGS[3][5:].split(",") if len(ARGS) > 3 and ARGS[3].startswith("only=") else []
+ONLY_DIR = int(ARGS[4]) if len(ARGS) > 4 else 1
 PROJECT = os.path.abspath(os.path.join(os.path.dirname(CONFIG_PATH), "..", ".."))
 CFG = json.load(open(CONFIG_PATH, encoding="utf-8"))
 PACKS = os.path.join(PROJECT, CFG["packs"])
@@ -202,8 +205,11 @@ def import_character():
         before = set(bpy.data.objects)
         n0 = set(bpy.data.actions)
         bpy.ops.import_scene.fbx(filepath=os.path.join(CHAR_DIR, "Animations", anim + ".fbx"))
-        new_actions = [a for a in bpy.data.actions if a not in n0 and not a.name.endswith("Targeting Pose")]
-        actions[anim] = new_actions[0]
+        # 파일마다 'Targeting Pose'(2프레임 정지 자세)와 실제 동작이 함께 들어온다. 이름에 .001이 붙을 수 있어 동작 이름으로 고른다
+        new_actions = [a for a in bpy.data.actions if a not in n0 and "targeting" not in a.name.lower()]
+        named = [a for a in new_actions if anim.lower() in a.name.lower()]
+        actions[anim] = (named or new_actions)[0]
+        log("동작", anim, "→", actions[anim].name, actions[anim].frame_range[:])
         for o in set(bpy.data.objects) - before:
             bpy.data.objects.remove(o, do_unlink=True)
     # 다리 IK (원래 리그의 발 IK 제어 뼈를 그대로 목표로): 웅크리기·무릎 꿇기에서 발이 땅에 붙어 있게
@@ -317,12 +323,53 @@ def assign_action(arm, act):
         arm.animation_data.action_slot = act.slots[0]
 
 
+def _fcurves(act):
+    """동작의 곡선 목록 (Blender 4.4+ 슬롯 동작과 예전 동작 모두)"""
+    if hasattr(act, "layers") and len(act.layers) > 0:
+        out = []
+        for layer in act.layers:
+            for strip in layer.strips:
+                for cb in strip.channelbags:
+                    out += list(cb.fcurves)
+        return out
+    return list(act.fcurves)
+
+
+def sample_pose(act, frame):
+    """곡선에서 그 프레임의 뼈 자세를 직접 읽는다 {뼈: (위치, 회전, 크기)}.
+    (예전에는 동작을 붙였다 떼며 frame_set으로 읽었는데, 다시 붙일 때 평가되지 않아 모든 프레임이 같은 자세였다)"""
+    pose = {}
+    for fc in _fcurves(act):
+        dp = fc.data_path
+        if not dp.startswith('pose.bones["'):
+            continue
+        bone = dp.split('"')[1]
+        prop = dp.rsplit(".", 1)[1]
+        loc, rot, sca = pose.get(bone, (mathutils.Vector((0, 0, 0)), mathutils.Quaternion((1, 0, 0, 0)), mathutils.Vector((1, 1, 1))))
+        v = fc.evaluate(frame)
+        if prop == "location":
+            loc[fc.array_index] = v
+        elif prop == "rotation_quaternion":
+            rot[fc.array_index] = v
+        elif prop == "scale":
+            sca[fc.array_index] = v
+        pose[bone] = (loc, rot, sca)
+    for b in pose:
+        pose[b][1].normalize()
+    return pose
+
+
 def capture_pose(arm):
     return {pb.name: (pb.location.copy(), pb.rotation_quaternion.copy(), pb.scale.copy()) for pb in arm.pose.bones}
 
 
 def apply_pose(arm, pose):
     for pb in arm.pose.bones:
+        if pb.name not in pose:
+            pb.location = (0, 0, 0)
+            pb.rotation_quaternion = (1, 0, 0, 0)
+            pb.scale = (1, 1, 1)
+            continue
         loc, rot, sca = pose[pb.name]
         pb.location = loc
         pb.rotation_quaternion = rot
@@ -359,8 +406,33 @@ def aim_arm(arm, name, target):
     upd()
 
 
+WALK_BLEND = 0.5  # 뛰기 동작을 쉬는 자세 쪽으로 섞는 비율 (보폭·상하 흔들림을 줄여 걷기로)
+WALK_ARM_SWING = 24.0  # 걷기 팔 흔들기 (도)
+LEG_WORDS = ("Foot", "Toe", "Heel", "Knee", "Leg", "Hips", "Spine", "Chest", "Neck", "Head")
+
+
+def walk_from_run(arm):
+    """팩에 걷기가 없어 뛰기 자세를 쉬는 자세 쪽으로 섞고, 팔은 내린 채 다리와 반대로 흔든다"""
+    for pb in arm.pose.bones:
+        if any(w in pb.name for w in LEG_WORDS):
+            pb.location = pb.location * WALK_BLEND
+            pb.rotation_quaternion = mathutils.Quaternion((1, 0, 0, 0)).slerp(pb.rotation_quaternion, WALK_BLEND)
+    upd()
+    left = arm.pose.bones["LeftFootIK"].head.y
+    right = arm.pose.bones["RightFootIK"].head.y
+    s = max(-1.0, min(1.0, (right - left) / 0.5))  # +면 왼발이 앞(-Y)
+    for side, sx in (("Left", 1), ("Right", -1)):
+        aim_arm(arm, side + "Arm", (0.18 * sx, 0.02, -1))
+        aim_arm(arm, side + "ForeArm", (0.08 * sx, -0.25, -1))
+    # 왼발이 앞이면 오른팔이 앞으로 (앞으로 흔들기 = X축 음의 회전)
+    rot_arm(arm, "RightArm", "X", -WALK_ARM_SWING * s)
+    rot_arm(arm, "LeftArm", "X", WALK_ARM_SWING * s)
+
+
 def pose_mod(arm, pose_name, i, n):
     """스크립트 자세 (아마추어 단위: 키 3.77, 앞 = -Y). i: 프레임 번호, n: 프레임 수"""
+    if pose_name in ("walk", "crouch", "carry"):
+        walk_from_run(arm)
     if pose_name in ("arms_down", "down", "down_up"):
         # 팩의 서기 동작은 허리에 손을 얹은 자세라 팔을 몸 옆으로 내린다
         for side, sx in (("Left", 1), ("Right", -1)):
@@ -425,6 +497,8 @@ def bake_character(spec):
             "directions": NDIR, "anims": {}, "stripe": band is not None}
     base_s = arm.scale.x
     for anim in spec["anims"]:
+        if ONLY_ANIMS and anim not in ONLY_ANIMS:
+            continue
         a = CFG["anims"][anim]
         act = actions[a["source"]]
         f0, f1 = act.frame_range
@@ -432,17 +506,14 @@ def bake_character(spec):
         pose_name = a.get("pose", "")
         meta["anims"][anim] = {"frames": n, "note": a.get("note", "")}
         nozzle.hide_render = pose_name != "spray"
+        assign_action(arm, None)
         for i in range(1 if QUICK else n):
-            # 첫 프레임은 T자 자세일 수 있어 건너뛴다
+            # 첫 프레임은 T자 자세일 수 있어 건너뛴다. 반복 동작은 한 바퀴를 n등분
             src = f0 + 1 + (f1 - f0 - 1) * i / max(1, n)
-            assign_action(arm, act)
-            sc.frame_set(int(round(src)))
-            pose = capture_pose(arm)
-            assign_action(arm, None)
-            apply_pose(arm, pose)
+            apply_pose(arm, sample_pose(act, src))
             upd()
             pose_mod(arm, pose_name, i, n)
-            for k in ([0, 2, 5] if QUICK else range(NDIR)):
+            for k in ([0, 2, 5] if QUICK else ([ONLY_DIR] if ONLY_ANIMS else range(NDIR))):
                 # 쓰러짐: 엎드림(down)·반듯이(down_up). 몸 가운데가 원점에 오게 눕힌다
                 lie = pose_name in ("down", "down_up")
                 rz = mathutils.Matrix.Rotation(dir_angle(k), 4, "Z")

@@ -96,9 +96,13 @@
 | M6b 시나리오·다시 하기 | [M6b_scenarios_replay.md](M6b_scenarios_replay.md) |
 | M6.5 2025 SOP 정합화 | [M6.5_sop2025.md](M6.5_sop2025.md) |
 | M7a 명령칸·교육 모드 | [M7a_command_cards.md](M7a_command_cards.md) |
+| P4-4 지휘소·후착대 임무 받기 | [P4-4_command_post.md](P4-4_command_post.md) |
 | P9 아파트 봇 점검 — 입구 대기 뒤 재출발·검색 도착 판정·방수구 호스 가방 | [P9_apartment_bots.md](P9_apartment_bots.md) |
 | P9 아파트 카드 5장 (물탱크차·대피 순서·화점 못 찾음·RIT·송풍기) | [P9_apartment_cards.md](P9_apartment_cards.md) |
 | P9 굴절차 (후착·전개·고소 방수포·바스켓 구조·방수포 확인 카드) | [P9_aerial.md](P9_aerial.md) |
+| P15-FX 불·연기 그래픽, 대원 걷기, 정보 누출 수정 | [P15b_fx_walk_info.md](P15b_fx_walk_info.md) |
+| P13 질문 카드 초안 검수표 (SOP 201~209) | [../cards_review.md](../cards_review.md) |
+| 기획안 검토 (UI 비교·100점 기획서) | [../기획안_검토.md](../기획안_검토.md) |
 | P15 Kenney 그림 입히기 (대원·시민·차량·가구) | [P15_sprites.md](P15_sprites.md) |
 | P10-2 ⓐ 명령 카드·진입 허가 요청·인원 점검 | [P10-2a_command_card_entry.md](P10-2a_command_card_entry.md) |
 | P10-2 ⓑ 구역 지정·분류소 | [P10-2b_zones.md](P10-2b_zones.md) |

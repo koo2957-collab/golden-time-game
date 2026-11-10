@@ -49,11 +49,24 @@ func step(dt: float, tick: int) -> void:
 			continue
 		var p: float = progress.get(c.index, 0.0) + _rate * dt
 		progress[c.index] = p
-		if p >= _sign and not signed.has(c.index):
+		if p >= _sign and not signed.has(c.index) and _noticeable(c):
 			signed[c.index] = true
 			events.add(tick, "collapse_sign", {"room": c.display_name(), "crew": "현장 대원"})
 		if p >= 1.0:
 			_collapse(c, tick)
+
+
+## 균열·처짐을 알아챌 수 있는가: 그 방이 보이거나 대원이 그 방(맞닿은 칸)에 있음
+var perception: Perception
+
+
+func _noticeable(c: Compartment) -> bool:
+	if perception == null or perception.room_visible(c):
+		return true
+	for ff in units.firefighters:
+		if not ff.incapacitated and ff.level == c.level and c.rect.grow(1).has_point(Vector2i(ff.pos.floor())):
+			return true
+	return false
 
 
 func _collapse(c: Compartment, tick: int) -> void:

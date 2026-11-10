@@ -13,7 +13,7 @@ extends Node2D
 ## 선택 단위는 조(2인 1조)와 차량이며, 현재 보고 있는 층의 대원만 선택된다.
 ## 좌표 변환은 projection(상황판/입체)을 따른다.
 
-enum Mode { NONE, ATTACK, SEARCH_AUTO, EXTERIOR, TREAT, TRANSPORT, WAYPOINT, MONITOR, PPV, VEHICLE_CONNECT, VEHICLE_MOVE, ZONE_SAFE, ZONE_CASUALTY, ZONE_LINE, TRIAGE_POST, OBSERVE, ENTRY_POINT, BASKET }
+enum Mode { NONE, ATTACK, SEARCH_AUTO, EXTERIOR, TREAT, TRANSPORT, WAYPOINT, MONITOR, PPV, VEHICLE_CONNECT, VEHICLE_MOVE, ZONE_SAFE, ZONE_CASUALTY, ZONE_LINE, TRIAGE_POST, OBSERVE, ENTRY_POINT, BASKET, POST, FORWARD }
 
 ## 관계인을 클릭했을 때 (world가 진술 창을 연다)
 signal witness_clicked(index: int)
@@ -50,6 +50,8 @@ const MODE_HINTS := {
 	Mode.TRANSPORT: "이송: 처치한 환자를 클릭 (들것으로 구급차에 태워 병원으로)",
 	Mode.WAYPOINT: "경유지: 본 적 있는 곳을 클릭 (건물 안 조에게는 무전으로 전달)",
 	Mode.MONITOR: "방수포: 바깥 창·문을 클릭 — 진입대원이 있는 방에는 쓰지 않는다 (SOP 207-1.1)",
+	Mode.POST: "현장지휘소: 건물 밖을 클릭 — 현장이 보이고, 낙하물 위험반경(발화층 높이 1/2) 밖이며, 차량 동선을 막지 않는 곳 (SOP 104-1.3)",
+	Mode.FORWARD: "직전대기 장소: 진입구 가까운 건물 밖을 클릭 — 후착대가 여기 모인다 (SOP 103-2.1.3)",
 	Mode.BASKET: "바스켓 구조: 그 층 단면에서 창가의 요구조자를 클릭 (작업 높이·수평 거리 안, 첫 사용은 전개 시간)",
 	Mode.PPV: "송풍기 양압배연: 바깥 출입문을 클릭 — 먼저 반대편 창(배출구)을 확보한다",
 	Mode.ZONE_SAFE: "안전구역: 건물 밖을 끌어서 사각형 (한 번 클릭하면 그 자리에 기본 크기) — 낙하물 위험구역은 피한다",
@@ -81,6 +83,8 @@ var mode := Mode.NONE
 var monitor_vehicle := -1
 ## 바스켓 구조를 맡길 굴절차 (P9)
 var basket_vehicle := -1
+## 지휘권 선언을 지휘소 클릭까지 미룬 답 (P4-4). 비어 있으면 지휘소 옮기기
+var pending_declare: Dictionary = {}
 ## 설정되어 있으면 좌클릭을 선택 대신 이 함수로 넘긴다 (셀 좌표 Vector2i). 개발용 발화 모드 등에 쓴다.
 var click_override := Callable()
 ## 설정되어 있으면 빈 곳 클릭 때 화면 위치로 맞은 층을 묻는다 (단면 보기의 아래층, R17). (world_pos) -> level
@@ -527,6 +531,15 @@ func _complete_mode(world_pos: Vector2) -> void:
 			var win := _door_at(world_pos, true)
 			if win and monitor_vehicle >= 0:
 				sim.issue(EquipmentCommand.make("monitor", [], monitor_vehicle, -1, Vector3i(win.cells[0].x, win.cells[0].y, win.level)))
+		Mode.POST, Mode.FORWARD:
+			var pc := Vector2i(projection.to_cell(world_pos).floor())
+			if mode == Mode.POST and not pending_declare.is_empty():
+				var a := pending_declare.duplicate()
+				a["post"] = [pc.x, pc.y]
+				pending_declare = {}
+				sim.issue(CommandOrder.make("declare", [], 0, Vector3i.ZERO, a))
+			else:
+				sim.issue(CommandOrder.make("zone", [], 0, Vector3i.ZERO, {"kind": "post" if mode == Mode.POST else "forward", "cell": [pc.x, pc.y]}))
 		Mode.BASKET:
 			var who := _casualty_at(world_pos)
 			if who.x == 0 and basket_vehicle >= 0:

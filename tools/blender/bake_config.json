@@ -16,7 +16,7 @@
   ],
   "anims": {
     "idle": {"source": "idle", "frames": 8, "pose": "arms_down", "note": "서기 (팩의 허리에 손 얹은 자세에서 팔을 내림)"},
-    "walk": {"source": "run", "frames": 8, "note": "걷기 — 팩에 걷기가 없어 뛰기를 느리게 재생"},
+    "walk": {"source": "run", "frames": 8, "pose": "walk", "note": "걷기 — 팩에 걷기가 없어 뛰기를 쉬는 자세 쪽으로 섞어 보폭을 줄이고 팔을 내려 흔든다"},
     "crouch_walk": {"source": "run", "frames": 8, "pose": "crouch", "note": "웅크려 걷기 (스크립트 자세)"},
     "carry": {"source": "run", "frames": 8, "pose": "carry", "note": "요구조자 들고 걷기 (스크립트 자세)"},
     "spray": {"source": "idle", "frames": 4, "pose": "spray", "note": "방수 — 낮은 자세, 관창을 앞으로 (스크립트 자세)"},

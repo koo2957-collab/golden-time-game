@@ -25,6 +25,8 @@ class Message:
 	var data: Dictionary = {}
 	## 지휘관 지시인가 (무전 기록 '내 지시' 필터)
 	var mine := false
+	## 이동지휘 중이라 지휘관이 놓친 보고 (P4-4) — 상황판에 오르지 않는다
+	var missed := false
 
 	## 무전 문장: "받는 쪽, 보내는 쪽. 본문"
 	func text() -> String:

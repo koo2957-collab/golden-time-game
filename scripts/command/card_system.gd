@@ -58,6 +58,8 @@ var _seed := 0
 var _followups: Array[Dictionary] = []
 ## 정보 확인 뒤 할 행동 [{tick, effect, card}]
 var _delayed: Array[Dictionary] = []
+## 연기가 찼지만 아직 아무도 보지 못한 계단실 {구획 index: true}
+var _pending_smoke: Dictionary = {}
 
 
 func _init(p_units: UnitSystem, p_tactical: TacticalSystem, p_doors: DoorSystem, p_rescue: RescueSystem, p_rekindle: RekindleSystem,
@@ -90,6 +92,8 @@ func set_preorder(key: String, on: bool, tick: int) -> void:
 
 func step(_dt: float, tick: int) -> void:
 	_scan_events(tick)
+	if tick % 10 == 0:
+		_check_pending_smoke(tick)
 	_step_followups(tick)
 	for c in queue.duplicate():
 		if tick >= c.deadline_tick:
@@ -145,6 +149,17 @@ func _scan_events(tick: int) -> void:
 			_raise(spec, e, tick)
 
 
+## 연기 찬 계단실을 누군가 보게 되면 그때 보고 (계단실 연기 카드)
+func _check_pending_smoke(tick: int) -> void:
+	if sim == null:
+		return
+	for idx: int in _pending_smoke.keys():
+		var room: Compartment = fire.comps[idx]
+		if sim.perception.room_visible(room):
+			_pending_smoke.erase(idx)
+			events.add(tick, "stair_smoke_seen", {"room": room.display_name(), "crew": "현장 대원"})
+
+
 ## 사건 → 트리거 이름
 func _trigger_of(e: Dictionary) -> String:
 	match str(e.type):
@@ -162,7 +177,16 @@ func _trigger_of(e: Dictionary) -> String:
 		"site_info_found":
 			return "gas_found" if str(e.get("text", "")).contains("가스") or str(e.get("text", "")).contains("LPG") else ""
 		"smoke":
-			return "stair_smoke" if str(e.get("room", "")).contains("계단실") and fire.building.levels().size() >= 3 else ""
+			# 연기 시작은 시뮬레이션 사실 — 누가 그 계단실을 봐야 묻는다 (보이기 전이면 기다렸다가 _check_pending_smoke)
+			if str(e.get("room", "")).contains("계단실") and fire.building.levels().size() >= 3:
+				var room := _room_named(str(e.get("room", "")))
+				if room and sim and sim.perception.room_visible(room):
+					return "stair_smoke"
+				if room:
+					_pending_smoke[room.index] = true
+			return ""
+		"stair_smoke_seen":
+			return "stair_smoke"
 		"victim_found":
 			var alive := 0
 			for v in rescue.victims:
@@ -179,7 +203,7 @@ func _trigger_of(e: Dictionary) -> String:
 			return "fire_found"
 		"phase":
 			return "arrival" if int(e.get("index", -1)) == 1 else ""
-		"entry_request", "rescue_no_point", "triage_needed", "nozzle_choice", "equipment_missing", "fire_not_found", "ppv_no_exhaust", 				"monitor_crew_check":
+		"entry_request", "rescue_no_point", "triage_needed", "nozzle_choice", "equipment_missing", "fire_not_found", "ppv_no_exhaust", 				"monitor_crew_check", "post_danger":
 			return str(e.type)
 		# P9 아파트 카드 (기획안 7-3)
 		"vehicle_arrived":
@@ -412,7 +436,7 @@ func _apply(effect: String, c: Card, tick: int) -> void:
 	# 조가 없어도 되는 행동 (차량·대피 방송·안전구역·RIT 등)
 	const NO_CREW := ["entry_grant", "entry_wait", "entry_deny", "dropoff_wait", "dropoff_ambulance", "dropoff_entrance",
 		"tag_urgent", "tag_emergent", "tag_minor", "tag_delayed", "shuttle", "clear_zone", "shelter", "evacuate_now", "note", "hold", "", "connect_fdc", "supply_pump", "rit_deploy", "air_mat",
-		"tanker_supply", "tanker_hydrant", "tanker_idle", "evac_fire_first", "evac_bottom_up", "rit_help", "monitor_now", "aerial_rescue"]
+		"tanker_supply", "tanker_hydrant", "tanker_idle", "evac_fire_first", "evac_bottom_up", "rit_help", "monitor_now", "aerial_rescue", "post_move_safe"]
 	if crew == null and not effect in NO_CREW:
 		return
 	var here := crew.leader.pos if crew else Vector2(fire.building.footprint(1).get_center())
@@ -545,13 +569,14 @@ func _apply(effect: String, c: Card, tick: int) -> void:
 		"gas_off":
 			sim.gas.order_off(c.crew_id, tick)
 		"rescue_trapped":
-			var v := int(c.ctx.get("victim", -1))
-			if v >= 0:
-				rescue.victims[v].discovered = true
-				var rc := _nearest_crew(rescue.victims[v].pos, rescue.victims[v].level, "구조대")
+			# 신고된 층을 검색 (위치를 알려 주지 않는다 — 대원이 찾아야 발견)
+			var lv := int(c.ctx.get("level", -1))
+			if lv >= 0:
+				var rc := _nearest_crew(Vector2(fire.building.footprint(lv).get_center()), lv, "구조대")
 				if rc < 0:
-					rc = c.crew_id
-				rescue.order_rescue(rc, "victim", v, tick)
+					rc = _nearest_crew(Vector2(fire.building.footprint(lv).get_center()), lv)
+				if rc >= 0:
+					tactical.order("search_floor", rc, Vector3i(0, 0, lv), tick)
 		"connect_fdc":
 			var best := -1
 			var best_d := INF
@@ -616,6 +641,11 @@ func _apply(effect: String, c: Card, tick: int) -> void:
 				events.add(tick, "ppv_exhaust_none", {})
 		"ppv_stop":
 			sim.vent.cancel(sim.vent.crew_id, tick)
+		"post_move_safe":
+			# 지휘소를 위험반경 밖으로 (P4-4, SOP 104-1.3)
+			var safe := sim.command.post.safer_post() if sim and sim.command.post else Vector2i(-1, -1)
+			if safe.x >= 0:
+				sim.command.post.set_post(safe, tick, "낙하물 위험반경 밖으로 이동")
 		"monitor_now":
 			sim.monitors.start(int(c.ctx.get("vehicle_id", -1)), _cell(c.ctx.get("target", [])), tick, true)
 		"aerial_rescue":

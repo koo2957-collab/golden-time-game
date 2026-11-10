@@ -176,6 +176,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.shafts = ShaftSystem.new(sim.fire, sim.units, sim.water, hazard_params, sim.events)
 	sim.evac = EvacSystem.new(sim.fire, sim.rescue, sim.pathfinder, hazard_params, sim.units.walk_speed_cells, sim.events)
 	sim.falls = FallSystem.new(sim.fire, sim.exposure, sim.units, sim.rescue, sim.pathfinder, hazard_params, sim.events)
+	sim.collapse.perception = sim.perception
 	sim.ems = EmsSystem.new(sim.units, sim.rescue, sim.pathfinder, ParamTable.from_dict(ems_data), sim.events)
 	sim.command = CommandSystem.new(sim.fire, sim.units, sim.pathfinder, sim.rescue, sim.water, sim.doors, sim.perception, sim.clock, ParamTable.from_dict(radio_data), sim.events)
 	sim.zones = ZoneSystem.new(building, sim.units, sim.falls, ParamTable.from_dict(ems_data).value("triage_setup_s"),
@@ -223,13 +224,18 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.tactical.entries = sim.entries
 	sim.command.interior.entries = sim.entries
 	sim.knowledge = KnowledgeBoard.new(sim.fire, sim.units, sim.rescue)
-	sim.command.radio.on_delivered = sim.knowledge.on_message
-	sim.command.org.on_delivered = sim.knowledge.on_message
+	# 지휘소 (P4-4): 지휘소를 떠나 이동지휘 중이면 상황판 갱신이 늦고 일상 보고를 놓친다
+	sim.command.post = CommandPost.new(sim.command, sim.units, sim.pathfinder, ParamTable.from_dict(radio_data), sim.events, building.cell_size_m)
+	sim.zones.post = sim.command.post
+	var deliver := sim.command.post.wrap(sim.knowledge.on_message)
+	sim.command.radio.on_delivered = deliver
+	sim.command.org.on_delivered = deliver
 	sim.transfer = CommandTransfer.new(sim)
 	sim.elevator = ElevatorSystem.new(sim.fire, sim.units, sim.pathfinder, sim.events)
 	sim.lifeline = LifelineSystem.new(sim.fire, sim.units, sim.pathfinder, hazard_params, sim.events)
 	if building_data is Dictionary:
 		sim.elevator.apply_building(building_data)
+	sim.falls.commander = sim.command.commander
 	sim.command.survey = SiteSurvey.new(sim.fire, sim.units, sim.pathfinder, sim.command.resources, sim.command.commander, ParamTable.from_dict(survey_data), sim.events)
 	sim.water.safe_cell = sim.conditions.safe_to_enter
 	sim.rescue.water = sim.water

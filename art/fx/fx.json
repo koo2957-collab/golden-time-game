@@ -1,0 +1,20 @@
+{
+  "flame": {
+    "frames": 16,
+    "h": 96,
+    "variants": 3,
+    "w": 48
+  },
+  "puffs": {
+    "per_row": 6,
+    "rows": [
+      "black",
+      "white"
+    ],
+    "size": 96
+  },
+  "smoke_noise": {
+    "size": 256
+  },
+  "source": "불꽃·연기 질감: shaders/fx_*.gdshader로 구움. 연기 덩어리: Kenney Smoke Particles (CC0)"
+}

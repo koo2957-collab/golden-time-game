@@ -333,6 +333,22 @@ static func describe_text(e: Dictionary) -> String:
 			text = "%s 방수포 물 없음 — 가까이(40m) 펌프차가 없다" % e.vehicle
 		"monitor_crew_check":
 			text = "%s 방수포 확인 요청 — %s에 진입대 있음 (SOP 207-1.1)" % [e.vehicle, e.room]
+		"command_post_set":
+			text = "현장지휘소 — %s (%s) · 관찰 %s · 안전 %s(건물에서 %sm) · 동선 %s" % [e.where, e.why, e.observe, e.safety, e.distance_m, e.route]
+		"post_danger":
+			text = "지휘소가 낙하물 위험반경 안 — 건물에서 %sm (위험반경 %sm)" % [e.distance_m, e.danger_m]
+		"forward_set":
+			text = "직전대기 장소 — %s (후착대는 여기 모여 무전으로 임무를 받는다)" % e.where
+		"command_mode":
+			text = "지휘 방식: %s%s" % [e.mode, " — 상황판 갱신이 늦고 일상 보고를 놓칠 수 있음" if str(e.mode) == "이동지휘" else ""]
+		"radio_missed":
+			text = "%s 보고를 놓침 (이동지휘 중)" % e.sender
+		"squad_wait":
+			text = "%s 임무 받기까지 %d초 대기" % [e.squad, e.wait_s]
+		"zone_install_go":
+			text = "%s 설치하러 감 — %s" % [e.kind, e.crew]
+		"zone_no_crew":
+			text = "%s를 설치할 임무 없는 조가 없음 — 조가 비면 설치" % e.kind
 		"ppv_exhaust_order":
 			text = "배기구 확보 — %s이(가) %s 창 개방" % [e.crew, e.room]
 		"ppv_exhaust_none":
@@ -447,8 +463,10 @@ static func describe_text(e: Dictionary) -> String:
 			text = "샤프트 통해 연소 확대 — %s" % e.room
 		"shaft_checked":
 			text = "%s 샤프트(PS) 확인·차단" % e.floor
+		"evac_trapped":
+			text = "%s 대피 중 %s에서 연기에 갇힘 (아무도 못 봄)" % [e.who, e.room]
 		"victim_trapped":
-			text = "대피하던 사람이 연기에 갇힘 — %s, %s" % [e.who, e.room]
+			text = "119 신고: %s에 사람이 연기에 갇혀 있다 (상황실 전달)" % e.get("unit", e.get("room", "건물 안"))
 		"victim_self_evac":
 			text = "자력 대피 — %s 밖으로 나옴" % e.who
 		"jump_risk":

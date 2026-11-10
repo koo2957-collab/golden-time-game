@@ -117,6 +117,7 @@ func add_victims(list: Array, rng: RandomNumberGenerator) -> void:
 		v.mobility = str(data.get("mobility", ""))
 		v.level = int(data.get("level", 1))
 		v.jumper = bool(data.get("window", false))
+		v.phone = bool(data.get("phone", true))
 		v.self_evac = bool(data.get("self_evac", false))
 		v.alert_s = float(data.get("alert_s", -1.0))
 		if data.has("cell"):

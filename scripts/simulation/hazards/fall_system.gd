@@ -29,6 +29,12 @@ var sign_fallen: Dictionary = {}
 ## 구역 안에 대원이 머문 시간 합 (대원·초)
 var zone_seconds := 0.0
 var warned: Dictionary = {}  # 요구조자 id -> true (뛰어내리려 함 알림)
+## 아무도 못 본 창가 요구조자: 행인 신고가 들어올 틱 {요구조자 id: tick}
+var _calls: Dictionary = {}
+var _call_ticks := 600
+var _seen_cells := 50.0
+## 지휘관 (밖에서 창가를 보는 사람에 넣는다, SimWorld가 넣는다)
+var commander: Firefighter
 var jumped: Dictionary = {}  # 요구조자 id -> {mat: bool, tick}
 ## 굴절차 바스켓이 오고 있어 뛰어내리지 않고 기다리는 사람 {요구조자 id: true} (확성기 안내, SOP 326-2.13)
 var held: Dictionary = {}
@@ -63,9 +69,30 @@ func _init(p_fire: FireSim, p_exposure: ExposureSystem, p_units: UnitSystem, p_r
 	_sign_radius = params.value("sign_radius_m") / _cell_m
 	_setup_s = params.value("air_mat_setup_s")
 	_mat_radius = params.value("air_mat_radius_m") / _cell_m
+	_call_ticks = roundi(params.value("bystander_call_delay_s") / SimClock.TICK_DT)
+	_seen_cells = params.value("window_seen_m") / fire.building.cell_size_m
 
 
 ## 이 건물에서 추락·낙하물을 따지는가 (3층 이상 건물이거나 외벽 간판이 있는 건물)
+## 밖에 있는 대원·지휘관이 이 창 아래 땅에서 window_seen_m 안에 있는가
+func _seen_from_outside(v: Victim) -> bool:
+	var below := ground_below(v)
+	if below.x < 0:
+		return false
+	var people: Array[Firefighter] = []
+	people.assign(units.firefighters)
+	if commander:
+		people.append(commander)
+	for ff in people:
+		if ff.incapacitated or ff.aboard or ff.level != 1:
+			continue
+		if not fire.building.cell(1, floori(ff.pos.x), floori(ff.pos.y)) in BuildingData.OUTDOOR:
+			continue
+		if ff.pos.distance_to(below) <= _seen_cells:
+			return true
+	return false
+
+
 func enabled() -> bool:
 	return fire.building.levels().size() >= 3 or not fire.building.signs.is_empty()
 
@@ -139,9 +166,14 @@ func _step_jumper(v: Victim, tick: int) -> void:
 	var desperate := v.fed() >= _jump_fed or (room != null and room.flashed) 		or (_burning_since.has(v.id) and tick - int(_burning_since[v.id]) >= _jump_delay_ticks)
 	var heated := room != null and exposure.room_ratio(room) >= 0.4
 	if (v.fed() >= _warn_fed or heated or _burning_since.has(v.id)) and not warned.has(v.id):
-		warned[v.id] = true
-		v.discovered = true  # 창가에서 몸을 내밀어 밖에서 보인다
-		events.add(tick, "jump_risk", {"who": v.label(), "room": room.display_name() if room else "", "crew": "현장 대원"})
+		# 창가에서 몸을 내민 사람: 밖의 대원·지휘관이 보면 바로, 아무도 없으면 행인 신고가 상황실을 거쳐 늦게 들어온다
+		var seen := _seen_from_outside(v)
+		if seen or (_calls.has(v.id) and tick >= int(_calls[v.id])):
+			warned[v.id] = true
+			v.discovered = true
+			events.add(tick, "jump_risk", {"who": v.label(), "room": room.display_name() if room else "", "crew": "현장 대원" if seen else "119종합상황실"})
+		elif not _calls.has(v.id):
+			_calls[v.id] = tick + _call_ticks
 	if not desperate:
 		return
 	var below := ground_below(v)

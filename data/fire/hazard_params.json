@@ -72,6 +72,9 @@
   "evac_clear_m": {"value": 1.6, "source": "추정", "note": "연기층 아래 맑은 높이가 이보다 낮으면 그 구획을 지나가지 못하고 갇힌다"},
   "evac_hot_c": {"value": 40, "source": "추정", "note": "연기층이 이보다 뜨거우면서 낮게 내려왔으면 그 구획을 지나가지 않는다"},
   "evac_speed_factor": {"value": 0.8, "source": "추정", "note": "자력 대피 걷는 속도 (대원 보행 속도 대비)"},
+  "evac_call_delay_s": {"value": 45, "source": "게임 설정값", "note": "갇힌 주민이 119에 전화해 상황실이 현장에 무전으로 전하기까지 걸리는 시간 (전화할 수 있는 사람만, 정보 누출 수정)"},
+  "bystander_call_delay_s": {"value": 60, "source": "게임 설정값", "note": "아무도 못 본 창가 요구조자를 행인·이웃이 신고해 상황실이 전하기까지 걸리는 시간"},
+  "window_seen_m": {"value": 25, "source": "게임 설정값", "note": "밖에 있는 대원·지휘관이 이 거리 안이면 창가에서 구조를 요청하는 사람을 본다"},
   "floor_height_m": {"value": 3, "source": "추정", "note": "층 높이 — 안전구역 안내 거리(발화층 높이) 계산"},
   "safe_zone_strong_wind_mps": {"value": 6, "source": "게임 설정값", "note": "이 풍속 이상이면 외부 안전구역 안내를 발화층 높이 1/2 대신 건물 높이로 (SOP 213-2.7.1 '바람이 강하면 건물 높이')"},
   "evac_floor_guide_s": {"value": 45, "source": "게임 설정값", "note": "대원이 세대를 돌며 대피 안내할 때 한 층에 걸리는 시간 — 안내 순서(EVAC-ORDER-01)에 따라 층마다 안내가 늦어진다 (SOP 213-2.4.1)"}

@@ -15,6 +15,8 @@ signal order_issued(order: CommandOrder)
 signal dialog_changed(open: bool)
 ## 종료 창을 열 때 (교육 모드 힌트)
 signal end_dialog_opened
+## 지휘권 선언에서 '지도에서 지휘소 고르기'를 골랐다 (P4-4) — 화면이 클릭을 받아 선언을 마친다
+signal post_pick_requested(answers: Dictionary)
 
 const RADIO_LINES := 6
 ## 오른쪽 전술상황판 폭 (기획안 9-2)
@@ -57,6 +59,8 @@ var _strategy: PanelContainer
 var _confirm: PanelContainer
 var _confirm_squads: Array[int] = []
 var _report_submit: Button
+## 지휘 위치 고르기 (P4-4): 0 지금 선 자리 / 1 지도에서 고르기
+var _post_choice: OptionButton
 var _options: Dictionary = {}  # 항목 -> OptionButton
 var _checks: Dictionary = {}  # 항목 -> Array[CheckBox]
 var _auto_labels: Dictionary = {}  # 항목 -> Label
@@ -400,8 +404,11 @@ func submit_report() -> void:
 	var a := report_answers()
 	if not _report_complete():
 		return
-	order_issued.emit(CommandOrder.make("declare", [], 0, Vector3i.ZERO, a))
 	_close(_report)
+	if _post_choice and _post_choice.selected == 1:
+		post_pick_requested.emit(a)
+		return
+	order_issued.emit(CommandOrder.make("declare", [], 0, Vector3i.ZERO, a))
 
 
 # --- 내부 ---
@@ -683,6 +690,15 @@ func _build_report() -> void:
 	_row_option(grid, "③ 건축 구조", "structure", opts.structure)
 	_row_checks(grid, "④ 위험 요소 (없으면 비움)", "hazards", opts.hazards)
 	_row_auto(grid, "⑤ 지휘권 선언", "commander")
+	# 지휘 위치 = 현장지휘소 (SOP 101-2.1⑤, 104). 선언하면 고정지휘 (P4-4)
+	grid.add_child(_label("⑤ 지휘 위치 (지휘소)", 17, DIM_COLOR))
+	_post_choice = OptionButton.new()
+	_post_choice.focus_mode = Control.FOCUS_NONE
+	_post_choice.add_item("지금 선 자리")
+	_post_choice.add_item("지도에서 고르기 (송신 뒤 클릭)")
+	_post_choice.select(0)
+	_post_choice.custom_minimum_size = Vector2(320, 34)
+	grid.add_child(_post_choice)
 	_row_checks(grid, "⑥ 소방 활동", "activities", opts.activities)
 	_row_option(grid, "⑦ 전략", "strategy", ["공격", "방어", "병행"])
 	_row_option(grid, "⑧ 지원 요청", "support", opts.support)

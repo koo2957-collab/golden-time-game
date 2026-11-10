@@ -118,7 +118,7 @@ func collect() -> int:
 		for i in range(start, r.history.size()):
 			var m := r.history[i]
 			var who := sim.knowledge._crew_named(m.sender) if sim.knowledge else null
-			fresh.append({"tick": m.end_tick, "text": "%s%s → %s: %s" % ["" if r == sim.command.radio else "[%s] " % r.channel, m.sender, m.receiver, m.body],
+			fresh.append({"tick": m.end_tick, "text": "%s%s → %s: %s%s" % ["" if r == sim.command.radio else "[%s] " % r.channel, m.sender, m.receiver, m.body, "  (놓침 — 이동지휘 중)" if m.missed else ""],
 				"color": MINE if m.mine else COLORS.get(m.priority, NORMAL), "urgent": m.priority <= Radio.Priority.VICTIM, "mine": m.mine,
 				"crew": who.id if who else -1})
 		_seen_radio[key] = r.history.size()

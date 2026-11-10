@@ -44,6 +44,24 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_water: WaterSystem, params: P
 				shaft_rooms[lv] = c
 
 
+## 아직 보고하지 못한 샤프트 사건 [{type, data}] — 그 층에 대원이 오면 보고
+var _pending: Array[Dictionary] = []
+
+
+func _crew_on(lv: int) -> bool:
+	for c in units.crews:
+		if not c.leader.incapacitated and not c.leader.aboard and c.leader.level == lv:
+			return true
+	return false
+
+
+func _report(tick: int, type: String, lv: int, data: Dictionary) -> void:
+	if _crew_on(lv):
+		events.add(tick, type, data)
+	else:
+		_pending.append({"type": type, "level": lv, "data": data})
+
+
 func has_shaft() -> bool:
 	return not shaft_rooms.is_empty()
 
@@ -51,6 +69,10 @@ func has_shaft() -> bool:
 func step(_dt: float, tick: int) -> void:
 	if shaft_rooms.is_empty():
 		return
+	for p in _pending.duplicate():
+		if _crew_on(int(p.level)):
+			_pending.erase(p)
+			events.add(tick, str(p.type), p.data)
 	var levels: Array = shaft_rooms.keys()
 	levels.sort()
 	for lv: int in levels:
@@ -64,7 +86,7 @@ func step(_dt: float, tick: int) -> void:
 			var below_hot: bool = hot.has(lv - 1) and not checked.has(lv - 1) and tick - int(hot[lv - 1]) >= _rise_ticks
 			if _neighbor_burning(sh) or below_hot:
 				hot[lv] = tick
-				events.add(tick, "shaft_heat" if not below_hot else "shaft_smoke", {"floor": fire.building.floor_name(lv), "crew": "현장 대원"})
+				_report(tick, "shaft_heat" if not below_hot else "shaft_smoke", lv, {"floor": fire.building.floor_name(lv), "crew": "현장 대원"})
 				# PVC 배관이 타면 염화수소 — 샤프트와 맞닿은 구획 연기 독성 증가
 				if pvc:
 					sh.toxicity = maxf(sh.toxicity, _pvc_toxic)
@@ -76,7 +98,7 @@ func step(_dt: float, tick: int) -> void:
 		if hot.has(lv - 1) and not ignited.has(lv) and tick - int(hot[lv]) >= _spread_ticks:
 			ignited[lv] = tick
 			var room := _ignite_next_to(sh)
-			events.add(tick, "shaft_ignition", {"room": room.display_name() if room else fire.building.floor_name(lv), "crew": "현장 대원"})
+			_report(tick, "shaft_ignition", lv, {"room": room.display_name() if room else fire.building.floor_name(lv), "crew": "현장 대원"})
 
 
 ## 샤프트 옆(벽 너머) 구획 중 최성기·플래시오버인 것이 있는가

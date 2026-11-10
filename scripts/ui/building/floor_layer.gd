@@ -126,6 +126,9 @@ var _facing: Dictionary = {}
 ## 가구 그림 (P15): 층 -> {칸 index: 가구 번호} (그림으로 그리는 칸은 블록을 그리지 않는다), 층 -> {앞쪽 칸 index: 그릴 정보}
 var _furn_cells: Dictionary = {}
 var _furn_draw: Dictionary = {}
+## 불빛 번짐 (P15-FX, 실시간 셰이더). 지금 층만
+var _glow: FireGlowLayer
+var _glow_spots: Array = []
 var _first_level := 0  # 지상층 (levels()는 부를 때마다 배열을 복사하므로 한 번만 읽는다)
 
 ## 바닥 캐시. 칸 모양은 층별로 고정이고, 색(바닥·그을음·열화상·정보 안개)은 시뮬레이션 틱이 바뀔 때만 달라진다.
@@ -694,6 +697,11 @@ static func _add_dynamic(out: Dictionary, c: Vector2i, b: BuildingData) -> void:
 func _process(_delta: float) -> void:
 	if not is_visible_in_tree():
 		return
+	if _glow == null and depth == 0:
+		_glow = FireGlowLayer.new()
+		add_child(_glow)
+		# 연기층 질감을 반복해 입힌다 (P15-FX)
+		texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	# 아래층(보이기만 하는 층)은 시뮬레이션 틱이 바뀔 때만, 두 아래층이 틱을 번갈아 다시 그린다 (R17 성능).
 	# 지금 층은 대원 움직임·불꽃이 부드럽게 보이도록 매 프레임
 	if depth > 0 and sim != null:
@@ -791,6 +799,10 @@ func _draw() -> void:
 	elif not thermal:
 		_draw_smoke()
 	_draw_blasts()
+	if _glow:
+		_glow.spots = _glow_spots if not thermal and not _outside() else []
+		_glow.queue_redraw()
+		_glow_spots = []
 	_draw_sprays(alpha)
 	_draw_monitors_and_fans()
 	for e in sim.rekindle.spotted_cells():
@@ -1174,6 +1186,13 @@ func _draw_flame(x: int, y: int, base_m: float) -> void:
 	var w := IsoProjection.HALF_W * 0.55
 	var sway := Vector2(sin(t * 3.1 + seed_f) * 3.0, 0)
 	draw_colored_polygon(_ellipse(base, w * 1.3, w * 0.65), Color(1.0, 0.45, 0.1, 0.35 * intensity * fade))
+	if depth == 0 and fade >= 1.0:
+		_glow_spots.append([base, IsoProjection.HALF_W * (3.0 + 3.0 * intensity), intensity, x * 131 + y])
+	# 셰이더로 구운 불꽃 그림 (tools/bake_fx.gd). 없으면 아래 도형
+	var fh_px := (0.6 + 1.5 * intensity) * IsoProjection.PX_PER_M * flicker
+	var fw_px := IsoProjection.HALF_W * (1.0 + 0.6 * intensity)
+	if FxArt.draw_flame(self, base + Vector2(sin(t * 2.3 + seed_f) * 1.5, 0), fw_px, fh_px, (x * 31 + y * 17), Color(1, 1, 1, fade)):
+		return
 	draw_colored_polygon(_flame_shape(base, w, proj.to_screen(c, base_m + height) + sway), Color(0.95, 0.3, 0.06, 0.9 * fade))
 	draw_colored_polygon(_flame_shape(base, w * 0.55, proj.to_screen(c, base_m + height * 0.6) + sway * 0.6), Color(1.0, 0.8, 0.3, 0.95 * fade))
 
@@ -1471,12 +1490,29 @@ func _draw_smoke() -> void:
 		var front := Color(FireView.SMOKE_COLOR, minf(0.6, a + 0.1))
 		_face_room("S", r, h, CEILING_M, front.darkened(SOUTH_SHADE))
 		_face_room("E", r, h, CEILING_M, front.darkened(EAST_SHADE))
-		draw_colored_polygon(plane, Color(FireView.SMOKE_COLOR, a))
+		draw_colored_polygon(plane, Color(FireView.SMOKE_COLOR, a * 0.65))
+		_draw_smoke_texture(plane, r, a, c.index)
 		plane.append(plane[0])
 		draw_polyline(plane, Color(FireView.SMOKE_COLOR.darkened(0.3), minf(1.0, a + 0.15)), 1.5)
 		if c.rollover and p.room_visible(c):
 			_draw_rollover(r, h)
 	_draw_smoke_plumes()
+
+
+## 연기층 평면에 셰이더로 구운 연기 질감을 두 겹, 서로 다른 쪽으로 흘려 입힌다 (P15-FX)
+func _draw_smoke_texture(plane: PackedVector2Array, r: Rect2i, a: float, seed: int) -> void:
+	if not FxArt.load_all() or FxArt.noise == null:
+		return
+	var t := Time.get_ticks_msec() / 1000.0
+	var corners := [Vector2(r.position), Vector2(r.end.x, r.position.y), Vector2(r.end), Vector2(r.position.x, r.end.y)]
+	for layer in 2:
+		var uvs := PackedVector2Array()
+		var drift := Vector2(t * 0.018, t * 0.011) if layer == 0 else Vector2(-t * 0.013, t * 0.02)
+		var scale := 0.09 if layer == 0 else 0.15
+		for cv: Vector2 in corners:
+			uvs.append(cv * scale + drift + Vector2(seed * 0.37, seed * 0.21))
+		var col := Color(FireView.SMOKE_COLOR.lightened(0.15 * layer), a * (0.55 if layer == 0 else 0.35))
+		draw_polygon(plane, PackedColorArray([col, col, col, col]), uvs, FxArt.noise)
 
 
 ## 방 직사각형의 앞면(남 "S" 또는 동 "E")에서 높이 h0~h1 띠
@@ -1567,7 +1603,9 @@ func _draw_smoke_plumes() -> void:
 			var f := fmod(k / 5.0 + t * 0.35, 1.0)
 			var pos := proj.to_screen(at, 1.6 + f * 2.5) + Vector2(sin(t + k) * 6.0, 0)
 			var r := (8.0 + f * 18.0) * (0.6 + 0.4 * strength)
-			draw_circle(pos, r, Color(PlanStyle.SMOKE_PLUME, PlanStyle.SMOKE_PLUME.a * (1.0 - f) * strength))
+			var col := Color(PlanStyle.SMOKE_PLUME, PlanStyle.SMOKE_PLUME.a * (1.0 - f) * strength)
+			if not FxArt.draw_puff(self, pos, r * 3.2, 0, k + int(t), Color(0.55, 0.55, 0.58, col.a * 1.6)):
+				draw_circle(pos, r, col)
 
 
 ## 연기가 바깥으로 나오는 개구부: [위치(셀 좌표), 세기 0~1] 목록

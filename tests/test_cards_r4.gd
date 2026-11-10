@@ -35,7 +35,7 @@ func test_card_set() -> void:
 	var known := ["halt_locked", "halt_closed", "halt_backdraft", "halt_victim", "fire_found", "air_alarm", "knockdown", "arrival", "rollover_sign",
 		"jump_risk", "exposure_heating", "shaft", "sign_warning", "debris_zone", "hydrant_out", "tank_empty", "mayday", "gas_found",
 		"victim_trapped", "triage_urgent", "stair_smoke", "attack_upper", "victims_many", "first_search", "search_mark", "end_suggested", "entry_request", "rescue_no_point", "triage_needed", "nozzle_choice", "equipment_missing",
-		"tanker_arrived", "evac_order", "fire_not_found", "rit_help", "ppv_no_exhaust", "monitor_crew_check"]
+		"tanker_arrived", "evac_order", "fire_not_found", "rit_help", "ppv_no_exhaust", "monitor_crew_check", "post_danger"]
 	for spec: Dictionary in data.cards:
 		assert_true(str(spec.trigger) in known, "%s 트리거 '%s' 처리됨" % [spec.id, spec.trigger])
 	sim.step_ticks(3)
@@ -72,10 +72,16 @@ func test_hydrant_card_info_check_then_shuttle() -> void:
 
 func test_stair_smoke_shelter() -> void:
 	var sim := _sim(SHOP)
+	# 아무도 보지 못한 계단실 연기로는 묻지 않는다 (정보 누출 수정)
 	sim.events.add(1, "smoke", {"room": "2층 계단실"})
 	sim.cards.step(0.1, 1)
+	assert_true(_card(sim, "STAIR-SMOKE-01") == null, "아무도 못 본 계단실 연기는 카드 없음")
+	# 누가 그 계단실을 보게 되면 (여기서는 정보 안개를 꺼서 모두 보이게) 그때 묻는다
+	sim.perception.enabled = false
+	sim.cards.step(0.1, 10)
+	sim.cards.step(0.1, 11)
 	var c := _card(sim, "STAIR-SMOKE-01")
-	assert_true(c != null, "계단실 연기 — 주민 안내 카드")
+	assert_true(c != null, "계단실을 본 뒤 주민 안내 카드")
 	_answer(sim, c, "최선")
 	assert_eq(sim.evac.instruction, "shelter", "세대 안 대기 방송")
 	sim.step_ticks(roundi(200.0 / SimClock.TICK_DT))

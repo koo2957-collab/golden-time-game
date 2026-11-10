@@ -16,6 +16,9 @@ var trapped: Dictionary = {}
 var escaped: Dictionary = {}
 ## 지휘관의 주민 대피 방송 (SOP 213-2.4.2): "" 없음 / "shelter" 세대 안 대기·문 닫기 / "evacuate" 지금 바로 대피
 var instruction := ""
+## 갇힌 사람의 119 신고 대기 [{victim, due}] — 신고가 상황실을 거쳐 무전으로 들어온다
+var calls: Array[Dictionary] = []
+var _call_ticks := 450
 
 var _alert_ticks: int
 var _clear_m: float
@@ -46,6 +49,7 @@ func _init(p_fire: FireSim, p_rescue: RescueSystem, p_pathfinder: Pathfinder, pa
 	_o2_slow = params.value("o2_slow_pct")
 	_o2_stop = params.value("o2_immobile_pct")
 	_o2_factor = params.value("o2_slow_factor")
+	_call_ticks = roundi(params.value("evac_call_delay_s") / SimClock.TICK_DT)
 	_floor_guide_ticks = roundi(params.value("evac_floor_guide_s") / SimClock.TICK_DT)
 
 
@@ -76,6 +80,7 @@ func _alert_tick(v: Victim) -> int:
 
 
 func step(dt: float, tick: int) -> void:
+	_step_calls(tick)
 	for v in rescue.victims:
 		if not v.self_evac or v.state != Victim.State.CONSCIOUS or v.carried_by >= 0 or escaped.has(v.id):
 			continue
@@ -136,6 +141,21 @@ func _walk(v: Victim, dt: float, tick: int) -> void:
 
 
 ## 연기층 아래 맑은 높이가 머리 높이보다 낮으면 지나가지 못한다
+## 119 신고 전달: 아직 갇혀 있고 대원이 찾지 못했으면 상황실이 세대·층만 알린다 (방·정확한 위치는 대원이 찾아야 안다)
+func _step_calls(tick: int) -> void:
+	for c in calls.duplicate():
+		if tick < int(c.due):
+			continue
+		calls.erase(c)
+		var v := rescue.victims[int(c.victim)]
+		if v.discovered or not v.alive() or not trapped.has(v.id) or escaped.has(v.id):
+			continue
+		var room := fire.compartment_at(v.level, floori(v.pos.x), floori(v.pos.y))
+		var name := room.display_name() if room else fire.building.floor_name(v.level)
+		var unit := name.substr(0, name.find("호") + 1) if name.find("호") > 0 else fire.building.floor_name(v.level)
+		events.add(tick, "victim_trapped", {"unit": unit, "level": v.level, "who": "주민", "crew": "119종합상황실"})
+
+
 func _passable(cell: Vector3i) -> bool:
 	var c := fire.compartment_at(cell.z, cell.x, cell.y)
 	if c == null:
@@ -148,7 +168,10 @@ func _trap(v: Victim, tick: int) -> void:
 		return
 	trapped[v.id] = tick
 	var room := fire.compartment_at(v.level, floori(v.pos.x), floori(v.pos.y))
-	events.add(tick, "victim_trapped", {"who": v.label(), "room": room.display_name() if room else "", "crew": "현장 대원"})
+	# 아무도 보지 못한 일이다: 시뮬레이션 기록만 남기고(디브리핑), 지휘관에게는 119 신고가 상황실을 거쳐 들어온다
+	events.add(tick, "evac_trapped", {"who": v.label(), "room": room.display_name() if room else ""})
+	if v.phone and v.state == Victim.State.CONSCIOUS and v.age >= 10:
+		calls.append({"victim": v.id, "due": tick + _call_ticks})
 
 
 ## 가장 짧은 바깥 출입구 경로 (바깥 칸까지)

@@ -57,5 +57,16 @@ func _run() -> void:
 	for i in 5:
 		await process_frame
 	root.get_texture().get_image().save_png(out + "shot_interior.png")
+	# 불이 난 방 가까이 (불꽃·연기·불빛 확인)
+	var hot: Compartment = null
+	for comp in sim.fire.comps:
+		if comp.level == sim.fire_floor_reported() and (hot == null or comp.q > hot.q):
+			hot = comp
+	if hot:
+		world.camera.zoom = Vector2(1.6, 1.6)
+		world.camera.retarget(world._view_bounds(), world.projection().to_screen(Vector2(hot.rect.get_center())))
+		for i in 8:
+			await process_frame
+		root.get_texture().get_image().save_png(out + "shot_fire.png")
 	print("저장 ", out)
 	quit()

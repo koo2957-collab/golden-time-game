@@ -24,6 +24,8 @@ var line: Array[Vector2] = []
 var triage := Vector2i(-1, -1)
 ## 분류소를 차리는 중 {crew, cell, start_tick(도착해 설치를 시작한 틱, -1 = 가는 중)}
 var triage_setup: Dictionary = {}
+## 지휘소·직전대기 장소·설치 작업 (P4-4, 그리기용으로 연결)
+var post: CommandPost
 ## 지정 기록 [{tick, kind, text}] (디브리핑)
 var log: Array[Dictionary] = []
 

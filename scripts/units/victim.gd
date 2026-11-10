@@ -37,6 +37,8 @@ var left_at_entrance := false
 var rescued_by := -1
 ## 창가에서 뛰어내릴 수 있는 사람 (시나리오 window: true, SOP 213-2.4.3)
 var jumper := false
+## 119에 전화할 수 있는가 (시나리오 victims[].phone, 기본 true). 의식이 있어야 건다
+var phone := true
 ## 창에서 떨어졌음 (매트 착지 포함)
 var fell := false
 ## 걸어서 스스로 대피할 수 있는 사람 (시나리오 self_evac: true, SOP 212-1.2)

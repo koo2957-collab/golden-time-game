@@ -72,6 +72,8 @@ const REPORTED_ROOM := Color("fb923c")
 const STAGING_COLOR := Color(0.99, 0.83, 0.3, 0.55)
 ## 구역 지정 (P10-2 ⓑ): 안전구역 초록, 진입통제선 주황 점선, 환자 집결지 빨간 십자, 분류소 파란 십자
 const SAFE_ZONE := Color("4ade80")
+## 진입구·진입 경로 미리보기 (P4-2)
+const ENTRY_POINT := Color("fbbf24")
 const CONTROL_LINE := Color("fb923c")
 const CASUALTY_POINT := Color("ef4444")
 const TRIAGE_POST := Color("38bdf8")

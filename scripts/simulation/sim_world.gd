@@ -46,6 +46,8 @@ var ems: EmsSystem
 var falls: FallSystem
 ## 구역 지정: 안전구역·환자 집결지·진입통제선·분류소 (P10-2 ⓑ)
 var zones: ZoneSystem
+## 진입구 (P4-2): 바깥 출입문 목록, 급기측·배기측
+var entries: EntryPoints
 var shafts: ShaftSystem
 var evac: EvacSystem
 var shuttle: ShuttleSystem
@@ -200,6 +202,9 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 		sim.plan.apply_building(building_data)
 	sim._apply_unit_doors()
 	sim.tactical.layout = layout
+	sim.entries = EntryPoints.new(sim.fire, sim.exposure, building_data.get("entry_names", {}) if building_data is Dictionary else {})
+	sim.tactical.entries = sim.entries
+	sim.command.interior.entries = sim.entries
 	sim.transfer = CommandTransfer.new(sim)
 	sim.elevator = ElevatorSystem.new(sim.fire, sim.units, sim.pathfinder, sim.events)
 	sim.lifeline = LifelineSystem.new(sim.fire, sim.units, sim.pathfinder, hazard_params, sim.events)

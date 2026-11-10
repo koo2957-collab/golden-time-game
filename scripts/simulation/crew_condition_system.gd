@@ -307,6 +307,11 @@ func _ff_name(ff: Firefighter) -> String:
 
 # --- 호흡량·출구까지 필요 공기 (R9, 기획안 5-6) ---
 
+## 걸어서 이동할 때 분당 호흡량 (경로 미리보기의 도착 공기 추정, P4-2)
+func walking_air_lpm() -> float:
+	return _air_search
+
+
 ## 분당 호흡량: 활동 4단계 × 긴장(고열·긴급탈출) × 호흡조절(경보 뒤)
 func air_rate(ff: Firefighter) -> float:
 	var level := int(activity_of.call(ff)) if activity_of.is_valid() else (1 if ff.is_moving() else 0)

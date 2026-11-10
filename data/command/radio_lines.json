@@ -1,0 +1,30 @@
+{
+  "note": "무전 지시·복명복창 문장 (기획안 9-1 '지휘관은 메뉴만 고르고 글자를 입력하지 않는다', P4-2). {place}=방·층 이름, {place_ro}=…(으)로, {floor}=층 이름, {entry_ro}=진입구(으)로. 화면 문구(게임 설정값)",
+  "source": "게임 설정값 (SOP 107 3.1 무전 문장 형식)",
+  "order_suffix": "하라.",
+  "ack_suffix": "하겠음.",
+  "entry": "{entry_ro} 진입해 ",
+  "verbs": {
+    "move": "{place_ro} 이동",
+    "attack": "{place} 진압",
+    "search": "{place} 검색",
+    "search_floor": "{floor} 검색",
+    "attack_floor": "{floor} 진압",
+    "check_below": "{place} 직하층 확인",
+    "withdraw": "즉시 철수",
+    "hold": "현 위치 대기",
+    "exterior": "외부 방수",
+    "door_open": "{place} 문 개방",
+    "door_close": "{place} 문 폐쇄",
+    "eq_search": "{place} 인명검색",
+    "spray": "{place} 방수 개시",
+    "stop": "방수 중지",
+    "rescue": "구조대상자 구조",
+    "rescue_ff": "쓰러진 대원 구조",
+    "overhaul": "{place} 잔불정리",
+    "gas_off": "가스 밸브 차단",
+    "hose": "수관 연장",
+    "door_method": "{place} 문 처리",
+    "default": "지시 수행"
+  }
+}

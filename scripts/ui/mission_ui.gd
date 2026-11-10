@@ -18,6 +18,14 @@ var radial: RadialMenu
 var panel: PanelContainer
 
 var _menu_crew := -1
+## 원형 메뉴 종류: "card" (명령 카드) / "door" (문 앞 휠)
+var _radial_kind := "card"
+var _door_index := -1
+## 임무 창 (진입 지시 4단계): 받는 조들, 진입구, 기본 임무
+var _drop_crews: Array[int] = []
+var _drop_via := Vector3i(-1, -1, -1)
+var _default_kind := ""
+var _kind_buttons: Dictionary = {}
 var _menu_center := Vector2.ZERO
 ## 명령 카드 (Hud와 같은 것)와 칸 누르기 (World._press_card)
 var card: CommandCard
@@ -81,7 +89,23 @@ func open_crew_menu(crew_id: int, screen_pos: Vector2) -> void:
 	_open_radial()
 
 
+## 문 앞 휠 (P4-2): 건물 안 조가 2칸 안의 문을 누르면 문 전용 원형 메뉴
+func open_door_menu(crew_id: int, door_index: int, screen_pos: Vector2) -> void:
+	_menu_crew = crew_id
+	_door_index = door_index
+	_radial_kind = "door"
+	var items: Array[Dictionary] = []
+	for it: Dictionary in CommandCard.load_sets().get("door", []):
+		var enabled := true
+		var o := sim.fire.openings[door_index]
+		if str(it.id) == "door_force":
+			enabled = o.locked or not o.is_open
+		items.append({"id": str(it.id), "label": "%s %s" % [str(it.key), str(it.label)], "tip": str(it.get("hint", "")), "enabled": enabled})
+	radial.open(screen_pos, "%s · %s" % [_crew_name(crew_id), "문 앞"], items)
+
+
 func _open_radial() -> void:
+	_radial_kind = "card"
 	var items: Array[Dictionary] = []
 	var slots := card.slots()
 	for i in slots.size():
@@ -99,6 +123,14 @@ func _open_radial() -> void:
 
 ## 원형 메뉴에서 칸을 고름 = 명령 카드 칸을 누름 (같은 처리). 하위 칸만 펼쳤으면 그 자리에서 다시 연다
 func _on_radial(key: String) -> void:
+	if _radial_kind == "door":
+		var sets: Array = CommandCard.load_sets().get("door", [])
+		for i in sets.size():
+			if str(sets[i].id) == key:
+				order_issued.emit(EquipmentCommand.make("door_method", [_menu_crew] as Array[int], -1, _door_index, Vector3i(i, 0, 0)))
+				notice.emit("%s: %s" % [_crew_name(_menu_crew), str(sets[i].label)])
+		_radial_kind = "card"
+		return
 	if not press_card.is_valid():
 		return
 	press_card.call(key)
@@ -169,7 +201,10 @@ func drop_crew(crew_id: int, screen_pos: Vector2) -> void:
 		notice.emit("건물 안 방이나 층 위에 놓으세요 — 밖에서는 우클릭으로 직접 이동합니다")
 		return
 	_drop_crew = crew_id
+	_drop_crews = [crew_id] as Array[int]
 	_drop_target = t
+	_drop_via = Vector3i(-1, -1, -1)
+	_default_kind = ""
 	_title.text = "%s → %s" % [_crew_name(crew_id), _target_name()]
 	var cur: Dictionary = sim.tactical.conditions.get(crew_id, _last)
 	for k: String in _opts:
@@ -185,6 +220,49 @@ func drop_crew(crew_id: int, screen_pos: Vector2) -> void:
 	panel.visible = true
 
 
+## 진입 지시 4단계: 목표를 고르면 임무 창 (임무·조건, 기본값은 직전 사용값). '지시'(Enter)로 내린다
+func open_mission(crew_ids: Array[int], target: Vector3i, kind: String, via: Vector3i, screen_pos: Vector2) -> void:
+	if crew_ids.is_empty():
+		return
+	var room := sim.fire.compartment_at(target.z, target.x, target.y)
+	if room == null:
+		notice.emit("건물 안 방이나 층을 고르세요")
+		return
+	_drop_crews = crew_ids.duplicate()
+	_drop_crew = crew_ids[0]
+	_drop_target = target
+	_drop_via = via
+	_default_kind = kind
+	var names: PackedStringArray = []
+	for id in crew_ids:
+		names.append(_crew_name(id))
+	var e := sim.entries.nearest(Vector2(via.x, via.y), via.z, 2.5) if via.x >= 0 else null
+	_title.text = "%s → %s%s" % [" · ".join(names), (e.name + " → ") if e else "", _target_name()]
+	var cur: Dictionary = sim.tactical.conditions.get(crew_ids[0], _last)
+	for k: String in _opts:
+		_select_key(_opts[k], _groups[k], str(cur.get(k, _last[k])))
+	_hint.text = ""
+	_hint.visible = false
+	for k: String in _kind_buttons:
+		var b: Button = _kind_buttons[k]
+		b.text = ("▶ " if k == kind else "") + b.get_meta("label")
+	_place_panel(screen_pos)
+
+
+func _place_panel(screen_pos: Vector2) -> void:
+	panel.size = Vector2.ZERO
+	panel.reset_size()
+	var area := get_viewport_rect().size
+	panel.position = Vector2(clampf(screen_pos.x + 14.0, 8.0, area.x - PANEL_WIDTH - 8.0), clampf(screen_pos.y + 14.0, 8.0, area.y - panel.size.y - 8.0))
+	panel.visible = true
+
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	if panel.visible and event is InputEventKey and event.pressed and not event.echo and event.keycode in [KEY_ENTER, KEY_KP_ENTER] and _default_kind != "":
+		get_viewport().set_input_as_handled()
+		assign(_default_kind)
+
+
 func _by_floor() -> bool:
 	return sim.command.interior.enabled and not sim.command.interior.room_known(_drop_target)
 
@@ -195,21 +273,28 @@ func _target_name() -> String:
 	return sim.fire.compartment_at(_drop_target.z, _drop_target.x, _drop_target.y).display_name()
 
 
-## 임무 부여: 조건을 먼저 정하고 임무를 내린다 (화점 진압·인명 검색)
+## 임무 부여: 조건을 먼저 정하고 임무를 내린다 (화점 진압·인명 검색·직하층 확인). 진입구를 골랐으면 그 문으로
 func assign(kind: String) -> void:
-	if _drop_crew < 0:
+	if _drop_crews.is_empty():
 		return
-	var cond := {"crews": [_drop_crew]}
+	var cond := {"crews": _drop_crews.duplicate()}
 	for k: String in _opts:
 		var key := _selected_key(_opts[k], _groups[k])
 		cond[k] = key
 		_last[k] = key
 	order_issued.emit(CommandOrder.make("mission_conditions", [], 0, Vector3i.ZERO, cond))
 	var action := kind + ("_floor" if _by_floor() and kind != "check_below" else "")
-	order_issued.emit(TacticalCommand.make(action, [_drop_crew] as Array[int], _drop_target))
-	notice.emit("%s 임무: %s %s" % [_crew_name(_drop_crew), _target_name(), TacticalSystem.ACTIONS.get(action, action)])
+	var cmd := TacticalCommand.make(action, _drop_crews, _drop_target, _drop_via)
+	order_issued.emit(cmd)
+	var names: PackedStringArray = []
+	for id in _drop_crews:
+		names.append(_crew_name(id))
+	# 지시 문장 (밖의 조는 대면 지시, 안의 조는 무전으로 같은 문장이 나간다)
+	notice.emit("%s, %s" % [" · ".join(names), sim.command.interior.order_text(cmd)])
 	panel.visible = false
 	_drop_crew = -1
+	_drop_crews.clear()
+	_default_kind = ""
 
 
 func _build_panel() -> void:
@@ -256,16 +341,12 @@ func _build_panel() -> void:
 	for spec in [["attack", "화점 진압"], ["search", "인명 검색"], ["check_below", "직하층 확인"]]:
 		var b := Button.new()
 		b.text = spec[1]
+		b.set_meta("label", spec[1])
+		_kind_buttons[spec[0]] = b
 		b.focus_mode = Control.FOCUS_NONE
 		b.custom_minimum_size = Vector2(110, 36)
 		b.pressed.connect(assign.bind(spec[0]))
 		row.add_child(b)
-	var vent := Button.new()
-	vent.text = "배연"
-	vent.disabled = true
-	vent.tooltip_text = "송풍기 양압배연은 R11에서"
-	vent.custom_minimum_size = Vector2(70, 36)
-	row.add_child(vent)
 	var cancel := Button.new()
 	cancel.text = "취소"
 	cancel.focus_mode = Control.FOCUS_NONE

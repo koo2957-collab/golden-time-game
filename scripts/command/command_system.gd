@@ -448,6 +448,9 @@ func step(dt: float, tick: int) -> void:
 			events.add(tick, "auto_slow", {"reason": SimEventLog.describe_text(e)})
 		if REPORT_PRIORITY.has(e.type):
 			_report(e, tick)
+		# 진입구 선택은 판단 기록에 남긴다 (P4-2: 디브리핑에서 급기측 진입 평가)
+		if e.type == "entry_route":
+			_decide(int(e.tick), "%s 진입구 %s%s — %s층 %s" % [e.crew, e.entry, " (%s)" % e.side if str(e.side) != "" else "", e.target_level, e.action])
 		# 진입 금지를 받은 출동대가 새 임무를 받으면 다시 진입 허가를 요청할 수 있다 (P10-2)
 		if e.type == "tactical_start" and not _entry_denied.is_empty():
 			clear_entry_denied(_squad_of_sender(str(e.get("crew", ""))))

@@ -38,6 +38,8 @@ class Task:
 	var floor_action := ""
 	## 멈춰 지시를 기다리는가 (층 임무는 이어 가지 않는다)
 	var halted := false
+	## 진입구를 거쳐 간다 (P4-2): 먼저 그 바깥 칸으로, 닿으면 문 목록을 다시 정한다. x < 0이면 없음
+	var via := Vector3i(-1, -1, -1)
 	## 주수 방법 (P10-2 결정 ②): 화점실 앞에서 카드로 묻고 고른 HoseLine.Pattern (-1 = 아직)
 	var nozzle := -1
 	var nozzle_asked := false
@@ -67,6 +69,13 @@ var perception: Perception
 ## 임무 조건 {조 id: {on_fire, on_victim, withdraw_air}} (키는 data/command/mission_params.json)
 var conditions: Dictionary = {}
 var mission_data: Dictionary = {}
+## 진입구 (P4-2 진입 지시 기록용)
+var entries: EntryPoints
+## 문 앞 휠로 미리 정한 문 처리 {조 id: {door, effect, check, label}} (P4-2). 그 문 질문 카드 대신 쓴다
+var door_methods: Dictionary = {}
+## 문 앞 휠 항목 (data/commands.json sets.door)
+var door_specs: Array = []
+var _door_check_ticks := 100
 ## 화점진압 조가 화점실 앞에서 주수 방법을 질문 카드로 묻는가 (지휘 규칙을 켠 판, P10-2)
 var nozzle_cards := false
 var _hot_layer_c := 300.0
@@ -94,6 +103,9 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_water: WaterSystem, p_doors: 
 	_hot_layer_c = float(mission_data.get("nozzle_hot_layer_c", {}).get("value", 300.0))
 	_pencil_done_c = float(mission_data.get("nozzle_pencil_done_c", {}).get("value", 150.0))
 	_nozzle_wait_ticks = roundi(float(mission_data.get("nozzle_wait_s", {}).get("value", 30.0)) / SimClock.TICK_DT)
+	_door_check_ticks = roundi(float(mission_data.get("door_check_s", {}).get("value", 10.0)) / SimClock.TICK_DT)
+	var cmds: Variant = JsonData.load_file("res://data/commands.json")
+	door_specs = cmds.get("sets", {}).get("door", []) if cmds is Dictionary else []
 
 
 func set_level(name: String) -> void:
@@ -115,10 +127,27 @@ func cancel(crew_id: int) -> void:
 
 
 ## 고수준 명령 시작
-func order(action: String, crew_id: int, target: Vector3i, tick: int) -> bool:
+func order(action: String, crew_id: int, target: Vector3i, tick: int, via := Vector3i(-1, -1, -1)) -> bool:
+	var ok := _order(action, crew_id, target, tick)
+	# 진입구를 골라 지시했으면 그 문으로 들어간다 (밖에 있는 조만, P4-2)
+	var c := units.get_crew(crew_id)
+	if ok and via.x >= 0 and c and not _indoor(c.leader.level, c.leader.pos):
+		var t := task_of_crew(crew_id)
+		if t:
+			t.via = via
+			units.order_move([crew_id] as Array[int], via, safety.pathfinder)
+			var e := entries.nearest(Vector2(via.x, via.y), via.z, 2.5) if entries else null
+			if e:
+				events.add(tick, "entry_route", {"crew": _crew_name(c), "crew_id": crew_id, "entry": e.name, "side": entries.side(e),
+					"target_level": target.z, "action": ACTIONS.get(action, action)})
+	return ok
+
+
+func _order(action: String, crew_id: int, target: Vector3i, tick: int) -> bool:
 	var c := units.get_crew(crew_id)
 	if c == null or not ACTIONS.has(action):
 		return false
+	door_methods.erase(crew_id)
 	doors_sys.cancel(crew_id)
 	rescue.cancel(crew_id)
 	cancel(crew_id)
@@ -158,6 +187,15 @@ func step(tick: int) -> void:
 		if c.leader.incapacitated:
 			tasks.erase(t)
 			continue
+		if t.via.x >= 0:
+			# 고른 진입구 바깥 칸까지 먼저 간다
+			if c.leader.level == t.via.z and c.leader.pos.distance_to(Vector2(t.via.x, t.via.y) + Vector2(0.5, 0.5)) <= 1.5:
+				t.via = Vector3i(-1, -1, -1)
+				if t.room >= 0:
+					t.doors = _closed_doors_to(c, fire.comps[t.room])
+			elif not c.leader.is_moving():
+				units.order_move([t.crew_id] as Array[int], t.via, safety.pathfinder)
+			continue
 		match t.phase:
 			Phase.DOORS:
 				_step_doors(t, c, tick)
@@ -195,6 +233,10 @@ func _step_doors(t: Task, c: Crew, tick: int) -> void:
 		t.phase = Phase.ACT
 		return
 	var o := t.doors[0]
+	# 문 앞 휠 '문 닫고 대기': 그 문은 열지 않고 기다린다 (다른 임무를 받으면 풀림)
+	var dm: Dictionary = door_methods.get(t.crew_id, {})
+	if not dm.is_empty() and int(dm.door) == o.index and str(dm.effect) == "hold":
+		return
 	if t.door_requested:
 		if doors_sys.task_of_crew(t.crew_id) == null and not o.is_open:
 			_halt(t, c, tick, "%s을(를) 열지 못함 — 지시 바람" % _door_name(o), false, "door_failed", _door_ctx(o))
@@ -600,6 +642,23 @@ func _check_fire_found(t: Task, c: Crew, tick: int) -> void:
 		return
 
 
+## 문 앞 휠 (P4-2): 그 조가 그 문을 어떻게 다룰지 미리 정한다. 카드가 떠 있으면 CardSystem이 바로 처리한다
+func set_door_method(crew_id: int, door_index: int, spec_index: int) -> Dictionary:
+	if spec_index < 0 or spec_index >= door_specs.size():
+		return {}
+	var s: Dictionary = door_specs[spec_index]
+	var m := {"door": door_index, "effect": str(s.get("effect", "open_door")), "check": bool(s.get("check", false)),
+		"label": str(s.get("label", "")), "check_ticks": _door_check_ticks}
+	door_methods[crew_id] = m
+	return m
+
+
+## 그 조가 그 문에 미리 정한 처리 (없으면 빈 사전)
+func door_method(crew_id: int, door_index: int) -> Dictionary:
+	var m: Dictionary = door_methods.get(crew_id, {})
+	return m if not m.is_empty() and int(m.door) == door_index else {}
+
+
 ## 주수 방법 카드 문맥: 관창수가 본 화점실 상태와 (보이지 않는) 정답
 ##   방 전체가 탐(플래시오버) → 직사, 천장 가스층이 뜨거움 → 펜슬링·3D 먼저, 그 밖 → 직사(화점)
 ##   배기구가 없으면 분무는 수증기로 열기가 내려와 오답 (기획안 5-4)
@@ -629,6 +688,10 @@ func set_nozzle(crew_id: int, pattern: int) -> void:
 	var t := task_of_crew(crew_id)
 	if t and t.action == "attack":
 		t.nozzle = pattern
+
+
+func _indoor(level: int, p: Vector2) -> bool:
+	return not fire.building.cell(level, floori(p.x), floori(p.y)) in BuildingData.OUTDOOR
 
 
 ## 팀 카드·상황 보고용 임무 이름: "층 검색 (2층 방1)" / "진압 (1층 거실)" / ""

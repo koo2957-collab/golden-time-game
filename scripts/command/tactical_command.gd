@@ -8,13 +8,16 @@ var tick := -1
 var action := ""
 var crew_ids: Array[int] = []
 var target := Vector3i.ZERO
+## 진입구를 거쳐 가라 (P4-2 진입 지시): 그 진입구 바깥 칸. x < 0이면 없음 (가까운 문으로)
+var via := Vector3i(-1, -1, -1)
 
 
-static func make(p_action: String, p_crew_ids: Array[int], p_target := Vector3i.ZERO) -> TacticalCommand:
+static func make(p_action: String, p_crew_ids: Array[int], p_target := Vector3i.ZERO, p_via := Vector3i(-1, -1, -1)) -> TacticalCommand:
 	var c := TacticalCommand.new()
 	c.action = p_action
 	c.crew_ids = p_crew_ids.duplicate()
 	c.target = p_target
+	c.via = p_via
 	return c
 
 
@@ -25,7 +28,7 @@ func execute(sim: SimWorld) -> void:
 		sim.ems.cancel(id)
 		sim.falls.cancel(id)
 		sim.vent.cancel(id, tick)
-		sim.tactical.order(action, id, target, tick)
+		sim.tactical.order(action, id, target, tick, via)
 
 
 func to_dict() -> Dictionary:
@@ -34,4 +37,5 @@ func to_dict() -> Dictionary:
 		"tick": tick,
 		"crews": crew_ids.duplicate(),
 		"target": [target.x, target.y, target.z],
+		"via": [via.x, via.y, via.z],
 	}

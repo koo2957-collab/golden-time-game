@@ -97,7 +97,69 @@ func _run() -> void:
 	world._press_card("BACK")
 	# W 화점진압: 대상 고르기 + 세부 동작 칸
 	world._press_card("W")
-	_check("W → 화점진압 대상 고르기", sel.mode, sel.Mode.ATTACK)
+	_check("W → 밖의 조는 진입구 고르기 (P4-2)", sel.mode, sel.Mode.ENTRY_POINT)
+	# 진입구가 아닌 곳은 고를 수 없다
+	var far_cell := Vector2(1.5, 1.5)
+	sel._pick_entry(sel.projection.to_screen(far_cell))
+	_check("진입구가 아니면 그대로 고르기", sel.mode, sel.Mode.ENTRY_POINT)
+	var ent = sim.entries.list[0]
+	sel._pick_entry(sel.projection.to_screen(Vector2(ent.door) + Vector2(0.5, 0.5)))
+	await process_frame
+	_check("진입구 → 그 층 단면 · 목표 고르기", [sel.mode, world.exterior_view, sel.chosen_entry == ent], [sel.Mode.ATTACK, false, true])
+	# 경로 미리보기: 아는 칸 실선 / 모르는 칸 점선
+	var room0: Compartment = null
+	for room in sim.fire.comps:
+		if room0 == null and room.level == ent.level and room.cells.size() > 4 and not sim.fire.is_exposure_comp(room):
+			room0 = room
+	var tc: Vector2i = room0.cells[room0.cells.size() / 2]
+	var path: Array = sel.preview_path(Vector3i(tc.x, tc.y, ent.level))
+	_check("경로 미리보기", path.size() > 1, true)
+	var kinds := {}
+	for p in path:
+		kinds[sel.known_cell(p)] = true
+	_check("아는 칸(바깥)과 모르는 칸(안 가본 집 안)이 섞인다", kinds.has(true) and kinds.has(false), true)
+	var est: Vector2 = sel.preview_estimate(path)
+	_check("예상 시간·도착 공기", est.x > 0.0 and est.y > 0.0 and est.y <= 1.0, true)
+	# 목표를 고르면 임무 창 → Enter = 기본 임무(화점진압) 지시, 진입구를 거쳐
+	var n_issued := sim.issued.size()
+	sel._complete_mode(sel.projection.to_screen(Vector2(tc) + Vector2(0.5, 0.5)))
+	sel.cancel_mode()
+	_check("목표 → 임무 창", world.mission_ui.panel.visible, true)
+	world.mission_ui.assign("attack")
+	var tcmd = sim.issued.filter(func(x): return x.command is TacticalCommand).back().command if sim.issued.size() > n_issued else null
+	_check("지시 → 진입구를 거치는 화점진압", tcmd != null and tcmd.via == ent.outside and str(tcmd.action).begins_with("attack"), true)
+	var known: bool = sim.command.interior.room_known(Vector3i(tc.x, tc.y, ent.level))
+	_check("본 방은 방 단위, 못 본 방은 층 단위", str(tcmd.action) if tcmd else "", "attack" if known else "attack_floor")
+	world._press_card("BACK")
+	sel._set_selection([crew_id] as Array[int], [] as Array[int])
+	# 건물 안 조: 지도 우클릭 이동은 막힌다, 문 앞 휠
+	var inner: Opening = null
+	for o in sim.fire.openings:
+		if inner == null and o.kind == Opening.Kind.DOOR and o.level == 1 and o.room_a >= 0 and o.room_b >= 0:
+			inner = o
+	var cin := sim.units.get_crew(crew_id)
+	for ff in cin.members():
+		ff.path.clear()
+		ff.level = 1
+		ff.pos = Vector2(inner.cells[0]) + Vector2(0.5, 1.5) if sim.building.is_walkable(1, inner.cells[0].x, inner.cells[0].y + 1) else Vector2(inner.cells[0]) + Vector2(1.5, 0.5)
+	world.set_view_level(1, false)
+	await process_frame
+	var n2 := sim.issued.size()
+	sel._issue_right_click(sel.projection.to_screen(Vector2(inner.cells[0]) + Vector2(3.5, 3.5)))
+	_check("건물 안 조 우클릭 이동 막힘", sim.issued.size(), n2)
+	_check("건물 안 조 = 건물 안", sim.command.interior.crew_inside(crew_id), true)
+	world.mission_ui.radial.close()
+	sel._click_select(sel.projection.to_screen(Vector2(inner.cells[0]) + Vector2(0.5, 0.5), 1.0), false, Vector2(700, 400))
+	await process_frame
+	_check("문 클릭 → 문 앞 휠", world.mission_ui.radial.visible and str(world.mission_ui.radial.items[0].label).contains("가스 확인"), true)
+	_check("원형 메뉴 펼침 애니메이션", world.mission_ui.radial._open_t < 1.0, true)
+	world.mission_ui.radial.pick("door_side")
+	# 건물 안 조라 무전으로 전달된 뒤 적용된다
+	for i in 200:
+		if not sim.tactical.door_methods.get(crew_id, {}).is_empty():
+			break
+		sim.step_ticks(1)
+	_check("휠 → 문 처리 미리 정함", sim.tactical.door_methods.get(crew_id, {}).get("door", -1), inner.index)
 	_check("W → 하위 칸 없음 (주수 방법은 카드로, P10-2 결정 ②)", card.parent, "")
 	sel.cancel_mode()
 	await process_frame

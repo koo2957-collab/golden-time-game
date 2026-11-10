@@ -50,6 +50,7 @@
       "safety.emergency",
       "safety.officer",
       "safety.entry_judgment",
+      "command.entry_route",
       "rescue.survival",
       "rescue.time",
       "rescue.search_order",

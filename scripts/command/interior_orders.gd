@@ -20,6 +20,9 @@ var relayed := 0
 var rejected := 0
 ## 도면을 얻었는가 (R8). 얻으면 본 적 없는 방도 방 단위 임무를 줄 수 있다
 var plan_known := false
+## 진입구 (P4-2: 지시 문장에 진입구 이름)
+var entries: EntryPoints
+const LINES_PATH := "res://data/command/radio_lines.json"
 
 
 func _init(p_fire: FireSim, p_units: UnitSystem, p_perception: Perception) -> void:
@@ -103,60 +106,51 @@ func receiver_of(cmd: RefCounted) -> String:
 	return "·".join(names)
 
 
-## 지시 문장: "2층 거실 진압하라."
+## 지시 문장: "2층 거실 진압하라." / "현관 출입문으로 진입해 1층 거실 진압하라." (문장은 data/command/radio_lines.json)
 func order_text(cmd: RefCounted) -> String:
-	return _verb(cmd) + "하라."
+	return _entry_prefix(cmd) + _verb(cmd) + str(_lines().get("order_suffix", "하라."))
 
 
 ## 복명복창: "2층 거실 진압하겠음."
 func ack_text(cmd: RefCounted) -> String:
-	return _verb(cmd) + "하겠음."
+	return _verb(cmd) + str(_lines().get("ack_suffix", "하겠음."))
+
+
+static var _lines_cache: Dictionary = {}
+
+
+static func _lines() -> Dictionary:
+	if _lines_cache.is_empty():
+		var d: Variant = JsonData.load_file(LINES_PATH)
+		_lines_cache = d if d is Dictionary else {"verbs": {}}
+	return _lines_cache
+
+
+func _entry_prefix(cmd: RefCounted) -> String:
+	if not (cmd is TacticalCommand) or cmd.via.x < 0 or entries == null:
+		return ""
+	var e := entries.nearest(Vector2(cmd.via.x, cmd.via.y), cmd.via.z, 2.5)
+	if e == null:
+		return ""
+	return str(_lines().get("entry", "{entry_ro} 진입해 ")).format({"entry_ro": _with_ro(e.name)})
 
 
 func _verb(cmd: RefCounted) -> String:
+	var key := "default"
+	var t := Vector3i.ZERO
 	if cmd is MoveCommand:
-		return "%s 이동" % _with_ro(_place(cmd.target))
-	if cmd is TacticalCommand:
-		match cmd.action:
-			"attack":
-				return "%s 진압" % _place(cmd.target)
-			"search":
-				return "%s 검색" % _place(cmd.target)
-			"search_floor":
-				return "%s 검색" % fire.building.floor_name(cmd.target.z)
-			"attack_floor":
-				return "%s 진압" % fire.building.floor_name(cmd.target.z)
-			"check_below":
-				return "%s 직하층 확인" % _place(cmd.target)
-			"withdraw":
-				return "즉시 철수"
-			"hold":
-				return "현 위치 대기"
-			"exterior":
-				return "외부 방수"
-	if cmd is EquipmentCommand:
-		match cmd.action:
-			"door_open":
-				return "%s 문 개방" % _place(cmd.target)
-			"door_close":
-				return "%s 문 폐쇄" % _place(cmd.target)
-			"search":
-				return "%s 인명검색" % _place(cmd.target)
-			"spray":
-				return "%s 방수 개시" % _place(cmd.target)
-			"stop":
-				return "방수 중지"
-			"rescue":
-				return "구조대상자 구조"
-			"rescue_ff":
-				return "쓰러진 대원 구조"
-			"overhaul":
-				return "%s 잔불정리" % _place(cmd.target)
-			"gas_off":
-				return "가스 밸브 차단"
-			"hose", "hose_outlet":
-				return "수관 연장"
-	return "지시 수행"
+		key = "move"
+		t = cmd.target
+	elif cmd is TacticalCommand:
+		key = cmd.action
+		t = cmd.target
+	elif cmd is EquipmentCommand:
+		key = "eq_search" if cmd.action == "search" else ("hose" if cmd.action == "hose_outlet" else cmd.action)
+		t = cmd.target
+	var verbs: Dictionary = _lines().get("verbs", {})
+	var tpl := str(verbs.get(key, verbs.get("default", "지시 수행")))
+	var place := _place(t)
+	return tpl.format({"place": place, "place_ro": _with_ro(place), "floor": fire.building.floor_name(t.z)})
 
 
 ## "거실" → "거실로", "주방" → "주방으로" (받침 있으면 으로, ㄹ 받침은 로)

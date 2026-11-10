@@ -207,7 +207,8 @@ func _run() -> void:
 	_check("조 클릭 → 원형 메뉴", world.mission_ui.radial.visible, true)
 	# 예전 동작 칸(수관·직사·분무)은 없다 — 수관은 펌프차 우클릭, 주수 방법은 화점실 앞 카드 (P10-2 결정 ②)
 	_key(KEY_W)
-	_check("W → 원형 메뉴 닫힘·화점진압 고르기 (하위 칸 없음)", [world.mission_ui.radial.visible, world.hud.card.parent, sel.mode], [false, "", sel.Mode.ATTACK])
+	var want_mode = sel.Mode.ENTRY_POINT if sim.command.interior.enabled and not sim.command.interior.crew_inside(0) else sel.Mode.ATTACK
+	_check("W → 원형 메뉴 닫힘·(밖의 조면) 진입구 고르기 (P4-2)", [world.mission_ui.radial.visible, world.hud.card.parent, sel.mode], [false, "", want_mode])
 	sel.cancel_mode()
 	_click(sim.units.vehicles[0].pos, MOUSE_BUTTON_RIGHT)
 	# 수관 준비·연장에는 현장 작업 시간이 걸린다 (P4-1)
@@ -236,9 +237,8 @@ func _run() -> void:
 	_check("물탱크차 → 펌프차 우클릭 → 급수", sim.units.vehicles[1].supply_to, 0)
 
 	_click(u.get_crew(1).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)  # 1층 거실의 진압1 2조
-	_key(KEY_Q)
-	_check("Q → 인명검색 고르기", sel.mode, sel.Mode.SEARCH_AUTO)
-	_click(Vector2(24.5, 17.5), MOUSE_BUTTON_LEFT)
+	await _mission(KEY_Q, Vector2(24.5, 17.5))
+	_check("Q → 진입구 → 목표 → 임무 창 → 인명검색 (P4-2)", sel.mode, sel.Mode.NONE)
 	sim.step_ticks(1)
 	var searches := sim.command_log.entries.filter(func(c): return c is TacticalCommand and str(c.action).begins_with("search"))
 	_check("방 클릭 → 인명검색 임무", searches.size() >= 1, true)
@@ -302,17 +302,13 @@ func _run() -> void:
 	_click(u.get_crew(1).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
 	await process_frame
 	_check("팀 명령 카드 (진압대)", world.hud.card.set_name, "team")
-	_key(KEY_W)
-	_check("W → 화점진압 모드", sel.mode, sel.Mode.ATTACK)
-	_click(Vector2(24.5, 17.5), MOUSE_BUTTON_LEFT)
+	await _mission(KEY_W, Vector2(24.5, 17.5))
 	sim.step_ticks(1)
 	# 구조1 1조는 화재 상황에 따라 2층에 못 갔을 수 있으므로 팀 카드처럼 바로 고른다
 	sel._set_selection([2] as Array[int], [] as Array[int])
 	await process_frame
 	_check("팀 명령 카드 (구조대도 같음)", world.hud.card.set_name, "team")
-	_key(KEY_Q)
-	_check("Q → 인명검색 모드", sel.mode, sel.Mode.SEARCH_AUTO)
-	_click(Vector2(24.5, 17.5), MOUSE_BUTTON_LEFT)
+	await _mission(KEY_Q, Vector2(24.5, 17.5))
 	sim.step_ticks(1)
 	var tacts := sim.command_log.entries.filter(func(c): return c is TacticalCommand)
 	_check("진압대 → 진압, 구조대 → 수색", tacts.slice(-2).map(func(c): return c.action), ["attack", "search"])
@@ -350,16 +346,19 @@ func _run() -> void:
 			sim.step_ticks(2)
 			await process_frame
 			await process_frame
-			_check("내부 조: 본 적 없는 곳 우클릭 → 거절", sim.command_log.entries.filter(func(c): return c is MoveCommand).size(), moves_before)
-			_check("거절 알림", world.hud._notice_label.text.contains("본 적 없는"), true)
+			_check("내부 조: 지도 우클릭 이동은 막힌다 (P4-2)", sim.command_log.entries.filter(func(c): return c is MoveCommand).size(), moves_before)
+			_check("원형 메뉴로 지시하라는 알림", world.hud._notice_label.text.contains("원형 메뉴로 지시"), true)
 		var here := u.get_crew(inside_id).leader.pos
 		world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(here))
 		await process_frame
-		_click(here, MOUSE_BUTTON_RIGHT)
+		# 이동은 A 대기 ▸ E 여기로 (본 곳에만, 무전으로 전달)
+		sel._set_selection([inside_id] as Array[int])
+		sel.begin_mode(sel.Mode.WAYPOINT)
+		_click(here, MOUSE_BUTTON_LEFT)
 		sim.step_ticks(1)
 		var radio := sim.command.radio
 		var sent := radio.queue.any(func(m): return m.body.ends_with("이동하라.")) or (radio.current != null and radio.current.body.ends_with("이동하라."))
-		_check("내부 조: 본 곳 우클릭 → 무전 지시", sent, true)
+		_check("내부 조: 여기로(경유지) → 무전 지시", sent, true)
 	# 본 적 없는 방에 W(주 임무) → 층 단위 임무로 바뀐다
 	var room2: Compartment = null
 	for room in sim.fire.comps:
@@ -378,8 +377,7 @@ func _run() -> void:
 			var rc := Vector2(room2.cells[room2.cells.size() / 2]) + Vector2(0.5, 0.5)
 			world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(rc))
 			await process_frame
-			_key(KEY_W)
-			_click(rc, MOUSE_BUTTON_LEFT)
+			await _mission(KEY_W, rc, 2)
 			sim.step_ticks(1)
 			var lt = sim.command_log.entries.filter(func(c): return c is TacticalCommand)
 			_check("본 적 없는 방 W → 층 진압", lt[-1].action if not lt.is_empty() else "", "attack_floor")
@@ -600,6 +598,26 @@ func _drag(from_cell: Vector2, to_cell: Vector2) -> void:
 	release.pressed = false
 	release.position = motion.position
 	root.push_input(release, true)
+
+
+## 진입 지시 4단계 (P4-2): 임무 키 → (밖의 조면) 진입구 → 목표 클릭 → 임무 창 '지시'(Enter)
+func _mission(key: Key, target: Vector2, lv := 1) -> void:
+	var sel = _world.selection
+	_key(key)
+	if sel.mode == sel.Mode.ENTRY_POINT:
+		var e = _world.sim.entries.list[0]
+		sel._pick_entry(sel.projection.to_screen(Vector2(e.door) + Vector2(0.5, 0.5)))
+	if _world.view_level != lv or _world.exterior_view:
+		_world.set_view_level(lv, false)
+	_world.camera.retarget(_world.projection().bounds(_world.sim.building), _world.projection().to_screen(target))
+	await process_frame
+	_click(target, MOUSE_BUTTON_LEFT)
+	await process_frame
+	var k := InputEventKey.new()
+	k.keycode = KEY_ENTER
+	k.pressed = true
+	root.push_input(k, true)
+	await process_frame
 
 
 ## 조건이 될 때까지 시뮬레이션을 진행 (최대 max_ticks)

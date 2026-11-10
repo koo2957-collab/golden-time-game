@@ -235,6 +235,9 @@ func _raise(spec: Dictionary, e: Dictionary, tick: int) -> void:
 				events.add(tick, "card_condition", {"crew": _crew_name(c.crew_id), "title": str(spec.get("title", c.id)), "option": str(o.get("text", ""))})
 				_apply(ce, c, tick)
 				return
+	# 문 앞 휠로 미리 정한 문 처리 (P4-2): 카드 없이 그대로, 등급은 같은 행동의 선택지
+	if _door_preordered(c, opts, tick):
+		return
 	# 선제지시: 카드 없이 최선 선택을 바로 실행
 	var pre := str(spec.get("skip_if_preordered", ""))
 	if pre != "" and preorders.has(pre):
@@ -260,6 +263,41 @@ func _raise(spec: Dictionary, e: Dictionary, tick: int) -> void:
 		var ub: int = URGENCY_ORDER.get(b.urgency, 2)
 		return ua < ub or (ua == ub and a.uid < b.uid))
 	events.add(tick, "card_asked", {"crew": _crew_name(c.crew_id), "title": str(spec.get("title", c.id)), "urgency": c.urgency})
+
+
+## 이 카드가 문 카드이고 그 조가 그 문을 문 앞 휠로 정해 두었으면 그대로 처리하고 true
+func _door_preordered(c: Card, opts: Array, tick: int) -> bool:
+	var door := _opening(c.ctx.get("door", []))
+	if door == null or c.crew_id < 0:
+		return false
+	var m := tactical.door_method(c.crew_id, door.index)
+	if m.is_empty():
+		return false
+	tactical.door_methods.erase(c.crew_id)
+	var pick: Dictionary = {"text": str(m.label), "grade": "허용", "effect": str(m.effect)}
+	for o: Dictionary in opts:
+		if str(o.get("effect", "")) == str(m.effect):
+			pick = o.duplicate()
+			pick["text"] = "%s (문 앞 휠: %s)" % [str(o.get("text", "")), str(m.label)]
+			break
+	_log(c, tick, pick, "preordered")
+	events.add(tick, "card_preordered", {"crew": _crew_name(c.crew_id), "title": str(c.spec.get("title", c.id))})
+	if bool(m.check):
+		_delayed.append({"tick": tick + int(m.check_ticks), "effect": str(m.effect), "card": c})
+		events.add(tick, "card_info_check", {"crew": _crew_name(c.crew_id), "seconds": roundi(int(m.check_ticks) * SimClock.TICK_DT)})
+	else:
+		_apply(str(m.effect), c, tick)
+	return true
+
+
+## 문 앞 휠을 골랐을 때 그 조·그 문 카드가 이미 떠 있으면 바로 처리한다
+func preempt_door(crew_id: int, door_index: int, tick: int) -> void:
+	for c in queue.duplicate():
+		var door := _opening(c.ctx.get("door", []))
+		if c.crew_id == crew_id and door and door.index == door_index:
+			queue.erase(c)
+			_door_preordered(c, c.options, tick)
+			return
 
 
 func _matches(cond: Dictionary, ctx: Dictionary) -> bool:

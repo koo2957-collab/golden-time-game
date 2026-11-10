@@ -20,6 +20,9 @@ var items: Array[Dictionary] = []
 var title := ""
 var center := Vector2.ZERO
 var _hover := -1
+## 펼침 애니메이션 (P4-2: 0.12초 확대)
+const OPEN_S := 0.12
+var _open_t := OPEN_S
 
 
 func _ready() -> void:
@@ -35,6 +38,7 @@ func open(p_center: Vector2, p_title: String, p_items: Array[Dictionary]) -> voi
 	title = p_title
 	items = p_items
 	_hover = -1
+	_open_t = 0.0
 	visible = true
 	queue_redraw()
 
@@ -105,10 +109,20 @@ func item_position(i: int) -> Vector2:
 	return center + Vector2.from_angle(-PI / 2.0 + i * step) * (R_IN + R_OUT) / 2.0
 
 
+func _process(delta: float) -> void:
+	if visible and _open_t < OPEN_S:
+		_open_t += delta
+		queue_redraw()
+
+
 func _draw() -> void:
 	if items.is_empty():
 		return
 	draw_rect(Rect2(Vector2.ZERO, size), Color(0, 0, 0, 0.18))
+	# 0.12초 동안 가운데에서 커지며 펼친다 (ease out)
+	var s := 1.0 - pow(1.0 - clampf(_open_t / OPEN_S, 0.0, 1.0), 3.0)
+	s = lerpf(0.6, 1.0, s)
+	draw_set_transform(center * (1.0 - s), 0.0, Vector2(s, s))
 	var font := get_theme_default_font()
 	var n := items.size()
 	var step := TAU / n

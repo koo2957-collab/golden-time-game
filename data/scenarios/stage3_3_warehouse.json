@@ -55,6 +55,7 @@
       "safety.emergency",
       "safety.officer",
       "safety.entry_judgment",
+      "command.entry_route",
       "safety.debris",
       "safety.monitor",
       "rescue.survival",

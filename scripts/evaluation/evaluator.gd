@@ -506,6 +506,33 @@ func _check_ems_treat() -> Dictionary:
 	return {"score": sum / ems.patients.size(), "detail": ", ".join(parts)}
 
 
+## 진입구 선택 (P4-2): 진입 지시마다 급기측(풍상)·측면·배기측 점수. 고층(연결송수관) 화재층 이상 진압은
+## 화재층 바로 아래 방수구에서 수관을 연결했는지도 본다 (직하층 거점)
+func _check_entry_route() -> Dictionary:
+	var routes := sim.events.of_type("entry_route")
+	if routes.is_empty():
+		return {}
+	var sum := 0.0
+	var n := 0
+	var parts: PackedStringArray = []
+	for e in routes:
+		var side := str(e.side)
+		if side != "":
+			var s: float = {"급기측": _params.supply, "측면": _params.side, "배기측": _params.exhaust}.get(side, _params.side)
+			sum += s
+			n += 1
+			parts.append("%s %s (%s)" % [e.crew, e.entry, side])
+		if sim.building.has_standpipe() and int(e.target_level) >= 3 and str(e.action).contains("진압"):
+			var h := sim.water.hose_of_crew(int(e.get("crew_id", -1)))
+			var below := h != null and h.outlet >= 0 and sim.building.outlets[h.outlet].z == int(e.target_level) - 1
+			sum += _params.below_floor if below else _params.other_floor
+			n += 1
+			parts.append("%s %s층 진압 — %s" % [e.crew, e.target_level, "직하층 방수구 거점" if below else "직하층 거점 아님"])
+	if n == 0:
+		return {}
+	return {"score": sum / n, "detail": "; ".join(parts)}
+
+
 ## 중증도 분류 (START, P10-2 ⓒ): 분류 카드로 물은 환자마다 고른 분류가 실제와 맞는가. 사람마다 한 줄
 ## 실제보다 높게 분류(과분류)는 절반, 살릴 수 있는 사람을 지연으로 분류하면 0
 func _check_triage() -> Dictionary:

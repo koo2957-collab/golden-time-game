@@ -13,7 +13,7 @@ extends Node2D
 ## 선택 단위는 조(2인 1조)와 차량이며, 현재 보고 있는 층의 대원만 선택된다.
 ## 좌표 변환은 projection(상황판/입체)을 따른다.
 
-enum Mode { NONE, ATTACK, SEARCH_AUTO, EXTERIOR, TREAT, TRANSPORT, WAYPOINT, MONITOR, PPV, VEHICLE_CONNECT, VEHICLE_MOVE, ZONE_SAFE, ZONE_CASUALTY, ZONE_LINE, TRIAGE_POST, OBSERVE }
+enum Mode { NONE, ATTACK, SEARCH_AUTO, EXTERIOR, TREAT, TRANSPORT, WAYPOINT, MONITOR, PPV, VEHICLE_CONNECT, VEHICLE_MOVE, ZONE_SAFE, ZONE_CASUALTY, ZONE_LINE, TRIAGE_POST, OBSERVE, ENTRY_POINT }
 
 ## 관계인을 클릭했을 때 (world가 진술 창을 연다)
 signal witness_clicked(index: int)
@@ -23,6 +23,12 @@ signal notice(text: String)
 signal crew_menu(crew_id: int, screen_pos: Vector2)
 ## 단면 보기에서 아래층(보이기만 하는 층)을 눌렀다 — 그 층을 지금 층으로 (R17)
 signal floor_clicked(level: int)
+## 진입 지시 4단계 (P4-2): 진입구를 골랐다 → 그 층 단면으로
+signal entry_chosen(level: int)
+## 임무 목표를 골랐다 → 임무 창 (임무·조건·지시)
+signal mission_target(crew_ids: Array[int], target: Vector3i, kind: String, via: Vector3i, screen_pos: Vector2)
+## 건물 안 조를 고른 채 가까운 문을 눌렀다 → 문 앞 휠 (P4-2)
+signal door_menu(crew_id: int, door_index: int, screen_pos: Vector2)
 
 const DRAG_THRESHOLD_PX := 6.0
 ## 마우스를 올린 조 (기획안 9-3: 잡힐 조의 윤곽이 빛나고 이름이 뜬다). 없으면 -1
@@ -46,6 +52,7 @@ const MODE_HINTS := {
 	Mode.ZONE_SAFE: "안전구역: 건물 밖을 끌어서 사각형 (한 번 클릭하면 그 자리에 기본 크기) — 낙하물 위험구역은 피한다",
 	Mode.ZONE_CASUALTY: "환자 집결지: 안전구역 안을 클릭 (구조한 사람을 여기로 옮긴다)",
 	Mode.ZONE_LINE: "진입통제선: 선의 두 끝을 차례로 클릭",
+	Mode.ENTRY_POINT: "진입구를 고르세요 (Esc 취소) — 밝은 표시만 고를 수 있다",
 	Mode.OBSERVE: "구조자 관찰: 구조된 사람을 클릭 — 곁에 서 있으면 구급대가 올 때까지 악화가 느려진다",
 	Mode.TRIAGE_POST: "분류소 설치: 안전구역 안을 클릭 — 구급대가 가서 차린다 (환자 집결지를 대신)",
 	Mode.VEHICLE_CONNECT: "급수 연결: 소화전·송수구(펌프차) 또는 펌프차(물탱크차)를 클릭",
@@ -83,6 +90,17 @@ var _press_world := Vector2.ZERO
 var _drag_rect := Rect2()
 ## 구역 지정 중: 안전구역 끌기 시작 칸, 진입통제선 첫 점 (-1 = 아직)
 var _zone_from := Vector2(-1, -1)
+## 진입 지시 (P4-2): 고를 임무, 고른 진입구, 마우스 아래 칸까지 예상 경로
+var pending_kind := ""
+var chosen_entry: EntryPoints.Entry = null
+var _hover_entry: EntryPoints.Entry = null
+var _preview: Array[Vector3i] = []
+var _preview_to := Vector3i(-1, -1, -1)
+var _mouse_screen := Vector2.ZERO
+## 진입구를 고를 때 클릭 허용 거리 (칸)
+const ENTRY_PICK_CELLS := 3.0
+## 문 앞 휠: 조가 문에서 이 거리(칸) 안 (기획안: 2타일)
+const DOOR_WHEEL_CELLS := 2.5
 var _zone_to := Vector2(-1, -1)
 var _marker_world := Vector2.ZERO
 var _marker_start_ms := -1.0
@@ -99,6 +117,10 @@ func begin_mode(p_mode: Mode) -> void:
 
 func cancel_mode() -> void:
 	_zone_from = Vector2(-1, -1)
+	if mode in [Mode.ENTRY_POINT, Mode.ATTACK, Mode.SEARCH_AUTO]:
+		_preview.clear()
+		_preview_to = Vector3i(-1, -1, -1)
+		_hover_entry = null
 	if mode != Mode.NONE:
 		mode = Mode.NONE
 		EventBus.command_mode_changed.emit("")
@@ -144,6 +166,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton:
 		_handle_button(event)
+	elif event is InputEventMouseMotion and mode in [Mode.ENTRY_POINT, Mode.ATTACK, Mode.SEARCH_AUTO]:
+		_mouse_screen = event.position
+		_update_preview(_to_world(event.position))
 	elif event is InputEventMouseMotion and _zone_from.x >= 0:
 		_zone_to = projection.to_cell(_to_world(event.position))
 		queue_redraw()
@@ -161,6 +186,10 @@ func _handle_button(event: InputEventMouseButton) -> void:
 	var world_pos := _to_world(event.position)
 	if event.is_action_pressed("select") and click_override.is_valid():
 		click_override.call(Vector2i(projection.to_cell(world_pos).floor()))
+		get_viewport().set_input_as_handled()
+		return
+	if mode == Mode.ENTRY_POINT and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_pick_entry(world_pos)
 		get_viewport().set_input_as_handled()
 		return
 	if mode in [Mode.ZONE_SAFE, Mode.ZONE_LINE] and _zone_click(event, world_pos):
@@ -226,6 +255,8 @@ func _click_select(world_pos: Vector2, add: bool, screen_pos := Vector2(-1, -1))
 	var witness := _witness_at(world_pos)
 	if not add and witness >= 0:
 		witness_clicked.emit(witness)
+		return
+	if not add and _door_wheel(world_pos, screen_pos):
 		return
 	var crew_id := _crew_at(world_pos)
 	var vehicle_id := -1 if crew_id >= 0 else _vehicle_at(world_pos)
@@ -293,6 +324,10 @@ func _issue_right_click(world_pos: Vector2) -> void:
 	if not selected_vehicles.is_empty():
 		_issue_vehicle_click(world_pos)
 	if not selected.is_empty():
+		# 건물 안 조는 지도 우클릭 이동을 막는다 — 원형 메뉴(무전 지시)로만 (기획안 9-1 내부 조작)
+		if sim.command.interior.enabled and selected.any(func(id: int) -> bool: return sim.command.interior.crew_inside(id)):
+			notice.emit("건물 안 조는 원형 메뉴로 지시합니다 — 조를 클릭 → 임무, 또는 A 대기 ▸ E 여기로 (문은 문을 클릭)")
+			return
 		_issue_crew_right_click(world_pos)
 
 
@@ -466,12 +501,10 @@ func _complete_mode(world_pos: Vector2) -> void:
 					sim.issue(EquipmentCommand.make("overhaul", selected, -1, -1, target))
 					notice.emit("초진 뒤 불이 보이지 않는 방 → 잔불정리 (열화상으로 불씨를 찾아 정리)")
 				else:
-					# 본 적 없는 방은 층 단위 임무로 (기획안 9-1, R7 — 도면을 얻으면 방 단위)
-					var by_floor := _floor_only(target)
-					if not attack.is_empty():
-						sim.issue(TacticalCommand.make("attack_floor" if by_floor else "attack", attack, target))
-					if not search.is_empty():
-						sim.issue(TacticalCommand.make("search_floor" if by_floor else "search", search, target))
+					# 4단계: 임무 창 (임무·조건을 고르고 '지시'). 본 적 없는 방은 층 단위 (기획안 9-1)
+					var via := chosen_entry.outside if chosen_entry else Vector3i(-1, -1, -1)
+					mission_target.emit(selected.duplicate(), target, "attack" if mode == Mode.ATTACK else "search", via, _mouse_screen)
+					chosen_entry = null
 				_marker_world = projection.to_screen(Vector2(cell) + Vector2(0.5, 0.5))
 				_marker_start_ms = Time.get_ticks_msec()
 		Mode.WAYPOINT:
@@ -495,6 +528,92 @@ func _complete_mode(world_pos: Vector2) -> void:
 			if door and not selected.is_empty():
 				sim.issue(EquipmentCommand.make("ppv", [selected[0]] as Array[int], -1, -1, Vector3i(door.cells[0].x, door.cells[0].y, door.level)))
 
+
+
+# --- 진입 지시 4단계 (P4-2, 기획안 9-1) ---
+
+## 고른 조가 모두 밖에 있으면 진입구부터 고른다 (이미 들어간 조는 바로 목표 — 구역 변경)
+func begin_mission(kind: String) -> void:
+	pending_kind = kind
+	chosen_entry = null
+	var outside := not selected.is_empty()
+	for id in selected:
+		if sim.command.interior.crew_inside(id):
+			outside = false
+	if outside and sim.command.interior.enabled and sim.entries and not sim.entries.list.is_empty():
+		begin_mode(Mode.ENTRY_POINT)
+	else:
+		begin_mode(Mode.ATTACK if kind == "attack" else Mode.SEARCH_AUTO)
+
+
+## 진입구 고르기: 진입구만 고를 수 있다. 고르면 그 층 단면 보기로 바꾸고 목표 고르기
+func _pick_entry(world_pos: Vector2) -> void:
+	var e := sim.entries.nearest(projection.to_cell(world_pos), level, ENTRY_PICK_CELLS)
+	if e == null:
+		notice.emit("진입구(밝은 표시)를 고르세요 — 공동현관·계단실 입구 등 바깥 출입문")
+		return
+	chosen_entry = e
+	entry_chosen.emit(e.level)
+	begin_mode(Mode.ATTACK if pending_kind == "attack" else Mode.SEARCH_AUTO)
+	EventBus.command_mode_changed.emit("%s로 진입 — 목표 층·세대·방을 클릭 (층 막대·PgUp/PgDn으로 층 이동, Esc 취소)" % e.name)
+
+
+## 마우스 아래: 진입구 고르기면 가까운 진입구, 목표 고르기면 출발점 → 그 칸 예상 경로
+func _update_preview(world_pos: Vector2) -> void:
+	if mode == Mode.ENTRY_POINT:
+		_hover_entry = sim.entries.nearest(projection.to_cell(world_pos), level, ENTRY_PICK_CELLS)
+		queue_redraw()
+		return
+	var cell := Vector2i(projection.to_cell(world_pos).floor())
+	var to := Vector3i(cell.x, cell.y, level)
+	if to == _preview_to:
+		return
+	_preview_to = to
+	_preview = preview_path(to)
+	queue_redraw()
+
+
+## 출발점(고른 진입구 바깥 칸, 없으면 첫 조의 자리) → 목표 칸 경로 (못 가면 빈 배열)
+func preview_path(to: Vector3i) -> Array[Vector3i]:
+	if selected.is_empty() or not sim.building.in_bounds(to.x, to.y):
+		return []
+	var from: Vector3i = chosen_entry.outside if chosen_entry else sim.units.get_crew(selected[0]).leader.cell3()
+	var goal := sim.pathfinder.nearest_walkable(to.z, Vector2i(to.x, to.y))
+	if goal == Pathfinder.NO_CELL:
+		return []
+	return sim.pathfinder.find_path_through_doors(from, Vector3i(goal.x, goal.y, to.z))
+
+
+## 경로 칸을 아는 칸인가 (본 적 있거나 도면이 있다) — 실선/점선
+func known_cell(p: Vector3i) -> bool:
+	return sim.command.interior.plan_known or sim.perception.is_seen(p.z, p.x, p.y) or sim.building.cell(p.z, p.x, p.y) in BuildingData.OUTDOOR
+
+
+## 예상 소요 시간(현장 초)과 도착 시 공기 잔량 비율 (첫 조 조장 기준, 걸어서 이동 호흡량)
+func preview_estimate(path: Array[Vector3i]) -> Vector2:
+	if path.is_empty() or selected.is_empty():
+		return Vector2(-1, -1)
+	var secs := float(path.size()) / maxf(0.1, sim.units.walk_speed_cells)
+	var ff := sim.units.get_crew(selected[0]).leader
+	var left := ff.air_l - sim.conditions.walking_air_lpm() * secs / 60.0
+	return Vector2(secs, clampf(left / maxf(1.0, ff.air_capacity), 0.0, 1.0))
+
+
+## 문 앞 휠을 열 수 있는가: 건물 안 조 하나를 골랐고 그 조가 누른 문 2칸 안
+func _door_wheel(world_pos: Vector2, screen_pos: Vector2) -> bool:
+	if selected.size() != 1 or screen_pos.x < 0.0 or not sim.command.interior.crew_inside(selected[0]):
+		return false
+	var door := _door_at(world_pos)
+	if door == null or door.kind != Opening.Kind.DOOR:
+		return false
+	var c := sim.units.get_crew(selected[0])
+	if c.leader.level != door.level:
+		return false
+	for cell in door.cells:
+		if c.leader.pos.distance_to(Vector2(cell) + Vector2(0.5, 0.5)) <= DOOR_WHEEL_CELLS:
+			door_menu.emit(c.id, door.index, screen_pos)
+			return true
+	return false
 
 
 ## 초진 보고 뒤, 불이 보이지 않는 방인가 → 화점진압 대신 잔불정리
@@ -733,6 +852,7 @@ func _set_selection(ids: Array[int], vehicle_ids: Array[int] = [], with_commande
 
 func _draw() -> void:
 	_draw_hover()
+	_draw_entry_mode()
 	# 구역 지정 미리 보기: 안전구역 사각형·진입통제선
 	if _zone_from.x >= 0 and projection:
 		if mode == Mode.ZONE_SAFE:
@@ -755,6 +875,47 @@ func _draw() -> void:
 			_marker_start_ms = -1.0
 		else:
 			draw_arc(_marker_world, 6.0 + t * 14.0, 0.0, TAU, 24, Color(PlanStyle.SELECTION, 1.0 - t), 2.0)
+
+
+## 진입 지시: 진입구 표시(진입구 고르기), 예상 경로(아는 구간 실선·모르는 구간 점선)와 시간·공기
+func _draw_entry_mode() -> void:
+	if sim == null or projection == null or not mode in [Mode.ENTRY_POINT, Mode.ATTACK, Mode.SEARCH_AUTO]:
+		return
+	var z := get_canvas_transform().get_scale().x
+	var font := PlanStyle.font()
+	if mode == Mode.ENTRY_POINT:
+		for e in sim.entries.list:
+			if e.level != level:
+				continue
+			var p := projection.to_screen(Vector2(e.door) + Vector2(0.5, 0.5), 1.0)
+			var hot := e == _hover_entry
+			draw_circle(p, (14.0 if hot else 10.0) / z, Color(PlanStyle.ENTRY_POINT, 0.9))
+			draw_arc(p, (14.0 if hot else 10.0) / z, 0.0, TAU, 20, Color.WHITE, 2.0 / z)
+			draw_string(font, p + Vector2(-80, -16) / z, e.name, HORIZONTAL_ALIGNMENT_CENTER, 160.0 / z, maxi(8, roundi(14.0 / z)), Color.WHITE)
+			if hot:
+				var side := sim.entries.side(e)
+				var tip := "%s%s" % [sim.entries.smoke_text(e), " · " + side if side != "" else ""]
+				draw_string(font, p + Vector2(-90, 26) / z, tip, HORIZONTAL_ALIGNMENT_CENTER, 180.0 / z, maxi(8, roundi(13.0 / z)), PlanStyle.ENTRY_POINT.lightened(0.4))
+		return
+	if _preview.size() < 2:
+		return
+	for i in range(1, _preview.size()):
+		var a := _preview[i - 1]
+		var b := _preview[i]
+		if a.z != level or b.z != level:
+			continue
+		var pa := projection.to_screen(Vector2(a.x, a.y) + Vector2(0.5, 0.5), 0.05)
+		var pb := projection.to_screen(Vector2(b.x, b.y) + Vector2(0.5, 0.5), 0.05)
+		if known_cell(a) and known_cell(b):
+			draw_line(pa, pb, PlanStyle.ENTRY_POINT, 3.0 / z)
+		else:
+			draw_dashed_line(pa, pb, PlanStyle.ENTRY_POINT, 2.0 / z, 6.0 / z)
+	var est := preview_estimate(_preview)
+	if est.x >= 0.0:
+		var end := _preview[-1]
+		var pe := projection.to_screen(Vector2(end.x, end.y) + Vector2(0.5, 0.5), 0.05)
+		draw_string(font, pe + Vector2(-90, -14) / z, "예상 %d초 · 도착 공기 %d%%" % [roundi(est.x), roundi(est.y * 100.0)],
+			HORIZONTAL_ALIGNMENT_CENTER, 180.0 / z, maxi(8, roundi(14.0 / z)), Color.WHITE)
 
 
 ## 마우스를 올린 조: 두 대원 둘레에 팀 색 윤곽 + 이름. 가려진 대원도 윤곽선으로 비쳐 보인다 (화면 크기 고정)

@@ -127,6 +127,12 @@ func execute(sim: SimWorld) -> void:
 				sim.tactical.cancel(id)
 				if sim.gas.order_off(id, tick):
 					break
+		"door_method":
+			# 문 앞 휠 (P4-2): other = 문 index, target.x = data/commands.json sets.door 항목 번호
+			for id in crew_ids:
+				var m := sim.tactical.set_door_method(id, other, target.x)
+				if not m.is_empty():
+					sim.cards.preempt_door(id, other, tick)
 		"triage_post":
 			if not crew_ids.is_empty():
 				sim.zones.order_triage(crew_ids[0], Vector2i(target.x, target.y), sim.pathfinder, tick)

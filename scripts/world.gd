@@ -104,6 +104,10 @@ func _ready() -> void:
 	mission_ui.notice.connect(hud.show_notice)
 	selection.crew_menu.connect(mission_ui.open_crew_menu)
 	mission_ui.card = hud.card
+	# 진입 지시 4단계 (P4-2): 진입구 → 그 층 단면 → 목표 → 임무 창, 문 앞 휠
+	selection.entry_chosen.connect(func(lv: int) -> void: set_view_level(lv, false))
+	selection.mission_target.connect(mission_ui.open_mission)
+	selection.door_menu.connect(mission_ui.open_door_menu)
 	mission_ui.press_card = _press_card
 	# 단면 보기: 아래층을 누르면 그 층으로 (R17)
 	selection.level_picker = func(world_pos: Vector2) -> int:
@@ -550,9 +554,9 @@ func _on_command(id: String) -> void:
 		"transport":
 			selection.begin_mode(SelectionController.Mode.TRANSPORT)
 		"attack":
-			selection.begin_mode(SelectionController.Mode.ATTACK)
+			selection.begin_mission("attack")
 		"search_auto":
-			selection.begin_mode(SelectionController.Mode.SEARCH_AUTO)
+			selection.begin_mission("search")
 		"exterior":
 			selection.begin_mode(SelectionController.Mode.EXTERIOR)
 		"withdraw":

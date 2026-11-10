@@ -98,12 +98,41 @@ func _run() -> void:
 	# W 화점진압: 대상 고르기 + 세부 동작 칸
 	world._press_card("W")
 	_check("W → 화점진압 대상 고르기", sel.mode, sel.Mode.ATTACK)
-	_check("W → 세부 동작 칸", _labels(card), ["Q 수관 연장", "W 직사", "E 분무", "R 펜슬링·3D", "A 잔불정리", "S 방수 중지"])
-	world._press_card("E")
-	_check("세부 E → 분무 고르기", sel.mode, sel.Mode.FOG)
+	_check("W → 하위 칸 없음 (주수 방법은 카드로, P10-2 결정 ②)", card.parent, "")
 	sel.cancel_mode()
 	await process_frame
+	world._press_card("A")
+	_check("A 대기 → S 방수 중지 칸", _labels(card).has("S 방수 중지"), true)
+	world._press_card("BACK")
 	_check("고르기를 끝내면 첫 칸", card.parent, "")
+	# 상황 행동 우클릭 (P10-2 결정 ②): 창 → 깨서 열기, 초진 뒤 불 없는 방에 화점진압 → 잔불정리
+	var win: Opening = null
+	for o in sim.fire.openings:
+		if win == null and o.kind == Opening.Kind.WINDOW and o.level == 1 and not o.broken and not o.is_open:
+			win = o
+	if win:
+		sel._set_selection([0] as Array[int], [] as Array[int])
+		world.mission_ui.radial.close()
+		var n_before := sim.issued.size()
+		var wc := Vector2(win.cells[0]) + Vector2(0.5, 0.5)
+		sel._issue_crew_right_click(sel.projection.to_screen(wc, 1.2))
+		var last_cmd = sim.issued[-1].command if sim.issued.size() > n_before else null
+		_check("창 우클릭 → 깨서 열기", last_cmd != null and str(last_cmd.action) == "door_open" and Vector2i(last_cmd.target.x, last_cmd.target.y) == win.cells[0], true)
+	var quiet_room: Compartment = null
+	for room in sim.fire.comps:
+		if quiet_room == null and room.level == 1 and room.cells.size() > 4 and not sim.fire.is_exposure_comp(room):
+			var burning := false
+			for c in room.cells:
+				if sim.fire.grid.state[sim.fire.grid.index(1, c.x, c.y)] == FuelGrid.State.BURNING:
+					burning = true
+			if not burning:
+				quiet_room = room
+	if quiet_room:
+		var qc: Vector2i = quiet_room.cells[quiet_room.cells.size() / 2]
+		_check("초진 전에는 화점진압", sel._overhaul_room(Vector3i(qc.x, qc.y, 1)), false)
+		sim.phases.knockdown_tick = sim.clock.tick
+		_check("초진 뒤 불 없는 방에 화점진압 → 잔불정리", sel._overhaul_room(Vector3i(qc.x, qc.y, 1)), true)
+		sim.phases.knockdown_tick = -1
 	# 단축키 이벤트로도 같다
 	var ev := InputEventKey.new()
 	ev.physical_keycode = KEY_S

@@ -38,6 +38,10 @@ class Task:
 	var floor_action := ""
 	## 멈춰 지시를 기다리는가 (층 임무는 이어 가지 않는다)
 	var halted := false
+	## 주수 방법 (P10-2 결정 ②): 화점실 앞에서 카드로 묻고 고른 HoseLine.Pattern (-1 = 아직)
+	var nozzle := -1
+	var nozzle_asked := false
+	var nozzle_wait_until := -1
 	## 직하층 확인: 남은 방 (구획 index)과 위·아래 세대 이름
 	var unit_rooms: Array[int] = []
 	var unit_check: Dictionary = {}
@@ -63,6 +67,11 @@ var perception: Perception
 ## 임무 조건 {조 id: {on_fire, on_victim, withdraw_air}} (키는 data/command/mission_params.json)
 var conditions: Dictionary = {}
 var mission_data: Dictionary = {}
+## 화점진압 조가 화점실 앞에서 주수 방법을 질문 카드로 묻는가 (지휘 규칙을 켠 판, P10-2)
+var nozzle_cards := false
+var _hot_layer_c := 300.0
+var _pencil_done_c := 150.0
+var _nozzle_wait_ticks := 300
 var _fire_radius := 5.0
 var _fire_seen: Dictionary = {}  # "조:방" -> true
 var _air_withdrawn: Dictionary = {}  # 조 id -> true (철수 잔압으로 철수함)
@@ -82,6 +91,9 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_water: WaterSystem, p_doors: 
 	var data: Variant = JsonData.load_file(MISSION_PATH)
 	mission_data = data if data is Dictionary else {}
 	_fire_radius = float(mission_data.get("fire_found_radius_m", {}).get("value", 5.0))
+	_hot_layer_c = float(mission_data.get("nozzle_hot_layer_c", {}).get("value", 300.0))
+	_pencil_done_c = float(mission_data.get("nozzle_pencil_done_c", {}).get("value", 150.0))
+	_nozzle_wait_ticks = roundi(float(mission_data.get("nozzle_wait_s", {}).get("value", 30.0)) / SimClock.TICK_DT)
 
 
 func set_level(name: String) -> void:
@@ -213,7 +225,19 @@ func _step_doors(t: Task, c: Crew, tick: int) -> void:
 func _act(t: Task, c: Crew, tick: int) -> void:
 	match t.action:
 		"attack":
-			if water.start_spray(t.crew_id, t.target, HoseLine.Pattern.FOG, tick):
+			if nozzle_cards and t.nozzle < 0:
+				if not t.nozzle_asked:
+					# 화점실 앞: 관창수가 상황을 보고 주수 방법을 묻는다 (기획안 9-1 표 '주수 방법', 5-4)
+					t.nozzle_asked = true
+					t.nozzle_wait_until = tick + _nozzle_wait_ticks
+					events.add(tick, "nozzle_choice", nozzle_info(t, c))
+					return
+				if tick < t.nozzle_wait_until:
+					return
+				t.nozzle = HoseLine.Pattern.FOG
+				events.add(tick, "nozzle_default", {"crew": _crew_name(c)})
+			var pattern: HoseLine.Pattern = t.nozzle if t.nozzle >= 0 else HoseLine.Pattern.FOG
+			if water.start_spray(t.crew_id, t.target, pattern, tick):
 				t.phase = Phase.WORKING
 			else:
 				_halt(t, c, tick, "방수 위치를 잡을 수 없음 — 지시 바람")
@@ -230,6 +254,10 @@ func _step_working(t: Task, c: Crew, tick: int) -> void:
 			var h := water.hose_of_crew(t.crew_id)
 			if h == null or not h.flowing:
 				return
+			# 펜슬링으로 가스층을 식혔으면 화점(연소실체)에 직사로 바꾼다 (5-4: 끄는 것은 가연물에 닿는 주수)
+			if h.pattern == HoseLine.Pattern.PENCIL and t.room >= 0 and fire.comps[t.room].t_upper < _pencil_done_c:
+				if water.start_spray(t.crew_id, t.target, HoseLine.Pattern.STRAIGHT, tick):
+					events.add(tick, "nozzle_switch", {"crew": _crew_name(c), "room": fire.comps[t.room].display_name()})
 			if level.auto_stop and not _room_burning(t.room):
 				water.stop_spray(t.crew_id, tick)
 				t.phase = Phase.DONE
@@ -570,6 +598,37 @@ func _check_fire_found(t: Task, c: Crew, tick: int) -> void:
 			"room_cell": [p.x, p.y, lv], "has_hose": water.hose_of_crew(c.id) != null,
 			"action": t.floor_action if t.floor >= 0 else t.action, "target": [t.target.x, t.target.y, t.target.z]})
 		return
+
+
+## 주수 방법 카드 문맥: 관창수가 본 화점실 상태와 (보이지 않는) 정답
+##   방 전체가 탐(플래시오버) → 직사, 천장 가스층이 뜨거움 → 펜슬링·3D 먼저, 그 밖 → 직사(화점)
+##   배기구가 없으면 분무는 수증기로 열기가 내려와 오답 (기획안 5-4)
+func nozzle_info(t: Task, c: Crew) -> Dictionary:
+	var room: Compartment = fire.comps[t.room] if t.room >= 0 else fire.compartment_at(t.target.z, t.target.x, t.target.y)
+	var vent := false
+	var hot := false
+	var flashed := false
+	var temp := 0
+	var name := ""
+	if room:
+		name = room.display_name()
+		flashed = room.flashed
+		temp = roundi(room.t_upper)
+		hot = room.t_upper >= _hot_layer_c
+		for o in fire.openings:
+			if (o.room_a == room.index or o.room_b == room.index) and (o.room_a == Opening.OUTSIDE or o.room_b == Opening.OUTSIDE) and (o.is_open or o.broken):
+				vent = true
+	var verdict := "straight" if flashed or not hot else "pencil"
+	var state := "방 전체가 타고 있음" if flashed else ("천장 연기층이 뜨거움 (약 %d℃)" % temp if hot else "화염이 보임, 연기층은 견딜 만함")
+	return {"crew_id": c.id, "crew": _crew_name(c), "room": name, "state": state, "vent": "배기구 있음" if vent else "배기구 없음",
+		"nv": "%s_%s" % [verdict, "vent" if vent else "novent"]}
+
+
+## 주수 방법 카드 답 (CardSystem effect nozzle_straight·fog·pencil·cover)
+func set_nozzle(crew_id: int, pattern: int) -> void:
+	var t := task_of_crew(crew_id)
+	if t and t.action == "attack":
+		t.nozzle = pattern
 
 
 ## 팀 카드·상황 보고용 임무 이름: "층 검색 (2층 방1)" / "진압 (1층 거실)" / ""

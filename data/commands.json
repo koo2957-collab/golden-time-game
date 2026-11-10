@@ -1,86 +1,257 @@
 {
-  "note": "명령 카드 (기획안 9-1·9-3, P10-2). 원형 메뉴와 하단 명령 카드가 이 목록 하나를 쓴다. 칸 = 단축키(Q W E R / A S). 고른 대상에 따라 세트가 바뀐다: team(진압대·구조대 — 메뉴는 같고 보직별로 잘하는 임무만 다르다), ems(구급대), vehicle(차량), commander(아무것도 안 골랐거나 지휘관). act: false면 누르면 바로 하위 칸(sub)을 펼친다. act가 없거나 true면 그 명령을 실행하고, sub가 있으면 실행 중(대상 클릭 대기)에 세부 동작을 같은 칸에 펼친다. Esc는 뒤로. need: pump(펌프차만)·tanker(물탱크차만)·later(다음 작업에서 — 회색). 문구는 화면 설정값",
+  "note": "명령 카드 (기획안 9-1·9-3, P10-2). 원형 메뉴와 하단 명령 카드가 이 목록 하나를 쓴다. 칸 = 단축키(Q W E R / A S). 고른 대상에 따라 세트가 바뀐다: team(진압대·구조대 — 메뉴는 같고 보직별로 잘하는 임무만 다르다), ems(구급대), vehicle(차량), commander(아무것도 안 골랐거나 지휘관). act: false면 누르면 바로 하위 칸(sub)을 펼친다. act가 없거나 true면 그 명령을 실행한다. Esc는 뒤로. need: pump(펌프차만)·tanker(물탱크차만)·later(다음 작업에서 — 회색). 문구는 화면 설정값 예전 동작 단위 명령(직사·분무·펜슬링·엄호·수관·문·매트·승강기·유도로프)은 카드에 없다: 주수 방법은 질문 카드, 나머지는 대상 우클릭(상황 행동)으로 (P10-2 결정 ②).",
   "source": "기획안 9-1·9-3 (게임 설정값)",
   "sets": {
     "team": [
-      {"key": "Q", "id": "search_auto", "label": "인명검색", "hint": "방·층 클릭 → 문 개방·방별 탐색, 발견하면 보고 후 구조 (SOP 203)",
+      {
+        "key": "Q",
+        "id": "search_auto",
+        "label": "인명검색",
+        "hint": "방·층 클릭 → 문 개방·방별 탐색, 발견하면 보고 후 구조해 환자 집결지로 (SOP 203)"
+      },
+      {
+        "key": "W",
+        "id": "attack",
+        "label": "화점진압",
+        "hint": "방·층 클릭 → 수관 연장·진입·화점 탐색·방수(화점실 앞에서 주수 방법을 묻는다)·잔불 확인. 초진 뒤 불이 안 보이는 방을 누르면 잔불정리"
+      },
+      {
+        "key": "E",
+        "id": "exterior",
+        "label": "경계",
+        "hint": "창·개구부·인접 건물 쪽 클릭 → 관창 배치, 불이 다가오면 방수 (연소확대 방지)"
+      },
+      {
+        "key": "R",
+        "id": "ppv",
+        "label": "배연",
+        "hint": "바깥 출입문 클릭 → 송풍기 양압배연. 배기구(반대편 창)는 창을 우클릭해 먼저 연다. 다시 누르면 끔"
+      },
+      {
+        "key": "A",
+        "id": "standby",
+        "act": false,
+        "label": "대기",
+        "hint": "대기·보고 요청·경유지·지원 투입·구조자 관찰·방수 중지",
         "sub": [
-          {"key": "Q", "id": "search", "label": "이 방 검색", "hint": "방 클릭 → 그 방만 검색"},
-          {"key": "W", "id": "rescue", "label": "구조", "hint": "구조대상자·쓰러진 대원 클릭 → 업고 나온다"},
-          {"key": "E", "id": "door", "label": "문·창", "hint": "문·창 클릭 → 열기·파괴 (진입구 개척)"},
-          {"key": "R", "id": "lifeline", "label": "유도로프", "hint": "입구에서 안쪽으로 유도로프 설치 (지하·짙은 연기)"},
-          {"key": "A", "id": "elevator", "label": "비상용승강기", "hint": "비상용승강기로 층 이동 (SOP 213)"},
-          {"key": "S", "id": "air_mat", "label": "인명구조매트", "hint": "창 아래 바닥 클릭 → 매트 전개"}
-        ]},
-      {"key": "W", "id": "attack", "label": "화점진압", "hint": "방·층 클릭 → 수관 연장·진입·화점 탐색·방수·잔불 확인",
-        "sub": [
-          {"key": "Q", "id": "hose", "label": "수관 연장", "hint": "펌프차·방수구 클릭 → 수관 연장"},
-          {"key": "W", "id": "straight", "label": "직사", "hint": "목표 클릭 → 직사 방수 (멀리, 화점에 직접)"},
-          {"key": "E", "id": "fog", "label": "분무", "hint": "목표 클릭 → 분무 방수 (넓게, 열기 흡수)"},
-          {"key": "R", "id": "pencil", "label": "펜슬링·3D", "hint": "고온층 클릭 → 짧게 끊어 쏘기 (물을 적게 쓴다)"},
-          {"key": "A", "id": "overhaul", "label": "잔불정리", "hint": "방 클릭 → 불씨 정리 (SOP 202-6)"},
-          {"key": "S", "id": "stop", "label": "방수 중지", "hint": "쏘고 있는 방수를 멈춘다"}
-        ]},
-      {"key": "E", "id": "exterior", "label": "경계", "hint": "창·개구부·인접 건물 쪽 클릭 → 관창 배치, 불이 다가오면 방수 (연소확대 방지)",
-        "sub": [
-          {"key": "Q", "id": "cover", "label": "엄호", "hint": "물 막으로 옆 조의 복사열을 막는다"},
-          {"key": "W", "id": "monitor", "label": "방수포", "hint": "바깥 창·문 클릭 → 펌프차 방수포. 진입대원이 있는 방 금지 (SOP 207-1.1). 다시 누르면 중지"},
-          {"key": "S", "id": "stop", "label": "방수 중지", "hint": "쏘고 있는 방수를 멈춘다"}
-        ]},
-      {"key": "R", "id": "ppv", "label": "배연", "hint": "바깥 출입문 클릭 → 송풍기 양압배연. 배기구를 먼저 확보 (배기구 없이 급기하면 연기가 밀린다). 다시 누르면 끔",
-        "sub": [
-          {"key": "Q", "id": "door", "label": "배기구 열기", "hint": "반대편 창·문 클릭 → 열기·파괴"}
-        ]},
-      {"key": "A", "id": "standby", "act": false, "label": "대기", "hint": "대기·보고 요청·경유지·지원 투입",
-        "sub": [
-          {"key": "Q", "id": "hold", "label": "그 자리 대기", "hint": "하던 일을 멈추고 그 자리에서 대기"},
-          {"key": "W", "id": "report", "label": "보고 요청", "hint": "위치·임무·공기 잔량 보고를 요청"},
-          {"key": "E", "id": "waypoint", "label": "여기로", "hint": "본 적 있는 곳 클릭 → 무전으로 경유지 지시"},
-          {"key": "R", "id": "support", "label": "지원 투입", "hint": "밖에서 쉬는 조를 같은 임무에 투입"},
-          {"key": "A", "id": "observe", "label": "구조자 관찰", "hint": "구조된 사람 클릭 → 곁에 서서 상태를 본다 (구급대가 올 때까지 악화가 느려진다, 그만큼 인력이 빠짐)"}
-        ]},
-      {"key": "S", "id": "withdraw", "label": "철수", "hint": "가까운 출구로 철수 (대원 안전 우선 무전)"}
+          {
+            "key": "Q",
+            "id": "hold",
+            "label": "그 자리 대기",
+            "hint": "하던 일을 멈추고 그 자리에서 대기"
+          },
+          {
+            "key": "W",
+            "id": "report",
+            "label": "보고 요청",
+            "hint": "위치·임무·공기 잔량 보고를 요청"
+          },
+          {
+            "key": "E",
+            "id": "waypoint",
+            "label": "여기로",
+            "hint": "본 적 있는 곳 클릭 → 무전으로 경유지 지시"
+          },
+          {
+            "key": "R",
+            "id": "support",
+            "label": "지원 투입",
+            "hint": "밖에서 쉬는 조를 같은 임무에 투입"
+          },
+          {
+            "key": "A",
+            "id": "observe",
+            "label": "구조자 관찰",
+            "hint": "구조된 사람 클릭 → 곁에 서서 상태를 본다 (구급대가 올 때까지 악화가 느려진다, 그만큼 인력이 빠짐)"
+          },
+          {
+            "key": "S",
+            "id": "stop",
+            "label": "방수 중지",
+            "hint": "쏘고 있는 방수를 멈춘다"
+          }
+        ]
+      },
+      {
+        "key": "S",
+        "id": "withdraw",
+        "label": "철수",
+        "hint": "가까운 출구로 철수 (대원 안전 우선 무전)"
+      }
     ],
     "ems": [
-      {"key": "Q", "id": "triage_post", "label": "분류소 설치", "hint": "안전구역 안 클릭 → 분류소. 환자 집결지를 대신한다"},
-      {"key": "W", "id": "treat", "label": "환자 인계·처치", "hint": "구조된 사람 클릭 → 인계받아 분류·응급처치"},
-      {"key": "E", "id": "transport", "label": "이송", "hint": "처치한 환자 클릭 → 병원 이송"},
-      {"key": "A", "id": "hold", "label": "대기", "hint": "하던 일을 멈추고 그 자리에서 대기"},
-      {"key": "S", "id": "withdraw", "label": "철수", "hint": "가까운 출구로 철수"}
+      {
+        "key": "Q",
+        "id": "triage_post",
+        "label": "분류소 설치",
+        "hint": "안전구역 안 클릭 → 분류소. 환자 집결지를 대신한다"
+      },
+      {
+        "key": "W",
+        "id": "treat",
+        "label": "환자 인계·처치",
+        "hint": "구조된 사람 클릭 → 인계받아 분류·응급처치"
+      },
+      {
+        "key": "E",
+        "id": "transport",
+        "label": "이송",
+        "hint": "처치한 환자 클릭 → 병원 이송"
+      },
+      {
+        "key": "A",
+        "id": "hold",
+        "label": "대기",
+        "hint": "하던 일을 멈추고 그 자리에서 대기"
+      },
+      {
+        "key": "S",
+        "id": "withdraw",
+        "label": "철수",
+        "hint": "가까운 출구로 철수"
+      }
     ],
     "vehicle": [
-      {"key": "Q", "id": "vehicle_connect", "label": "급수 연결", "hint": "소화전·송수구(펌프차) 또는 펌프차(물탱크차) 클릭 → 연결"},
-      {"key": "W", "id": "vehicle_monitor", "label": "방수포", "need": "pump", "hint": "바깥 창·문 클릭 → 방수포. 다시 누르면 중지"},
-      {"key": "E", "id": "shuttle", "label": "순환보수", "need": "tanker", "hint": "원거리 수원과 오가며 펌프차에 물을 댄다. 다시 누르면 해제"},
-      {"key": "R", "id": "vehicle_move", "label": "자리 옮기기", "hint": "옮길 곳 클릭 (우클릭과 같음)"}
+      {
+        "key": "Q",
+        "id": "vehicle_connect",
+        "label": "급수 연결",
+        "hint": "소화전·송수구(펌프차) 또는 펌프차(물탱크차) 클릭 → 연결"
+      },
+      {
+        "key": "W",
+        "id": "vehicle_monitor",
+        "label": "방수포",
+        "need": "pump",
+        "hint": "바깥 창·문 클릭 → 방수포. 다시 누르면 중지"
+      },
+      {
+        "key": "E",
+        "id": "shuttle",
+        "label": "순환보수",
+        "need": "tanker",
+        "hint": "원거리 수원과 오가며 펌프차에 물을 댄다. 다시 누르면 해제"
+      },
+      {
+        "key": "R",
+        "id": "vehicle_move",
+        "label": "자리 옮기기",
+        "hint": "옮길 곳 클릭 (우클릭과 같음)"
+      }
     ],
     "commander": [
-      {"key": "Q", "id": "strategy_menu", "act": false, "label": "전략 변경", "hint": "지휘권 선언·전략 변경·선제지시",
+      {
+        "key": "Q",
+        "id": "strategy_menu",
+        "act": false,
+        "label": "전략 변경",
+        "hint": "지휘권 선언·전략 변경·선제지시",
         "sub": [
-          {"key": "Q", "id": "strategy", "label": "선언·전략", "hint": "선언 전이면 최초 상황보고, 선언 후면 전략 변경 (SOP 101·106)"},
-          {"key": "W", "id": "preorder", "label": "선제지시", "hint": "미리 정해 두면 그 상황에서 묻지 않고 실행"}
-        ]},
-      {"key": "W", "id": "response_menu", "act": false, "label": "대응단계", "hint": "대응단계 발령 (SOP 103)",
+          {
+            "key": "Q",
+            "id": "strategy",
+            "label": "선언·전략",
+            "hint": "선언 전이면 최초 상황보고, 선언 후면 전략 변경 (SOP 101·106)"
+          },
+          {
+            "key": "W",
+            "id": "preorder",
+            "label": "선제지시",
+            "hint": "미리 정해 두면 그 상황에서 묻지 않고 실행"
+          }
+        ]
+      },
+      {
+        "key": "W",
+        "id": "response_menu",
+        "act": false,
+        "label": "대응단계",
+        "hint": "대응단계 발령 (SOP 103)",
         "sub": [
-          {"key": "Q", "id": "response_1", "label": "대응 1단계 발령", "hint": "관할 소방서 전 출동대 + 인접 소방서 지원"}
-        ]},
-      {"key": "E", "id": "support_menu", "act": false, "label": "지원 요청", "hint": "추가 출동대 요청·조직(단위대·안전 임무)",
+          {
+            "key": "Q",
+            "id": "response_1",
+            "label": "대응 1단계 발령",
+            "hint": "관할 소방서 전 출동대 + 인접 소방서 지원"
+          }
+        ]
+      },
+      {
+        "key": "E",
+        "id": "support_menu",
+        "act": false,
+        "label": "지원 요청",
+        "hint": "추가 출동대 요청·조직(단위대·안전 임무)",
         "sub": [
-          {"key": "Q", "id": "support_more", "label": "추가 출동대 요청", "hint": "상황실에 추가 출동대 요청"},
-          {"key": "W", "id": "org", "label": "조직·안전 임무", "hint": "단위대 지정, RIT·현장안전담당 지정 (SOP 105·108)"}
-        ]},
-      {"key": "R", "id": "par", "label": "인원 점검", "hint": "각 출동대가 인원·위치·잔압을 차례로 보고 (SOP 109-1.3)"},
-      {"key": "A", "id": "zone_menu", "act": false, "label": "구역 지정", "hint": "안전구역·환자 집결지·진입통제선",
+          {
+            "key": "Q",
+            "id": "support_more",
+            "label": "추가 출동대 요청",
+            "hint": "상황실에 추가 출동대 요청"
+          },
+          {
+            "key": "W",
+            "id": "org",
+            "label": "조직·안전 임무",
+            "hint": "단위대 지정, RIT·현장안전담당 지정 (SOP 105·108)"
+          }
+        ]
+      },
+      {
+        "key": "R",
+        "id": "par",
+        "label": "인원 점검",
+        "hint": "각 출동대가 인원·위치·잔압을 차례로 보고 (SOP 109-1.3)"
+      },
+      {
+        "key": "A",
+        "id": "zone_menu",
+        "act": false,
+        "label": "구역 지정",
+        "hint": "안전구역·환자 집결지·진입통제선",
         "sub": [
-          {"key": "Q", "id": "zone_safe", "label": "안전구역", "hint": "끌어서 사각형 → 안전구역 (건물 밖)"},
-          {"key": "W", "id": "zone_casualty", "label": "환자 집결지", "hint": "안전구역 안 클릭 → 환자 집결지"},
-          {"key": "E", "id": "zone_line", "label": "진입통제선", "hint": "두 점 클릭 → 진입통제선"}
-        ]},
-      {"key": "S", "id": "withdraw_menu", "act": false, "label": "전원 철수·긴급탈출", "hint": "건물 안 전원 철수 또는 긴급탈출 지시",
+          {
+            "key": "Q",
+            "id": "zone_safe",
+            "label": "안전구역",
+            "hint": "끌어서 사각형 → 안전구역 (건물 밖)"
+          },
+          {
+            "key": "W",
+            "id": "zone_casualty",
+            "label": "환자 집결지",
+            "hint": "안전구역 안 클릭 → 환자 집결지"
+          },
+          {
+            "key": "E",
+            "id": "zone_line",
+            "label": "진입통제선",
+            "hint": "두 점 클릭 → 진입통제선"
+          }
+        ]
+      },
+      {
+        "key": "S",
+        "id": "withdraw_menu",
+        "act": false,
+        "label": "전원 철수·긴급탈출",
+        "hint": "건물 안 전원 철수 또는 긴급탈출 지시",
         "sub": [
-          {"key": "Q", "id": "withdraw_all", "label": "전원 철수", "hint": "건물 안 모든 조를 가까운 출구로 철수"},
-          {"key": "W", "id": "evacuate", "label": "긴급탈출", "danger": true, "hint": "긴급탈출 지시 — 경적·무전 (SOP 109)"}
-        ]}
+          {
+            "key": "Q",
+            "id": "withdraw_all",
+            "label": "전원 철수",
+            "hint": "건물 안 모든 조를 가까운 출구로 철수"
+          },
+          {
+            "key": "W",
+            "id": "evacuate",
+            "label": "긴급탈출",
+            "danger": true,
+            "hint": "긴급탈출 지시 — 경적·무전 (SOP 109)"
+          }
+        ]
+      }
     ]
   }
 }

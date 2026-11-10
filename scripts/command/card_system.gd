@@ -179,7 +179,7 @@ func _trigger_of(e: Dictionary) -> String:
 			return "fire_found"
 		"phase":
 			return "arrival" if int(e.get("index", -1)) == 1 else ""
-		"entry_request", "rescue_no_point", "triage_needed":
+		"entry_request", "rescue_no_point", "triage_needed", "nozzle_choice":
 			return str(e.type)
 	return ""
 
@@ -341,6 +341,9 @@ func _apply(effect: String, c: Card, tick: int) -> void:
 	var action := str(c.ctx.get("action", ""))
 	var target := _cell(c.ctx.get("target", []))
 	match effect:
+		"nozzle_straight", "nozzle_fog", "nozzle_pencil", "nozzle_cover":
+			var pats := {"nozzle_straight": HoseLine.Pattern.STRAIGHT, "nozzle_fog": HoseLine.Pattern.FOG, "nozzle_pencil": HoseLine.Pattern.PENCIL, "nozzle_cover": HoseLine.Pattern.COVER}
+			tactical.set_nozzle(c.crew_id, int(pats[effect]))
 		"dropoff_wait", "dropoff_ambulance", "dropoff_entrance":
 			if sim:
 				sim.rescue.set_dropoff_policy(effect.trim_prefix("dropoff_"), tick)

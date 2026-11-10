@@ -1,5 +1,5 @@
 {
-  "note": "질문 카드 (기획안 7장). 카드 1장 = SOP 조항 1개. trigger: halt_locked·halt_closed·halt_backdraft·halt_victim(전술 명령이 멈춘 자리), air_alarm, knockdown, arrival, rollover_sign, jump_risk, exposure_heating, shaft, sign_warning, debris_zone, hydrant_out, tank_empty, mayday, gas_found, victim_trapped, triage_urgent, stair_smoke, attack_upper, victims_many, first_search, search_mark, end_suggested, fire_found, rescue_no_point(집결지 없이 구조자가 입구 밖에 나옴, P10-2), triage_needed(걷지 못하는 구조자 START 분류, P10-2), entry_request(입구에서 진입 허가 요청 — 사건의 verdict로 variants를 고른다, P10-2). multi: true면 같은 카드가 여러 장(출동대마다) 떠 있을 수 있다. once: 한 판에 한 번. 선택지 time_cost_sec + then: 정보 확인(시간을 쓴 뒤 then 행동). text·variants의 {이름}은 사건 값으로 채운다 (crew·door_name·victim_name·state·air). effect: force_door·open_door·vent_then_open·rescue_victim·resume·withdraw·overhaul·flood·hold·close_then_resume(화재실 문 닫고 검색 계속)·attack_found(찾은 화점 진압)·halt_here(하던 일 멈춤). 임무 조건(data/command/mission_params.json)이 정해져 있으면 카드 없이 그 행동을 한다. grade: 최선·허용·오답·치명 (화면에는 보이지 않음). skip_if_preordered: 그 선제지시가 켜져 있으면 카드 없이 최선 선택을 실행. stages: 그 스테이지 시나리오에서만 묻는다(R14). 교관이 문구·등급·해설을 고칠 수 있다.",
+  "note": "질문 카드 (기획안 7장). 카드 1장 = SOP 조항 1개. trigger: halt_locked·halt_closed·halt_backdraft·halt_victim(전술 명령이 멈춘 자리), air_alarm, knockdown, arrival, rollover_sign, jump_risk, exposure_heating, shaft, sign_warning, debris_zone, hydrant_out, tank_empty, mayday, gas_found, victim_trapped, triage_urgent, stair_smoke, attack_upper, victims_many, first_search, search_mark, end_suggested, fire_found, rescue_no_point(집결지 없이 구조자가 입구 밖에 나옴, P10-2), triage_needed(걷지 못하는 구조자 START 분류, P10-2), nozzle_choice(화점진압 조가 화점실 앞에서 주수 방법, P10-2), entry_request(입구에서 진입 허가 요청 — 사건의 verdict로 variants를 고른다, P10-2). multi: true면 같은 카드가 여러 장(출동대마다) 떠 있을 수 있다. once: 한 판에 한 번. 선택지 time_cost_sec + then: 정보 확인(시간을 쓴 뒤 then 행동). text·variants의 {이름}은 사건 값으로 채운다 (crew·door_name·victim_name·state·air). effect: force_door·open_door·vent_then_open·rescue_victim·resume·withdraw·overhaul·flood·hold·close_then_resume(화재실 문 닫고 검색 계속)·attack_found(찾은 화점 진압)·halt_here(하던 일 멈춤). 임무 조건(data/command/mission_params.json)이 정해져 있으면 카드 없이 그 행동을 한다. grade: 최선·허용·오답·치명 (화면에는 보이지 않음). skip_if_preordered: 그 선제지시가 켜져 있으면 카드 없이 최선 선택을 실행. stages: 그 스테이지 시나리오에서만 묻는다(R14). 교관이 문구·등급·해설을 고칠 수 있다.",
   "preorders": [
     {
       "key": "force_locked",
@@ -1422,6 +1422,154 @@
         "SOP 402"
       ],
       "debrief": "연기가 나오는 입구는 아직 위험한 곳이다. 구조대상자는 먼저 위험에서 벗어난 곳(안전구역 안 환자 집결지·분류소)으로 옮겨 인계한다. 입구에 두면 연기를 계속 마시고 진입 동선을 막는다."
+    },
+    {
+      "id": "NOZZLE-01",
+      "title": "주수 방법",
+      "phase": "진압",
+      "trigger": "nozzle_choice",
+      "multi": true,
+      "asker": "관창수",
+      "urgency": "중요",
+      "text": "{crew}: {room} 앞입니다. {state}, {vent}. 주수 방법은?",
+      "options": [
+        {
+          "text": "직사 — 화점(연소실체)에 직접",
+          "effect": "nozzle_straight",
+          "grade": "최선"
+        },
+        {
+          "text": "분무 — 넓게 뿌려 열기 흡수",
+          "effect": "nozzle_fog",
+          "grade": "허용"
+        },
+        {
+          "text": "펜슬링·3D — 천장 가스층을 짧게 끊어 식힌 뒤 화점",
+          "effect": "nozzle_pencil",
+          "grade": "허용"
+        },
+        {
+          "text": "엄호 — 물 막으로 대원 보호",
+          "effect": "nozzle_cover",
+          "grade": "오답"
+        }
+      ],
+      "variants": [
+        {
+          "if": {
+            "nv": "straight_vent"
+          },
+          "options": [
+            {
+              "text": "직사 — 화점(연소실체)에 직접",
+              "effect": "nozzle_straight",
+              "grade": "최선"
+            },
+            {
+              "text": "분무 — 넓게 뿌려 열기 흡수",
+              "effect": "nozzle_fog",
+              "grade": "허용"
+            },
+            {
+              "text": "펜슬링·3D — 천장 가스층을 짧게 끊어 식힌 뒤 화점",
+              "effect": "nozzle_pencil",
+              "grade": "허용"
+            },
+            {
+              "text": "엄호 — 물 막으로 대원 보호",
+              "effect": "nozzle_cover",
+              "grade": "오답"
+            }
+          ]
+        },
+        {
+          "if": {
+            "nv": "straight_novent"
+          },
+          "options": [
+            {
+              "text": "직사 — 화점(연소실체)에 직접",
+              "effect": "nozzle_straight",
+              "grade": "최선"
+            },
+            {
+              "text": "분무 — 넓게 뿌려 열기 흡수",
+              "effect": "nozzle_fog",
+              "grade": "오답"
+            },
+            {
+              "text": "펜슬링·3D — 천장 가스층을 짧게 끊어 식힌 뒤 화점",
+              "effect": "nozzle_pencil",
+              "grade": "허용"
+            },
+            {
+              "text": "엄호 — 물 막으로 대원 보호",
+              "effect": "nozzle_cover",
+              "grade": "오답"
+            }
+          ]
+        },
+        {
+          "if": {
+            "nv": "pencil_vent"
+          },
+          "options": [
+            {
+              "text": "직사 — 화점(연소실체)에 직접",
+              "effect": "nozzle_straight",
+              "grade": "오답"
+            },
+            {
+              "text": "분무 — 넓게 뿌려 열기 흡수",
+              "effect": "nozzle_fog",
+              "grade": "허용"
+            },
+            {
+              "text": "펜슬링·3D — 천장 가스층을 짧게 끊어 식힌 뒤 화점",
+              "effect": "nozzle_pencil",
+              "grade": "최선"
+            },
+            {
+              "text": "엄호 — 물 막으로 대원 보호",
+              "effect": "nozzle_cover",
+              "grade": "오답"
+            }
+          ]
+        },
+        {
+          "if": {
+            "nv": "pencil_novent"
+          },
+          "options": [
+            {
+              "text": "직사 — 화점(연소실체)에 직접",
+              "effect": "nozzle_straight",
+              "grade": "오답"
+            },
+            {
+              "text": "분무 — 넓게 뿌려 열기 흡수",
+              "effect": "nozzle_fog",
+              "grade": "오답"
+            },
+            {
+              "text": "펜슬링·3D — 천장 가스층을 짧게 끊어 식힌 뒤 화점",
+              "effect": "nozzle_pencil",
+              "grade": "최선"
+            },
+            {
+              "text": "엄호 — 물 막으로 대원 보호",
+              "effect": "nozzle_cover",
+              "grade": "오답"
+            }
+          ]
+        }
+      ],
+      "sop_ref": [
+        "SOP 206",
+        "SOP 210-10.4",
+        "화재1 제4장 방수"
+      ],
+      "debrief": "불을 끄는 것은 타는 가연물(연소실체)에 닿는 주수다 — 화점이 보이면 직사. 천장 가스층이 뜨거우면 펜슬링·3D로 먼저 식힌다(직사는 혼합기 점화원이 될 수 있다). 배기구가 없는 방에 분무하면 수증기로 열기가 내려와 대원·요구조자가 화상을 입는다."
     }
   ]
 }

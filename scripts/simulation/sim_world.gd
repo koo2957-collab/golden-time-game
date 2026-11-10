@@ -252,6 +252,7 @@ static func from_scenario(path: String, command_rules := true, seed_override := 
 			sim.evac.refuge_cell = Vector2i(int(ev.refuge_cell[0]), int(ev.refuge_cell[1]))
 		# 구조자 운반·집결지 카드는 지휘 규칙을 켠 판에서만 (P10-2 ⓒ)
 		sim.rescue.dropoff_enabled = command_rules
+		sim.tactical.nozzle_cards = command_rules
 		if not command_rules:
 			sim.command.entry_order_required = false
 			sim.command.auto_slow = false

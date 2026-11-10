@@ -205,6 +205,12 @@ static func describe_text(e: Dictionary) -> String:
 			text = "긴급탈출 지시 전파 — 전 대원 탈출"
 		"evacuate":
 			text = "긴급탈출 — %s" % e.crew
+		"nozzle_choice":
+			text = "주수 방법 문의 — %s (%s)" % [e.crew, e.room]
+		"nozzle_default":
+			text = "지시 없어 분무로 방수 시작 — %s" % e.crew
+		"nozzle_switch":
+			text = "가스층 냉각 → 화점 직사로 전환 — %s (%s)" % [e.crew, e.room]
 		"victim_handover":
 			text = "구조자 인계 — %s → %s (%s)" % [e.who, e.where, e.by]
 		"rescue_no_point":

@@ -13,7 +13,7 @@ extends Node2D
 ## 선택 단위는 조(2인 1조)와 차량이며, 현재 보고 있는 층의 대원만 선택된다.
 ## 좌표 변환은 projection(상황판/입체)을 따른다.
 
-enum Mode { NONE, HOSE, STRAIGHT, FOG, DOOR, SEARCH, OVERHAUL, PRIMARY, ATTACK, SEARCH_AUTO, EXTERIOR, RESCUE, TREAT, TRANSPORT, AIR_MAT, WAYPOINT, PENCIL, COVER, MONITOR, PPV, ELEVATOR, LIFELINE, VEHICLE_CONNECT, VEHICLE_MOVE, ZONE_SAFE, ZONE_CASUALTY, ZONE_LINE, TRIAGE_POST, OBSERVE }
+enum Mode { NONE, ATTACK, SEARCH_AUTO, EXTERIOR, TREAT, TRANSPORT, WAYPOINT, MONITOR, PPV, VEHICLE_CONNECT, VEHICLE_MOVE, ZONE_SAFE, ZONE_CASUALTY, ZONE_LINE, TRIAGE_POST, OBSERVE }
 
 ## 관계인을 클릭했을 때 (world가 진술 창을 연다)
 signal witness_clicked(index: int)
@@ -35,26 +35,14 @@ const MARKER_DURATION_MS := 500.0
 const VEHICLE_PICK_HEIGHT_M := 1.0
 const HYDRANT_PICK_HEIGHT_M := 0.6
 const MODE_HINTS := {
-	Mode.HOSE: "수관 연장: 펌프차를 클릭",
-	Mode.STRAIGHT: "직사 방수: 목표 지점을 클릭",
-	Mode.FOG: "분무 방수: 목표 지점을 클릭",
-	Mode.DOOR: "문 개방·폐쇄 / 창 파괴(배연): 문이나 창을 클릭 (잠긴 문은 파괴, 2명 이상 필요)",
-	Mode.SEARCH: "인명검색: 검색할 방을 클릭",
-	Mode.OVERHAUL: "잔불정리: 방을 클릭 (열화상으로 찾은 불씨를 없앤다)",
-	Mode.PRIMARY: "주 임무: 방을 클릭 (진압대는 진압, 구조대는 수색)",
-	Mode.ATTACK: "화점진압: 방·층을 클릭 (수관 연장·진입·화점 탐색·방수·잔불 확인) — 세부 동작은 명령 카드",
-	Mode.SEARCH_AUTO: "인명검색: 방·층을 클릭 (문 개방·방별 탐색·발견하면 보고 후 구조) — 세부 동작은 명령 카드",
+	Mode.ATTACK: "화점진압: 방·층을 클릭 (수관 연장·진입·화점 탐색·방수·잔불 확인, 초진 뒤 불이 안 보이는 방은 잔불정리)",
+	Mode.SEARCH_AUTO: "인명검색: 방·층을 클릭 (문 개방·방별 탐색·발견하면 보고 후 구조해 집결지로)",
 	Mode.EXTERIOR: "경계: 창·개구부·인접 건물 쪽을 클릭 (관창 배치, 불이 다가오면 방수)",
-	Mode.RESCUE: "구조: 발견한 구조대상자나 쓰러진 대원을 클릭",
 	Mode.TREAT: "처치: 구조된 환자를 클릭 (구급대가 가서 응급처치)",
 	Mode.TRANSPORT: "이송: 처치한 환자를 클릭 (들것으로 구급차에 태워 병원으로)",
-	Mode.AIR_MAT: "공기안전매트: 창 아래 바닥(1층 바깥)을 클릭 — 구조대가 가서 설치",
 	Mode.WAYPOINT: "경유지: 본 적 있는 곳을 클릭 (건물 안 조에게는 무전으로 전달)",
-	Mode.PENCIL: "펜슬링·3D 주수: 천장 가스층을 클릭 — 짧게 끊어 쏴 가스층을 식힌다, 물이 적게 든다 (SOP 210-10.4)",
-	Mode.COVER: "엄호 주수: 앞을 클릭 — 넓은 분무 막으로 옆 대원의 복사열을 줄인다 (SOP 203-2.1)",
 	Mode.MONITOR: "방수포: 바깥 창·문을 클릭 — 진입대원이 있는 방에는 쓰지 않는다 (SOP 207-1.1)",
 	Mode.PPV: "송풍기 양압배연: 바깥 출입문을 클릭 — 먼저 반대편 창(배출구)을 확보한다",
-	Mode.LIFELINE: "라이트라인: 끝 지점을 클릭 — 조가 지금 자리에서 그곳까지 유도선을 깔며 간다 (시계 0 구역, SOP 217)",
 	Mode.ZONE_SAFE: "안전구역: 건물 밖을 끌어서 사각형 (한 번 클릭하면 그 자리에 기본 크기) — 낙하물 위험구역은 피한다",
 	Mode.ZONE_CASUALTY: "환자 집결지: 안전구역 안을 클릭 (구조한 사람을 여기로 옮긴다)",
 	Mode.ZONE_LINE: "진입통제선: 선의 두 끝을 차례로 클릭",
@@ -62,8 +50,11 @@ const MODE_HINTS := {
 	Mode.TRIAGE_POST: "분류소 설치: 안전구역 안을 클릭 — 구급대가 가서 차린다 (환자 집결지를 대신)",
 	Mode.VEHICLE_CONNECT: "급수 연결: 소화전·송수구(펌프차) 또는 펌프차(물탱크차)를 클릭",
 	Mode.VEHICLE_MOVE: "자리 옮기기: 차를 옮길 곳을 클릭",
-	Mode.ELEVATOR: "비상용승강기: 내릴 층으로 화면을 옮긴 뒤(층 막대·PgUp/PgDn) 지도를 클릭 — 화재층 2개층 아래까지 (SOP 222)",
 }
+## 창가 구조대상자 아래 이 거리(칸) 안의 땅을 우클릭하면 인명구조매트
+const MAT_PICK_CELLS := 6.0
+## 비상용승강기 승강장에서 이 거리(칸) 안의 조만 승강기를 탄다
+const ELEVATOR_PICK_CELLS := 3.0
 ## 요구조자·쓰러진 대원을 클릭으로 고를 때 허용 반경 (px)
 const CASUALTY_PICK_PX := 20.0
 ## 입체 화면에서 닫힌 문 블록을 클릭했는지 볼 때 함께 확인하는 높이 (m)
@@ -340,6 +331,10 @@ func _issue_crew_right_click(world_pos: Vector2) -> void:
 		if sim.water.hose_of_crew(id) == null:
 			without_hose.append(id)
 	var door := _door_at(world_pos)
+	var window: Opening = null
+	var any_open := _door_at(world_pos, true)
+	if any_open and any_open.kind == Opening.Kind.WINDOW:
+		window = any_open
 	var casualty := _casualty_at(world_pos)
 	var patient := _patient_at(world_pos)
 	if patient >= 0 and sim.ems.is_ems_crew(selected[0]):
@@ -355,6 +350,17 @@ func _issue_crew_right_click(world_pos: Vector2) -> void:
 		# 가스 밸브 우클릭: 첫 조가 가서 차단 (SOP 214-2.2)
 		sim.issue(EquipmentCommand.make("gas_off", selected))
 		marker_cell = Vector2(sim.gas.valve) + Vector2(0.5, 0.5)
+	elif _mat_spot(cell):
+		# 창가 구조대상자 아래 땅 우클릭: 인명구조매트 (SOP 213-2.4.3)
+		sim.issue(EquipmentCommand.make("air_mat", selected, -1, -1, Vector3i(cell.x, cell.y, 1)))
+	elif window and not window.broken and not window.is_open:
+		# 창 우클릭: 깨서 연다 (배연 배기구·진입구 개척)
+		sim.issue(EquipmentCommand.make("door_open", selected, -1, -1, Vector3i(window.cells[0].x, window.cells[0].y, level)))
+		marker_cell = Vector2(window.cells[0]) + Vector2(0.5, 0.5)
+	elif sim.elevator.available() and level != sim.units.get_crew(selected[0]).leader.level \
+			and sim.units.get_crew(selected[0]).leader.pos.distance_to(Vector2(sim.elevator.cell) + Vector2(0.5, 0.5)) <= ELEVATOR_PICK_CELLS:
+		# 비상용승강기 앞에 있는 조로 다른 층을 우클릭: 승강기로 그 층까지 (SOP 222 — 화재층 2개층 아래까지)
+		sim.issue(EquipmentCommand.make("elevator", selected, -1, level))
 	elif door and not door.is_open:
 		# 닫힌 문 우클릭: 문 개방 (잠긴 문은 파괴)
 		sim.issue(EquipmentCommand.make("door_open", selected, -1, -1, Vector3i(door.cells[0].x, door.cells[0].y, level)))
@@ -370,7 +376,13 @@ func _issue_crew_right_click(world_pos: Vector2) -> void:
 			var spraying := crews_spraying()
 			if not spraying.is_empty():
 				sim.issue(EquipmentCommand.make("stop", spraying))
-			sim.issue(MoveCommand.new(selected, Vector3i(target.x, target.y, level)))
+			if sim.lifeline.enabled and not sim.building.cell(level, target.x, target.y) in BuildingData.OUTDOOR:
+				# 유도로프를 쓰는 판(지하·시계 0 구역)에서 건물 안으로 이동: 유도로프를 깔며 간다 (SOP 217)
+				sim.issue(EquipmentCommand.make("lifeline", [selected[0]] as Array[int], -1, -1, Vector3i(target.x, target.y, level)))
+				if selected.size() > 1:
+					sim.issue(MoveCommand.new(selected.slice(1), Vector3i(target.x, target.y, level)))
+			else:
+				sim.issue(MoveCommand.new(selected, Vector3i(target.x, target.y, level)))
 			marker_cell = Vector2(target) + Vector2(0.5, 0.5)
 	_marker_world = projection.to_screen(marker_cell)
 	_marker_start_ms = Time.get_ticks_msec()
@@ -436,37 +448,23 @@ func _complete_mode(world_pos: Vector2) -> void:
 			var cell := Vector2i(projection.to_cell(world_pos).floor())
 			for vid in selected_vehicles:
 				sim.issue(EquipmentCommand.make("vehicle_move", [], vid, -1, Vector3i(cell.x, cell.y, 1)))
-		Mode.HOSE:
-			var vid := _vehicle_at(world_pos)
-			if vid >= 0 and sim.units.get_vehicle(vid).is_pump() and not selected.is_empty():
-				sim.issue(EquipmentCommand.make("hose", selected, vid))
-		Mode.DOOR:
-			var door := _door_at(world_pos, true)
-			if door and not selected.is_empty():
-				var action := "door_close" if door.is_open and door.kind == Opening.Kind.DOOR else "door_open"
-				sim.issue(EquipmentCommand.make(action, selected, -1, -1, Vector3i(door.cells[0].x, door.cells[0].y, level)))
-		Mode.SEARCH:
-			if not selected.is_empty():
-				var cell := Vector2i(projection.to_cell(world_pos).floor())
-				var target := Vector3i(cell.x, cell.y, level)
-				if _floor_only(target):
-					sim.issue(TacticalCommand.make("search_floor", selected, target))
-				else:
-					sim.issue(EquipmentCommand.make("search", selected, -1, -1, target))
-		Mode.PRIMARY, Mode.ATTACK, Mode.SEARCH_AUTO, Mode.EXTERIOR:
+		Mode.ATTACK, Mode.SEARCH_AUTO, Mode.EXTERIOR:
 			if not selected.is_empty():
 				var cell := Vector2i(projection.to_cell(world_pos).floor())
 				var target := Vector3i(cell.x, cell.y, level)
 				var attack: Array[int] = []
 				var search: Array[int] = []
 				for id in selected:
-					var rescue_squad := sim.units.squad_of_crew(id).type == "구조대"
-					if mode == Mode.SEARCH_AUTO or (mode == Mode.PRIMARY and rescue_squad):
+					if mode == Mode.SEARCH_AUTO:
 						search.append(id)
 					else:
 						attack.append(id)
 				if mode == Mode.EXTERIOR:
 					sim.issue(TacticalCommand.make("exterior", selected, target))
+				elif mode == Mode.ATTACK and _overhaul_room(target):
+					# 초진 뒤 불이 보이지 않는 방에 화점진압 → 잔불정리 (화점진압 = 진압 → 잔불 확인, 기획안 9-1)
+					sim.issue(EquipmentCommand.make("overhaul", selected, -1, -1, target))
+					notice.emit("초진 뒤 불이 보이지 않는 방 → 잔불정리 (열화상으로 불씨를 찾아 정리)")
 				else:
 					# 본 적 없는 방은 층 단위 임무로 (기획안 9-1, R7 — 도면을 얻으면 방 단위)
 					var by_floor := _floor_only(target)
@@ -484,31 +482,10 @@ func _complete_mode(world_pos: Vector2) -> void:
 					sim.issue(MoveCommand.new(selected, Vector3i(target.x, target.y, level)))
 					_marker_world = projection.to_screen(Vector2(target) + Vector2(0.5, 0.5))
 					_marker_start_ms = Time.get_ticks_msec()
-		Mode.AIR_MAT:
-			if not selected.is_empty():
-				var cell := Vector2i(projection.to_cell(world_pos).floor())
-				sim.issue(EquipmentCommand.make("air_mat", selected, -1, -1, Vector3i(cell.x, cell.y, 1)))
-				_marker_world = projection.to_screen(Vector2(cell) + Vector2(0.5, 0.5))
-				_marker_start_ms = Time.get_ticks_msec()
 		Mode.TREAT, Mode.TRANSPORT:
 			var patient := _patient_at(world_pos)
 			if patient >= 0 and not selected.is_empty():
 				sim.issue(EquipmentCommand.make("ems_treat" if mode == Mode.TREAT else "ems_transport", selected, -1, patient))
-		Mode.RESCUE:
-			var casualty := _casualty_at(world_pos)
-			if casualty.x >= 0 and not selected.is_empty():
-				sim.issue(EquipmentCommand.make("rescue" if casualty.x == 0 else "rescue_ff", selected, -1, casualty.y))
-		Mode.OVERHAUL:
-			if not selected.is_empty():
-				var cell := Vector2i(projection.to_cell(world_pos).floor())
-				sim.issue(EquipmentCommand.make("overhaul", selected, -1, -1, Vector3i(cell.x, cell.y, level)))
-		Mode.LIFELINE:
-			if not selected.is_empty():
-				var lcell := Vector2i(projection.to_cell(world_pos).floor())
-				sim.issue(EquipmentCommand.make("lifeline", [selected[0]] as Array[int], -1, -1, Vector3i(lcell.x, lcell.y, level)))
-		Mode.ELEVATOR:
-			if not selected.is_empty():
-				sim.issue(EquipmentCommand.make("elevator", selected, -1, level))
 		Mode.MONITOR:
 			var win := _door_at(world_pos, true)
 			if win and monitor_vehicle >= 0:
@@ -517,14 +494,32 @@ func _complete_mode(world_pos: Vector2) -> void:
 			var door := _door_at(world_pos)
 			if door and not selected.is_empty():
 				sim.issue(EquipmentCommand.make("ppv", [selected[0]] as Array[int], -1, -1, Vector3i(door.cells[0].x, door.cells[0].y, door.level)))
-		Mode.STRAIGHT, Mode.FOG, Mode.PENCIL, Mode.COVER:
-			if not selected.is_empty():
-				var cell := Vector2i(projection.to_cell(world_pos).floor())
-				var pattern: HoseLine.Pattern = {Mode.STRAIGHT: HoseLine.Pattern.STRAIGHT, Mode.FOG: HoseLine.Pattern.FOG,
-					Mode.PENCIL: HoseLine.Pattern.PENCIL, Mode.COVER: HoseLine.Pattern.COVER}[mode]
-				sim.issue(EquipmentCommand.make("spray", selected, -1, pattern, Vector3i(cell.x, cell.y, level)))
-				_marker_world = projection.to_screen(Vector2(cell) + Vector2(0.5, 0.5))
-				_marker_start_ms = Time.get_ticks_msec()
+
+
+
+## 초진 보고 뒤, 불이 보이지 않는 방인가 → 화점진압 대신 잔불정리
+func _overhaul_room(target: Vector3i) -> bool:
+	if sim.phases.knockdown_tick < 0:
+		return false
+	var room := sim.fire.compartment_at(target.z, target.x, target.y)
+	if room == null:
+		return false
+	var grid := sim.fire.grid
+	for c in room.cells:
+		var i := grid.index(room.level, c.x, c.y)
+		if (not sim.perception.enabled and grid.state[i] == FuelGrid.State.BURNING) or (sim.perception.enabled and sim.perception.seen_burning[i] == 1 and grid.state[i] == FuelGrid.State.BURNING):
+			return false
+	return true
+
+
+## 창가 구조대상자(뛰어내릴 수 있는 사람) 아래 바깥 땅인가 → 인명구조매트 (상황 행동)
+func _mat_spot(cell: Vector2i) -> bool:
+	if level != sim.building.levels()[0] or not sim.building.cell(level, cell.x, cell.y) in BuildingData.OUTDOOR:
+		return false
+	for v in sim.rescue.victims:
+		if v.discovered and v.alive() and v.jumper and Vector2(cell).distance_to(Vector2(v.pos.x, v.pos.y)) <= MAT_PICK_CELLS:
+			return true
+	return false
 
 
 ## 본 적 없는 방이라 층 단위로만 맡길 수 있는가 (알림도 띄운다)

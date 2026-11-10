@@ -521,37 +521,6 @@ func _on_command(id: String) -> void:
 	if selection.selected.is_empty():
 		return
 	match id:
-		"hose":
-			selection.begin_mode(SelectionController.Mode.HOSE)
-		"straight":
-			selection.begin_mode(SelectionController.Mode.STRAIGHT)
-		"fog":
-			selection.begin_mode(SelectionController.Mode.FOG)
-		"pencil":
-			selection.begin_mode(SelectionController.Mode.PENCIL)
-		"cover":
-			selection.begin_mode(SelectionController.Mode.COVER)
-		"monitor":
-			# 그 출동대 펌프차의 방수포: 쏘고 있으면 끄고, 아니면 겨눌 창을 고른다
-			var pump := -1
-			for v in sim.units.vehicles:
-				if v.squad_id == sim.units.get_crew(selection.selected[0]).squad_id and v.is_pump():
-					pump = v.id
-					break
-			if pump < 0:
-				hud.show_notice("이 출동대에는 펌프차가 없습니다")
-			elif sim.monitors.stream_of(pump):
-				sim.issue(EquipmentCommand.make("monitor_stop", [], pump))
-			else:
-				selection.monitor_vehicle = pump
-				selection.begin_mode(SelectionController.Mode.MONITOR)
-		"lifeline":
-			selection.begin_mode(SelectionController.Mode.LIFELINE)
-		"elevator":
-			if not sim.elevator.available():
-				hud.show_notice("이 건물에는 비상용승강기가 없습니다")
-			else:
-				selection.begin_mode(SelectionController.Mode.ELEVATOR)
 		"ppv":
 			if sim.vent.crew_id in selection.selected:
 				sim.issue(EquipmentCommand.make("ppv_stop", [sim.vent.crew_id] as Array[int]))
@@ -561,12 +530,6 @@ func _on_command(id: String) -> void:
 			var spraying := selection.crews_spraying()
 			if not spraying.is_empty():
 				sim.issue(EquipmentCommand.make("stop", spraying))
-		"door":
-			selection.begin_mode(SelectionController.Mode.DOOR)
-		"search":
-			selection.begin_mode(SelectionController.Mode.SEARCH)
-		"overhaul":
-			selection.begin_mode(SelectionController.Mode.OVERHAUL)
 		"hold":
 			sim.issue(TacticalCommand.make("hold", selection.selected))
 		"report":
@@ -584,8 +547,6 @@ func _on_command(id: String) -> void:
 				hud.show_notice("안전구역이 아직 없습니다 — 지휘관이 먼저 안전구역을 지정해야 분류소를 차립니다")
 			else:
 				selection.begin_mode(SelectionController.Mode.TRIAGE_POST)
-		"air_mat":
-			selection.begin_mode(SelectionController.Mode.AIR_MAT)
 		"transport":
 			selection.begin_mode(SelectionController.Mode.TRANSPORT)
 		"attack":
@@ -594,8 +555,6 @@ func _on_command(id: String) -> void:
 			selection.begin_mode(SelectionController.Mode.SEARCH_AUTO)
 		"exterior":
 			selection.begin_mode(SelectionController.Mode.EXTERIOR)
-		"rescue":
-			selection.begin_mode(SelectionController.Mode.RESCUE)
 		"withdraw":
 			sim.issue(TacticalCommand.make("withdraw", selection.selected))
 

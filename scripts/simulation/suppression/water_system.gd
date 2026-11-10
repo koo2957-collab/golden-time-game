@@ -11,6 +11,8 @@ const EMPTY_TANK_L := 0.5
 const SWEEP_CELLS_PER_S := 6.0
 ## 다가가서 쏠 때 사거리의 이 비율 안까지 들어간다 (끝자락에서 쏘지 않도록)
 const APPROACH_RANGE_RATIO := 0.8
+## 방수구에 닿았다고 보는 거리 (칸) — 방수구함 앞에서 결합하는 범위, 게임 설정값
+const OUTLET_REACH_CELLS := 3.0
 ## 보이는 화점이 없을 때 전진할 위치를 다시 찾는 간격 (틱)
 const ADVANCE_EVERY_TICKS := 50
 ## 차량 이동 가능 여부를 볼 때 표본 간격과 최소 이동 거리 (셀)
@@ -255,6 +257,17 @@ func lay_hose_outlet(crew_id: int, outlet: int, tick: int, report := true) -> bo
 	h.crew_id = crew_id
 	h.outlet = outlet
 	h.max_cells = building.outlet_hose_m / _cell_m
+	# 방수구에서 멀리 있으면 (다른 층·건물 밖) 호스 가방을 들고 방수구까지 올라가서 거기서 깐다.
+	# 예전에는 방수구에서 대원 위치(건물 밖)까지 호스를 깔아, 계단을 오르기도 전에 호스 길이 한계에 묶였다 (P9 봇 점검)
+	if not _at_outlet(c, h):
+		h.to_outlet = true
+		h.points = [Vector3i(start.x, start.y, o.z)] as Array[Vector3i]
+		h.ready_tick = 1 << 40
+		h.water_tick = 1 << 40
+		hoses.append(h)
+		units.order_move([crew_id] as Array[int], Vector3i(start.x, start.y, o.z), pathfinder)
+		events.add(tick, "hose_to_outlet", {"crew": _crew_name(c), "level": building.floor_name(o.z)})
+		return true
 	h.points = path
 	_set_hose_timing(h, c, tick, true)
 	if h.length_cells() > h.max_cells:
@@ -266,6 +279,26 @@ func lay_hose_outlet(crew_id: int, outlet: int, tick: int, report := true) -> bo
 		ff.speed_factor = _drag_factor
 	events.add(tick, "hose_outlet_laid", {"crew": _crew_name(c), "level": building.floor_name(o.z), "indoor": indoor})
 	return true
+
+
+## 조장이 방수구 가까이(같은 층 OUTLET_REACH_CELLS 안)에 있는가
+func _at_outlet(c: Crew, h: HoseLine) -> bool:
+	var o := building.outlets[h.outlet]
+	return c.leader.level == o.z and c.leader.pos.distance_to(Vector2(o.x, o.y) + Vector2(0.5, 0.5)) <= OUTLET_REACH_CELLS
+
+
+## 호스 가방을 들고 방수구에 닿았다: 거기서 수관을 깔고(결합·충수 시간 시작) 방수 위치로 간다
+func _connect_at_outlet(h: HoseLine, c: Crew, tick: int) -> void:
+	h.to_outlet = false
+	var start := h.points[0]
+	var path := pathfinder.find_path(start, c.leader.cell3())
+	h.points = path if not path.is_empty() else [start] as Array[Vector3i]
+	_set_hose_timing(h, c, tick, true)
+	for ff in c.members():
+		ff.speed_factor = _drag_factor
+	events.add(tick, "hose_outlet_laid", {"crew": _crew_name(c), "level": building.floor_name(start.z), "indoor": h.vehicle_id == INDOOR})
+	if h.flowing:
+		_approach(h, c, tick)
 
 
 ## 수관 연장: 펌프차에서 조장(관창수) 위치까지 호스를 깐다.
@@ -316,16 +349,28 @@ func start_spray(crew_id: int, target: Vector3i, pattern: HoseLine.Pattern, tick
 	h.aim = Vector2(target.x + 0.5, target.y + 0.5)
 	h.approaching = false
 	h.next_advance_tick = tick
-	var goal := Vector2(target.x + 0.5, target.y + 0.5)
-	if not _can_spray_to(c.leader.pos, c.leader.level, goal, target.z, pattern):
-		var spot := _approach_cell(c, goal, target.z, pattern)
-		if spot == Pathfinder.NO_CELL:
-			events.add(tick, "spray_unreachable", {"crew": _crew_name(c)})
-			return false
-		units.order_move([crew_id] as Array[int], Vector3i(spot.x, spot.y, target.z), pathfinder)
+	if h.to_outlet:
+		# 아직 방수구로 가는 중: 닿아서 연결한 뒤 방수 위치로 간다 (_connect_at_outlet)
 		h.approaching = true
+	elif not _approach(h, c, tick):
+		return false
 	h.flowing = true
 	events.add(tick, "spray_start", {"crew": _crew_name(c), "pattern": h.pattern_name()})
+	return true
+
+
+## 목표에 물이 닿지 않으면 닿는 위치로 이동시킨다. 그런 위치가 없으면 false
+func _approach(h: HoseLine, c: Crew, tick: int) -> bool:
+	var goal := Vector2(h.target.x + 0.5, h.target.y + 0.5)
+	h.approaching = false
+	if _can_spray_to(c.leader.pos, c.leader.level, goal, h.target.z, h.pattern):
+		return true
+	var spot := _approach_cell(c, goal, h.target.z, h.pattern)
+	if spot == Pathfinder.NO_CELL:
+		events.add(tick, "spray_unreachable", {"crew": _crew_name(c)})
+		return false
+	units.order_move([c.id] as Array[int], Vector3i(spot.x, spot.y, h.target.z), pathfinder)
+	h.approaching = true
 	return true
 
 
@@ -566,6 +611,13 @@ func _update_hoses(tick: int) -> void:
 	for h in hoses:
 		var c := units.get_crew(h.crew_id)
 		var leader := c.leader
+		if h.to_outlet:
+			# 호스 가방을 들고 방수구로 가는 중: 닿으면 연결, 멈췄는데 못 닿았으면 1초마다 다시 길을 찾는다 (입구 대기 뒤 등)
+			if _at_outlet(c, h):
+				_connect_at_outlet(h, c, tick)
+			elif not leader.is_moving() and not leader.incapacitated and tick % roundi(1.0 / SimClock.TICK_DT) == 0:
+				units.order_move([c.id] as Array[int], h.points[0], pathfinder)
+			continue
 		if h.resupply_until >= 0 and tick >= h.resupply_until:
 			h.resupply_until = -1
 			for ff in c.members():

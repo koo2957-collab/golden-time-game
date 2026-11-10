@@ -21,6 +21,8 @@ class SearchTask:
 	var waypoints: Array[Vector2i] = []
 	var next := 0
 	var level := 1
+	## 닿지 못한 지점으로 다시 길을 찾을 틱
+	var retry_tick := 0
 
 
 class CarryTask:
@@ -486,6 +488,15 @@ func _step_search(t: SearchTask, tick: int) -> void:
 		return
 	if c.leader.is_moving():
 		return
+	# 멈췄는데 아직 그 지점에 닿지 못했다 (입구에서 진입 허가를 기다리는 중 등):
+	# 1초마다 다시 길을 찾고, 길이 아예 없으면 그 지점은 건너뛴다 (예전에는 멈추기만 하면 다음 지점으로 넘어가 밖에서 검색이 끝났다)
+	if t.next < t.waypoints.size() and not _at_waypoint(c, t.waypoints[t.next], t.level):
+		if tick < t.retry_tick:
+			return
+		t.retry_tick = tick + roundi(1.0 / SimClock.TICK_DT)
+		_go(c, t.waypoints[t.next], t.level)
+		if c.leader.is_moving():
+			return
 	t.next += 1
 	if t.next < t.waypoints.size():
 		_go(c, t.waypoints[t.next], t.level)
@@ -527,6 +538,11 @@ func _search_route(room: Compartment, from: Vector2) -> Array[Vector2i]:
 	if route.is_empty():
 		route.append(room.cells[0])
 	return route
+
+
+## 조장이 검색 지점 가까이(같은 층 2칸 안)에 있는가
+func _at_waypoint(c: Crew, cell: Vector2i, level: int) -> bool:
+	return c.leader.level == level and c.leader.pos.distance_to(Vector2(cell) + Vector2(0.5, 0.5)) <= 2.0
 
 
 func _go(c: Crew, cell: Vector2i, level: int) -> void:

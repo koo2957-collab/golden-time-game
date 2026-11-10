@@ -1,7 +1,8 @@
 extends TestSuite
 ## P9: 아파트 스테이지(2-1) 시나리오 3개를 자동 봇으로 끝까지 돌린다.
 ##   최선 봇: 질문 카드에 늘 '최선' 선택지를 고른다 / 무응답 봇: 카드에 답하지 않는다
-##   두 봇 모두 같은 지휘(공격 전략, 발화층 화점진압·발화층·직상층 인명검색)를 한다.
+##   두 봇 모두 같은 지휘(공격 전략, 안전구역·환자 집결지, 출동대 3개부터 RIT 지정,
+##   발화층 화점진압·발화층·직상층 인명검색)를 한다. 차이는 질문 카드 답뿐이다.
 ## 확인: 끝까지 진행되는지(오류 없이 제한 시간까지 또는 종료), 최선 봇이 무응답 봇보다 구조 인원이 많은지.
 ## 시드 변형(발화층 무작위)도 같은 봇으로 한 번 돌린다.
 
@@ -21,6 +22,7 @@ func _play(path: String, answer: bool, seed := -1) -> Dictionary:
 	sim.tactical.set_level("입문")
 	var fire_lv := sim.fire_floor_reported()
 	sim.issue(CommandOrder.make("strategy", [], CommandSystem.Strategy.OFFENSIVE))
+	_zones(sim)
 	var answered := 0
 	var next_order := 0
 	var limit := roundi(PLAY_S / SimClock.TICK_DT)
@@ -46,6 +48,25 @@ func _play(path: String, answer: bool, seed := -1) -> Dictionary:
 		"fire_floor": fire_lv, "victims": sim.rescue.victims.size()}
 
 
+## 건물에서 떨어진 바깥 6×6 안전구역과 그 가운데 환자 집결지 (무전으로 지정)
+func _zones(sim: SimWorld) -> void:
+	var b := sim.building
+	var fp := b.footprint(1)
+	for y in range(fp.end.y + 2, b.height - 6):
+		for x in range(fp.position.x, b.width - 6):
+			var r := Rect2i(x, y, 6, 6)
+			if sim.zones.safe_reject_reason(r) == "":
+				sim.issue(CommandOrder.make("zone", [], 0, Vector3i.ZERO, {"kind": "safe", "rect": [r.position.x, r.position.y, r.size.x, r.size.y]}))
+				return
+
+
+## 안전구역이 무전으로 정해지면 그 가운데 환자 집결지 (안전구역이 먼저여야 한다)
+func _casualty(sim: SimWorld) -> void:
+	if sim.zones.has_safe() and sim.zones.casualty.x < 0 and not sim.command.radio.busy():
+		var m := sim.zones.safe.get_center()
+		sim.issue(CommandOrder.make("zone", [], 0, Vector3i.ZERO, {"kind": "casualty", "cell": [m.x, m.y]}))
+
+
 ## 최선 선택지 (없으면 첫 번째)
 func _best(c: CardSystem.Card) -> int:
 	for i in c.options.size():
@@ -56,12 +77,24 @@ func _best(c: CardSystem.Card) -> int:
 
 ## 현장에 있는 조마다 임무 (할 일이 없는 조만, 진입 허가는 입구에서 카드로): 진압대 첫 조 화점진압, 나머지 발화층·직상층 인명검색
 func _orders(sim: SimWorld, fire_lv: int) -> void:
+	_casualty(sim)
+	# 출동대가 3개 이상이면 마지막에 도착한 조 하나를 RIT로 (SSG 9) — 임무를 주지 않는다
+	var on_scene := sim.units.squads.filter(func(s: Squad) -> bool: return sim.command.resources.on_scene(s.id))
+	var rit := sim.command.safety.crews_with(SafetySystem.Role.RIT)
+	if on_scene.size() >= 3 and rit.is_empty():
+		for c in sim.units.crews:
+			if sim.command.resources.on_scene(c.squad_id) and not sim.ems.is_ems_crew(c.id) and not c.leader.aboard 					and sim.tactical.task_of_crew(c.id) == null and not _indoor(sim, c):
+				sim.issue(CommandOrder.make("role", [c.id], SafetySystem.Role.RIT))
+				rit = [c.id]
+				break
 	var n := 0
 	for c in sim.units.crews:
 		if not sim.command.resources.on_scene(c.squad_id) or sim.ems.is_ems_crew(c.id) or c.leader.aboard:
 			continue
 		if sim.tactical.task_of_crew(c.id) != null:
 			n += 1
+			continue
+		if sim.command.safety.role_of(c.id) != SafetySystem.Role.NONE:
 			continue
 		var ids: Array[int] = [c.id]
 		if n == 0:
@@ -70,6 +103,10 @@ func _orders(sim: SimWorld, fire_lv: int) -> void:
 			var lv := fire_lv if n % 2 == 1 else mini(fire_lv + 1, sim.building.levels().max())
 			sim.issue(TacticalCommand.make("search_floor", ids, Vector3i(0, 0, lv)))
 		n += 1
+
+
+func _indoor(sim: SimWorld, c: Crew) -> bool:
+	return not sim.building.cell(c.leader.level, floori(c.leader.pos.x), floori(c.leader.pos.y)) in BuildingData.OUTDOOR
 
 
 func _compare(path: String) -> void:

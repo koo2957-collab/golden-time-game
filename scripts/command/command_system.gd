@@ -375,7 +375,12 @@ func entry_verdict(c: Crew, tick: int) -> Dictionary:
 		out.reason = "공기 %d%% — 교체 후 진입" % roundi(low * 100.0)
 		return out
 	var task: TacticalSystem.Task = tactical.task_of_crew(c.id) if tactical else null
-	if task and task.action in ["attack", "attack_floor"] and (h == null or tick < h.water_tick):
+	# 연결송수관(방수구) 수관은 건물 안 방수구에서 결합·충수하므로 입구에서는 마른 호스 가방이 맞다 (SOP 213)
+	var standpipe := h != null and h.outlet >= 0
+	if h and h.to_outlet:
+		hose_text = "방수구 호스 가방 휴대"
+		out.hose = hose_text
+	if task and task.action in ["attack", "attack_floor"] and not standpipe and (h == null or tick < h.water_tick):
 		out.verdict = "wait"
 		out.reason = "진압 임무인데 %s — 물이 찬 수관으로 진입" % hose_text
 		return out
@@ -862,11 +867,12 @@ func _on_entry_received(tick: int, squad_id: int) -> void:
 	if effective_strategy() == Strategy.DEFENSIVE:
 		return
 	entry_allowed[squad_id] = true
-	# 입구에서 기다리던 조: 임무가 없으면 원래 가려던 곳으로 다시 간다 (임무가 있으면 임무가 길을 다시 찾는다)
+	# 입구에서 기다리던 조: 원래 가려던 곳(문 작업 자리·방수 자리·검색 지점 등)으로 다시 간다.
+	# 임무 중이어도 문·방수 단계는 길을 다시 찾지 않으므로 여기서 이어 준다 (P9 봇 점검에서 찾음)
 	for cr in units.squads[squad_id].crews:
 		var w: Dictionary = _entry_waiting.get(cr.id, {})
 		var goal: Vector3i = w.get("goal", Vector3i(-1, -1, -1))
-		if goal.x >= 0 and not cr.leader.is_moving() and (tactical == null or tactical.task_of_crew(cr.id) == null):
+		if goal.x >= 0 and not cr.leader.is_moving():
 			units.order_move([cr.id], goal, pathfinder)
 		_entry_waiting.erase(cr.id)
 	var squad := units.squads[squad_id]

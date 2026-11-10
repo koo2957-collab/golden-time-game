@@ -36,6 +36,8 @@ var water_tick := 0
 ## 휴대 호스 한도를 넘어 차량에서 더 가져오는 중이면 끝나는 틱
 var resupply_until := -1
 var carried_loads := 1
+## 방수구 수관: 호스 가방을 들고 방수구까지 가는 중 (닿으면 거기서 연결해 깐다, P9)
+var to_outlet := false
 
 
 func pattern_name() -> String:

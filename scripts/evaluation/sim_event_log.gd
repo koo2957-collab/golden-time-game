@@ -359,6 +359,8 @@ static func describe_text(e: Dictionary) -> String:
 			text = "송수구가 멀어 연결 못함 — %s%s" % [e.vehicle, _driver(e)]
 		"fdc_not_connected":
 			text = "송수구 미연결 — 방수구 사용 불가 (%s)" % e.crew
+		"hose_to_outlet":
+			text = "방수구로 호스 가방 휴대 — %s (%s 방수구에서 연결)" % [e.crew, e.level]
 		"hose_outlet_laid":
 			text = "%s에서 수관 연장 — %s (%s)" % ["옥내소화전" if e.get("indoor", false) else "방수구", e.crew, e.level]
 		"indoor_hydrant_empty":

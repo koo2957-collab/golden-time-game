@@ -119,3 +119,18 @@ func test_fx_smoke_curtain_flipbook() -> void:
 	assert_eq(FxArt.curtain.get_height(), int(m.h) * int(m.frames), "장을 세로로 쌓은 높이 = 장 높이 × 장 수")
 	assert_eq(FxArt.curtain.get_width(), int(m.w), "가로 한 장")
 	assert_true(float(m.body_v) > 0.5 and float(m.body_v) < 1.0, "연기층 아랫면은 그림 아래쪽, 그 아래는 말려 내려오는 가장자리")
+
+
+func test_fx_smoke_sheet_plume_spill_flipbooks() -> void:
+	# F04 (2026-11-12): 연기층 윗면·불에서 솟는 기둥·개구부 넘침 (tools/blender/smoke_fx.py)
+	assert_true(FxArt.load_all(), "불꽃 그림 불러옴")
+	for pair: Array in [[FxArt.sheet, "smoke_sheet"], [FxArt.plume, "smoke_plume"], [FxArt.spill, "smoke_spill"]]:
+		var tex: Texture2D = pair[0]
+		assert_true(tex != null, "%s.png 있음" % pair[1])
+		var m: Dictionary = FxArt.meta.get(pair[1], {})
+		assert_eq(tex.get_height(), int(m.h) * int(m.frames), "%s: 장을 세로로 쌓은 높이" % pair[1])
+		assert_eq(tex.get_width(), int(m.w), "%s: 가로 한 장" % pair[1])
+	assert_true(float(FxArt.meta.smoke_spill.lintel_v) > 0.5, "넘침 그림의 인방은 아래쪽 (그 위로 솟는다)")
+	var ci := Node2D.new()
+	assert_true(not FxArt.draw_flip(ci, null, "smoke_sheet", PackedVector2Array(), Vector2.ZERO, Vector2.ONE, Color.WHITE, 0), "그림이 없으면 false")
+	ci.free()

@@ -37,6 +37,7 @@ func test_view_params_loaded() -> void:
 	# 연기층 그림 (2026-11-12 사용자 결정: Kenney 연기 덩어리 구름, 윗면 옅게·앞면 진하게, 높이 눈금)
 	assert_eq([p.smoke_top_alpha < p.smoke_front_alpha, p.smoke_max_puffs > 0, p.smoke_row_m, p.smoke_max_rows], [true, true, 0.4, 6], "연기 윗면은 앞면보다 옅게, 덩어리 상한, 0.4m마다 한 줄씩 겹쳐 쌓기(최대 6줄)")
 	assert_eq([p.smoke_outline_below_m, p.smoke_outline_density], [1.8, 0.4], "연기층 아랫면이 1.8m 아래·짙기 0.4 이상이면 그 방 사람은 테두리로")
+	assert_true(p.smoke_sheet_alpha > 0.0 and p.smoke_plume_alpha > 0.0 and p.smoke_spill_alpha > 0.0 and p.smoke_sheet_flow_mps > 0.0, "연기 윗면·기둥·넘침 그림 진하기와 퍼지는 속도")
 
 
 func test_apartment_12f_shows_10_to_14() -> void:
@@ -123,3 +124,52 @@ func test_pick_lower_floor_changes_level() -> void:
 	# 지상층의 도로는 지금 층
 	var hs := _stack(BUILDING_PATH)
 	assert_eq(hs.pick_level(1, proj.to_screen(Vector2(5.5, 30.5)), proj), 1, "1층 바깥 도로")
+
+
+func test_smoke_spills_from_fuller_room_and_outside() -> void:
+	# F04 (2026-11-12): 개구부 윗부분으로 흘러나오는 연기 (Blender 플립북) — 연기층 아랫면이 인방보다 낮을 때만,
+	# 방 사이 문은 연기가 더 찬 방 → 덜 찬 방으로, 나오는 방에서 멀어지는 축 방향
+	var sim := SimWorld.from_scenario("res://data/scenarios/sop214_2_night_upstairs.json")
+	var fire := sim.fire
+	for c in fire.comps:
+		c.layer_depth = 0.0
+		c.soot = 0.0
+	var inner: Opening = null
+	var outer: Opening = null
+	for o in fire.openings:
+		if not o.cells.is_empty() and o.room_a != Opening.OUTSIDE:
+			if o.room_b != Opening.OUTSIDE and inner == null:
+				inner = o
+			elif o.room_b == Opening.OUTSIDE and outer == null:
+				outer = o
+	assert_true(inner != null and outer != null, "방 사이 개구부와 바깥 개구부가 있음")
+	inner.is_open = true
+	outer.is_open = true
+	assert_eq(FloorLayer.smoke_spills(sim, inner.level).size(), 0, "연기가 없으면 넘치지 않음")
+	# 방 사이: room_b 쪽에 연기를 채운다 → room_b 에서 room_a 로
+	var full := fire.comps[inner.room_b]
+	full.layer_depth = full.height - (inner.top - 0.5)
+	full.soot = 0.5
+	var found := false
+	var mid := Vector2.ZERO
+	for cell in inner.cells:
+		mid += (Vector2(cell) + Vector2(0.5, 0.5)) / inner.cells.size()
+	for s in FloorLayer.smoke_spills(sim, inner.level):
+		var at: Vector2 = s[0]
+		if bool(s[4]) and int(s[5]) == inner.room_b and at.is_equal_approx(mid):
+			found = true
+			assert_eq(int(s[6]), inner.room_a, "덜 찬 방으로")
+			var d: Vector2 = s[2]
+			assert_eq(absf(d.x) + absf(d.y), 1.0, "축 방향 단위")
+			var ahead := fire.compartment_at(inner.level, inner.cells[0].x + int(d.x), inner.cells[0].y + int(d.y))
+			assert_true(ahead != full, "연기가 나오는 방 반대쪽으로")
+	assert_true(found, "연기가 더 찬 방에서 문 위로 넘친다")
+	# 바깥: 그 방 연기층이 인방보다 낮으면 밖으로
+	var room := fire.comps[outer.room_a]
+	room.layer_depth = room.height - (outer.top - 0.3)
+	room.soot = 0.5
+	var out_found := false
+	for s in FloorLayer.smoke_spills(sim, outer.level):
+		if not bool(s[4]) and int(s[5]) == outer.room_a:
+			out_found = true
+	assert_true(out_found, "바깥 창·문으로 넘친다")

@@ -27,5 +27,31 @@
   "smoke_noise": {
     "size": 256
   },
+  "smoke_plume": {
+    "fps": 8.0,
+    "frames": 24,
+    "h": 192,
+    "height_m": 2.4,
+    "source": "tools/blender/smoke_fx.py — Blender Cycles 부피 노이즈(정사영), 시간 루프",
+    "w": 120
+  },
+  "smoke_sheet": {
+    "fps": 5.0,
+    "frames": 24,
+    "h": 192,
+    "source": "tools/blender/smoke_fx.py — Blender Cycles 부피 노이즈(정사영), 시간 루프",
+    "tile_m": 2.0,
+    "w": 192
+  },
+  "smoke_spill": {
+    "fps": 8.0,
+    "frames": 24,
+    "h": 200,
+    "height_m": 2.0,
+    "lintel_v": 0.75,
+    "out_m": 1.6,
+    "source": "tools/blender/smoke_fx.py — Blender Cycles 부피 노이즈(정사영), 시간 루프",
+    "w": 160
+  },
   "source": "불꽃·연기 질감: shaders/fx_*.gdshader로 구움. 연기·불덩이·섬광 덩어리: Kenney Smoke Particles (CC0)"
 }

@@ -10,8 +10,15 @@ static var _loaded := false
 static var flame: Texture2D
 static var noise: Texture2D
 static var puffs: Texture2D
-## 연기층 앞면 커튼 플립북 (tools/blender/smoke_fx.py로 구움). 없으면 null
+## Blender로 구운 연기 플립북 (tools/blender/smoke_fx.py, 장을 세로로 쌓음). 없으면 null
+## 연기층 앞면 커튼
 static var curtain: Texture2D
+## 연기층 윗면 (가로·세로 타일)
+static var sheet: Texture2D
+## 불에서 솟아 천장에 퍼지는 기둥
+static var plume: Texture2D
+## 개구부 윗부분으로 흘러나와 말려 오르는 연기
+static var spill: Texture2D
 static var meta: Dictionary = {}
 
 
@@ -25,6 +32,9 @@ static func load_all() -> bool:
 	noise = _tex(DIR + "/smoke_noise.png")
 	puffs = _tex(DIR + "/puffs.png")
 	curtain = _tex(DIR + "/smoke_curtain.png")
+	sheet = _tex(DIR + "/smoke_sheet.png")
+	plume = _tex(DIR + "/smoke_plume.png")
+	spill = _tex(DIR + "/smoke_spill.png")
 	return flame != null
 
 
@@ -58,22 +68,32 @@ const PUFF_FLASH := 3
 
 
 ## 연기층 앞면 커튼 (Blender 플립북). 화면 네 점: 위a·위b·아래b·아래a, u0~u1 = 가로 한 장 안의 범위(0~1).
-## 위 = 천장, meta body_v 높이가 연기층 아랫면. 이웃한 두 장을 겹쳐 부드럽게 재생한다. 그림이 없으면 false
+## 위 = 천장, meta body_v 높이가 연기층 아랫면. 그림이 없으면 false
 static func draw_curtain(ci: CanvasItem, top_a: Vector2, top_b: Vector2, bot_b: Vector2, bot_a: Vector2, u0: float, u1: float, modulate: Color, seed: int) -> bool:
-	if not load_all() or curtain == null:
+	if not load_all():
 		return false
-	var m: Dictionary = meta.get("smoke_curtain", {})
-	var frames := int(m.get("frames", 24))
+	return draw_flip(ci, curtain, "smoke_curtain", PackedVector2Array([top_a, top_b, bot_b, bot_a]), Vector2(u0, 0.0), Vector2(u1, 1.0), modulate, seed)
+
+
+## 플립북 한 조각: tex = 장을 세로로 쌓은 그림, key = fx.json 이름(장 수·속도).
+## 화면 네 점(pts) ↔ 한 장 안의 uv 사각형 (uv0.x,uv0.y)·(uv1.x,uv0.y)·(uv1.x,uv1.y)·(uv0.x,uv1.y).
+## 이웃한 두 장을 겹쳐 부드럽게 재생하고, seed로 시작 장을 다르게 한다. 그림이 없으면 false
+static func draw_flip(ci: CanvasItem, tex: Texture2D, key: String, pts: PackedVector2Array, uv0: Vector2, uv1: Vector2, modulate: Color, seed: int) -> bool:
+	if tex == null:
+		return false
+	var m: Dictionary = meta.get(key, {})
+	var frames := maxi(1, int(m.get("frames", 24)))
 	var f := Time.get_ticks_msec() / 1000.0 * float(m.get("fps", 6.0)) + float(posmod(seed * 7, frames))
 	var f0 := posmod(int(floorf(f)), frames)
 	var w := f - floorf(f)
-	var inset := 0.5 / float(curtain.get_height())
-	var pts := PackedVector2Array([top_a, top_b, bot_b, bot_a])
+	var inset := 0.5 / float(tex.get_height())
+	var span := 1.0 / frames
 	for pair: Array in [[f0, 1.0], [(f0 + 1) % frames, w]]:
-		var v0 := float(pair[0]) / frames + inset
-		var v1 := (float(pair[0]) + 1.0) / frames - inset
+		var base := float(pair[0]) * span
+		var va := clampf(base + uv0.y * span, base + inset, base + span - inset)
+		var vb := clampf(base + uv1.y * span, base + inset, base + span - inset)
 		var c := Color(modulate, modulate.a * float(pair[1]))
-		ci.draw_polygon(pts, PackedColorArray([c, c, c, c]), PackedVector2Array([Vector2(u0, v0), Vector2(u1, v0), Vector2(u1, v1), Vector2(u0, v1)]), curtain)
+		ci.draw_polygon(pts, PackedColorArray([c, c, c, c]), PackedVector2Array([Vector2(uv0.x, va), Vector2(uv1.x, va), Vector2(uv1.x, vb), Vector2(uv0.x, vb)]), tex)
 	return true
 
 

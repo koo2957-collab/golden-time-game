@@ -670,6 +670,11 @@ func _draw_shell_plumes() -> void:
 			levels.append([it.level, it.h0, it.h1 - it.h0])
 	for row: Array in levels:
 		var base: float = row[1] + row[2] * 0.7
+		if FxArt.spill != null:
+			for sp in smoke_spills(sim, int(row[0])):
+				if not bool(sp[4]):
+					_draw_spill(sp, float(row[1]), float(row[2]), int(sp[5]))
+			continue
 		for line in smoke_outlets(sim, int(row[0])):
 			var at: Vector2 = line[0]
 			var strength: float = line[1]
@@ -1649,6 +1654,8 @@ func _draw_smoke() -> void:
 	# 대원 머리 높이를 지나면 대원 상체가 연기에 묻혀 보인다.
 	# 지금 보이는 방은 실제 상태, 본 적 있는 방은 마지막으로 확인한 상태(흐리게), 모르는 방은 그리지 않는다
 	var p := sim.perception
+	# 불에서 솟는 연기 기둥 (연기층보다 먼저 — 위쪽은 연기층에 묻힌다)
+	var fires := _draw_fire_plumes()
 	for c in rooms:
 		var layer_d := c.layer_depth
 		var vis := sim.fire.visibility_m(c)
@@ -1668,7 +1675,7 @@ func _draw_smoke() -> void:
 		var h := CEILING_M - layer_d
 		if h < stack.params.smoke_outline_below_m and density >= stack.params.smoke_outline_density:
 			_smoky[c.index] = true
-		if _draw_smoke_cloud(c, h, layer_d, a, density):
+		if _draw_smoke_cloud(c, h, layer_d, a, density, fires):
 			if c.rollover and p.room_visible(c):
 				_draw_rollover(r, h)
 			continue
@@ -1687,7 +1694,8 @@ func _draw_smoke() -> void:
 		draw_polyline(plane, Color(FireView.SMOKE_COLOR.darkened(0.3), minf(1.0, a + 0.15)), 1.5)
 		if c.rollover and p.room_visible(c):
 			_draw_rollover(r, h)
-	_draw_smoke_plumes()
+	if not _draw_smoke_spills():
+		_draw_smoke_plumes()
 	if _smoke_outline:
 		_smoke_outline.queue_redraw()
 
@@ -1698,7 +1706,7 @@ func _draw_smoke() -> void:
 ## 방 안쪽: 맨 아래 줄 하나만 옅게 (바닥·대원이 비친다).
 ## 덩어리는 제자리에서 천천히 아래로 흘러내리며 옅어지고 위에서 다시 생긴다 (smoke_sink_s 주기).
 ## 짙으면(가시거리 짧음) 검은 연기, 옅으면 회색 연기
-func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density: float) -> bool:
+func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density: float, fires: Array[Vector2] = []) -> bool:
 	if FxArt.puffs == null and not FxArt.load_all():
 		return false
 	if FxArt.puffs == null:
@@ -1718,9 +1726,14 @@ func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density
 	var ny := maxi(1, ceili(r.size.y / step))
 	# 커튼 방식: 앞면은 Blender로 구운 커튼이 맡고, 덩어리는 방 안쪽 아랫면 한 줄만
 	var curtain := sp.smoke_style == "curtain" and FxArt.curtain != null
+	# 윗면 그림이 있으면 방 안쪽 덩어리 대신 연기 판 하나
+	var sheet := curtain and FxArt.sheet != null
+	var col := Color(0.36, 0.36, 0.38) if dark else Color(0.8, 0.81, 0.84)
+	if sheet:
+		_draw_smoke_sheet(r, h, Color(col, minf(sp.smoke_sheet_alpha, a * 1.3)), c.index, _spread_dir(r, fires))
 	# 그릴 덩어리: [깊이 순서, 칸, 줄]. 뒤(북서)에서 앞(남동)으로, 같은 자리는 위 줄부터
 	var draws: Array = []
-	for j in ny:
+	for j in (0 if sheet else ny):
 		for i in nx:
 			var front := (i == nx - 1 or j == ny - 1) and not curtain
 			for k in (rows if front else 1):
@@ -1756,7 +1769,6 @@ func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density
 		var bottom := proj.to_screen(at, bottom_m)
 		FxArt.draw_puff_rect(self, Rect2(bottom - Vector2(w * 0.5, hh * 0.9), Vector2(w, hh)), kind, seed, Color(tint, alpha))
 	if curtain:
-		var col := Color(0.36, 0.36, 0.38) if dark else Color(0.8, 0.81, 0.84)
 		_draw_curtain_faces(r, h, Color(col, minf(sp.smoke_curtain_alpha, a + 0.1)), c.index)
 	return true
 
@@ -1782,6 +1794,177 @@ func _draw_curtain_faces(r: Rect2i, h: float, col: Color, seed: int) -> void:
 			var pb := Vector2(fixed, e) if face == 0 else Vector2(e, fixed)
 			FxArt.draw_curtain(self, proj.to_screen(pa, CEILING_M), proj.to_screen(pb, CEILING_M), proj.to_screen(pb, bottom), proj.to_screen(pa, bottom), u0, u1, col, seed + face)
 			s = e
+
+
+## 연기층 윗면 (Blender 플립북, 가로·세로 타일): 방 바닥 모양 그대로 연기층 아랫면 높이(h)에 깐다.
+## 연기층이 내려오면 판 전체가 내려온다. 틈으로 바닥·대원이 비친다.
+## spread: 무늬가 흘러가는 방향 (불난 방에서 멀어지는 쪽 — 연기가 퍼지는 모습). 불난 방은 제자리에서 끓는다
+func _draw_smoke_sheet(r: Rect2i, h: float, col: Color, seed: int, spread: Vector2) -> void:
+	var m: Dictionary = FxArt.meta.get("smoke_sheet", {})
+	var cell := sim.building.cell_size_m
+	var tile := maxf(1.0, float(m.get("tile_m", 2.0)) / cell)
+	var t := Time.get_ticks_msec() / 1000.0
+	# 무늬를 spread 쪽으로 밀면 그림 좌표는 반대로 간다
+	var off := (-spread * stack.params.smoke_sheet_flow_mps / cell * t).posmod(tile)
+	var x := float(r.position.x)
+	while x < r.end.x - 0.001:
+		var kx := floorf((x + off.x) / tile + 0.0001)
+		var xe := minf(r.end.x, (kx + 1.0) * tile - off.x)
+		var u0 := maxf(0.0, (x + off.x) / tile - kx)
+		var u1 := u0 + (xe - x) / tile
+		var y := float(r.position.y)
+		while y < r.end.y - 0.001:
+			var ky := floorf((y + off.y) / tile + 0.0001)
+			var ye := minf(r.end.y, (ky + 1.0) * tile - off.y)
+			var v0 := maxf(0.0, (y + off.y) / tile - ky)
+			var v1 := v0 + (ye - y) / tile
+			var pts := PackedVector2Array([proj.to_screen(Vector2(x, y), h), proj.to_screen(Vector2(xe, y), h),
+				proj.to_screen(Vector2(xe, ye), h), proj.to_screen(Vector2(x, ye), h)])
+			FxArt.draw_flip(self, FxArt.sheet, "smoke_sheet", pts, Vector2(u0, v0), Vector2(u1, v1), col, seed)
+			y = ye
+		x = xe
+
+
+## 연기가 퍼지는 방향: 가장 가까운 불난 곳에서 이 방 쪽 (불난 방 자신·불 없음이면 0)
+func _spread_dir(r: Rect2i, fires: Array[Vector2]) -> Vector2:
+	var center := Vector2(r.get_center())
+	var best := Vector2.ZERO
+	var best_d := INF
+	for f in fires:
+		if Rect2(r).has_point(f):
+			return Vector2.ZERO
+		var d := center.distance_squared_to(f)
+		if d < best_d:
+			best_d = d
+			best = f
+	return Vector2.ZERO if best_d == INF else (center - best).normalized()
+
+
+## 불에서 솟아 천장에 부딪혀 퍼지는 연기 기둥 (Blender 플립북). 방마다 타는 칸 가운데에 하나,
+## 타는 칸이 많을수록 굵게. 불꽃과 같은 정보 규칙 — 보이는 불은 진하게, 본 적 있는 불은 흐리게.
+## 돌려주는 값: 불난 곳들(방마다 타는 칸 가운데, 셀 좌표) — 연기층 무늬가 퍼지는 방향에 쓴다
+func _draw_fire_plumes() -> Array[Vector2]:
+	var fires: Array[Vector2] = []
+	var grid := sim.fire.grid
+	var p := sim.perception
+	var sums := {}
+	for i in grid.burning:
+		var c3 := grid.cell_of(i)
+		if c3.z != level:
+			continue
+		var fade := 1.0
+		if not p.is_visible(level, c3.x, c3.y):
+			if not (p.is_seen(level, c3.x, c3.y) and p.seen_burning[i] == 1):
+				continue
+			fade = 0.4
+		var comp := sim.fire.compartment_at(level, c3.x, c3.y)
+		var key := comp.index if comp else -1
+		var acc: Array = sums.get(key, [Vector2.ZERO, 0, 0.0])
+		sums[key] = [acc[0] + Vector2(c3.x, c3.y) + Vector2(0.5, 0.5), int(acc[1]) + 1, maxf(float(acc[2]), fade)]
+	var sp := stack.params
+	for key: int in sums:
+		var acc: Array = sums[key]
+		var n := float(acc[1])
+		var at: Vector2 = acc[0] / n
+		fires.append(at)
+		if FxArt.plume == null:
+			continue
+		var base := _furniture_height(floori(at.x), floori(at.y)) + 0.5
+		if base > CEILING_M - 0.4:
+			continue
+		var bottom := proj.to_screen(at, base)
+		var top := proj.to_screen(at, CEILING_M)
+		var hh := bottom.y - top.y
+		var m: Dictionary = FxArt.meta.get("smoke_plume", {})
+		var ratio := float(m.get("w", 120)) / maxf(1.0, float(m.get("h", 192)))
+		var hw := hh * ratio * clampf(0.6 + 0.1 * n, 0.7, 1.4) * 0.5
+		var col := Color(0.32, 0.32, 0.34, sp.smoke_plume_alpha * float(acc[2]) * clampf(0.5 + 0.1 * n, 0.5, 1.0))
+		FxArt.draw_flip(self, FxArt.plume, "smoke_plume", PackedVector2Array([top + Vector2(-hw, 0), top + Vector2(hw, 0),
+			bottom + Vector2(hw, 0), bottom + Vector2(-hw, 0)]), Vector2.ZERO, Vector2.ONE, col, key + 3)
+	return fires
+
+
+## 개구부 윗부분으로 흘러나오는 연기 (Blender 플립북): 바깥으로 난 창·문에서 밖으로 나와 솟아오른다.
+## 방 사이 문은 그리지 않는다 — 인방~천장 틈이 좁아 눌러 그리면 검은 붓 자국처럼 보이고,
+## 옆방으로 번진 연기는 그 방 연기층(윗면·커튼)이 보여 준다. 그림이 없으면 false (예전 덩어리 기둥으로)
+func _draw_smoke_spills() -> bool:
+	if FxArt.spill == null:
+		return false
+	for s in smoke_spills(sim, level):
+		if not bool(s[4]):
+			_draw_spill(s, 0.0, CEILING_M, int(s[5]))
+	return true
+
+
+## 흘러나오는 연기 한 줄기. floor_h = 그 층 바닥 높이, ceil_m = 층 높이 (방 사이 문은 천장까지만)
+func _draw_spill(s: Array, floor_h: float, ceil_m: float, seed: int) -> void:
+	var m: Dictionary = FxArt.meta.get("smoke_spill", {})
+	var cell := sim.building.cell_size_m
+	var at: Vector2 = s[0]
+	var dir: Vector2 = s[2]
+	var top: float = s[3]
+	var interior: bool = s[4]
+	var img_h := float(m.get("height_m", 2.0))
+	var lintel := (1.0 - float(m.get("lintel_v", 0.75))) * img_h
+	# 세로 배율: 밖은 그대로 솟고, 방 사이 문은 인방~천장 틈에 맞춰 눌러 그린다
+	var k := 1.0 if not interior else clampf((ceil_m - top) / maxf(0.1, img_h - lintel), 0.3, 1.0)
+	var out := float(m.get("out_m", 1.6)) * (0.75 if interior else 1.0) * (0.7 + 0.4 * float(s[1])) / cell
+	var wall := at + dir * 0.5
+	var lo := floor_h + top - lintel * k
+	var hi := floor_h + top + (img_h - lintel) * k
+	var dark := float(s[1]) >= 0.6
+	var col := Color(0.34, 0.34, 0.36) if dark else Color(0.78, 0.79, 0.82)
+	col.a = stack.params.smoke_spill_alpha * clampf(float(s[1]), 0.3, 1.0)
+	FxArt.draw_flip(self, FxArt.spill, "smoke_spill", PackedVector2Array([proj.to_screen(wall, hi), proj.to_screen(wall + dir * out, hi),
+		proj.to_screen(wall + dir * out, lo), proj.to_screen(wall, lo)]), Vector2.ZERO, Vector2.ONE, col, seed)
+
+
+## 개구부로 넘치는 연기: [위치(개구부 가운데, 셀), 세기 0~1, 흐르는 방향(셀 단위 축), 인방 높이(m),
+## 방 사이 문인가, 연기가 나오는 방 번호, 받는 방 번호(밖이면 나오는 방)]
+static func smoke_spills(p_sim: SimWorld, lv: int) -> Array[Array]:
+	var out: Array[Array] = []
+	var fire := p_sim.fire
+	for o in fire.openings:
+		if o.level != lv or not o.is_open or o.cells.is_empty() or o.room_a == Opening.OUTSIDE:
+			continue
+		var src := fire.comps[o.room_a]
+		var dst := src
+		var interior := o.room_b != Opening.OUTSIDE
+		if interior:
+			var cb := fire.comps[o.room_b]
+			# 연기층 아랫면이 더 낮은(연기가 더 찬) 방에서 나온다
+			if cb.height - cb.layer_depth < src.height - src.layer_depth:
+				dst = src
+				src = cb
+			else:
+				dst = cb
+			var gap := (dst.height - dst.layer_depth) - (src.height - src.layer_depth)
+			if gap < 0.15:
+				continue
+		if src.height - src.layer_depth >= o.top or src.soot <= 0.001:
+			continue
+		var center := Vector2.ZERO
+		for cell in o.cells:
+			center += Vector2(cell) + Vector2(0.5, 0.5)
+		center /= o.cells.size()
+		var density := 1.0 - clampf(fire.visibility_m(src) / 10.0, 0.0, 1.0)
+		out.append([center, clampf(0.3 + density, 0.0, 1.0), _spill_dir(p_sim, lv, o, src, dst, center), o.top, interior, src.index, dst.index])
+	return out
+
+
+## 나오는 방에서 멀어지는 축 방향: 개구부 칸 양옆을 보고 정한다 (안 되면 방 가운데 → 개구부)
+static func _spill_dir(p_sim: SimWorld, lv: int, o: Opening, src: Compartment, dst: Compartment, center: Vector2) -> Vector2:
+	var c0 := o.cells[0]
+	for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		var back := p_sim.fire.compartment_at(lv, c0.x - d.x, c0.y - d.y)
+		var ahead := p_sim.fire.compartment_at(lv, c0.x + d.x, c0.y + d.y)
+		if back == src and ahead != src:
+			return Vector2(d)
+	var target := Vector2(dst.rect.get_center()) if dst != src else center
+	var v := target - Vector2(src.rect.get_center())
+	if v == Vector2.ZERO:
+		return Vector2(1, 0)
+	return Vector2(signf(v.x), 0) if absf(v.x) >= absf(v.y) else Vector2(0, signf(v.y))
 
 
 ## 0~1 고정 난수 (덩어리 위치 흩뜨리기)

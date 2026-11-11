@@ -53,7 +53,7 @@ func _run() -> void:
 	# F01 (2026-11-11): 다른 층은 실루엣(벽 선·사람 테두리)만 — 흐리게 하지 않고 ghost로 그린다
 	_check("아래층은 220px씩 아래·실루엣", [iso.layers[0].ghost, iso.layers[1].position.y, iso.layers[1].ghost, iso.layers[2].ghost], [false, 220.0, true, true])
 	_check("위층 13·14층은 220px씩 위에 실루엣", [iso.upper_layers[0].visible, iso.upper_layers[0].level, iso.upper_layers[1].level, iso.upper_layers[0].position.y, iso.upper_layers[0].ghost], [true, 13, 14, -220.0, true])
-	_check("12층 남쪽 앞벽은 잘린 벽(0.2m)", iso.layers[0]._wall_height(8, 19), 0.2)
+	_check("12층 남쪽 앞벽은 천장 높이 반투명 (2026-11-11 결정)", iso.layers[0]._wall_height(8, 19), 2.4)
 	_check("12층 북쪽 뒷벽은 천장까지", iso.layers[0]._wall_height(10, 4), 2.4)
 	_check("계단이 11층에서 12층으로 이어짐 (11층 노드의 계단 디딤판 20칸)", iso.layers[1]._ramp_cells().size(), 20)
 	_check("12층 바닥은 계단실 자리가 뚫림", iso.layers[0].lower_level, 11)

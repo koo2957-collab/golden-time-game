@@ -16,7 +16,8 @@ func test_view_params_loaded() -> void:
 	assert_eq([p.visible_floors_above, p.above_alpha], [2, 0.25], "위 2개 층, 반투명 0.25")
 	assert_eq(p.visible_floors_below, 2, "아래 2개 층")
 	assert_eq(p.below_modulate, [0.75, 0.55] as Array[float], "아래 층 밝기")
-	assert_eq(p.front_wall, "cut", "앞벽은 잘린 벽")
+	assert_eq(p.front_wall, "glass", "앞벽은 반투명 (2026-11-11 결정)")
+	assert_eq([p.front_wall_alpha, p.inner_wall_m, p.adjacent_alpha], [0.15, 1.2, 0.1], "앞벽 15%, 실내 벽 1.2m, 바로 위·아래 층 10%")
 	assert_eq(p.wall_cut_m, 0.2, "잘린 벽 20cm")
 
 
@@ -55,12 +56,12 @@ func test_apartment_12f_wall_shapes() -> void:
 	var s := _stack(APT)
 	assert_eq(s.wall_kind(12, 10, 4), FloorStack.Wall.FULL, "북쪽 외벽(창)은 뒷벽 — 온전")
 	assert_eq(s.wall_kind(12, 6, 10), FloorStack.Wall.FULL, "서쪽 외벽은 뒷벽 — 온전")
-	assert_eq(s.wall_kind(12, 8, 19), FloorStack.Wall.CUT, "남쪽 외벽은 앞벽 — 잘린 벽")
-	assert_eq(s.wall_kind(12, 10, 19), FloorStack.Wall.CUT, "남쪽 창도 잘린 벽")
-	assert_eq(s.wall_kind(12, 53, 10), FloorStack.Wall.CUT, "동쪽 외벽은 앞벽 — 잘린 벽")
-	assert_eq(s.wall_kind(12, 53, 19), FloorStack.Wall.CUT, "남동 모서리는 잘린 벽")
+	assert_eq(s.wall_kind(12, 8, 19), FloorStack.Wall.GLASS, "남쪽 외벽은 앞벽 — 반투명")
+	assert_eq(s.wall_kind(12, 10, 19), FloorStack.Wall.GLASS, "남쪽 창 자리도 앞벽 (창 자체는 진하게)")
+	assert_eq(s.wall_kind(12, 53, 10), FloorStack.Wall.GLASS, "동쪽 외벽은 앞벽 — 반투명")
+	assert_eq(s.wall_kind(12, 53, 19), FloorStack.Wall.GLASS, "남동 모서리도 반투명")
 	assert_eq(s.wall_kind(12, 6, 19), FloorStack.Wall.FULL, "남서 모서리 기둥은 건물 모양을 남김")
-	assert_eq(s.wall_kind(12, 20, 12), FloorStack.Wall.CUT, "실내 벽은 잘린 벽")
+	assert_eq(s.wall_kind(12, 20, 12), FloorStack.Wall.HALF, "실내 벽은 허리 높이 (위로 갈수록 투명)")
 	assert_eq(s.wall_kind(12, 15, 15), FloorStack.Wall.HIDDEN, "바닥은 벽이 아님")
 	assert_true(s.is_back_wall(12, 10, 4) and not s.is_back_wall(12, 8, 19), "뒷벽·앞벽 구분")
 	# 외부 보기는 외벽이 모두 닫힌다

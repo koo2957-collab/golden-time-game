@@ -6,7 +6,8 @@ extends RefCounted
 ## - 벽: 바깥이 북·서쪽에 붙은 외벽(뒷벽, 카메라에서 먼 쪽)은 온전하게 세워 건물 모양을 남기고,
 ##   앞벽(남·동)과 실내 벽은 잘린 벽(또는 숨김)이다. 외부 보기에서는 외벽이 모두 온전하다.
 
-enum Wall { FULL, CUT, HIDDEN }
+## GLASS: 앞 바깥벽(남·동) 천장 높이 반투명 / HALF: 실내 벽 허리 높이, 위로 갈수록 투명 (front_wall = "glass")
+enum Wall { FULL, CUT, HIDDEN, GLASS, HALF }
 
 ## 앞쪽 모서리 방향 (슬래브 단면 띠를 그리는 쪽)
 const EDGE_SOUTH := 1
@@ -93,6 +94,8 @@ func wall_kind(lv: int, x: int, y: int, exterior := false) -> int:
 	# 북(1)·서(2)에 바깥이 붙은 벽 = 뒷벽
 	if outside & 3:
 		return Wall.FULL
+	if params.front_wall == "glass":
+		return Wall.GLASS if outside != 0 else Wall.HALF
 	return Wall.HIDDEN if params.front_wall == "hidden" else Wall.CUT
 
 

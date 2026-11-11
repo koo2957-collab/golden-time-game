@@ -13,7 +13,12 @@ var pick_h_px := 64.0
 var pick_magnet_px := 30.0
 var below_modulate: Array[float] = [0.75, 0.55]
 ## "cut"(잘린 벽) 또는 "hidden"(숨김)
-var front_wall := "cut"
+var front_wall := "glass"
+var front_wall_alpha := 0.15
+var wall_cap_alpha := 0.75
+var inner_wall_m := 1.2
+var inner_wall_top_alpha := 0.2
+var adjacent_alpha := 0.1
 var wall_cut_m := 0.2
 var slab_m := 0.3
 var transition_s := 0.3
@@ -54,6 +59,11 @@ func apply(data: Dictionary) -> void:
 	for m: Variant in _value(data, "below_modulate", [0.75, 0.55]):
 		below_modulate.append(float(m))
 	front_wall = str(_value(data, "front_wall", front_wall))
+	front_wall_alpha = float(_value(data, "front_wall_alpha", front_wall_alpha))
+	wall_cap_alpha = float(_value(data, "wall_cap_alpha", wall_cap_alpha))
+	inner_wall_m = float(_value(data, "inner_wall_m", inner_wall_m))
+	inner_wall_top_alpha = float(_value(data, "inner_wall_top_alpha", inner_wall_top_alpha))
+	adjacent_alpha = float(_value(data, "adjacent_alpha", adjacent_alpha))
 	wall_cut_m = float(_value(data, "wall_cut_m", wall_cut_m))
 	slab_m = float(_value(data, "slab_m", slab_m))
 	transition_s = float(_value(data, "transition_s", transition_s))

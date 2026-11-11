@@ -144,8 +144,8 @@ func _apply() -> void:
 		layer.visible = true
 		_configure(layer, depth, shown, _exterior)
 		layer.position = Vector2(0, stack.offset_px(depth))
-		# 아래층은 실루엣(벽 선·사람 테두리)만 — 흐리게 하지 않는다 (F01)
-		layer.ghost = depth > 0
+		# 바로 아래층은 회백색 10%, 그 아래는 건물 외관 덩어리 (2026-11-11 사용자 결정)
+		layer.ghost_mode = 0 if depth == 0 else (1 if depth == 1 else 2)
 		layer.modulate = Color.WHITE
 	# 위층: 지금 층 위로 FLOOR_GAP_PX씩 올려 반투명 (외부 보기에서는 숨김)
 	var above: Array[int] = []
@@ -163,7 +163,8 @@ func _apply() -> void:
 		up.thermal = thermal
 		up.upper_level = above[k + 1] if k + 1 < above.size() else -1
 		up.lower_level = above[k - 1] if k > 0 else _level
-		up.ghost = true
+		# 바로 위층은 회백색 10%, 더 위는 잘라 냄(사람 테두리만) — 지금 층을 가리지 않게
+		up.ghost_mode = 1 if k == 0 else 3
 		up.refresh()
 		up.position = Vector2(0, -stack.offset_px(k + 1))
 		# 위층도 실루엣만 (F01) — 투명도는 선 색에 들어 있다

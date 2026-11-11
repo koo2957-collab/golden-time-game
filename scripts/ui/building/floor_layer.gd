@@ -119,6 +119,15 @@ var ghost := false:
 			if _ghost_units:
 				_ghost_units.visible = v
 			queue_redraw()
+## 다른 층 그리는 방식: 0 지금 층 / 1 바로 위·아래 / 2 먼 아래층(외관 덩어리) / 3 먼 위층(사람 테두리만). ghost는 0이 아닐 때 켜진다
+var ghost_mode := 0:
+	set(v):
+		if v != ghost_mode:
+			ghost_mode = v
+			ghost = v != 0
+			queue_redraw()
+var _ghost_outdoor_idx: Dictionary = {}  # level -> 바깥 땅 칸 삼각형 index
+var _ghost_floor_idx: Dictionary = {}  # level -> 실내 바닥 칸 삼각형 index
 const GHOST_WALL := Color(1, 1, 1, 0.42)
 const GHOST_INNER := Color(1, 1, 1, 0.34)
 const GHOST_FIRE_WALL := Color(1.0, 0.55, 0.15, 0.8)
@@ -1171,7 +1180,14 @@ func _draw_cell_objects(x: int, y: int) -> void:
 	match t:
 		BuildingData.Cell.WALL:
 			var wh := _wall_height(x, y)
-			_block(x, y, 0.0, wh, _structure_color(skin.color("wall")), _cut_top(wh))
+			match stack.wall_kind(level, x, y, _outside()):
+				FloorStack.Wall.GLASS:
+					_wall_piece(x, y, 0.0, wh, _structure_color(skin.color("wall")), stack.params.front_wall_alpha, stack.params.front_wall_alpha, stack.params.wall_cap_alpha)
+				FloorStack.Wall.HALF:
+					var ta := stack.params.inner_wall_top_alpha
+					_wall_piece(x, y, 0.0, wh, _structure_color(skin.color("wall")), 1.0, ta, maxf(ta, 0.35))
+				_:
+					_block(x, y, 0.0, wh, _structure_color(skin.color("wall")), _cut_top(wh))
 		BuildingData.Cell.WINDOW:
 			_draw_window(x, y)
 		BuildingData.Cell.DOOR:
@@ -1267,8 +1283,12 @@ func _draw_window(x: int, y: int) -> void:
 		return
 	_block(x, y, 0.0, WINDOW_SILL_M, wall)
 	if glass.a > 0.0:
-		_block(x, y, WINDOW_SILL_M, WINDOW_TOP_M, glass)
-	_block(x, y, WINDOW_TOP_M, h, wall)
+		_block(x, y, WINDOW_SILL_M, minf(WINDOW_TOP_M, h), glass)
+	# 창 위 벽: 앞 바깥벽이면 벽과 같은 반투명 (창 자체는 진하게 — 깨서 배연하는 대상)
+	if stack.wall_kind(level, x, y, _outside()) == FloorStack.Wall.GLASS:
+		_wall_piece(x, y, WINDOW_TOP_M, h, wall, stack.params.front_wall_alpha, stack.params.front_wall_alpha, stack.params.wall_cap_alpha)
+	else:
+		_block(x, y, WINDOW_TOP_M, h, wall)
 
 
 func _draw_flame(x: int, y: int, base_m: float) -> void:
@@ -1812,6 +1832,39 @@ func _box(p0: Vector2, p1: Vector2, h0: float, h1: float, color: Color, side_col
 	_quad(nw + hi, ne + hi, se + hi, sw + hi, top_color if top_color.a > 0.0 else color)
 
 
+## 투명한 벽 한 칸: 이웃이 벽(벽·문·창)인 쪽 면은 그리지 않아 겹친 이음새가 보이지 않는다.
+## 면은 바닥(a0) → 꼭대기(a1)로 진하기가 바뀐다. 꼭대기 윗면은 cap 진하기 (벽 경계가 또렷하게)
+func _wall_piece(x: int, y: int, h0: float, h1: float, color: Color, a0: float, a1: float, cap: float) -> void:
+	if h1 <= h0:
+		return
+	var b := sim.building
+	var wallish := [BuildingData.Cell.WALL, BuildingData.Cell.DOOR, BuildingData.Cell.WINDOW]
+	var nw := proj.to_screen(Vector2(x, y))
+	var ne := proj.to_screen(Vector2(x + 1, y))
+	var se := proj.to_screen(Vector2(x + 1, y + 1))
+	var sw := proj.to_screen(Vector2(x, y + 1))
+	var lo := Vector2(0, -h0 * IsoProjection.PX_PER_M)
+	var hi := Vector2(0, -h1 * IsoProjection.PX_PER_M)
+	if not (b.in_bounds(x, y + 1) and b.cell(level, x, y + 1) in wallish):
+		var c := color.darkened(SOUTH_SHADE)
+		_quad_grad(sw + lo, se + lo, se + hi, sw + hi, Color(c, a0), Color(c, a1))
+	if not (b.in_bounds(x + 1, y) and b.cell(level, x + 1, y) in wallish):
+		var c := color.darkened(EAST_SHADE)
+		_quad_grad(ne + lo, se + lo, se + hi, ne + hi, Color(c, a0), Color(c, a1))
+	_quad(nw + hi, ne + hi, se + hi, sw + hi, Color(_structure_color(skin.color("cut_face")), cap))
+
+
+## 아래 두 점은 bottom 색, 위 두 점은 top 색 (a, b = 아래 / c, d = 위)
+func _quad_grad(a: Vector2, b: Vector2, c: Vector2, d: Vector2, bottom: Color, top: Color) -> void:
+	if _batching:
+		var base := _bq_pts.size()
+		_bq_pts.append_array([a, b, c, d])
+		_bq_cols.append_array([bottom, bottom, top, top])
+		_bq_idx.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
+		return
+	draw_primitive(PackedVector2Array([a, b, c, d]), PackedColorArray([bottom, bottom, top, top]), PackedVector2Array())
+
+
 func _quad(a: Vector2, b: Vector2, c: Vector2, d: Vector2, color: Color) -> void:
 	if _batching:
 		var base := _bq_pts.size()
@@ -1891,12 +1944,15 @@ func _draw_figure(p: Vector2, scale: float, body: Color, helmet: Color, stripes 
 
 
 func _wall_height(x: int, y: int) -> float:
-	# R17: 뒷벽(바깥이 북·서) 천장까지, 앞벽·실내 벽은 잘린 벽. 외부 보기는 외벽이 모두 천장까지
+	# R17: 뒷벽(바깥이 북·서) 천장까지. 외부 보기는 외벽이 모두 천장까지.
+	# 2026-11-11: 앞 바깥벽은 천장 높이 반투명(GLASS), 실내 벽은 허리 높이(HALF)
 	match stack.wall_kind(level, x, y, _outside()):
-		FloorStack.Wall.FULL:
+		FloorStack.Wall.FULL, FloorStack.Wall.GLASS:
 			return CEILING_M
 		FloorStack.Wall.CUT:
 			return stack.params.wall_cut_m
+		FloorStack.Wall.HALF:
+			return stack.params.inner_wall_m
 	return 0.0
 
 
@@ -2203,37 +2259,93 @@ func _ghost_wall_runs(lv: int) -> Array:
 	return runs
 
 
-## 다른 층 = 유리 상자 (2026-11-11 사용자 결정): 벽을 높이 있는 면으로 — 바깥벽은 반투명 실선(위·아래·양 끝 세로선),
-## 확인된 내부 벽은 옅은 반투명 면 + 반투명 점선 테두리, 모르는 곳의 내부 벽은 그리지 않는다. 불을 아는 방의 벽은 주황
+## 다른 층 (2026-11-11 사용자 결정):
+##   ghost_mode 1 = 바로 위·아래 층: 벽·바닥만 회백색 한 톤 adjacent_alpha (바깥벽 천장 높이, 확인된 실내 벽 허리 높이)
+##   ghost_mode 2 = 먼 아래층: 건물 외관 덩어리 (외벽·창·지붕) — 땅에서부터 이어진 건물로 보인다
+##   ghost_mode 3 = 먼 위층: 아무것도 그리지 않는다 (지금 층을 가리므로 잘라 낸다 — 인형집 단면)
+## 어느 경우든 그 층의 대원은 노란 테두리, 발견한 요구조자는 빨간 테두리 (_draw_ghost_units, 지금 층 위에 비쳐 보임).
+## 1층(땅)이면 바깥 땅과 차량은 그대로 그린다
 func _draw_ghost() -> void:
 	_update_fire_rooms()
+	if level == _first_level and ghost_mode != 3:
+		_draw_outdoor_ground()
+		var alpha := sim.clock.alpha()
+		for v in sim.units.vehicles:
+			if not v.away:
+				_draw_vehicle(v, alpha)
+	match ghost_mode:
+		1:
+			_draw_adjacent()
+		2:
+			_draw_far_block()
+	if _ghost_units:
+		_ghost_units.queue_redraw()
+
+
+## 바깥 땅만 (건물 안 바닥 칸은 빼고)
+func _draw_outdoor_ground() -> void:
+	_update_ground_colors()
+	if not _ghost_outdoor_idx.has(level):
+		var idx := PackedInt32Array()
+		var types: PackedByteArray = _ground_types[level]
+		for n in types.size():
+			if types[n] in BuildingData.OUTDOOR:
+				var base := n * 4
+				idx.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
+		_ghost_outdoor_idx[level] = idx
+	var oi: PackedInt32Array = _ghost_outdoor_idx[level]
+	if not oi.is_empty():
+		RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), oi, _ground_points[level], _ground_colors)
+
+
+## 바로 위·아래 층: 실내 바닥 칸과 벽을 회백색 한 톤으로 흐리게
+func _draw_adjacent() -> void:
+	var a := stack.params.adjacent_alpha
+	var tone := Color(0.86, 0.87, 0.9)
+	# 바닥: 실내 칸 마름모를 한 번에
+	if not _ghost_floor_idx.has(level):
+		var idx := PackedInt32Array()
+		var types: PackedByteArray = _ground_types[level]
+		for n in types.size():
+			if not types[n] in BuildingData.OUTDOOR:
+				var base := n * 4
+				idx.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
+		_ghost_floor_idx[level] = idx
+	var fi: PackedInt32Array = _ghost_floor_idx[level]
+	# 위층 바닥은 그리지 않는다: 지금 층 전체를 뿌옇게 덮는다 (벽만으로 위층이 있음을 안다)
+	if not fi.is_empty() and depth < ABOVE_DEPTH:
+		var cols := PackedColorArray()
+		cols.resize(_ground_points[level].size())
+		cols.fill(Color(tone, a))
+		RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), fi, _ground_points[level], cols)
+	# 벽: 바깥벽은 천장 높이, 실내 벽은 확인된 곳만 허리 높이
 	var p := sim.perception
 	var plan_known := sim.command.interior.plan_known
 	for run: Dictionary in _ghost_wall_runs(level):
 		var outer: bool = run.outer
 		var known := outer or plan_known or not p.enabled
-		var burning := false
 		for ci: int in run.comps:
-			if _fire_rooms.has(ci):
-				burning = true
 			if not known and p.room_seen[ci] == 1:
 				known = true
 		if not known:
 			continue
+		var h := CEILING_M if outer else stack.params.inner_wall_m
 		var a0 := proj.to_screen(run.a, 0.0)
 		var b0 := proj.to_screen(run.b, 0.0)
-		var a1 := proj.to_screen(run.a, CEILING_M)
-		var b1 := proj.to_screen(run.b, CEILING_M)
-		var line: Color = GHOST_FIRE_WALL if burning else (GHOST_WALL if outer else GHOST_INNER)
-		var face := Color(line, GHOST_FACE_ALPHA if outer else GHOST_INNER_FACE_ALPHA)
-		draw_colored_polygon(PackedVector2Array([a0, b0, b1, a1]), face)
-		if outer:
-			draw_polyline(PackedVector2Array([a0, b0, b1, a1, a0]), line, 1.5)
-		else:
-			for seg in [[a1, b1], [a0, a1], [b0, b1], [a0, b0]]:
-				draw_dashed_line(seg[0], seg[1], line, 1.2, 5.0)
-	if _ghost_units:
-		_ghost_units.queue_redraw()
+		var a1 := proj.to_screen(run.a, h)
+		var b1 := proj.to_screen(run.b, h)
+		draw_colored_polygon(PackedVector2Array([a0, b0, b1, a1]), Color(tone, a))
+		draw_line(a1, b1, Color(tone, minf(1.0, a * 2.5)), 1.2)
+
+
+## 먼 아래층: 건물 외관 덩어리 (외벽 남·동 면 + 지붕 + 창)
+func _draw_far_block() -> void:
+	var fp: Rect2i = _footprint.get(level, _shell_fp)
+	var wall := Color(SHELL_WALL, 1.0)
+	_box(Vector2(fp.position), Vector2(fp.end), 0.0, CEILING_M, wall, wall, ROOF_TOP)
+	# 앞쪽(남·동) 창: 외부 보기와 같은 그림 (불빛·연기 창 색 포함)
+	for w: Dictionary in _ext_windows.get(level, []):
+		_draw_facade_window(w, 0.0, CEILING_M)
 
 
 ## 다른 층의 대원(노랑)·발견한 요구조자(빨강): 그림을 테두리 셰이더로. 그림이 없으면 동그라미 테두리

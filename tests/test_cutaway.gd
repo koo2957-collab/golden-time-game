@@ -12,7 +12,7 @@ func _stack(path: String) -> FloorStack:
 
 func test_view_params_loaded() -> void:
 	var p := ViewParams.load_default()
-	assert_eq(p.floor_height_px, 160.0, "층 간격 FLOOR_GAP_PX 160px (기획안 P2-1)")
+	assert_eq(p.floor_height_px, 220.0, "층 간격 220px (2026-11-11 사용자 결정 F01: 건물을 더 높게)")
 	assert_eq([p.visible_floors_above, p.above_alpha], [2, 0.25], "위 2개 층, 반투명 0.25")
 	assert_eq(p.visible_floors_below, 2, "아래 2개 층")
 	assert_eq(p.below_modulate, [0.75, 0.55] as Array[float], "아래 층 밝기")
@@ -34,7 +34,7 @@ func test_apartment_12f_shows_10_to_14() -> void:
 	assert_eq(s.modulate_for(0), 1.0, "지금 층은 밝게")
 	assert_eq(s.modulate_for(1), 0.75, "한 층 아래 0.75")
 	assert_eq(s.modulate_for(2), 0.55, "두 층 아래 0.55")
-	assert_eq(s.offset_px(2), 320.0, "두 층 아래는 320px 아래에 (160 × 2)")
+	assert_eq(s.offset_px(2), 440.0, "두 층 아래는 440px 아래에 (220 × 2)")
 	assert_eq(s.visible_levels(2), [2, 1] as Array[int], "2층은 2·1층")
 	assert_eq(s.visible_levels(1), [1] as Array[int], "1층은 혼자")
 

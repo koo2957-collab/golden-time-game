@@ -11,7 +11,7 @@
 
 | 번호 | 기능 | 지금 동작 | 주요 파일 | 연결 | 테스트 | 추천 | 결정 |
 |---|---|---|---|---|---|---|---|
-| F01 | 입체 보기: 외부 보기·층 단면 | 외부는 건물 외관(층 띠), 안은 초점 층 + 위아래 층을 반투명으로 쌓아 보임 | ui/building/floor_layer, ui/iso_view, ui/building/floor_stack | 그림·시야 → 모든 화면 | ui_cutaway, test_cutaway | 🔧 단면에서 위층 반투명 면이 불·대원을 가림 | |
+| F01 | 입체 보기: 외부 보기·층 단면 | 외부는 건물 외관(층 띠), 안은 초점 층 + 위아래 층을 반투명으로 쌓아 보임 | ui/building/floor_layer, ui/iso_view, ui/building/floor_stack | 그림·시야 → 모든 화면 | ui_cutaway, test_cutaway | 🔧 단면에서 위층 반투명 면이 불·대원을 가림 | 🔧 고침 (2026-11-11 실루엣 방식) — 확인 대기 |
 | F02 | 평면 보기 · 전술상황판(M·Tab) | 평면 보기(상황판 화면)와 전술상황판(보고된 것만 그린 평면도)이 따로 있음 | ui/floor_plan_view, ui/tactical_board, ui/board_map | 무전 보고(F35) | test_board | 🔧 두 평면 화면의 역할이 겹침 — 하나로 정리 | |
 | F03 | 카메라·층 막대·미니맵 | 휠 확대, 가운데 버튼 끌기, 층 막대 클릭, 미니맵 클릭 | ui/rts_camera, ui/floor_bar_view, ui/minimap_view | F01 | ui_smoke | ✅ | |
 | F04 | 그림: 대원·차량·가구, 불·연기 | Blender로 구운 8방향 그림, 셰이더 불꽃·연기 | ui/sprite_art, ui/fx_art, tools/blender | — | test_art | ✅ (오늘 완성) | |

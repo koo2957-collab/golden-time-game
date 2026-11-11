@@ -110,6 +110,22 @@ var _bq_cols := PackedColorArray()
 var _bq_idx := PackedInt32Array()
 var _bl_pts := PackedVector2Array()
 var _bl_cols := PackedColorArray()
+## 다른 층 (F01, 2026-11-11 사용자 결정): 고른 층 외의 위·아래 층은 벽 선(외곽·방 벽)만 얇은 반투명으로,
+## 불을 아는 방의 벽만 주황, 대원은 몸 테두리만 노랑, 발견한 요구조자는 빨강. 가구·바닥·불·연기는 그리지 않는다
+var ghost := false:
+	set(v):
+		if v != ghost:
+			ghost = v
+			if _ghost_units:
+				_ghost_units.visible = v
+			queue_redraw()
+const GHOST_WALL := Color(1, 1, 1, 0.32)
+const GHOST_FIRE_WALL := Color(1.0, 0.55, 0.15, 0.75)
+const GHOST_CREW := Color(1.0, 0.85, 0.2, 0.9)
+const GHOST_VICTIM := Color(1.0, 0.3, 0.3, 0.9)
+var _ghost_units: Node2D
+var _ghost_walls: Dictionary = {}  # level -> [PackedVector2Array 선분(칸 가운데 쌍), Array 선분마다 맞닿은 구획 index 목록]
+
 ## 층 고르기 (P4-5): 외부 보기에서 노랗게 테두리를 그릴 층 (-99 = 없음)
 var hover_floor := -99:
 	set(v):
@@ -187,6 +203,17 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 	_ground_key = []
 	_objects_key = []
 	_build_shell()
+	# 다른 층 사람 테두리: 테두리 셰이더를 입힌 자식에 따로 그린다 (벽 선은 이 층에 그대로)
+	_ghost_units = Node2D.new()
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/ghost_outline.gdshader")
+	_ghost_units.material = mat
+	_ghost_units.visible = ghost
+	# 벽 너머 테두리처럼: 지금 층 그림 위에 그린다 (아래층 사람이 지금 층 바닥에 가려지지 않게)
+	_ghost_units.z_as_relative = false
+	_ghost_units.z_index = 100
+	_ghost_units.draw.connect(_draw_ghost_units)
+	add_child(_ghost_units)
 
 
 # --- 외부 보기: 건물 외관 (R16) ---
@@ -797,6 +824,9 @@ func refresh() -> void:
 
 func _draw() -> void:
 	if sim == null:
+		return
+	if ghost:
+		_draw_ghost()
 		return
 	var b := sim.building
 	var alpha := sim.clock.alpha()
@@ -2117,3 +2147,88 @@ func _draw_monitors_and_fans() -> void:
 			_box(spot - Vector2(0.4, 0.4), spot + Vector2(0.4, 0.4), 0.0, 0.8, Color("94a3b8"), Color("64748b"), Color("cbd5e1"))
 			var label := "송풍기" + (" — 가동" if vent.active else " — 설치 중")
 			draw_string(PlanStyle.font(), proj.to_screen(spot, 1.3) + Vector2(-50, 0), label, HORIZONTAL_ALIGNMENT_CENTER, 100, 13, Color("e2e8f0"))
+
+
+# --- 다른 층: 실루엣 (F01) ---
+
+## 벽 칸(벽·문·창)의 가운데를 이웃 벽 칸과 이은 선 = 외곽선 + 방 사이 벽. 층마다 한 번 만든다
+func _ghost_wall_lines(lv: int) -> Array:
+	if _ghost_walls.has(lv):
+		return _ghost_walls[lv]
+	var b := sim.building
+	var segs := PackedVector2Array()
+	var comps: Array = []
+	var wallish := [BuildingData.Cell.WALL, BuildingData.Cell.DOOR, BuildingData.Cell.WINDOW]
+	for y in b.height:
+		for x in b.width:
+			if not b.cell(lv, x, y) in wallish:
+				continue
+			for d: Vector2i in [Vector2i.RIGHT, Vector2i.DOWN]:
+				var n := Vector2i(x, y) + d
+				if not b.in_bounds(n.x, n.y) or not b.cell(lv, n.x, n.y) in wallish:
+					continue
+				segs.append(Vector2(x + 0.5, y + 0.5))
+				segs.append(Vector2(n.x + 0.5, n.y + 0.5))
+				# 이 선에 맞닿은 방 (불을 아는 방이면 주황)
+				var touch: Array[int] = []
+				for c: Vector2i in [Vector2i(x, y), n]:
+					for e: Vector2i in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+						var comp := sim.fire.compartment_at(lv, c.x + e.x, c.y + e.y)
+						if comp and not comp.index in touch:
+							touch.append(comp.index)
+				comps.append(touch)
+	_ghost_walls[lv] = [segs, comps]
+	return _ghost_walls[lv]
+
+
+func _draw_ghost() -> void:
+	_update_fire_rooms()
+	var data := _ghost_wall_lines(level)
+	var segs: PackedVector2Array = data[0]
+	var comps: Array = data[1]
+	var plain := PackedVector2Array()
+	var hot := PackedVector2Array()
+	for i in comps.size():
+		var a := proj.to_screen(segs[i * 2], 0.05)
+		var b := proj.to_screen(segs[i * 2 + 1], 0.05)
+		var burning := false
+		for ci: int in comps[i]:
+			if _fire_rooms.has(ci):
+				burning = true
+				break
+		if burning:
+			hot.append_array([a, b])
+		else:
+			plain.append_array([a, b])
+	if not plain.is_empty():
+		draw_multiline(plain, GHOST_WALL, 1.5)
+	if not hot.is_empty():
+		draw_multiline(hot, GHOST_FIRE_WALL, 2.0)
+	if _ghost_units:
+		_ghost_units.queue_redraw()
+
+
+## 다른 층의 대원(노랑)·발견한 요구조자(빨강): 그림을 테두리 셰이더로. 그림이 없으면 동그라미 테두리
+func _draw_ghost_units() -> void:
+	if sim == null or not ghost:
+		return
+	var alpha := sim.clock.alpha()
+	var crew_art := SpriteArt.get_set(str(SpriteArt.config().get("crew", ""))) if not thermal else null
+	for c in sim.units.crews:
+		for ff in c.members():
+			if ff.level != level or ff.aboard:
+				continue
+			var p := UnitsView.display_pos(ff, alpha)
+			var feet := proj.to_screen(p, 0.0)
+			var moving := ff.level == ff.prev_level and (ff.pos - ff.prev_pos).length_squared() > 0.000001
+			var anim := "down" if ff.incapacitated else ("walk" if moving else "idle")
+			if crew_art == null or not crew_art.draw(_ghost_units, anim, int(_facing.get(ff.id, 1)), SpriteArt.frame_at(anim, crew_art.frames(anim), ff.id * 0.37), feet, GHOST_CREW):
+				_ghost_units.draw_arc(feet + Vector2(0, -18), 9.0, 0.0, TAU, 16, GHOST_CREW, 2.0)
+	for v in sim.rescue.victims:
+		if not v.discovered or v.level != level or v.carried_by >= 0:
+			continue
+		var feet := proj.to_screen(v.pos, 0.05)
+		var art := SpriteArt.victim_set(v.label()) if not thermal else null
+		var anim := "idle" if v.state == Victim.State.CONSCIOUS else "down_up"
+		if art == null or not art.draw(_ghost_units, anim, (v.id * 3) % 8, 0, feet, GHOST_VICTIM):
+			_ghost_units.draw_arc(feet + Vector2(0, -6), 9.0, 0.0, TAU, 16, GHOST_VICTIM, 2.0)

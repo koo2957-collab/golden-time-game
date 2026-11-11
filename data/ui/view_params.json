@@ -1,8 +1,8 @@
 {
   "note": "건물 화면(외부 보기·인형집 단면) 설정 (R17). 화면에만 쓰고 시뮬레이션과는 상관없다. source: 화면 설정 = 보기 좋게 정한 값, 공학식 = 투영 계산. 화면 1m = 51px(IsoProjection.PX_PER_M), 칸 0.5m.",
-  "floor_height_px": {"value": 160, "source": "화면 설정", "note": "단면 보기 층 간격 FLOOR_GAP_PX (기획안 9-4·P2-1: 기본 160, 120~220 조절). 층고 2.8m 실제 비율 143px보다 조금 벌려 분해도처럼 보인다 (2026-11-10 결정 ②)"},
+  "floor_height_px": {"value": 220, "source": "화면 설정", "note": "단면 보기 층 간격 FLOOR_GAP_PX (기획안 9-4·P2-1: 120~220 조절). 2026-11-11 사용자 결정(F01): 건물을 더 높게 — 다른 층은 실루엣만이라 크게 벌려도 지금 층을 가리지 않는다"},
   "visible_floors_above": {"value": 2, "source": "화면 설정", "note": "지금 층 위로 함께 보일 층 수 (기획안 9-4: 위·아래 각 2개 층). 위층은 지금 층을 가리지 않게 반투명"},
-  "above_alpha": {"value": 0.25, "source": "화면 설정", "note": "위층 투명도 (P2-1 modulate.a = 0.25). 불·연기·대원은 흐릿하게 보여 위로 번지는 연기를 함께 본다"},
+  "above_alpha": {"value": 0.25, "source": "화면 설정", "note": "쓰지 않음 (2026-11-11 F01: 위·아래 다른 층은 벽 선·사람 테두리만 — 투명도는 FloorLayer.GHOST_* 색에)"},
   "visible_floors_below": {"value": 2, "source": "화면 설정", "note": "지금 층 아래로 함께 쌓아 보일 층 수. 층 번호가 이어진 층만 (초고층의 생략 층·땅 밑은 쌓지 않는다)"},
   "below_modulate": {"value": [0.75, 0.55], "source": "화면 설정", "note": "아래 층 밝기 (한 층 아래, 두 층 아래)"},
   "front_wall": {"value": "cut", "source": "화면 설정", "note": "단면 보기의 앞벽(남·동)과 실내 벽 모양: cut(잘린 벽) / hidden(숨김)"},

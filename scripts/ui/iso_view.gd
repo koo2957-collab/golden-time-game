@@ -144,8 +144,9 @@ func _apply() -> void:
 		layer.visible = true
 		_configure(layer, depth, shown, _exterior)
 		layer.position = Vector2(0, stack.offset_px(depth))
-		var m := stack.modulate_for(depth)
-		layer.modulate = Color(m, m, m, 1.0)
+		# 아래층은 실루엣(벽 선·사람 테두리)만 — 흐리게 하지 않는다 (F01)
+		layer.ghost = depth > 0
+		layer.modulate = Color.WHITE
 	# 위층: 지금 층 위로 FLOOR_GAP_PX씩 올려 반투명 (외부 보기에서는 숨김)
 	var above: Array[int] = []
 	if not _exterior and stack != null:
@@ -162,9 +163,11 @@ func _apply() -> void:
 		up.thermal = thermal
 		up.upper_level = above[k + 1] if k + 1 < above.size() else -1
 		up.lower_level = above[k - 1] if k > 0 else _level
+		up.ghost = true
 		up.refresh()
 		up.position = Vector2(0, -stack.offset_px(k + 1))
-		up.modulate = Color(1, 1, 1, params.above_alpha)
+		# 위층도 실루엣만 (F01) — 투명도는 선 색에 들어 있다
+		up.modulate = Color.WHITE
 
 
 func _configure(layer: FloorLayer, depth: int, shown: Array[int], ext: bool) -> void:

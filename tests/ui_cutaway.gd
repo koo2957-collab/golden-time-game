@@ -50,8 +50,9 @@ func _run() -> void:
 			shown_levels.append(layer.level)
 	_check("보이는 층 노드 12·11·10", shown_levels, [12, 11, 10])
 	_check("15층 이상은 그리지 않음 (위로 2개 층까지)", shown_levels.any(func(lv: int) -> bool: return lv >= 15), false)
-	_check("아래층은 160px씩 아래·어둡게", [iso.layers[1].position.y, snappedf(iso.layers[1].modulate.r, 0.01), snappedf(iso.layers[2].modulate.r, 0.01)], [160.0, 0.75, 0.55])
-	_check("위층 13·14층은 160px씩 위에 반투명", [iso.upper_layers[0].visible, iso.upper_layers[0].level, iso.upper_layers[1].level, iso.upper_layers[0].position.y, snappedf(iso.upper_layers[0].modulate.a, 0.01)], [true, 13, 14, -160.0, 0.25])
+	# F01 (2026-11-11): 다른 층은 실루엣(벽 선·사람 테두리)만 — 흐리게 하지 않고 ghost로 그린다
+	_check("아래층은 220px씩 아래·실루엣", [iso.layers[0].ghost, iso.layers[1].position.y, iso.layers[1].ghost, iso.layers[2].ghost], [false, 220.0, true, true])
+	_check("위층 13·14층은 220px씩 위에 실루엣", [iso.upper_layers[0].visible, iso.upper_layers[0].level, iso.upper_layers[1].level, iso.upper_layers[0].position.y, iso.upper_layers[0].ghost], [true, 13, 14, -220.0, true])
 	_check("12층 남쪽 앞벽은 잘린 벽(0.2m)", iso.layers[0]._wall_height(8, 19), 0.2)
 	_check("12층 북쪽 뒷벽은 천장까지", iso.layers[0]._wall_height(10, 4), 2.4)
 	_check("계단이 11층에서 12층으로 이어짐 (11층 노드의 계단 디딤판 20칸)", iso.layers[1]._ramp_cells().size(), 20)

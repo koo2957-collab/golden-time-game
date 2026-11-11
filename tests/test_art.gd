@@ -59,6 +59,8 @@ func test_helmet_color_by_squad_type_only() -> void:
 	assert_true(ems.get_luminance() > 0.9, "구급대 = 흰색")
 	assert_eq(SpriteArt.helmet_color("굴절차·고가사다리차"), fire, "그 밖의 출동대는 진압(검정)")
 	assert_eq(SpriteArt.helmet_color("RIT"), fire, "RIT는 임무 — 헬멧 색 없음 (이름표)")
+	var cmd := SpriteArt.helmet_color("지휘")
+	assert_true(cmd.b > 0.8 and cmd.b > cmd.r + 0.4, "현장지휘관 = 파랑 (사용자 결정)")
 
 
 func test_every_vehicle_and_furniture_is_linked() -> void:

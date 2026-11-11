@@ -11,8 +11,8 @@
   "victims": {"male": "characters_civilian_m", "female": "characters_civilian_f", "female_words": ["할머니", "여", "엄마", "딸", "아주머니", "부인", "모", "누나", "언니", "아내", "임산부"]},
   "helmet_color": {
     "_source": "화면 설정 — 헬멧 색으로만 대원 종류 구분 (2026-11-11 사용자 결정: 진압 검정·구조 주황·구급 흰색). 이 표에 없는 출동대 종류는 default. RIT·현장안전담당은 임무라 헬멧은 그대로, 이름표로 표시",
-    "진압대": "#3A3A3E", "구조대": "#FF7A1A", "구급대": "#FFFFFF", "지휘": "#3A3A3E", "default": "#3A3A3E",
-    "_note": "지휘 = 현장지휘관(선착대장은 진압대장이라 검정, 머리 위 지휘 표시로 구분). default = 굴절차 등 그 밖의 출동대(진압대원이 운용)"
+    "진압대": "#3A3A3E", "구조대": "#FF7A1A", "구급대": "#FFFFFF", "지휘": "#1F6FE5", "default": "#3A3A3E",
+    "_note": "지휘 = 현장지휘관 파란 헬멧 (2026-11-11 사용자 결정). default = 굴절차 등 그 밖의 출동대(진압대원이 운용)"
   },
   "vehicles": {"펌프차": "vehicles_pump", "물탱크차": "vehicles_tanker", "구급차": "vehicles_ambulance", "구조공작차": "vehicles_rescue", "굴절차": "vehicles_aerial"},
   "furniture": {

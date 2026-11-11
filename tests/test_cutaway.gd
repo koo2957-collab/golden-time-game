@@ -32,7 +32,7 @@ func test_view_params_loaded() -> void:
 	assert_eq(p.visible_floors_below, 2, "아래 2개 층")
 	assert_eq(p.below_modulate, [0.75, 0.55] as Array[float], "아래 층 밝기")
 	assert_eq(p.front_wall, "glass", "앞벽은 반투명 (2026-11-11 결정)")
-	assert_eq([p.front_wall_alpha, p.inner_wall_m, p.inner_wall_solid_m, p.stack_mode, p.stagger_back_ratio], [0.15, 2.4, 1.0, "stagger", 1.15], "앞벽 15%, 실내 벽 천장까지(1m 위로 투명), 비켜 놓기(건물 깊이만큼 뒤로)")
+	assert_eq([p.front_wall_alpha, p.inner_wall_m, p.stack_mode, p.stagger_back_ratio], [0.15, 1.2, "stagger", 0.67], "앞벽 15%, 실내 벽 허리 높이 진하게, 비켜 놓기(위층이 뒤 1/3을 덮게)")
 	assert_eq(p.wall_cut_m, 0.2, "잘린 벽 20cm")
 
 

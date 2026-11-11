@@ -1190,10 +1190,8 @@ func _draw_cell_objects(x: int, y: int) -> void:
 				FloorStack.Wall.GLASS:
 					_wall_piece(x, y, 0.0, wh, _structure_color(skin.color("wall")), stack.params.front_wall_alpha, stack.params.front_wall_alpha, stack.params.wall_cap_alpha)
 				FloorStack.Wall.HALF:
-					var solid := minf(stack.params.inner_wall_solid_m, wh)
-					var wc := _structure_color(skin.color("wall"))
-					_wall_piece(x, y, 0.0, solid, wc, 1.0, 0.9, 0.0)
-					_wall_piece(x, y, solid, wh, wc, 0.9, stack.params.inner_wall_top_alpha, 0.0)
+					# 실내 벽: 허리 높이 진한 벽 + 윗면 단면 띠 (2026-11-12: 구조를 또렷하게)
+					_block(x, y, 0.0, wh, _structure_color(skin.color("wall")), _cut_top(wh))
 				_:
 					_block(x, y, 0.0, wh, _structure_color(skin.color("wall")), _cut_top(wh))
 		BuildingData.Cell.WINDOW:

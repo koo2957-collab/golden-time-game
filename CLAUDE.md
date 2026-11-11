@@ -49,6 +49,6 @@ autoload/ scripts/sim/ scripts/units/ scripts/cards/ scripts/ui/ scenes/ data/ m
 
 ## 이 저장소의 실제 경로·테스트 (2026-11-10 덧붙임 — 위 규칙의 경로와 다름)
 - 위 폴더 구조·`scripts/sim/`·`tests/run_all.gd`는 기획안 기준 이름이다. 이 저장소는 `scripts/simulation/`(시뮬레이션), `scripts/command/`(지휘·카드·무전), `scripts/evaluation/`, `scripts/autoload/`(EventBus·GameManager), 수치는 `data/` 아래 영역별 JSON을 쓴다. 옮기지 않는다 (docs/decisions.md).
-- 테스트: `godot --headless --path . -s res://tests/run_tests.gd` (전체 10분 이상), 파일 하나만은 `-- test_fire.gd`, 화면 점검은 `godot --path . -s res://tests/ui_smoke.gd`. 작업 중에는 관련 테스트만, 전체는 단계 끝·푸시 전.
+- 테스트: `godot --headless --path . -s res://tests/run_tests.gd` (전체 30분). **전체 테스트는 뒤에서: `powershell -ExecutionPolicy Bypass -File tools/test_bg.ps1`** — 지금 커밋 사본(저장소 옆 _test_worktree)에서 4묶음 동시, 결과 ../_test_logs/summary.txt. 작업은 하나씩: 관련 테스트만 → 사용자 확인 → 다음 (2026-11-11 사용자 결정), 파일 하나만은 `-- test_fire.gd`, 화면 점검은 `godot --path . -s res://tests/ui_smoke.gd`. 작업 중에는 관련 테스트만, 전체는 단계 끝·푸시 전.
 - Godot: `C:\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe` (PC마다 다름). 새로 클론하면 `--import` 먼저.
 - 점검 보고서 docs/audit.md, 교재 대조 docs/fire_textbook_check.md, 단계별 안내 docs/test_guides/.

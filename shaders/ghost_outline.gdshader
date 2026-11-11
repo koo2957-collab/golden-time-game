@@ -5,6 +5,13 @@ shader_type canvas_item;
 uniform float thickness = 3.0;
 uniform float fill = 0.12;
 
+// 그릴 때 준 색(modulate)만 — fragment의 COLOR는 그림 색이 곱해져 있다
+varying vec4 tint;
+
+void vertex() {
+	tint = COLOR;
+}
+
 void fragment() {
 	float a = texture(TEXTURE, UV).a;
 	vec2 px = TEXTURE_PIXEL_SIZE * thickness;
@@ -19,5 +26,5 @@ void fragment() {
 	m = max(m, texture(TEXTURE, UV + vec2(-px.x, px.y)).a);
 	// 바깥 테두리를 진하게 (두 번 눌러 또렷하게)
 	float edge = clamp((m - a) * 2.0, 0.0, 1.0);
-	COLOR = vec4(COLOR.rgb, clamp(edge + a * fill, 0.0, 1.0) * COLOR.a);
+	COLOR = vec4(tint.rgb, clamp(edge + a * fill, 0.0, 1.0) * tint.a);
 }

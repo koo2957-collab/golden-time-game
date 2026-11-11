@@ -39,6 +39,8 @@ var _level := 1
 var _exterior := false
 var _tween: Tween
 var _links: Node2D
+var _shadow: Node2D
+var _hole_shader: Shader
 var _proj: IsoProjection
 
 
@@ -53,6 +55,11 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 		move_child(layer, 0)
 		layer.setup(sim, p_selection, p_proj, stack)
 		layers.append(layer)
+	# 비켜 놓은 위층이 아래층 바닥에 드리우는 그림자 (아래층 다음, 위층 앞에 그린다)
+	_shadow = Node2D.new()
+	_shadow.name = "UpperShadow"
+	_shadow.draw.connect(_draw_shadow)
+	add_child(_shadow)
 	# 위층 (지금 층 위에 반투명으로, 기획안 9-4)
 	for k in params.visible_floors_above:
 		var up := FloorLayer.new()
@@ -68,6 +75,11 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 	_links.draw.connect(_draw_links)
 	add_child(_links)
 	_proj = p_proj
+	_hole_shader = load("res://shaders/unit_hole.gdshader")
+	for node in layers + upper_layers:
+		var mat := ShaderMaterial.new()
+		mat.shader = _hole_shader
+		node.material = mat
 	ghost = FloorLayer.new()
 	ghost.name = "Ghost"
 	add_child(ghost)
@@ -245,8 +257,75 @@ func _draw_links() -> void:
 		_links.draw_circle(a, 4.0, color)
 		_links.draw_circle(b, 4.0, color)
 		_links.draw_string(PlanStyle.font(), (a + b) * 0.5 + Vector2(8, 0), "%s 계단" % st.label(lower, i), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, color)
+	# 분해도 안내선: 아래층 건물 모서리 → 위층 같은 모서리 (들어 올린 층이라는 표시)
+	var fp := sim.building.footprint(lower)
+	var guide := Color(1, 1, 1, params.stagger_guide_alpha)
+	for c in [Vector2(fp.position), Vector2(fp.end.x, fp.position.y), Vector2(fp.end), Vector2(fp.position.x, fp.end.y)]:
+		_links.draw_dashed_line(_proj.to_screen(c) + lower_y, _proj.to_screen(c) + upper_y, guide, 1.5, 6.0)
 
 
 func _process(_delta: float) -> void:
 	if _links:
 		_links.queue_redraw()
+	if _shadow:
+		_shadow.queue_redraw()
+	_update_holes()
+
+
+## 비켜 놓은 두 층: (위층 노드, 아래층 노드, 아래층 level). 없으면 빈 배열
+func _pair() -> Array:
+	if _exterior or stack == null or not stack.staggered() or sim == null:
+		return []
+	var pa := stack.partner(_level)
+	if pa < 0:
+		return []
+	if sim.building.floor_number(pa) > sim.building.floor_number(_level):
+		return [upper_layers[0], layers[0], _level] if upper_layers[0].visible else []
+	return [layers[0], layers[1], pa] if layers.size() > 1 and layers[1].visible else []
+
+
+## 아래층의 대원·발견한 요구조자 둘레만 위층을 반투명하게 (셰이더 uniform)
+func _update_holes() -> void:
+	var pair := _pair()
+	for node in layers + upper_layers:
+		var m := node.material as ShaderMaterial
+		if m:
+			m.set_shader_parameter("count", 0)
+	if pair.is_empty():
+		return
+	var upper: FloorLayer = pair[0]
+	var lower: FloorLayer = pair[1]
+	var lv: int = pair[2]
+	var holes: Array[Vector4] = []
+	var xf := lower.get_global_transform()
+	var r := params.unit_hole_px
+	for ff in sim.units.firefighters:
+		if ff.level == lv and not ff.aboard and holes.size() < 16:
+			var w: Vector2 = xf * _proj.to_screen(ff.pos, 0.9)
+			holes.append(Vector4(w.x, w.y, r, 0.0))
+	for v in sim.rescue.victims:
+		if v.discovered and v.level == lv and v.carried_by < 0 and holes.size() < 16:
+			var w2: Vector2 = xf * _proj.to_screen(v.pos, 0.3)
+			holes.append(Vector4(w2.x, w2.y, r, 0.0))
+	var mat := upper.material as ShaderMaterial
+	if mat == null:
+		return
+	while holes.size() < 16:
+		holes.append(Vector4.ZERO)
+	mat.set_shader_parameter("holes", holes)
+	mat.set_shader_parameter("count", mini(16, holes.filter(func(h: Vector4) -> bool: return h.z > 0.0).size()))
+	mat.set_shader_parameter("min_alpha", params.unit_hole_alpha)
+
+
+## 위층 그림자: 위층 바닥을 아래층 바닥 높이로 내린 자리
+func _draw_shadow() -> void:
+	var pair := _pair()
+	if pair.is_empty():
+		return
+	var upper: FloorLayer = pair[0]
+	var fp := sim.building.footprint(upper.level)
+	var drop := Vector2(0, params.stagger_floor_px)
+	var pts := PackedVector2Array()
+	for c in [Vector2(fp.position), Vector2(fp.end.x, fp.position.y), Vector2(fp.end), Vector2(fp.position.x, fp.end.y)]:
+		pts.append(_proj.to_screen(c) + upper.position + drop)
+	_shadow.draw_colored_polygon(pts, Color(0, 0, 0, params.upper_shadow_alpha))

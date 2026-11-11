@@ -1189,6 +1189,8 @@ func _draw_cell_objects(x: int, y: int) -> void:
 			match stack.wall_kind(level, x, y, _outside()):
 				FloorStack.Wall.GLASS:
 					_wall_piece(x, y, 0.0, wh, _structure_color(skin.color("wall")), stack.params.front_wall_alpha, stack.params.front_wall_alpha, stack.params.wall_cap_alpha)
+				FloorStack.Wall.OPEN:
+					pass  # 인형집: 앞 바깥벽은 그리지 않는다 (문·창은 따로)
 				FloorStack.Wall.HALF:
 					# 실내 벽: 허리 높이 진한 벽 + 윗면 단면 띠 (2026-11-12: 구조를 또렷하게)
 					_block(x, y, 0.0, wh, _structure_color(skin.color("wall")), _cut_top(wh))
@@ -1273,6 +1275,9 @@ func _draw_door(x: int, y: int) -> void:
 
 func _draw_window(x: int, y: int) -> void:
 	var h := _wall_height(x, y)
+	# 인형집: 앞 바깥벽의 창은 바닥 높이 창틀 + 유리 선으로 낮게 (깨서 배연·진입구 개척 — 누를 수 있게)
+	if stack.wall_kind(level, x, y, _outside()) == FloorStack.Wall.OPEN:
+		h = stack.params.wall_cut_m
 	var wall := _structure_color(skin.color("wall"))
 	var o: Opening = _opening_of.get(Vector3i(x, y, level))
 	var glass := GLASS_COLOR if not (o and o.broken) else Color(0, 0, 0, 0)
@@ -1956,7 +1961,7 @@ func _wall_height(x: int, y: int) -> float:
 	# R17: 뒷벽(바깥이 북·서) 천장까지. 외부 보기는 외벽이 모두 천장까지.
 	# 2026-11-11: 앞 바깥벽은 천장 높이 반투명(GLASS), 실내 벽은 허리 높이(HALF)
 	match stack.wall_kind(level, x, y, _outside()):
-		FloorStack.Wall.FULL, FloorStack.Wall.GLASS:
+		FloorStack.Wall.FULL, FloorStack.Wall.GLASS, FloorStack.Wall.OPEN:
 			return CEILING_M
 		FloorStack.Wall.CUT:
 			return stack.params.wall_cut_m

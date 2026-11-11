@@ -57,11 +57,6 @@ var _air_full := 0.0
 var _heat_event_tick: Dictionary = {}  # "종류:조" -> tick
 
 
-## 서 있는 대원 눈높이 (m) — 연기층 아랫면이 이보다 낮으면 자세를 낮춘다 (화면 눈금도 같은 값)
-func eye_standing_m() -> float:
-	return _eye_stand
-
-
 func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, stats: ParamTable, p_events: SimEventLog) -> void:
 	fire = p_fire
 	units = p_units

@@ -1638,7 +1638,6 @@ func _draw_smoke() -> void:
 	# 대원 머리 높이를 지나면 대원 상체가 연기에 묻혀 보인다.
 	# 지금 보이는 방은 실제 상태, 본 적 있는 방은 마지막으로 확인한 상태(흐리게), 모르는 방은 그리지 않는다
 	var p := sim.perception
-	var eye := sim.conditions.eye_standing_m() if sim.conditions else 1.6
 	for c in rooms:
 		var layer_d := c.layer_depth
 		var vis := sim.fire.visibility_m(c)
@@ -1659,8 +1658,6 @@ func _draw_smoke() -> void:
 		if _draw_smoke_cloud(c, h, layer_d, a, density):
 			if c.rollover and p.room_visible(c):
 				_draw_rollover(r, h)
-			if depth == 0 and stack.params.smoke_gauge:
-				_draw_smoke_gauge(r, h, eye, fade, _people_in(c))
 			continue
 		# 덩어리 그림이 없을 때만 예전 판
 		var plane := PackedVector2Array([
@@ -1680,10 +1677,12 @@ func _draw_smoke() -> void:
 	_draw_smoke_plumes()
 
 
-## 연기층 = 천장에 매달린 연기 덩어리 구름 (Kenney Smoke Particles, 2026-11-12 사용자 결정).
-## 아랫면이 연기층 하단(중성대) 높이에서 천천히 출렁이고, 각진 판·테두리는 없다.
-## 방 안쪽(위에서 보이는 면)은 옅게 — 바닥·대원이 비친다. 잘린 앞면(남·동 가장자리)은 진하게 — 두께가 보인다.
-## 짙으면(가시거리 짧음) 검은 연기, 옅으면 회색 연기. 얇은 층은 납작한 띠, 두꺼운 층은 뭉게구름
+## 연기층 = 천장에서부터 겹겹이 쌓이는 연기 덩어리 (Kenney Smoke Particles, 2026-11-12 사용자 결정).
+## 잘린 앞면(남·동 가장자리): 천장부터 smoke_row_m 간격으로 줄을 겹쳐 쌓는다. 연기층이 두꺼워지면 아래에 새 줄이
+##   옅게 생겨 진해지고, 맨 아래 줄은 연기층 하단을 따라 내려온다 — 쌓이며 내려오는 모습.
+## 방 안쪽: 맨 아래 줄 하나만 옅게 (바닥·대원이 비친다).
+## 덩어리는 제자리에서 천천히 아래로 흘러내리며 옅어지고 위에서 다시 생긴다 (smoke_sink_s 주기).
+## 짙으면(가시거리 짧음) 검은 연기, 옅으면 회색 연기
 func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density: float) -> bool:
 	if FxArt.puffs == null and not FxArt.load_all():
 		return false
@@ -1696,69 +1695,55 @@ func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density
 	var kind := FxArt.PUFF_BLACK if dark else FxArt.PUFF_WHITE
 	var tint := Color(1, 1, 1) if dark else Color(0.62, 0.63, 0.66)
 	var step := maxf(1.0, sp.smoke_puff_spacing_m / sim.building.cell_size_m)
-	var size := step * IsoProjection.HALF_W * 3.4
-	var tall := minf(size * 0.8, thick * IsoProjection.PX_PER_M * 1.5 + 10.0)
+	var w0 := step * IsoProjection.HALF_W * 3.4
+	var row_m := maxf(0.1, sp.smoke_row_m)
+	var h0 := minf(w0 * 0.6, row_m * IsoProjection.PX_PER_M * 2.6)
+	var rows := clampi(ceili(thick / row_m - 0.001), 1, sp.smoke_max_rows)
 	var nx := maxi(1, ceili(r.size.x / step))
 	var ny := maxi(1, ceili(r.size.y / step))
-	# 뒤(북서)에서 앞(남동)으로 — 앞면 덩어리가 위에 오게. 많으면 앞면을 먼저 남긴다
-	var cells: Array[Vector2i] = []
+	# 그릴 덩어리: [깊이 순서, 칸, 줄]. 뒤(북서)에서 앞(남동)으로, 같은 자리는 위 줄부터
+	var draws: Array = []
 	for j in ny:
 		for i in nx:
-			cells.append(Vector2i(i, j))
-	if cells.size() > sp.smoke_max_puffs:
-		cells.sort_custom(func(m: Vector2i, n: Vector2i) -> bool: return m.x + m.y > n.x + n.y)
-		cells.resize(sp.smoke_max_puffs)
-	cells.sort_custom(func(m: Vector2i, n: Vector2i) -> bool: return m.x + m.y < n.x + n.y)
+			var front := i == nx - 1 or j == ny - 1
+			for k in (rows if front else 1):
+				var row := k if front else rows - 1
+				draws.append([i + j, Vector2i(i, j), row])
+	if draws.size() > sp.smoke_max_puffs:
+		# 많으면 앞쪽을 남긴다
+		draws.sort_custom(func(m: Array, n: Array) -> bool: return m[0] > n[0])
+		draws.resize(sp.smoke_max_puffs)
+	draws.sort_custom(func(m: Array, n: Array) -> bool: return m[0] < n[0] or (m[0] == n[0] and m[2] < n[2]))
 	var lo := Vector2(r.position) + Vector2(0.4, 0.4)
 	var hi := Vector2(r.end) - Vector2(0.4, 0.4)
-	for g in cells:
-		var seed := c.index * 97 + g.x * 13 + g.y * 31
-		var jit := Vector2(_rand01(seed) - 0.5, _rand01(seed + 7) - 0.5) * step * 0.5
-		var drift := Vector2(sin(t * 0.35 + seed), cos(t * 0.27 + seed * 1.3)) * step * 0.18
-		var at := (Vector2(r.position) + (Vector2(g) + Vector2(0.5, 0.5)) * step + jit + drift).clamp(lo, hi)
+	for d: Array in draws:
+		var g: Vector2i = d[1]
+		var k: int = d[2]
 		var front := g.x == nx - 1 or g.y == ny - 1
-		var breathe := 1.0 + 0.06 * sin(t * 0.6 + seed * 0.7)
-		var w := size * breathe
-		var hh := tall * breathe
-		# 아랫면이 연기층 하단(h)에 오게
-		var bottom := proj.to_screen(at, h + 0.04 * sin(t * 0.8 + seed))
-		var alpha := minf(sp.smoke_front_alpha, a + 0.15) if front else a * sp.smoke_top_alpha
+		var seed := c.index * 97 + g.x * 13 + g.y * 31 + k * 7
+		var jit := Vector2(_rand01(seed) - 0.5, _rand01(seed + 3) - 0.5) * step * 0.5
+		var drift := Vector2(sin(t * 0.3 + seed), cos(t * 0.23 + seed * 1.3)) * step * 0.12
+		var at := (Vector2(r.position) + (Vector2(g) + Vector2(0.5, 0.5)) * step + jit + drift).clamp(lo, hi)
+		# k번째 줄 아랫면: 천장에서 (k+1)줄 아래, 연기층 하단보다 내려가지 않는다
+		var slot := maxf(h, CEILING_M - (k + 1) * row_m)
+		# 새로 생기는 줄은 옅게 시작해 두꺼워질수록 진해진다
+		var grow := clampf((thick - k * row_m) / row_m, 0.25, 1.0)
+		# 흘러내림: 줄 안에서 위 → 아래로 내려오며 옅어지고 위에서 다시
+		var phase := fposmod(t / sp.smoke_sink_s + _rand01(seed + 11), 1.0)
+		var bottom_m := maxf(h - 0.05, slot + row_m * (0.35 - 0.6 * phase))
+		var pulse := sin(phase * PI)
+		var base_a := minf(sp.smoke_front_alpha, a + 0.15) if front else a * sp.smoke_top_alpha
+		var alpha := base_a * grow * (0.55 + 0.45 * pulse)
+		var w := w0 * (0.9 + 0.2 * _rand01(seed + 5))
+		var hh := h0 * (0.9 + 0.25 * pulse)
+		var bottom := proj.to_screen(at, bottom_m)
 		FxArt.draw_puff_rect(self, Rect2(bottom - Vector2(w * 0.5, hh * 0.9), Vector2(w, hh)), kind, seed, Color(tint, alpha))
 	return true
-
-
-## 방 안에 대원이나 발견한 요구조자가 있는가
-func _people_in(c: Compartment) -> bool:
-	for ff in sim.units.firefighters:
-		if ff.level == c.level and not ff.aboard and c.rect.has_point(Vector2i(ff.pos.floor())):
-			return true
-	for v in sim.rescue.victims:
-		if v.discovered and v.level == c.level and c.rect.has_point(Vector2i(v.pos.floor())):
-			return true
-	return false
 
 
 ## 0~1 고정 난수 (덩어리 위치 흩뜨리기)
 func _rand01(seed: int) -> float:
 	return fposmod(sin(float(seed) * 12.9898) * 43758.5453, 1.0)
-
-
-## 연기층 높이 눈금 (방 앞 모서리): 바닥~천장 가는 막대, 연기 두께는 굵은 막대, 대원 눈높이 눈금.
-## 연기층 아랫면이 눈높이보다 낮으면 주황 + "자세 낮춤" (대원이 실제로 자세를 낮추는 조건과 같다)
-func _draw_smoke_gauge(r: Rect2i, h: float, eye: float, fade: float, people: bool) -> void:
-	var at := Vector2(r.end) - Vector2(0.2, 0.2)
-	var floor_p := proj.to_screen(at, 0.0)
-	var ceil_p := proj.to_screen(at, CEILING_M)
-	var low_p := proj.to_screen(at, h)
-	var eye_p := proj.to_screen(at, eye)
-	var low := h < eye
-	draw_line(floor_p, ceil_p, Color(1, 1, 1, 0.3 * fade), 2.0)
-	draw_line(low_p, ceil_p, Color(1, 1, 1, 0.6 * fade), 7.0)
-	draw_line(low_p, ceil_p, Color(1.0, 0.55, 0.1, fade) if low else Color(0.16, 0.16, 0.18, fade), 5.0)
-	draw_line(eye_p + Vector2(-7, 0), eye_p + Vector2(7, 0), Color(1, 1, 1, 0.85 * fade), 2.0)
-	# 글자는 사람이 있는 방에만 (모든 방에 띄우면 화면이 복잡하다)
-	if low and fade >= 1.0 and people:
-		draw_string(PlanStyle.font(), low_p + Vector2(8, 4), "자세 낮춤", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1.0, 0.65, 0.2))
 
 
 ## 연기층 평면에 셰이더로 구운 연기 질감을 두 겹, 서로 다른 쪽으로 흘려 입힌다 (P15-FX)

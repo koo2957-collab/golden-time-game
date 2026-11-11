@@ -506,7 +506,57 @@ def nozzle_follow(arm, nozzle):
     nozzle.rotation_euler = fwd.to_track_quat("Z", "Y").to_euler()
 
 
+def bake_built_character(spec):
+    """스크립트로 만든 모델(tools/blender/<builder>.py)을 굽는다. 자세는 모델 모듈이 프레임마다 만든다"""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import importlib
+    mod = importlib.import_module(spec["builder"])
+    sc = reset()
+    rig = mod.build(spec["colors"])
+    arm = rig.arm
+    setup_camera(sc, spec["frame"], spec["anchor"], spec["scale"], 0.9)
+    folder = os.path.join(OUT, "characters", spec["name"])
+    meta = {"kind": "characters", "name": spec["name"], "frame": spec["frame"], "anchor": spec["anchor"], "scale": spec["scale"],
+            "directions": NDIR, "anims": {}, "stripe": True, "source": spec.get("source", "")}
+    if spec.get("save_blend"):
+        path = os.path.join(PROJECT, spec["save_blend"])
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        bpy.ops.wm.save_as_mainfile(filepath=path, copy=True)
+        log("모델 저장", path)
+    for anim in spec["anims"]:
+        if ONLY_ANIMS and anim not in ONLY_ANIMS:
+            continue
+        a = CFG["anims"][anim]
+        n = int(a["frames"])
+        meta["anims"][anim] = {"frames": n, "note": a.get("note", "")}
+        for i in range(1 if QUICK else n):
+            arm.matrix_world = mathutils.Matrix.Identity(4)
+            lie = rig.pose(anim, i, n)
+            lo, hi = rig.bounds()
+            # 발밑(가장 낮은 곳)을 바닥에. 누운 자세는 몸 가운데를 원점에
+            off = mathutils.Vector((-(lo.x + hi.x) / 2 if lie else 0.0, -(lo.y + hi.y) / 2 if lie else 0.0, -lo.z))
+            for k in ([0, 2, 5] if QUICK else ([ONLY_DIR] if ONLY_ANIMS else range(NDIR))):
+                arm.matrix_world = mathutils.Matrix.Rotation(dir_angle(k), 4, "Z") @ mathutils.Matrix.Translation(off)
+                upd()
+                name = "%s_%d_%d.png" % (anim, k, i)
+                for o in bpy.data.objects:
+                    o.is_holdout = False
+                set_helmet(rig.helmet_mat, HELMET_BASE)
+                render_to(os.path.join(folder, name), spec["frame"])
+                set_helmet(rig.helmet_mat, HELMET_TINT)
+                for o in bpy.data.objects:
+                    if o.type == "MESH" and o.name not in TINT_PARTS:
+                        o.is_holdout = True
+                render_to(os.path.join(folder, name.replace(".png", "_stripe.png")), spec["frame"])
+                for o in bpy.data.objects:
+                    o.is_holdout = False
+        log(spec["name"], anim, "done")
+    write_meta(folder, meta)
+
+
 def bake_character(spec):
+    if spec.get("builder"):
+        return bake_built_character(spec)
     sc = reset()
     arm, mesh, actions = import_character()
     dress(mesh, os.path.join(CHAR_DIR, "Skins", spec["skin"] + ".png"), spec["outfit"], spec.get("colors", {}))

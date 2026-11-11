@@ -1,59 +1,544 @@
 {
-  "note": "P15 그림 굽기 설정 (tools/blender/bake.py). 3D 모델을 게임 입체 화면과 같은 카메라로 찍어 2D 프레임으로 굽는다 (기획안 9-4-1). 경로는 프로젝트 폴더 기준. 카메라는 기획안 64×32 대신 지금 게임 시점(IsoProjection: 칸 반폭 28px·반높이 21px, 칸 0.5m)에 맞춘다 (2026-11-10 사용자 결정). scale = 게임 확대 1일 때 크기 대비 굽는 비율 (게임이 1/scale로 키워 그린다).",
-  "source": "Kenney (kenney.nl) CC0 — Animated Characters Retro, Car Kit, Furniture Kit",
-  "packs": "art_source/kenney",
-  "out_dir": "art_source/baked",
-  "camera": {"half_w_px": 28.0, "half_h_px": 21.0, "cell_m": 0.5, "supersample": 2},
-  "directions": 8,
-  "characters": [
-    {"name": "firefighter", "skin": "humanMaleA", "outfit": "turnout", "scale": 0.75, "frame": [128, 144], "anchor": [64, 96],
-     "anims": ["idle", "walk", "crouch_walk", "carry", "spray", "search", "down"], "stripe": true,
-     "note": "서울소방 방화복 참고 그림(F:/golden time game/소방관 캐릭터.png): 황갈색 방화복·두건, 연두 반사띠, 검은 장갑·장화·면체·멜빵, 회녹색 용기. 헬멧은 흰색으로 따로 찍어 게임에서 역할 색(data/art.json helmet_color)을 입힌다",
-     "colors": {"coat": "#B48A57", "hood": "#A9804F", "reflect": "#D8EC3C", "glove": "#262626", "boot": "#1C1C1C", "mask": "#141618", "harness": "#202224", "tank": "#9DA497"}},
-    {"name": "civilian_m", "skin": "humanMaleA", "outfit": "plain", "scale": 0.75, "frame": [128, 144], "anchor": [64, 96],
-     "anims": ["idle", "walk", "crouch_walk", "down_up"]},
-    {"name": "civilian_f", "skin": "humanFemaleA", "outfit": "plain", "scale": 0.75, "frame": [128, 144], "anchor": [64, 96],
-     "anims": ["idle", "walk", "crouch_walk", "down_up"]}
-  ],
-  "anims": {
-    "idle": {"source": "idle", "frames": 8, "pose": "arms_down", "note": "서기 (팩의 허리에 손 얹은 자세에서 팔을 내림)"},
-    "walk": {"source": "run", "frames": 8, "pose": "walk", "note": "걷기 — 팩에 걷기가 없어 뛰기를 쉬는 자세 쪽으로 섞어 보폭을 줄이고 팔을 내려 흔든다"},
-    "crouch_walk": {"source": "run", "frames": 8, "pose": "crouch", "note": "웅크려 걷기 (스크립트 자세)"},
-    "carry": {"source": "run", "frames": 8, "pose": "carry", "note": "요구조자 들고 걷기 (스크립트 자세)"},
-    "spray": {"source": "idle", "frames": 4, "pose": "spray", "note": "방수 — 낮은 자세, 관창을 앞으로 (스크립트 자세)"},
-    "search": {"source": "idle", "frames": 4, "pose": "search", "note": "무릎 꿇고 검색 — 한 팔로 바닥을 더듬음 (스크립트 자세)"},
-    "down": {"source": "idle", "frames": 1, "pose": "down", "note": "쓰러짐 (엎드림)"},
-    "down_up": {"source": "idle", "frames": 1, "pose": "down_up", "note": "누운 요구조자 (반듯이)"}
+ "note": "P15 그림 굽기 설정 (tools/blender/bake.py). 3D 모델을 게임 입체 화면과 같은 카메라로 찍어 2D 프레임으로 굽는다 (기획안 9-4-1). 경로는 프로젝트 폴더 기준. 카메라는 기획안 64×32 대신 지금 게임 시점(IsoProjection: 칸 반폭 28px·반높이 21px, 칸 0.5m)에 맞춘다 (2026-11-10 사용자 결정). scale = 게임 확대 1일 때 크기 대비 굽는 비율 (게임이 1/scale로 키워 그린다).",
+ "source": "Kenney (kenney.nl) CC0 — Animated Characters Retro, Car Kit, Furniture Kit",
+ "packs": "art_source/kenney",
+ "out_dir": "art_source/baked",
+ "camera": {
+  "half_w_px": 28.0,
+  "half_h_px": 21.0,
+  "cell_m": 0.5,
+  "supersample": 2
+ },
+ "directions": 8,
+ "characters": [
+  {
+   "name": "firefighter",
+   "skin": "humanMaleA",
+   "outfit": "turnout",
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "anims": [
+    "idle",
+    "walk",
+    "crouch_walk",
+    "carry",
+    "spray",
+    "search",
+    "down"
+   ],
+   "stripe": true,
+   "note": "서울소방 방화복 참고 그림(F:/golden time game/소방관 캐릭터.png): 황갈색 방화복·두건, 연두 반사띠, 검은 장갑·장화·면체·멜빵, 회녹색 용기. 헬멧은 흰색으로 따로 찍어 게임에서 역할 색(data/art.json helmet_color)을 입힌다",
+   "colors": {
+    "coat": "#B48A57",
+    "hood": "#A9804F",
+    "reflect": "#D8EC3C",
+    "glove": "#262626",
+    "boot": "#1C1C1C",
+    "mask": "#141618",
+    "harness": "#202224",
+    "tank": "#9DA497"
+   }
   },
-  "vehicles": {
-    "scale": 0.5,
-    "list": [
-      {"type": "펌프차", "name": "pump", "model": "firetruck"},
-      {"type": "물탱크차", "name": "tanker", "model": "firetruck", "tank": true, "note": "소방차 + 지붕 물탱크 (Kenney에 물탱크차 없음)"},
-      {"type": "구급차", "name": "ambulance", "model": "ambulance"},
-      {"type": "구조공작차", "name": "rescue", "model": "firetruck", "hue": 0.035, "note": "소방차를 주황으로 (색상 이동)"},
-      {"type": "굴절차", "name": "aerial", "model": "firetruck", "boom": true, "note": "소방차 + 접힌 붐·바스켓"},
-      {"type": "주차 차량", "name": "sedan", "model": "sedan", "size_m": [4.6, 1.8, 1.5]}
-    ]
+  {
+   "name": "firefighter_v2",
+   "builder": "firefighter_v2",
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "anims": [
+    "idle",
+    "walk",
+    "crouch_walk",
+    "carry",
+    "spray",
+    "search",
+    "down"
+   ],
+   "save_blend": "art_source/models/firefighter_v2.blend",
+   "source": "3D 모델: 자체 제작 (tools/blender/firefighter_v2.py, 사용자 참고 그림 서울소방 방화복 캐릭터)",
+   "note": "사용자 참고 그림(F:/golden time game/소방관 캐릭터.png)을 따라 Blender 스크립트로 만든 사람 비율 모델. 동작은 뼈 회전으로 생성. 헬멧은 흰색으로 따로 찍어 게임에서 출동대 종류 색",
+   "colors": {
+    "coat": "#B5895A",
+    "pants": "#AF8455",
+    "hood": "#A97F50",
+    "reflect": "#D6EC3A",
+    "silver": "#C9CDD0",
+    "glove": "#252525",
+    "boot": "#1B1B1B",
+    "mask": "#121417",
+    "harness": "#1E2022",
+    "tank": "#A3AA9C"
+   }
   },
-  "furniture": {
-    "scale": 0.75,
-    "list": [
-      {"name": "sofa", "nominal": [5, 2], "h_m": 0.85, "parts": [["loungeSofa", 0, 0]]},
-      {"name": "armchair", "nominal": [2, 2], "h_m": 0.85, "parts": [["loungeChair", 0, 0]]},
-      {"name": "tv_cabinet", "nominal": [4, 1], "h_m": 1.2, "parts": [["cabinetTelevision", 0, 0], ["televisionModern", 0, 0, 0.31]]},
-      {"name": "coffee_table", "nominal": [3, 2], "h_m": 0.45, "parts": [["tableCoffee", 0, 0]]},
-      {"name": "bookcase", "nominal": [4, 1], "h_m": 1.8, "parts": [["bookcaseOpen", -0.2, 0], ["bookcaseOpen", 0.2, 0]]},
-      {"name": "kitchen", "nominal": [6, 1], "h_m": 0.9, "parts": [["kitchenCabinet", -0.645, 0], ["kitchenSink", -0.215, 0], ["kitchenStove", 0.215, 0], ["kitchenCabinet", 0.645, 0]]},
-      {"name": "dining", "nominal": [3, 2], "h_m": 0.75, "parts": [["table", 0, 0], ["chair", -0.2, 0.3], ["chair", 0.2, 0.3]]},
-      {"name": "bed", "nominal": [4, 3], "h_m": 0.6, "parts": [["bedDouble", 0, 0]]},
-      {"name": "wardrobe", "nominal": [4, 1], "h_m": 2.0, "parts": [["bookcaseClosedDoors", -0.2, 0], ["bookcaseClosedDoors", 0.2, 0]]},
-      {"name": "shoe_cabinet", "nominal": [2, 1], "h_m": 1.0, "parts": [["sideTableDrawers", 0, 0]]},
-      {"name": "bedding", "nominal": [3, 3], "h_m": 0.25, "parts": [["rugRectangle", 0, 0], ["pillowLong", -0.3, -0.3, 0.01, 90]]},
-      {"name": "boxes", "nominal": [3, 2], "h_m": 0.9, "parts": [["cardboardBoxClosed", -0.25, 0], ["cardboardBoxClosed", 0, 0], ["cardboardBoxClosed", 0.25, 0], ["cardboardBoxOpen", -0.1, 0, 0.28], ["cardboardBoxClosed", 0.18, 0, 0.28]]},
-      {"name": "desk", "nominal": [3, 1], "h_m": 0.75, "parts": [["desk", 0, 0], ["computerScreen", 0, 0.05, 0.38]]},
-      {"name": "shelf", "nominal": [4, 2], "h_m": 1.0, "parts": [["bookcaseOpenLow", -0.2, 0], ["bookcaseOpenLow", 0.2, 0]]},
-      {"name": "rack", "nominal": [6, 5], "h_m": 3.0, "parts": [["bookcaseOpen", -0.4, 0], ["bookcaseOpen", 0, 0], ["bookcaseOpen", 0.4, 0]]}
-    ]
+  {
+   "name": "civilian_m",
+   "skin": "humanMaleA",
+   "outfit": "plain",
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "anims": [
+    "idle",
+    "walk",
+    "crouch_walk",
+    "down_up"
+   ]
+  },
+  {
+   "name": "civilian_f",
+   "skin": "humanFemaleA",
+   "outfit": "plain",
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "anims": [
+    "idle",
+    "walk",
+    "crouch_walk",
+    "down_up"
+   ]
   }
+ ],
+ "anims": {
+  "idle": {
+   "source": "idle",
+   "frames": 8,
+   "pose": "arms_down",
+   "note": "서기 (팩의 허리에 손 얹은 자세에서 팔을 내림)"
+  },
+  "walk": {
+   "source": "run",
+   "frames": 8,
+   "pose": "walk",
+   "note": "걷기 — 팩에 걷기가 없어 뛰기를 쉬는 자세 쪽으로 섞어 보폭을 줄이고 팔을 내려 흔든다"
+  },
+  "crouch_walk": {
+   "source": "run",
+   "frames": 8,
+   "pose": "crouch",
+   "note": "웅크려 걷기 (스크립트 자세)"
+  },
+  "carry": {
+   "source": "run",
+   "frames": 8,
+   "pose": "carry",
+   "note": "요구조자 들고 걷기 (스크립트 자세)"
+  },
+  "spray": {
+   "source": "idle",
+   "frames": 4,
+   "pose": "spray",
+   "note": "방수 — 낮은 자세, 관창을 앞으로 (스크립트 자세)"
+  },
+  "search": {
+   "source": "idle",
+   "frames": 4,
+   "pose": "search",
+   "note": "무릎 꿇고 검색 — 한 팔로 바닥을 더듬음 (스크립트 자세)"
+  },
+  "down": {
+   "source": "idle",
+   "frames": 1,
+   "pose": "down",
+   "note": "쓰러짐 (엎드림)"
+  },
+  "down_up": {
+   "source": "idle",
+   "frames": 1,
+   "pose": "down_up",
+   "note": "누운 요구조자 (반듯이)"
+  }
+ },
+ "vehicles": {
+  "scale": 0.5,
+  "list": [
+   {
+    "type": "펌프차",
+    "name": "pump",
+    "model": "firetruck"
+   },
+   {
+    "type": "물탱크차",
+    "name": "tanker",
+    "model": "firetruck",
+    "tank": true,
+    "note": "소방차 + 지붕 물탱크 (Kenney에 물탱크차 없음)"
+   },
+   {
+    "type": "구급차",
+    "name": "ambulance",
+    "model": "ambulance"
+   },
+   {
+    "type": "구조공작차",
+    "name": "rescue",
+    "model": "firetruck",
+    "hue": 0.035,
+    "note": "소방차를 주황으로 (색상 이동)"
+   },
+   {
+    "type": "굴절차",
+    "name": "aerial",
+    "model": "firetruck",
+    "boom": true,
+    "note": "소방차 + 접힌 붐·바스켓"
+   },
+   {
+    "type": "주차 차량",
+    "name": "sedan",
+    "model": "sedan",
+    "size_m": [
+     4.6,
+     1.8,
+     1.5
+    ]
+   }
+  ]
+ },
+ "furniture": {
+  "scale": 0.75,
+  "list": [
+   {
+    "name": "sofa",
+    "nominal": [
+     5,
+     2
+    ],
+    "h_m": 0.85,
+    "parts": [
+     [
+      "loungeSofa",
+      0,
+      0
+     ]
+    ]
+   },
+   {
+    "name": "armchair",
+    "nominal": [
+     2,
+     2
+    ],
+    "h_m": 0.85,
+    "parts": [
+     [
+      "loungeChair",
+      0,
+      0
+     ]
+    ]
+   },
+   {
+    "name": "tv_cabinet",
+    "nominal": [
+     4,
+     1
+    ],
+    "h_m": 1.2,
+    "parts": [
+     [
+      "cabinetTelevision",
+      0,
+      0
+     ],
+     [
+      "televisionModern",
+      0,
+      0,
+      0.31
+     ]
+    ]
+   },
+   {
+    "name": "coffee_table",
+    "nominal": [
+     3,
+     2
+    ],
+    "h_m": 0.45,
+    "parts": [
+     [
+      "tableCoffee",
+      0,
+      0
+     ]
+    ]
+   },
+   {
+    "name": "bookcase",
+    "nominal": [
+     4,
+     1
+    ],
+    "h_m": 1.8,
+    "parts": [
+     [
+      "bookcaseOpen",
+      -0.2,
+      0
+     ],
+     [
+      "bookcaseOpen",
+      0.2,
+      0
+     ]
+    ]
+   },
+   {
+    "name": "kitchen",
+    "nominal": [
+     6,
+     1
+    ],
+    "h_m": 0.9,
+    "parts": [
+     [
+      "kitchenCabinet",
+      -0.645,
+      0
+     ],
+     [
+      "kitchenSink",
+      -0.215,
+      0
+     ],
+     [
+      "kitchenStove",
+      0.215,
+      0
+     ],
+     [
+      "kitchenCabinet",
+      0.645,
+      0
+     ]
+    ]
+   },
+   {
+    "name": "dining",
+    "nominal": [
+     3,
+     2
+    ],
+    "h_m": 0.75,
+    "parts": [
+     [
+      "table",
+      0,
+      0
+     ],
+     [
+      "chair",
+      -0.2,
+      0.3
+     ],
+     [
+      "chair",
+      0.2,
+      0.3
+     ]
+    ]
+   },
+   {
+    "name": "bed",
+    "nominal": [
+     4,
+     3
+    ],
+    "h_m": 0.6,
+    "parts": [
+     [
+      "bedDouble",
+      0,
+      0
+     ]
+    ]
+   },
+   {
+    "name": "wardrobe",
+    "nominal": [
+     4,
+     1
+    ],
+    "h_m": 2.0,
+    "parts": [
+     [
+      "bookcaseClosedDoors",
+      -0.2,
+      0
+     ],
+     [
+      "bookcaseClosedDoors",
+      0.2,
+      0
+     ]
+    ]
+   },
+   {
+    "name": "shoe_cabinet",
+    "nominal": [
+     2,
+     1
+    ],
+    "h_m": 1.0,
+    "parts": [
+     [
+      "sideTableDrawers",
+      0,
+      0
+     ]
+    ]
+   },
+   {
+    "name": "bedding",
+    "nominal": [
+     3,
+     3
+    ],
+    "h_m": 0.25,
+    "parts": [
+     [
+      "rugRectangle",
+      0,
+      0
+     ],
+     [
+      "pillowLong",
+      -0.3,
+      -0.3,
+      0.01,
+      90
+     ]
+    ]
+   },
+   {
+    "name": "boxes",
+    "nominal": [
+     3,
+     2
+    ],
+    "h_m": 0.9,
+    "parts": [
+     [
+      "cardboardBoxClosed",
+      -0.25,
+      0
+     ],
+     [
+      "cardboardBoxClosed",
+      0,
+      0
+     ],
+     [
+      "cardboardBoxClosed",
+      0.25,
+      0
+     ],
+     [
+      "cardboardBoxOpen",
+      -0.1,
+      0,
+      0.28
+     ],
+     [
+      "cardboardBoxClosed",
+      0.18,
+      0,
+      0.28
+     ]
+    ]
+   },
+   {
+    "name": "desk",
+    "nominal": [
+     3,
+     1
+    ],
+    "h_m": 0.75,
+    "parts": [
+     [
+      "desk",
+      0,
+      0
+     ],
+     [
+      "computerScreen",
+      0,
+      0.05,
+      0.38
+     ]
+    ]
+   },
+   {
+    "name": "shelf",
+    "nominal": [
+     4,
+     2
+    ],
+    "h_m": 1.0,
+    "parts": [
+     [
+      "bookcaseOpenLow",
+      -0.2,
+      0
+     ],
+     [
+      "bookcaseOpenLow",
+      0.2,
+      0
+     ]
+    ]
+   },
+   {
+    "name": "rack",
+    "nominal": [
+     6,
+     5
+    ],
+    "h_m": 3.0,
+    "parts": [
+     [
+      "bookcaseOpen",
+      -0.4,
+      0
+     ],
+     [
+      "bookcaseOpen",
+      0,
+      0
+     ],
+     [
+      "bookcaseOpen",
+      0.4,
+      0
+     ]
+    ]
+   }
+  ]
+ }
 }

@@ -20,7 +20,7 @@ const DOOR_TOP_M := 2.0
 const UNIT_BODY_M := 1.38
 const UNIT_HIP_M := 0.85
 const UNIT_HEAD_M := 1.6
-const UNIT_LABEL_M := 2.05
+const UNIT_LABEL_M := 2.35
 ## 장비 착용 대원 폭 약 0.5m
 ## 어깨 절반 폭(px, 약 0.45m), 발 절반 폭, 머리(안전모) 반지름
 const UNIT_HALF_W := 17.0

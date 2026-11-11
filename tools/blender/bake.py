@@ -243,12 +243,13 @@ def bone_category(mesh, poly):
 
 
 def dress(mesh, skin_png, outfit, colors):
-    """plain: 원래 옷(스킨 그림). turnout: 머리만 스킨, 나머지는 방화복 색 + 반사띠 (면 단위)"""
+    """plain: 원래 옷(스킨 그림). turnout: 방화복 색 + 반사띠 (면 단위). 머리는 방화두건(coat 색) — 얼굴은 면체가 가린다"""
     skin = image_mat("skin", skin_png)
     mesh.data.materials.clear()
     mesh.data.materials.append(skin)
     if outfit != "turnout":
         return
+    mesh.data.materials[0] = flat_mat("hood", hexcol(colors.get("hood", colors["coat"])))
     mats = {"coat": flat_mat("coat", hexcol(colors["coat"])),
             "reflect": flat_mat("reflect", hexcol(colors["reflect"]), 0.35, 0.6),
             "glove": flat_mat("glove", hexcol(colors["glove"])),
@@ -269,41 +270,65 @@ def dress(mesh, skin_png, outfit, colors):
         p.material_index = index[cat]
 
 
-def add_gear(arm, colors, stripe):
-    """헬멧(+띠)·공기호흡기 용기를 단순 도형으로 뼈에 붙인다. 반환: 띠 물체 (없으면 None)"""
-    sc = bpy.context.scene
-    head = arm.data.bones["Head"]
-    hz = head.head_local.z
-    # 헬멧: 머리(1단위 높이) 위 반구 + 챙
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=20, ring_count=10, radius=0.58, location=(0, 0, 0))
+## 헬멧 색 그림(게임에서 역할 색을 입히는 층)에 들어가는 물체
+TINT_PARTS = ("helmet", "brim")
+## 헬멧 재질: 몸 그림에서는 회색(가장자리 번짐이 어느 역할 색에도 튀지 않게), 색 층에서는 흰색(곱하면 역할 색 그대로)
+HELMET_BASE = (0.35, 0.35, 0.35, 1.0)
+HELMET_TINT = (0.9, 0.9, 0.9, 1.0)
+
+
+def _box(name, size, color, rough=0.7):
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0))
+    o = bpy.context.active_object
+    o.name = name
+    o.scale = size
+    o.data.materials.append(flat_mat(name, color, rough))
+    return o
+
+
+def add_gear(arm, colors, tint):
+    """서울소방 방화복 참고 그림(소방관 캐릭터.png)을 따라 헬멧·반사띠·면체·공기호흡기·멜빵을 단순 도형으로 뼈에 붙인다.
+    헬멧 색은 역할(진압 검정·구조 주황·구급 흰색)마다 다르므로 흰 헬멧을 따로 찍어 게임에서 색을 입힌다.
+    반환: 헬멧 재질 (tint가 아니면 None)"""
+    # 헬멧: 머리(1단위 높이) 위 반구 + 뒤가 긴 챙 (한국 소방 헬멧)
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=24, ring_count=12, radius=0.6, location=(0, 0, 0))
     helmet = bpy.context.active_object
     helmet.name = "helmet"
-    bm_cut = [v for v in helmet.data.vertices if v.co.z < -0.05]
-    for v in bm_cut:
-        v.co.z = -0.05
-    helmet.scale = (1.0, 1.1, 0.95)
-    helmet.data.materials.append(flat_mat("helmet", hexcol(colors["helmet"]), 0.4))
-    bpy.ops.mesh.primitive_cylinder_add(vertices=24, radius=0.66, depth=0.05, location=(0, 0, 0))
+    for v in helmet.data.vertices:
+        v.co.z = max(v.co.z, -0.05)
+    helmet.scale = (1.02, 1.12, 0.9)
+    helmet_mat = flat_mat("helmet", HELMET_BASE, 0.35)
+    helmet.data.materials.append(helmet_mat)
+    bpy.ops.mesh.primitive_cylinder_add(vertices=28, radius=0.64, depth=0.05, location=(0, 0, 0))
     brim = bpy.context.active_object
     brim.name = "brim"
-    brim.scale = (1.0, 1.15, 1.0)
-    brim.data.materials.append(flat_mat("brim", hexcol(colors["helmet"]), 0.4))
-    band = None
-    if stripe:
-        bpy.ops.mesh.primitive_cylinder_add(vertices=24, radius=0.59, depth=0.24, location=(0, 0, 0))
-        band = bpy.context.active_object
-        band.name = "helmet_stripe"
-        band.scale = (1.0, 1.1, 1.0)
-        band.data.materials.append(flat_mat("stripe", hexcol(colors["stripe"]), 0.5, 0.3))
-    # 공기호흡기 용기: 등(+Y) 쪽 세운 원통
-    bpy.ops.mesh.primitive_cylinder_add(vertices=16, radius=0.2, depth=1.05, location=(0, 0, 0))
+    brim.scale = (1.0, 1.18, 1.0)
+    brim.data.materials.append(helmet_mat)
+    # 헬멧 둘레 반사띠 (연두) — 역할 색과 상관없이 늘 같은 색
+    bpy.ops.mesh.primitive_cylinder_add(vertices=28, radius=0.625, depth=0.12, location=(0, 0, 0))
+    hband = bpy.context.active_object
+    hband.name = "helmet_band"
+    hband.scale = (1.02, 1.12, 1.0)
+    hband.data.materials.append(flat_mat("hband", hexcol(colors["reflect"]), 0.35))
+    # 면체: 얼굴 앞 검은 유리 (앞 = -Y)
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=20, ring_count=10, radius=0.34, location=(0, 0, 0))
+    mask = bpy.context.active_object
+    mask.name = "mask"
+    mask.scale = (1.05, 0.75, 1.1)
+    mask.data.materials.append(flat_mat("mask", hexcol(colors["mask"]), 0.15))
+    # 공기호흡기: 검은 등판 + 회녹색 용기 (등 = +Y)
+    plate = _box("harness_plate", (0.5, 0.1, 0.95), hexcol(colors["harness"]))
+    bpy.ops.mesh.primitive_cylinder_add(vertices=16, radius=0.19, depth=1.15, location=(0, 0, 0))
     tank = bpy.context.active_object
     tank.name = "scba"
-    tank.data.materials.append(flat_mat("tank", hexcol(colors["tank"]), 0.3))
-    for o, bone, off in ((helmet, "Head", (0, 0.03, 0.6)), (brim, "Head", (0, 0.05, 0.55)), (band, "Head", (0, 0.03, 0.7)),
-                         (tank, "UpperChest", (0, 0.42, -0.2))):
-        if o is None:
-            continue
+    tank.data.materials.append(flat_mat("tank", hexcol(colors["tank"]), 0.35))
+    # 앞 멜빵 두 줄과 허리 벨트
+    strap_l = _box("strap_l", (0.11, 0.06, 0.85), hexcol(colors["harness"]))
+    strap_r = _box("strap_r", (0.11, 0.06, 0.85), hexcol(colors["harness"]))
+    for o, bone, off in ((helmet, "Head", (0, 0.03, 0.58)), (brim, "Head", (0, 0.1, 0.53)), (hband, "Head", (0, 0.03, 0.6)),
+                         (mask, "Head", tuple(colors.get("mask_offset", (0, -0.42, 0.2)))),
+                         (plate, "UpperChest", (0, 0.3, -0.2)), (tank, "UpperChest", (0, 0.44, -0.15)),
+                         (strap_l, "UpperChest", (-0.2, -0.33, -0.15)), (strap_r, "UpperChest", (0.2, -0.33, -0.15))):
         b = arm.data.bones[bone]
         size = mathutils.Matrix.Diagonal(tuple(o.scale) + (1.0,))
         o.parent = arm
@@ -312,7 +337,11 @@ def add_gear(arm, colors, stripe):
         upd()
         # 쉬는 자세에서 뼈 머리 + 오프셋(아마추어 단위)에 놓으면 그 뒤로 뼈를 따라 움직인다
         o.matrix_world = arm.matrix_world @ mathutils.Matrix.Translation(b.head_local + mathutils.Vector(off)) @ size
-    return band
+    return helmet_mat if tint else None
+
+
+def set_helmet(mat, color):
+    mat.node_tree.nodes.get("Principled BSDF").inputs["Base Color"].default_value = color
 
 
 def assign_action(arm, act):
@@ -481,11 +510,9 @@ def bake_character(spec):
     sc = reset()
     arm, mesh, actions = import_character()
     dress(mesh, os.path.join(CHAR_DIR, "Skins", spec["skin"] + ".png"), spec["outfit"], spec.get("colors", {}))
-    band = None
-    gear = []
+    helmet_mat = None
     if spec["outfit"] == "turnout":
-        band = add_gear(arm, spec["colors"], spec.get("stripe", False))
-        gear = [o for o in bpy.data.objects if o.name in ("helmet", "brim", "scba")]
+        helmet_mat = add_gear(arm, spec["colors"], spec.get("stripe", False))
     bpy.ops.mesh.primitive_cylinder_add(vertices=12, radius=0.035, depth=0.45)
     nozzle = bpy.context.active_object
     nozzle.name = "nozzle"
@@ -494,7 +521,7 @@ def bake_character(spec):
     setup_camera(sc, spec["frame"], spec["anchor"], spec["scale"], 0.9)
     folder = os.path.join(OUT, "characters", spec["name"])
     meta = {"kind": "characters", "name": spec["name"], "frame": spec["frame"], "anchor": spec["anchor"], "scale": spec["scale"],
-            "directions": NDIR, "anims": {}, "stripe": band is not None}
+            "directions": NDIR, "anims": {}, "stripe": helmet_mat is not None}
     base_s = arm.scale.x
     for anim in spec["anims"]:
         if ONLY_ANIMS and anim not in ONLY_ANIMS:
@@ -528,16 +555,17 @@ def bake_character(spec):
                     nozzle_follow(arm, nozzle)
                     upd()
                 name = "%s_%d_%d.png" % (anim, k, i)
-                if band is not None:
-                    band.hide_render = False
-                    band.is_holdout = False
                 for o in bpy.data.objects:
                     o.is_holdout = False
+                if helmet_mat is not None:
+                    set_helmet(helmet_mat, HELMET_BASE)
                 render_to(os.path.join(folder, name), spec["frame"])
-                if band is not None:
-                    # 헬멧 띠만 (다른 물체는 가림막) — 게임에서 역할 색을 입힌다
+                if helmet_mat is not None:
+                    # 헬멧만 흰색으로 (다른 물체는 가림막 — 앞을 가리는 반사띠·면체는 빠진다). 게임에서 역할 색을 곱한다.
+                    # 파일 이름 _stripe는 예전 '헬멧 띠' 층 이름을 그대로 쓴다 (불러오기 도구와 맞춤)
+                    set_helmet(helmet_mat, HELMET_TINT)
                     for o in bpy.data.objects:
-                        if o.type == "MESH" and o is not band:
+                        if o.type == "MESH" and o.name not in TINT_PARTS:
                             o.is_holdout = True
                     render_to(os.path.join(folder, name.replace(".png", "_stripe.png")), spec["frame"])
                     for o in bpy.data.objects:

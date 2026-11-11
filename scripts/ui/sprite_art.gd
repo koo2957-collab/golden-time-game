@@ -26,9 +26,10 @@ class SpriteSet:
 	func frames(anim: String) -> int:
 		return int(anims[anim].frames) if anims.has(anim) else 0
 
-	## feet: 그림 기준점(발밑·차체 가운데)이 올 화면 좌표. size: 추가 배율(가구 늘리기 등)
+	## feet: 그림 기준점(발밑·차체 가운데)이 올 화면 좌표. size: 추가 배율(가구 늘리기 등).
+	## helmet: 대원 헬멧 색 — 흰 헬멧만 따로 구운 층(묶음의 stripe 칸)에 곱해 덧그린다. 알파 0이면 몸 그림의 회색 헬멧 그대로
 	func draw(ci: CanvasItem, anim: String, dir: int, frame: int, feet: Vector2, modulate := Color.WHITE,
-			stripe := Color(0, 0, 0, 0), size := 1.0) -> bool:
+			helmet := Color(0, 0, 0, 0), size := 1.0) -> bool:
 		var a: Dictionary = anims.get(anim, {})
 		if a.is_empty():
 			return false
@@ -39,10 +40,10 @@ class SpriteSet:
 			return false
 		var k := size / scale
 		_blit(ci, cell, feet, k, modulate)
-		if stripe.a > 0.0:
+		if helmet.a > 0.0:
 			var sc: Array = a.stripe.get(key, [])
 			if not sc.is_empty():
-				_blit(ci, sc, feet, k, Color(stripe, stripe.a * modulate.a))
+				_blit(ci, sc, feet, k, Color(helmet, helmet.a * modulate.a))
 		return true
 
 	func _blit(ci: CanvasItem, cell: Array, feet: Vector2, k: float, modulate: Color) -> void:
@@ -140,7 +141,7 @@ static func victim_set(label: String) -> SpriteSet:
 	return get_set(str(v.get("male", "")))
 
 
-## 헬멧 띠 색 (역할·출동대 종류)
-static func stripe_color(role: String) -> Color:
-	var c: Dictionary = config().get("helmet_stripe", {})
-	return Color(str(c.get(role, "#FFFFFF")))
+## 헬멧 색: 출동대 종류(진압대·구조대·구급대 …)로만 정한다 (data/art.json helmet_color, 없으면 default)
+static func helmet_color(squad_type: String) -> Color:
+	var c: Dictionary = config().get("helmet_color", {})
+	return Color(str(c.get(squad_type, c.get("default", "#3A3A3E"))))

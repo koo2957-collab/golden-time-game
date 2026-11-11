@@ -1242,10 +1242,9 @@ func _draw_unit(ff: Firefighter, alpha: float) -> void:
 		return
 	var scale := CROUCH_SCALE if ff.crouched else 1.0
 	if not _draw_unit_sprite(ff, crew, squad, feet):
-		var helmet := Color.WHITE if ff == crew.leader else squad.color.lightened(0.45)
-		_draw_figure(p, scale, body_color, helmet)
+		_draw_figure(p, scale, body_color, SpriteArt.helmet_color(squad.type))
 	var label := proj.to_screen(p, UNIT_LABEL_M * scale)
-	draw_string(PlanStyle.font(), label + Vector2(-20, 0), str(crew.number), HORIZONTAL_ALIGNMENT_CENTER, 40, 12, Color.WHITE)
+	draw_string(PlanStyle.font(), label + Vector2(-30, 0), str(crew.number) + _role_tag(crew), HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color.WHITE)
 	_draw_air_bar(label + Vector2(0, 4), ff)
 
 
@@ -1279,14 +1278,19 @@ func _draw_unit_sprite(ff: Firefighter, crew: Crew, squad: Squad, feet: Vector2)
 	var frame := 0
 	if moving or anim in ["idle", "spray", "search"]:
 		frame = SpriteArt.frame_at(anim, art.frames(anim), ff.id * 0.37)
-	var role := squad.type
-	var r := sim.command.safety.role_of(crew.id)
-	if r == SafetySystem.Role.RIT:
-		role = "RIT"
-	elif r == SafetySystem.Role.OFFICER:
-		role = "현장안전담당"
+	# 헬멧 색은 출동대 종류로만 (진압 검정·구조 주황·구급 흰색). RIT·안전담당은 임무라 이름표로 (_role_tag)
 	var tint := Color.WHITE.lerp(Color(1.0, 0.45, 0.35), clampf(ff.heat_stress, 0.0, 1.0) * 0.6)
-	return art.draw(self, anim, int(_facing.get(ff.id, 1)), frame, feet, tint, SpriteArt.stripe_color(role))
+	return art.draw(self, anim, int(_facing.get(ff.id, 1)), frame, feet, tint, SpriteArt.helmet_color(squad.type))
+
+
+## 임무 역할 이름표: RIT·현장안전담당 (헬멧 색은 바꾸지 않는다)
+func _role_tag(crew: Crew) -> String:
+	match sim.command.safety.role_of(crew.id):
+		SafetySystem.Role.RIT:
+			return " RIT"
+		SafetySystem.Role.OFFICER:
+			return " 안전"
+	return ""
 
 
 ## 현장지휘관: 흰 몸체·빨간 안전모, "지휘" 표시
@@ -1304,7 +1308,7 @@ func _draw_commander(alpha: float) -> void:
 		_facing[-1] = SpriteArt.dir8(delta)
 	var anim := "walk" if moving else "idle"
 	if art == null or not art.draw(self, anim, int(_facing.get(-1, 1)), SpriteArt.frame_at(anim, art.frames(anim)), feet,
-			Color.WHITE, SpriteArt.stripe_color("지휘")):
+			Color.WHITE, SpriteArt.helmet_color("지휘")):
 		_draw_figure(p, 1.0, PlanStyle.COMMANDER_BODY, PlanStyle.COMMANDER_HELMET)
 	var label := proj.to_screen(p, UNIT_LABEL_M)
 	draw_string(PlanStyle.font(), label + Vector2(-30, 0), "지휘", HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color.WHITE)

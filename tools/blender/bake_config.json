@@ -8,7 +8,8 @@
   "characters": [
     {"name": "firefighter", "skin": "humanMaleA", "outfit": "turnout", "scale": 0.75, "frame": [128, 144], "anchor": [64, 96],
      "anims": ["idle", "walk", "crouch_walk", "carry", "spray", "search", "down"], "stripe": true,
-     "colors": {"coat": "#B8925A", "reflect": "#E8F060", "glove": "#2B2B2B", "boot": "#1E1E1E", "helmet": "#E9E4D8", "stripe": "#FFFFFF", "tank": "#C9CDD2"}},
+     "note": "서울소방 방화복 참고 그림(F:/golden time game/소방관 캐릭터.png): 황갈색 방화복·두건, 연두 반사띠, 검은 장갑·장화·면체·멜빵, 회녹색 용기. 헬멧은 흰색으로 따로 찍어 게임에서 역할 색(data/art.json helmet_color)을 입힌다",
+     "colors": {"coat": "#B48A57", "hood": "#A9804F", "reflect": "#D8EC3C", "glove": "#262626", "boot": "#1C1C1C", "mask": "#141618", "harness": "#202224", "tank": "#9DA497"}},
     {"name": "civilian_m", "skin": "humanMaleA", "outfit": "plain", "scale": 0.75, "frame": [128, 144], "anchor": [64, 96],
      "anims": ["idle", "walk", "crouch_walk", "down_up"]},
     {"name": "civilian_f", "skin": "humanFemaleA", "outfit": "plain", "scale": 0.75, "frame": [128, 144], "anchor": [64, 96],

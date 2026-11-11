@@ -41,14 +41,24 @@ func test_all_sets_load_with_every_direction() -> void:
 	assert_true(mb < TEXTURE_BUDGET_MB, "텍스처 %.1f MB < %.0f MB" % [mb, TEXTURE_BUDGET_MB])
 
 
-func test_crew_has_every_action_and_helmet_stripe() -> void:
+func test_crew_has_every_action_and_helmet_layer() -> void:
 	var s := SpriteArt.get_set(str(SpriteArt.config().crew))
 	for anim in CREW_ANIMS:
 		assert_true(s.has(anim), "대원 동작 %s (기획안 9-4-1)" % anim)
 	assert_eq(s.directions, 8, "8방향")
-	assert_eq(s.anims.idle.stripe.size(), s.anims.idle.cells.size(), "헬멧 띠 그림이 프레임마다 (역할 색)")
-	for role in ["진압대", "구조대", "구급대", "RIT", "현장안전담당", "지휘"]:
-		assert_true(SpriteArt.stripe_color(role) != Color.WHITE or role == "지휘", "%s 띠 색" % role)
+	assert_eq(s.anims.idle.stripe.size(), s.anims.idle.cells.size(), "헬멧 색 층이 프레임마다 (출동대 종류 색)")
+
+
+func test_helmet_color_by_squad_type_only() -> void:
+	# 사용자 결정 (2026-11-11): 진압 검정 · 구조 주황 · 구급 흰색, 헬멧 색으로만 구분
+	var fire := SpriteArt.helmet_color("진압대")
+	var rescue := SpriteArt.helmet_color("구조대")
+	var ems := SpriteArt.helmet_color("구급대")
+	assert_true(fire.get_luminance() < 0.3, "진압대 = 검정")
+	assert_true(rescue.r > 0.9 and rescue.g > 0.35 and rescue.g < 0.65 and rescue.b < 0.3, "구조대 = 주황")
+	assert_true(ems.get_luminance() > 0.9, "구급대 = 흰색")
+	assert_eq(SpriteArt.helmet_color("굴절차·고가사다리차"), fire, "그 밖의 출동대는 진압(검정)")
+	assert_eq(SpriteArt.helmet_color("RIT"), fire, "RIT는 임무 — 헬멧 색 없음 (이름표)")
 
 
 func test_every_vehicle_and_furniture_is_linked() -> void:

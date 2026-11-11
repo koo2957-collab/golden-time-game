@@ -139,6 +139,8 @@ static func describe_text(e: Dictionary) -> String:
 			text = "전략 전파 — %s" % e.strategy
 		"entry_ordered":
 			text = "내부 진입 명령 — %s" % e.squad
+		"order_span_delay":
+			text = "통솔범위 초과(직접 지휘 %d > %d) — 명령 %.0f초 지연. 단위대를 편성하면 없어진다" % [int(e.direct), int(e.ideal), float(e.delay_s)]
 		"entry_all":
 			text = "동시 진입 허가 — %s" % e.squads
 		"entry_approach":

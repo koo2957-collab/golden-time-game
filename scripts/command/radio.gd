@@ -41,12 +41,16 @@ var current: Message
 var history: Array[Message] = []
 ## 송신이 끝날 때마다 (Message, tick) — 상황판(KnowledgeBoard)이 듣는다
 var on_delivered := Callable()
+## 즉시 지시 (2026-11-11 사용자 결정 ③): 지휘관 지시와 대원의 복명복창은 채널에 줄 서지 않고 바로 전달·기록한다.
+## 대원 → 지휘관 보고는 그대로 줄을 서서 늦게 온다 (보고된 정보만 상황판에). 훈련·실전 = 켬, 악조건 = 끔 (SimWorld.apply_realism)
+var instant_orders := false
 var events: SimEventLog
 
 var _call_s: float
 var _per_char_s: float
 var _max_s: float
 var _gap_s: float
+var _instant_char_scale := 1.0
 var _remaining := 0.0
 var _gap := 0.0
 var _seq := 0
@@ -59,6 +63,7 @@ func _init(params: ParamTable, p_events: SimEventLog, p_channel := "지휘망") 
 	_per_char_s = params.value("per_char_s")
 	_max_s = params.value("max_message_s")
 	_gap_s = params.value("gap_s")
+	_instant_char_scale = params.value("instant_char_scale")
 
 
 func send(priority: Priority, sender: String, receiver: String, body: String, tick: int, on_sent := Callable()) -> Message:
@@ -69,14 +74,39 @@ func send(priority: Priority, sender: String, receiver: String, body: String, ti
 	m.sender = sender
 	m.receiver = receiver
 	m.body = body
-	m.duration_s = minf(_max_s, _call_s + body.length() * _per_char_s)
+	m.duration_s = minf(_max_s, _call_s + body.length() * _per_char_s * (_instant_char_scale if instant_orders else 1.0))
 	m.queued_tick = tick
 	m.on_sent = on_sent
 	m.mine = sender == CommandSystem.COMMANDER
+	if instant_orders and m.mine:
+		_deliver_now(m, tick)
+		return m
 	queue.append(m)
 	queue.sort_custom(func(a: Message, b: Message) -> bool:
 		return a.priority < b.priority or (a.priority == b.priority and a.seq < b.seq))
 	return m
+
+
+## 복명복창·진입 허가 요청처럼 지휘관의 결정을 기다리는 대원 무전. 즉시 지시면 바로 기록·전달, 아니면 일반 송신
+func send_ack(priority: Priority, sender: String, receiver: String, body: String, tick: int, on_sent := Callable()) -> Message:
+	if not instant_orders:
+		return send(priority, sender, receiver, body, tick, on_sent)
+	var m := Message.new()
+	m.on_sent = on_sent
+	_seq += 1
+	m.seq = _seq
+	m.priority = priority
+	m.sender = sender
+	m.receiver = receiver
+	m.body = body
+	_deliver_now(m, tick)
+	return m
+
+
+func _deliver_now(m: Message, tick: int) -> void:
+	m.queued_tick = tick
+	m.start_tick = tick
+	_finish(m, tick)
 
 
 func busy() -> bool:

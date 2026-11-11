@@ -312,6 +312,8 @@ func apply_realism(name: String) -> void:
 	realism = name
 	# 임무형 내부 지휘는 모든 난이도에 적용 (R7, 2026-11-08 사용자 결정)
 	command.interior.enabled = true
+	# 지시 방식 (2026-11-11 사용자 결정 ③): 훈련 = 바로 실행 · 실전 = 바로 실행 + 통솔범위 지연 · 악조건 = 무전이 끝나야 실행
+	command.set_order_mode(name != "악조건", name != "훈련")
 	# 없는 장비는 차량에 가서 가져와야 한다, 처음 차량은 한 대씩 들어온다 (P4-1, 실제 플레이에서만)
 	doors.require_equipment = true
 	command.resources.arrival_drive = true

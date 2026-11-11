@@ -420,7 +420,8 @@ func _run() -> void:
 		_click(here, MOUSE_BUTTON_LEFT)
 		sim.step_ticks(1)
 		var radio := sim.command.radio
-		var sent := radio.queue.any(func(m): return m.body.ends_with("이동하라.")) or (radio.current != null and radio.current.body.ends_with("이동하라."))
+		# 즉시 지시(훈련)면 이미 전달되어 기록에, 악조건이면 아직 줄에
+		var sent := radio.queue.any(func(m): return m.body.ends_with("이동하라.")) or (radio.current != null and radio.current.body.ends_with("이동하라.")) or radio.history.any(func(m): return m.body.ends_with("이동하라."))
 		_check("내부 조: 여기로(경유지) → 무전 지시", sent, true)
 	# 본 적 없는 방에 W(주 임무) → 층 단위 임무로 바뀐다
 	var room2: Compartment = null
@@ -460,7 +461,7 @@ func _run() -> void:
 		_check("A 대기 → 하위 칸", str(world.hud.card.parent), "standby")
 		_key(KEY_W)
 		sim.step_ticks(1)
-		var asked := sim.command.radio.queue.any(func(m): return m.body.contains("상황 보고하라")) or (sim.command.radio.current != null and sim.command.radio.current.body.contains("상황 보고하라"))
+		var asked := sim.command.radio.queue.any(func(m): return m.body.contains("상황 보고하라")) or (sim.command.radio.current != null and sim.command.radio.current.body.contains("상황 보고하라")) or sim.command.radio.history.any(func(m): return m.body.contains("상황 보고하라"))
 		_check("보고 요청 무전", asked, true)
 		_key(KEY_A)
 		_key(KEY_Q)

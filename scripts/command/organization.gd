@@ -34,6 +34,11 @@ var _channels := 0
 var _retired: Array[Radio] = []  # 해제했지만 아직 송신 중인 작전망
 
 
+## 즉시 지시 (작전망도 같게) · 통솔범위 초과 지연 (훈련 = 끔, 실전·악조건 = 켬). SimWorld.apply_realism이 정한다
+var instant_orders := false
+var span_delay := true
+
+
 func _init(params: ParamTable, p_events: SimEventLog) -> void:
 	_params = params
 	_events = p_events
@@ -76,6 +81,7 @@ func set_division(name: String, supervisor: int, squads: Array[int]) -> Division
 		d.name = name
 		_channels += 1
 		d.radio = Radio.new(_params, _events, "작전망 %d" % _channels)
+		d.radio.instant_orders = instant_orders
 		# 단위지휘관이 받은 보고도 상황판에 오른다 (지휘관에게 전파, P10-1)
 		d.radio.on_delivered = on_delivered
 		divisions.append(d)
@@ -118,6 +124,8 @@ func direct_count(squad_count: int, on_scene: Callable) -> int:
 
 ## 직접 지휘하는 출동대에 내리는 명령의 지연 (초). 단위대에 속한 출동대만 받는 명령이면 지연 없음.
 func order_delay_s(squads: Array[int], direct: int) -> float:
+	if not span_delay:
+		return 0.0
 	var excess := direct - span_ideal
 	if excess <= 0:
 		return 0.0

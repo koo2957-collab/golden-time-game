@@ -244,6 +244,16 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, p_res
 		_inside[c.id] = _indoor(c.leader.level, c.leader.pos)
 
 
+## 지시 방식 (2026-11-11 사용자 결정 ③): instant = 지휘관 지시가 바로 실행된다(무전 문장은 기록에 남음), span = 통솔범위 초과 지연
+func set_order_mode(instant: bool, span: bool) -> void:
+	radio.instant_orders = instant
+	org.instant_orders = instant
+	org.span_delay = span
+	for d in org.divisions:
+		if d.radio:
+			d.radio.instant_orders = instant
+
+
 ## 시나리오의 command(지휘관), dispatch(출동 지령), report_truth를 읽는다.
 func apply_scenario(data: Dictionary) -> void:
 	dispatch = data.get("dispatch", {})
@@ -354,7 +364,8 @@ func _request_entry(c: Crew, tick: int) -> void:
 	var ctx := {"crew_id": c.id, "crew": _crew_name(c), "squad": squad.name, "squad_id": sid, "air": " · ".join(air),
 		"hose": v.hose, "risk": " · ".join(factors) if not factors.is_empty() else "특이사항 없음",
 		"verdict": v.verdict, "reason": v.reason}
-	radio.send(Radio.Priority.TACTICS, _crew_name(c), COMMANDER, body, tick, _on_entry_asked.bind(sid, ctx, factors))
+	# 즉시 지시 모드: 문 앞에 닿으면 요청이 바로 카드로 (지휘관의 결정을 기다리는 무전)
+	radio.send_ack(Radio.Priority.TACTICS, _crew_name(c), COMMANDER, body, tick, _on_entry_asked.bind(sid, ctx, factors))
 
 
 func _on_entry_asked(tick: int, sid: int, ctx: Dictionary, factors: PackedStringArray) -> void:
@@ -535,6 +546,8 @@ func gate(commands: Array, tick: int) -> Array:
 		var delay := org.order_delay_s(squads, direct)
 		if delay > 0.0:
 			org.delayed_orders += 1
+			# 왜 늦는지 화면에 (단위대를 편성하면 없어진다는 것을 배우게)
+			events.add(tick, "order_span_delay", {"delay_s": delay, "direct": direct, "ideal": org.span_ideal})
 		if interior.needs_radio(cmd):
 			# 건물 안 조: 지휘망으로 지시가 전달된 뒤 실행 (교신·복명복창, 기획안 9-1)
 			var h := {"cmd": cmd, "wait": [] as Array[int], "release": tick + roundi(delay / SimClock.TICK_DT), "radio": true}
@@ -552,7 +565,7 @@ func gate(commands: Array, tick: int) -> Array:
 ## 내부 지시가 전달됨: 다음 틱에 실행하고 조가 복명복창한다
 func _on_interior_received(tick: int, h: Dictionary) -> void:
 	h.radio = false
-	radio.send(interior.priority_of(h.cmd), interior.receiver_of(h.cmd), COMMANDER, interior.ack_text(h.cmd), tick)
+	radio.send_ack(interior.priority_of(h.cmd), interior.receiver_of(h.cmd), COMMANDER, interior.ack_text(h.cmd), tick)
 
 
 ## RIT·현장안전담당은 다른 임무를 받지 않는다 (SSG 9 1.2.2). 밖에서 자리를 옮기는 이동은 된다.
@@ -968,9 +981,9 @@ func _on_entry_received(tick: int, squad_id: int) -> void:
 	})
 	var d := org.division_of(squad_id)
 	if d:
-		d.radio.send(Radio.Priority.TACTICS, squad.name, _division_call(d), "내부 진입 지시 수신, 진입하겠음.", tick)
+		d.radio.send_ack(Radio.Priority.TACTICS, squad.name, _division_call(d), "내부 진입 지시 수신, 진입하겠음.", tick)
 	else:
-		radio.send(Radio.Priority.TACTICS, squad.name, COMMANDER, "내부 진입 명령 수신, 진입하겠음.", tick)
+		radio.send_ack(Radio.Priority.TACTICS, squad.name, COMMANDER, "내부 진입 명령 수신, 진입하겠음.", tick)
 
 
 func _on_strategy_received(tick: int, s: Strategy) -> void:

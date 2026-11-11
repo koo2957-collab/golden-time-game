@@ -925,6 +925,8 @@ func _draw() -> void:
 	elif not thermal:
 		_draw_smoke()
 	_draw_blasts()
+	if not _outside():
+		_draw_open_walls()
 	if _glow:
 		_glow.spots = _glow_spots if not thermal and not _outside() else []
 		_glow.queue_redraw()
@@ -1040,6 +1042,11 @@ func _update_ground_colors() -> void:
 		var k := cells[n]
 		var t := types[n]
 		var structure := t == BuildingData.Cell.WALL or t == BuildingData.Cell.WINDOW
+		if structure:
+			@warning_ignore("integer_division")
+			var wk := stack.wall_kind(level, k % b.width, k / b.width, _outside())
+			if wk == FloorStack.Wall.HALF or wk == FloorStack.Wall.OPEN:
+				structure = false
 		var color: Color
 		if thermal:
 			@warning_ignore("integer_division")
@@ -1192,8 +1199,8 @@ func _draw_cell_objects(x: int, y: int) -> void:
 				FloorStack.Wall.OPEN:
 					pass  # 인형집: 앞 바깥벽은 그리지 않는다 (문·창은 따로)
 				FloorStack.Wall.HALF:
-					# 실내 벽: 허리 높이 진한 벽 + 윗면 단면 띠 (2026-11-12: 구조를 또렷하게)
-					_block(x, y, 0.0, wh, _structure_color(skin.color("wall")), _cut_top(wh))
+					# 실내 벽: 허리 높이 진한 벽 + 윗면 단면 띠, 두께는 바깥벽의 1/3 (2026-11-12 사용자 결정)
+					_thin_wall(x, y, 0.0, wh, _structure_color(skin.color("wall")), _cut_top(wh))
 				_:
 					_block(x, y, 0.0, wh, _structure_color(skin.color("wall")), _cut_top(wh))
 		BuildingData.Cell.WINDOW:
@@ -1254,7 +1261,11 @@ func _draw_door(x: int, y: int) -> void:
 	var top := proj.to_screen(Vector2(x + 0.5, y + 0.5), minf(DOOR_TOP_M, _wall_height(x, y)) + 0.3)
 	var first := Vector2i(x, y) == o.cells[0]
 	if not o.is_open:
-		_block(x, y, 0.0, minf(DOOR_TOP_M, _wall_height(x, y)), _structure_color(PlanStyle.CELL_COLORS[BuildingData.Cell.DOOR]))
+		var dc := _structure_color(PlanStyle.CELL_COLORS[BuildingData.Cell.DOOR])
+		if stack.wall_kind(level, x, y, _outside()) == FloorStack.Wall.HALF:
+			_thin_wall(x, y, 0.0, minf(DOOR_TOP_M, _wall_height(x, y)), dc, Color(0, 0, 0, 0))
+		else:
+			_block(x, y, 0.0, minf(DOOR_TOP_M, _wall_height(x, y)), dc)
 		if o.locked and first and not thermal:
 			draw_string(PlanStyle.font(), top + Vector2(-30, 0), "잠김", HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color("ffcc80"))
 	elif o.forced:
@@ -1843,6 +1854,64 @@ func _box(p0: Vector2, p1: Vector2, h0: float, h1: float, color: Color, side_col
 	_quad(sw + lo, se + lo, se + hi, sw + hi, Color(side_color.darkened(SOUTH_SHADE), side_color.a))
 	_quad(ne + lo, se + lo, se + hi, ne + hi, Color(side_color.darkened(EAST_SHADE), side_color.a))
 	_quad(nw + hi, ne + hi, se + hi, sw + hi, top_color if top_color.a > 0.0 else color)
+
+
+## 얇은 벽 한 칸: 가로 막대(서↔동)와 세로 막대(북↔남)를 이어 그린다. 두께 = 칸 × inner_wall_thick.
+## 이웃 칸으로 벽이 이어지는 쪽 끝면은 그리지 않아 이음새 줄무늬가 생기지 않는다. 그리는 순서: 북쪽 팔 → 가로 막대 → 남쪽 팔
+func _thin_wall(x: int, y: int, h0: float, h1: float, color: Color, top: Color) -> void:
+	var b := sim.building
+	var wallish := [BuildingData.Cell.WALL, BuildingData.Cell.DOOR, BuildingData.Cell.WINDOW]
+	var has := func(dx: int, dy: int) -> bool: return b.in_bounds(x + dx, y + dy) and b.cell(level, x + dx, y + dy) in wallish
+	var t := clampf(stack.params.inner_wall_thick, 0.05, 1.0) * 0.5
+	var cx := x + 0.5
+	var cy := y + 0.5
+	var w: bool = has.call(-1, 0)
+	var e: bool = has.call(1, 0)
+	var n: bool = has.call(0, -1)
+	var sth: bool = has.call(0, 1)
+	if n:
+		_thin_box(Vector2(cx - t, y), Vector2(cx + t, cy - t), h0, h1, color, top, false, true)
+	var x0 := float(x) if w else cx - t
+	var x1 := float(x + 1) if e else cx + t
+	_thin_box(Vector2(x0, cy - t), Vector2(x1, cy + t), h0, h1, color, top, not sth or x1 - x0 > 2.0 * t + 0.001, not e)
+	if sth:
+		_thin_box(Vector2(cx - t, cy + t), Vector2(cx + t, y + 1), h0, h1, color, top, false, true)
+
+
+## 상자 (_box와 같고 남·동 면을 고를 수 있다)
+func _thin_box(p0: Vector2, p1: Vector2, h0: float, h1: float, color: Color, top: Color, south: bool, east: bool) -> void:
+	var nw := proj.to_screen(p0)
+	var ne := proj.to_screen(Vector2(p1.x, p0.y))
+	var se := proj.to_screen(p1)
+	var sw := proj.to_screen(Vector2(p0.x, p1.y))
+	var lo := Vector2(0, -h0 * IsoProjection.PX_PER_M)
+	var hi := Vector2(0, -h1 * IsoProjection.PX_PER_M)
+	if south:
+		_quad(sw + lo, se + lo, se + hi, sw + hi, Color(color.darkened(SOUTH_SHADE), color.a))
+	if east:
+		_quad(ne + lo, se + lo, se + hi, ne + hi, Color(color.darkened(EAST_SHADE), color.a))
+	_quad(nw + hi, ne + hi, se + hi, sw + hi, top if top.a > 0.0 else color)
+
+
+## 없앤 앞 바깥벽 자리 (인형집, 2026-11-12): 바닥선은 얇은 실선, 벽 꼭대기선·양 끝 세로선은 반투명 점선
+func _draw_open_walls() -> void:
+	var a := stack.params.open_wall_alpha
+	var line := Color(1, 1, 1, a)
+	var dash := Color(1, 1, 1, a * 0.85)
+	for run: Dictionary in _ghost_wall_runs(level):
+		if not run.outer:
+			continue
+		var ac := Vector2i(run.a.floor())
+		if stack.wall_kind(level, ac.x, ac.y, false) != FloorStack.Wall.OPEN:
+			continue
+		var a0 := proj.to_screen(run.a, 0.02)
+		var b0 := proj.to_screen(run.b, 0.02)
+		var a1 := proj.to_screen(run.a, CEILING_M)
+		var b1 := proj.to_screen(run.b, CEILING_M)
+		draw_line(a0, b0, line, 1.5)
+		draw_dashed_line(a1, b1, dash, 1.5, 6.0)
+		draw_dashed_line(a0, a1, dash, 1.2, 6.0)
+		draw_dashed_line(b0, b1, dash, 1.2, 6.0)
 
 
 ## 투명한 벽 한 칸: 이웃이 벽(벽·문·창)인 쪽 면은 그리지 않아 겹친 이음새가 보이지 않는다.

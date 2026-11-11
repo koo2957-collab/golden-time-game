@@ -536,7 +536,9 @@ func _run() -> void:
 	mup.pressed = false
 	mup.position = mmove.position
 	root.push_input(mup, true)
-	await process_frame
+	# 무거운 때(뒤에서 테스트가 돌 때)는 한 프레임으로 부족하다
+	for i in 3:
+		await process_frame
 	_check("미니맵 끌기 → 화면 따라 이동", world.camera.position != cam_before, true)
 	sim.plan.acquire("상황실", sim.clock.tick)
 	_check("도면 → 미니맵 평면도 열림", mm.unlocked(), true)

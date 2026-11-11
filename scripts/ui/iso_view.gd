@@ -171,7 +171,8 @@ func _apply() -> void:
 			layer.ghost_mode = 0
 		else:
 			layer.ghost_mode = 0 if depth == 0 else (1 if depth == 1 else 2)
-		layer.modulate = Color.WHITE
+		# 비켜 놓기: 고른 층이 아닌 짝 층은 흐리게 (2026-11-12 사용자 결정 25%)
+		layer.modulate = Color(1, 1, 1, params.partner_alpha) if stack.staggered() and depth > 0 else Color.WHITE
 	# 위층: 지금 층 위로 FLOOR_GAP_PX씩 올려 반투명 (외부 보기에서는 숨김)
 	var above: Array[int] = []
 	if not _exterior and stack != null:
@@ -192,8 +193,8 @@ func _apply() -> void:
 		up.ghost_mode = 0 if stack.staggered() else (1 if k == 0 else 3)
 		up.refresh()
 		up.position = -stack.offset_vec(k + 1)
-		# 위층도 실루엣만 (F01) — 투명도는 선 색에 들어 있다
-		up.modulate = Color.WHITE
+		# 비켜 놓기: 짝 위층은 흐리게 (25%). 예전 방식은 투명도가 선 색에 들어 있다
+		up.modulate = Color(1, 1, 1, params.partner_alpha) if stack.staggered() else Color.WHITE
 
 
 func _configure(layer: FloorLayer, depth: int, shown: Array[int], ext: bool) -> void:
@@ -257,6 +258,14 @@ func _draw_links() -> void:
 		_links.draw_circle(a, 4.0, color)
 		_links.draw_circle(b, 4.0, color)
 		_links.draw_string(PlanStyle.font(), (a + b) * 0.5 + Vector2(8, 0), "%s 계단" % st.label(lower, i), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, color)
+	# 층 이름표: 각 층 앞쪽 왼쪽 모서리에 "N층" (고른 층은 진하게)
+	for spec in [[lower, lower_y], [upper, upper_y]]:
+		var lv: int = spec[0]
+		var fpl := sim.building.footprint(lv)
+		var at: Vector2 = _proj.to_screen(Vector2(fpl.position.x, fpl.end.y), 0.0) + spec[1] + Vector2(-70, 20)
+		var mine := lv == _level
+		_links.draw_string(PlanStyle.font(), at, sim.building.floor_name(lv) + (" ◀ 지금 층" if mine else ""), HORIZONTAL_ALIGNMENT_LEFT, -1, 22 if mine else 18,
+			Color(1, 0.92, 0.55, 1.0) if mine else Color(1, 1, 1, 0.55))
 	# 분해도 안내선: 아래층 건물 모서리 → 위층 같은 모서리 (들어 올린 층이라는 표시)
 	var fp := sim.building.footprint(lower)
 	var guide := Color(1, 1, 1, params.stagger_guide_alpha)

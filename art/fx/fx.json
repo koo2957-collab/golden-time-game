@@ -15,6 +15,15 @@
     ],
     "size": 96
   },
+  "smoke_curtain": {
+    "body_v": 0.75,
+    "fps": 6.0,
+    "frames": 24,
+    "h": 160,
+    "source": "tools/blender/smoke_fx.py — Blender Cycles 부피 노이즈(정면 정사영), 가로 타일·시간 루프",
+    "tile_m": 2.0,
+    "w": 320
+  },
   "smoke_noise": {
     "size": 256
   },

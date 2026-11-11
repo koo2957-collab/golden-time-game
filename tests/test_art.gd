@@ -109,3 +109,13 @@ func test_fx_puffs_include_fire_and_flash() -> void:
 	var ci := Node2D.new()
 	assert_true(not FxArt.draw_puff(ci, Vector2.ZERO, 10.0, 9, 0, Color.WHITE), "없는 종류는 false (도형으로 대체)")
 	ci.free()
+
+
+func test_fx_smoke_curtain_flipbook() -> void:
+	# F04 (2026-11-12): Blender로 구운 연기층 앞면 커튼 (tools/blender/smoke_fx.py)
+	assert_true(FxArt.load_all(), "불꽃 그림 불러옴")
+	assert_true(FxArt.curtain != null, "smoke_curtain.png 있음")
+	var m: Dictionary = FxArt.meta.get("smoke_curtain", {})
+	assert_eq(FxArt.curtain.get_height(), int(m.h) * int(m.frames), "장을 세로로 쌓은 높이 = 장 높이 × 장 수")
+	assert_eq(FxArt.curtain.get_width(), int(m.w), "가로 한 장")
+	assert_true(float(m.body_v) > 0.5 and float(m.body_v) < 1.0, "연기층 아랫면은 그림 아래쪽, 그 아래는 말려 내려오는 가장자리")

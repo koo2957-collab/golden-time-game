@@ -41,6 +41,8 @@ var smoke_dark_density := 0.45
 var smoke_row_m := 0.4
 var smoke_max_rows := 6
 var smoke_sink_s := 6.0
+var smoke_style := "curtain"
+var smoke_curtain_alpha := 0.6
 var smoke_outline_below_m := 1.8
 var smoke_outline_density := 0.4
 var adjacent_alpha := 0.1
@@ -111,6 +113,8 @@ func apply(data: Dictionary) -> void:
 	smoke_row_m = float(_value(data, "smoke_row_m", smoke_row_m))
 	smoke_max_rows = int(_value(data, "smoke_max_rows", smoke_max_rows))
 	smoke_sink_s = float(_value(data, "smoke_sink_s", smoke_sink_s))
+	smoke_style = str(_value(data, "smoke_style", smoke_style))
+	smoke_curtain_alpha = float(_value(data, "smoke_curtain_alpha", smoke_curtain_alpha))
 	smoke_outline_below_m = float(_value(data, "smoke_outline_below_m", smoke_outline_below_m))
 	smoke_outline_density = float(_value(data, "smoke_outline_density", smoke_outline_density))
 	adjacent_alpha = float(_value(data, "adjacent_alpha", adjacent_alpha))

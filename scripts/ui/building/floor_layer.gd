@@ -1716,11 +1716,13 @@ func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density
 	var rows := clampi(ceili(thick / row_m - 0.001), 1, sp.smoke_max_rows)
 	var nx := maxi(1, ceili(r.size.x / step))
 	var ny := maxi(1, ceili(r.size.y / step))
+	# 커튼 방식: 앞면은 Blender로 구운 커튼이 맡고, 덩어리는 방 안쪽 아랫면 한 줄만
+	var curtain := sp.smoke_style == "curtain" and FxArt.curtain != null
 	# 그릴 덩어리: [깊이 순서, 칸, 줄]. 뒤(북서)에서 앞(남동)으로, 같은 자리는 위 줄부터
 	var draws: Array = []
 	for j in ny:
 		for i in nx:
-			var front := i == nx - 1 or j == ny - 1
+			var front := (i == nx - 1 or j == ny - 1) and not curtain
 			for k in (rows if front else 1):
 				var row := k if front else rows - 1
 				draws.append([i + j, Vector2i(i, j), row])
@@ -1734,7 +1736,7 @@ func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density
 	for d: Array in draws:
 		var g: Vector2i = d[1]
 		var k: int = d[2]
-		var front := g.x == nx - 1 or g.y == ny - 1
+		var front := (g.x == nx - 1 or g.y == ny - 1) and not curtain
 		var seed := c.index * 97 + g.x * 13 + g.y * 31 + k * 7
 		var jit := Vector2(_rand01(seed) - 0.5, _rand01(seed + 3) - 0.5) * step * 0.5
 		var drift := Vector2(sin(t * 0.3 + seed), cos(t * 0.23 + seed * 1.3)) * step * 0.12
@@ -1747,13 +1749,39 @@ func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density
 		var phase := fposmod(t / sp.smoke_sink_s + _rand01(seed + 11), 1.0)
 		var bottom_m := maxf(h - 0.05, slot + row_m * (0.35 - 0.6 * phase))
 		var pulse := sin(phase * PI)
-		var base_a := minf(sp.smoke_front_alpha, a + 0.15) if front else a * sp.smoke_top_alpha
+		var base_a := minf(sp.smoke_front_alpha, a + 0.15) if front else a * (sp.smoke_top_alpha * 1.5 if curtain else sp.smoke_top_alpha)
 		var alpha := base_a * grow * (0.55 + 0.45 * pulse)
 		var w := w0 * (0.9 + 0.2 * _rand01(seed + 5))
 		var hh := h0 * (0.9 + 0.25 * pulse)
 		var bottom := proj.to_screen(at, bottom_m)
 		FxArt.draw_puff_rect(self, Rect2(bottom - Vector2(w * 0.5, hh * 0.9), Vector2(w, hh)), kind, seed, Color(tint, alpha))
+	if curtain:
+		var col := Color(0.36, 0.36, 0.38) if dark else Color(0.8, 0.81, 0.84)
+		_draw_curtain_faces(r, h, Color(col, minf(sp.smoke_curtain_alpha, a + 0.1)), c.index)
 	return true
+
+
+## 잘린 앞면(동·남)에 연기 커튼: 위 = 천장, 그림의 body_v 높이 = 연기층 아랫면(h), 그 아래는 말려 내려오는 가장자리.
+## 가로는 tile_m 마다 한 장 (건물 좌표에 맞춰 이웃 방과 무늬가 이어진다)
+func _draw_curtain_faces(r: Rect2i, h: float, col: Color, seed: int) -> void:
+	var m: Dictionary = FxArt.meta.get("smoke_curtain", {})
+	var body_v := clampf(float(m.get("body_v", 0.75)), 0.3, 1.0)
+	var tile := maxf(1.0, float(m.get("tile_m", 2.0)) / sim.building.cell_size_m)
+	var bottom := maxf(0.0, CEILING_M - (CEILING_M - h) / body_v)
+	# 동쪽 면 (x = 끝, y 방향) → 남쪽 면 (y = 끝, x 방향)
+	for face in 2:
+		var from := float(r.position.y if face == 0 else r.position.x)
+		var to := float(r.end.y if face == 0 else r.end.x)
+		var fixed := float(r.end.x if face == 0 else r.end.y)
+		var s := from
+		while s < to - 0.001:
+			var e := minf(to, (floorf(s / tile) + 1.0) * tile)
+			var u0 := s / tile - floorf(s / tile)
+			var u1 := u0 + (e - s) / tile
+			var pa := Vector2(fixed, s) if face == 0 else Vector2(s, fixed)
+			var pb := Vector2(fixed, e) if face == 0 else Vector2(e, fixed)
+			FxArt.draw_curtain(self, proj.to_screen(pa, CEILING_M), proj.to_screen(pb, CEILING_M), proj.to_screen(pb, bottom), proj.to_screen(pa, bottom), u0, u1, col, seed + face)
+			s = e
 
 
 ## 0~1 고정 난수 (덩어리 위치 흩뜨리기)

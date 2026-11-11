@@ -10,6 +10,8 @@ static var _loaded := false
 static var flame: Texture2D
 static var noise: Texture2D
 static var puffs: Texture2D
+## 연기층 앞면 커튼 플립북 (tools/blender/smoke_fx.py로 구움). 없으면 null
+static var curtain: Texture2D
 static var meta: Dictionary = {}
 
 
@@ -22,12 +24,15 @@ static func load_all() -> bool:
 	flame = _tex(DIR + "/flame.png")
 	noise = _tex(DIR + "/smoke_noise.png")
 	puffs = _tex(DIR + "/puffs.png")
+	curtain = _tex(DIR + "/smoke_curtain.png")
 	return flame != null
 
 
 static func _tex(path: String) -> Texture2D:
 	if ResourceLoader.exists(path):
 		return load(path)
+	if not FileAccess.file_exists(path):
+		return null
 	var img := Image.load_from_file(ProjectSettings.globalize_path(path))
 	return ImageTexture.create_from_image(img) if img else null
 
@@ -50,6 +55,26 @@ const PUFF_BLACK := 0
 const PUFF_WHITE := 1
 const PUFF_FIRE := 2
 const PUFF_FLASH := 3
+
+
+## 연기층 앞면 커튼 (Blender 플립북). 화면 네 점: 위a·위b·아래b·아래a, u0~u1 = 가로 한 장 안의 범위(0~1).
+## 위 = 천장, meta body_v 높이가 연기층 아랫면. 이웃한 두 장을 겹쳐 부드럽게 재생한다. 그림이 없으면 false
+static func draw_curtain(ci: CanvasItem, top_a: Vector2, top_b: Vector2, bot_b: Vector2, bot_a: Vector2, u0: float, u1: float, modulate: Color, seed: int) -> bool:
+	if not load_all() or curtain == null:
+		return false
+	var m: Dictionary = meta.get("smoke_curtain", {})
+	var frames := int(m.get("frames", 24))
+	var f := Time.get_ticks_msec() / 1000.0 * float(m.get("fps", 6.0)) + float(posmod(seed * 7, frames))
+	var f0 := posmod(int(floorf(f)), frames)
+	var w := f - floorf(f)
+	var inset := 0.5 / float(curtain.get_height())
+	var pts := PackedVector2Array([top_a, top_b, bot_b, bot_a])
+	for pair: Array in [[f0, 1.0], [(f0 + 1) % frames, w]]:
+		var v0 := float(pair[0]) / frames + inset
+		var v1 := (float(pair[0]) + 1.0) / frames - inset
+		var c := Color(modulate, modulate.a * float(pair[1]))
+		ci.draw_polygon(pts, PackedColorArray([c, c, c, c]), PackedVector2Array([Vector2(u0, v0), Vector2(u1, v0), Vector2(u1, v1), Vector2(u0, v1)]), curtain)
+	return true
 
 
 ## 덩어리 그림을 아무 직사각형에 (납작하게 눌러 그릴 때). 구워져 있지 않으면 false

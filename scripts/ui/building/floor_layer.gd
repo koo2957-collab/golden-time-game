@@ -110,6 +110,12 @@ var _bq_cols := PackedColorArray()
 var _bq_idx := PackedInt32Array()
 var _bl_pts := PackedVector2Array()
 var _bl_cols := PackedColorArray()
+## 층 고르기 (P4-5): 외부 보기에서 노랗게 테두리를 그릴 층 (-99 = 없음)
+var hover_floor := -99:
+	set(v):
+		if v != hover_floor:
+			hover_floor = v
+			queue_redraw()
 ## 외관 층 [{kind: "floor"|"gap", level, h0, h1, text}] (아래 → 위)
 var _shell: Array[Dictionary] = []
 var _shell_top := CEILING_M
@@ -380,6 +386,57 @@ func _draw_shell() -> void:
 	_draw_roof(wall)
 	_draw_shell_plumes()
 	_draw_shell_markers()
+	_draw_floor_hover()
+
+
+## 층 고르기 (P4-5): 마우스를 올린 층의 외벽 테두리를 노랗게 (SelectionController가 hover_floor를 정한다)
+func _draw_floor_hover() -> void:
+	if hover_floor == -99:
+		return
+	for band in _floor_bands():
+		if int(band[0]) != hover_floor:
+			continue
+		var t := Time.get_ticks_msec() / 1000.0
+		var glow := 0.55 + 0.25 * sin(t * 5.0)
+		for poly: PackedVector2Array in _band_polys(float(band[1]), float(band[2])):
+			draw_colored_polygon(poly, Color(PlanStyle.ENTRY_POINT, 0.18 * glow))
+			var loop := poly.duplicate()
+			loop.append(poly[0])
+			draw_polyline(loop, Color(PlanStyle.ENTRY_POINT, 0.95), 3.0)
+		# 이름은 남쪽 면 가운데 (긴 건물에서도 마우스 가까이)
+		var s: PackedVector2Array = _band_polys(float(band[1]), float(band[2]))[0]
+		var at := (s[0] + s[1] + s[2] + s[3]) * 0.25
+		draw_string(PlanStyle.font(), at + Vector2(-90, 6), "%s — 클릭하면 이 층으로" % sim.building.floor_name(hover_floor), HORIZONTAL_ALIGNMENT_CENTER, 180, 16, Color.WHITE)
+
+
+## 외부 보기의 층 띠 [층, 아래 높이, 위 높이] (1층 포함, 줄여 그린 층 제외)
+func _floor_bands() -> Array:
+	var out: Array = [[_first_level, 0.0, CEILING_M]]
+	for it in _shell:
+		if it.kind == "floor":
+			out.append([int(it.level), float(it.h0), float(it.h1)])
+	return out
+
+
+## 층 띠의 남쪽·동쪽 외벽 면 (화면 다각형 2개)
+func _band_polys(h0: float, h1: float) -> Array[PackedVector2Array]:
+	var fp := _shell_fp
+	var s := PackedVector2Array([proj.to_screen(Vector2(fp.position.x, fp.end.y), h0), proj.to_screen(Vector2(fp.end.x, fp.end.y), h0),
+		proj.to_screen(Vector2(fp.end.x, fp.end.y), h1), proj.to_screen(Vector2(fp.position.x, fp.end.y), h1)])
+	var e := PackedVector2Array([proj.to_screen(Vector2(fp.end.x, fp.end.y), h0), proj.to_screen(Vector2(fp.end.x, fp.position.y), h0),
+		proj.to_screen(Vector2(fp.end.x, fp.position.y), h1), proj.to_screen(Vector2(fp.end.x, fp.end.y), h1)])
+	return [s, e]
+
+
+## 외부 보기에서 화면 점(이 층 그림 좌표) 아래의 층. 없으면 -99
+func shell_level_at(p: Vector2) -> int:
+	if not _outside():
+		return -99
+	for band in _floor_bands():
+		for poly in _band_polys(float(band[1]), float(band[2])):
+			if Geometry2D.is_point_in_polygon(p, poly):
+				return int(band[0])
+	return -99
 
 
 ## 옥상: 바닥판 + 난간(파라펫) 안쪽 면 + 계단실 옥탑 (R17)

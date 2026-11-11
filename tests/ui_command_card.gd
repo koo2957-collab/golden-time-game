@@ -54,17 +54,18 @@ func _run() -> void:
 	var up: InputEventMouseButton = down.duplicate()
 	up.pressed = false
 	sel._zone_click(up, proj.to_screen(Vector2(zr.end) - Vector2(0.5, 0.5)))
-	for i in 600:
+	# 무전 뒤 조가 가서 설치한다 (P4-4: 설치 시간, 빈 조가 없으면 운전원이 60초 뒤) — 넉넉히 5분
+	for i in 3000:
 		if sim.zones.has_safe():
 			break
 		sim.step_ticks(1)
-	_check("끌기 → 안전구역 지정 (무전 후)", sim.zones.safe, zr)
+	_check("끌기 → 안전구역 지정 (무전·설치 후)", sim.zones.safe, zr)
 	world._press_card("A")
 	world._press_card("W")
 	_check("A → W → 환자 집결지 모드", sel.mode, sel.Mode.ZONE_CASUALTY)
 	sel._complete_mode(proj.to_screen(Vector2(zr.get_center())))
 	sel.cancel_mode()
-	for i in 600:
+	for i in 3000:
 		if sim.zones.casualty.x >= 0:
 			break
 		sim.step_ticks(1)
@@ -74,26 +75,17 @@ func _run() -> void:
 	for i in 3:
 		await process_frame
 	root.get_texture().get_image().save_png("user://ui_zones.png")
-	# 팀 선택 → 팀 세트, 원형 메뉴 = 명령 카드
+	# 팀 선택 → 팀 세트 (조 클릭은 고르기만 — 원형 메뉴 없음, P4-5)
 	var crew_id := 0
 	sel._set_selection([crew_id] as Array[int], [] as Array[int])
 	await process_frame
 	_check("팀 선택 → 팀 세트", card.set_name, "team")
 	_check("팀 6칸 (기획안 9-1)", _labels(card), ["Q 인명검색", "W 화점진압", "E 경계", "R 배연", "A 대기", "S 철수"])
-	sel.crew_menu.emit(crew_id, Vector2(600, 400))
+	_check("조를 골라도 메뉴가 뜨지 않는다", world.mission_ui.menu.visible, false)
+	# A 대기(하위 칸만) → 명령 카드가 하위 칸으로
+	world._press_card("A")
 	await process_frame
-	var radial = world.mission_ui.radial
-	_check("조 클릭 → 원형 메뉴", radial.visible, true)
-	var radial_labels: Array = []
-	for it: Dictionary in radial.items:
-		radial_labels.append(str(it.label))
-	_check("원형 메뉴 항목·단축키 = 명령 카드", radial_labels, _labels(card))
-	# 원형 메뉴에서 A 대기(하위 칸만) → 그 자리에서 하위 메뉴
-	radial.pick("A")
-	await process_frame
-	_check("원형 메뉴 A 대기 → 하위 칸", card.parent, "standby")
-	_check("원형 메뉴가 하위 칸으로 다시 열림", radial.visible and str(radial.items[0].label) == "Q 그 자리 대기", true)
-	radial.close()
+	_check("A 대기 → 하위 칸", [card.parent, _labels(card)[0]], ["standby", "Q 그 자리 대기"])
 	world._press_card("BACK")
 	# W 화점진압: 대상 고르기 + 세부 동작 칸
 	world._press_card("W")
@@ -132,7 +124,7 @@ func _run() -> void:
 	_check("본 방은 방 단위, 못 본 방은 층 단위", str(tcmd.action) if tcmd else "", "attack" if known else "attack_floor")
 	world._press_card("BACK")
 	sel._set_selection([crew_id] as Array[int], [] as Array[int])
-	# 건물 안 조: 지도 우클릭 이동은 막힌다, 문 앞 휠
+	# 건물 안 조: 땅 우클릭은 지휘관 이동(대원 명령 없음), 곁의 문을 누르면 문 행동
 	var inner: Opening = null
 	for o in sim.fire.openings:
 		if inner == null and o.kind == Opening.Kind.DOOR and o.level == 1 and o.room_a >= 0 and o.room_b >= 0:
@@ -146,14 +138,14 @@ func _run() -> void:
 	await process_frame
 	var n2 := sim.issued.size()
 	sel._issue_right_click(sel.projection.to_screen(Vector2(inner.cells[0]) + Vector2(3.5, 3.5)))
-	_check("건물 안 조 우클릭 이동 막힘", sim.issued.size(), n2)
+	var after: Array = sim.issued.slice(n2)
+	_check("건물 안 조 고른 채 땅 우클릭 → 지휘관 이동만", after.map(func(x): return x.command is CommandOrder and x.command.action == "commander_move"), [true])
 	_check("건물 안 조 = 건물 안", sim.command.interior.crew_inside(crew_id), true)
-	world.mission_ui.radial.close()
 	sel._click_select(sel.projection.to_screen(Vector2(inner.cells[0]) + Vector2(0.5, 0.5), 1.0), false, Vector2(700, 400))
 	await process_frame
-	_check("문 클릭 → 문 앞 휠", world.mission_ui.radial.visible and str(world.mission_ui.radial.items[0].label).contains("가스 확인"), true)
-	_check("원형 메뉴 펼침 애니메이션", world.mission_ui.radial._open_t < 1.0, true)
-	world.mission_ui.radial.pick("door_side")
+	var mui = world.mission_ui
+	_check("문 클릭 → 문 행동 목록", mui.menu.visible and mui.menu_ids.has("door_check") and mui.menu_ids.has("door_side"), true)
+	mui.pick("door_side")
 	# 건물 안 조라 무전으로 전달된 뒤 적용된다
 	for i in 200:
 		if not sim.tactical.door_methods.get(crew_id, {}).is_empty():
@@ -174,7 +166,7 @@ func _run() -> void:
 			win = o
 	if win:
 		sel._set_selection([0] as Array[int], [] as Array[int])
-		world.mission_ui.radial.close()
+		world.mission_ui.close_menu()
 		var n_before := sim.issued.size()
 		var wc := Vector2(win.cells[0]) + Vector2(0.5, 0.5)
 		sel._issue_crew_right_click(sel.projection.to_screen(wc, 1.2))

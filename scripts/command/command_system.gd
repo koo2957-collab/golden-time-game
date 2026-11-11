@@ -1424,9 +1424,10 @@ func _approach_entry(crew_ids: Array) -> EntryPoints.Entry:
 	return best if best else list[0]
 
 
-## 진입구로 가는 조 (1초마다): 문 앞에 닿으면 허가를 묻는다. 허가가 있으면 문을 열고(잠겼으면 파괴) 로비로 들어간다
+## 진입구로 가는 조 (매 틱 — 진입 허가 재요청이 틱 단위로 맞춰져 있다): 문 앞에 닿으면 허가를 묻는다.
+## 허가가 있으면 문을 열고(잠겼으면 파괴) 로비로 들어간다
 func _step_approach(tick: int) -> void:
-	if approach.is_empty() or tick % roundi(1.0 / SimClock.TICK_DT) != 0:
+	if approach.is_empty():
 		return
 	var list: Array = interior.entries.list if interior.entries else []
 	for id: int in approach.keys():
@@ -1488,8 +1489,8 @@ func order_stair(crew_id: int, core: int, tick: int) -> void:
 	var goal: int = ask.goal
 	stair_asks.erase(crew_id)
 	_floor_routed[crew_id] = tick
-	var label := stairs.label(lv, core)
-	var sd := stairs.side(lv, core, exposure)
+	var label: String = stairs.label(lv, core)
+	var sd: String = stairs.side(lv, core, exposure)
 	events.add(tick, "stair_picked", {"crew": _crew_name(c), "stair": label, "side": sd, "level": fire.building.floor_name(goal)})
 	_decide(tick, "%s %s%s으로 %s" % [_crew_name(c), label, " (%s)" % sd if sd != "" else "", fire.building.floor_name(goal)])
 	radio.send(Radio.Priority.TACTICS, COMMANDER, _crew_name(c), "%s으로 %s까지 진입하라." % [label, fire.building.floor_name(goal)], tick,
@@ -1502,7 +1503,7 @@ func _route_by_stair(c: Crew, core: int, goal: int) -> void:
 	var lv := c.leader.level
 	if core < 0 or core >= stairs.cores(lv).size():
 		return
-	var land := stairs.landing(lv, core, goal)
+	var land: Vector2i = stairs.landing(lv, core, goal)
 	if land.x < 0:
 		return
 	var cells: Array = stairs.cores(lv)[core]
@@ -1540,7 +1541,7 @@ func _step_floor_goals(tick: int) -> void:
 		var lv := c.leader.level
 		if lv == goal:
 			continue
-		var options := stairs.toward(lv, goal)
+		var options: Array[int] = stairs.toward(lv, goal)
 		if options.is_empty():
 			clear_floor_goal(id)
 			events.add(tick, "floor_unreachable", {"crew": _crew_name(c), "level": fire.building.floor_name(goal)})
@@ -1553,7 +1554,7 @@ func _step_floor_goals(tick: int) -> void:
 			stair_asks[id] = {"level": lv, "goal": goal, "cores": known}
 			var names := PackedStringArray()
 			for i in known:
-				var sd := stairs.side(lv, i, exposure)
+				var sd: String = stairs.side(lv, i, exposure)
 				names.append(stairs.label(lv, i) + (" (%s)" % sd if sd != "" else ""))
 			events.add(tick, "stair_ask", {"crew": _crew_name(c), "crew_id": id, "level": goal, "options": " · ".join(names)})
 			radio.send(Radio.Priority.TACTICS, _crew_name(c), COMMANDER, "계단 %d곳 확인 — %s. %s으로 어느 계단을 쓸까요?" % [known.size(), " · ".join(names), fire.building.floor_name(goal)], tick)

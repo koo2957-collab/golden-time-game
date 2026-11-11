@@ -90,11 +90,15 @@ func _run() -> void:
 	# 도착 때 뜨는 질문 카드가 클릭 자리를 가리지 않게 비운다 (카드는 test_cards·ui_command_card에서 점검)
 	sim.cards.queue.clear()
 	await process_frame
-	# 진입 명령 전: 건물 안으로 이동 명령 → 입구 앞에서 멈춤
+	# 진입 명령 전 (P4-5): 밖의 조를 고르면 진입구가 노랗게 → 진입구 클릭 → 그 문 앞에서 멈춰 허가를 묻는다
 	var lead0 := u.get_crew(0).leader
 	_click(lead0.pos, MOUSE_BUTTON_LEFT, false, false, true)
-	_click(Vector2(13.5, 15.5), MOUSE_BUTTON_RIGHT)
+	_check("밖의 조 선택 → 안내 흐름 (진입구 노랗게)", [sel._guiding(), sel._outside_crews()], [true, [0]])
+	var front_entry: EntryPoints.Entry = sim.entries.nearest(Vector2(13.5, 20.5), 1, 3.0)
+	_click(Vector2(front_entry.door) + Vector2(0.5, 0.5), MOUSE_BUTTON_LEFT)
+	_check("진입구 클릭 → 선택은 그대로", sel.selected, [0])
 	sim.step_ticks(150)
+	_check("진입구 클릭 → 그 문으로 (진입구로 가는 조)", int(sim.command.approach.get(0, -1)), front_entry.index)
 	_check("진입 명령 전에는 입구 앞에서 멈춤", sim.building.cell(1, floori(lead0.pos.x), floori(lead0.pos.y)) in BuildingData.OUTDOOR, true)
 	# 현장지휘관 선택·이동
 	_click(sim.command.commander.pos, MOUSE_BUTTON_LEFT, false, false, true)
@@ -158,14 +162,15 @@ func _run() -> void:
 	_check("클릭 선택", sel.selected, [0])
 	_click(u.get_crew(2).partner.pos, MOUSE_BUTTON_LEFT, false, true, true)
 	_check("Shift 추가 (짝 클릭 → 조 선택)", sel.selected, [0, 2])
-	_click(Vector2(30, 20), MOUSE_BUTTON_LEFT)
+	# 빈 곳 = 건물 밖 땅 (건물 안 방은 진입을 지시한 조를 고른 채 누르면 임무 고르기, P4-5)
+	_click(_empty_spot(), MOUSE_BUTTON_LEFT)
 	_check("빈 곳 클릭 → 해제", sel.selected, [])
 	_drag(Vector2(9, 22), Vector2(23, 24))
 	_check("드래그 범위 선택", sel.selected, [0, 1, 2, 3])
 	_click(u.get_crew(3).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
 	_click(u.get_crew(3).leader.pos, MOUSE_BUTTON_LEFT, true, false, true)
 	_check("더블클릭 → 출동대 전체", sel.selected, [2, 3])
-	_click(Vector2(30, 20), MOUSE_BUTTON_LEFT)
+	_click(_empty_spot(), MOUSE_BUTTON_LEFT)
 	# 질문 카드가 떠 있으면 1~4는 카드 답이 먼저다 — 카드가 없을 때 누른다
 	while sim.cards.active() != null:
 		sim.cards.queue.clear()
@@ -182,7 +187,11 @@ func _run() -> void:
 	_check("PgUp → 1층 단면", [world.view_level, world.exterior_view], [1, false])
 	_key(KEY_PAGEUP)
 	_check("PgUp → 2층", world.view_level, 2)
+	var n_moves := sim.command_log.entries.filter(func(c): return c is MoveCommand).size()
 	_click(Vector2(13.5, 17.5), MOUSE_BUTTON_RIGHT)
+	sim.step_ticks(1)
+	_check("조를 고른 채 땅 우클릭 → 지휘관 이동 (대원 이동 명령 없음)", [sim.command_log.entries[-1] is CommandOrder and sim.command_log.entries[-1].action == "commander_move",
+		sim.command_log.entries.filter(func(c): return c is MoveCommand).size()], [true, n_moves])
 	_key(KEY_PAGEDOWN)
 	_check("PgDn → 1층", [world.view_level, world.exterior_view], [1, false])
 	# R16 층 막대(입면도): 층 칸 클릭 → 그 층 단면, 외부 띠 클릭 → 외부 보기, 막대 위 휠 → 한 칸씩
@@ -210,14 +219,17 @@ func _run() -> void:
 	# 목표 칸이 하단 콘솔·카드 뒤에 가리지 않게 화면 가운데로
 	world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(Vector2(13.5, 15.5)))
 	await process_frame
-	_click(Vector2(13.5, 15.5), MOUSE_BUTTON_RIGHT)
+	# 방 클릭 → 임무 고르기 (P4-5): 화재진압·인명검색·직하층 확인·조건 바꾸기
+	_click(Vector2(13.5, 15.5), MOUSE_BUTTON_LEFT)
 	await process_frame
+	var mui0 = world.mission_ui
+	_check("조를 고른 채 방 클릭 → 임무 고르기", [mui0.menu.visible, mui0.menu_ids], [true, ["attack", "search", "check_below", "panel"]])
+	var n_iss := sim.issued.size()
+	mui0.pick("search")
+	var tac = sim.issued.slice(n_iss).filter(func(x): return x.command is TacticalCommand)
+	_check("인명검색 지시 → 진압1 (거실)", [str(tac[0].command.action).begins_with("search") if not tac.is_empty() else false, tac[0].command.crew_ids if not tac.is_empty() else []], [true, [0, 1]])
+	_check("고르면 목록 닫힘", mui0.menu.visible, false)
 	sim.step_ticks(700)
-	_check("이동 명령 3건 기록 (진입 점검 1건 포함)", sim.command_log.entries.filter(func(c): return c is MoveCommand).size(), 3)
-	# 도착 여부는 화재 상황(입구 열기)에 따라 달라지므로 조작이 맞는 명령으로 나갔는지만 본다
-	var moves := sim.command_log.entries.filter(func(c): return c is MoveCommand)
-	_check("구조1 → 2층 이동 명령", moves[1].target.z if moves.size() > 1 else -1, 2)
-	_check("진압1 → 거실 이동 명령", [moves[-1].crew_ids, Vector2i(moves[-1].target.x, moves[-1].target.y)], [[0, 1], Vector2i(13, 15)])
 
 	# 차량·수관·방수 (상황판) — 펌프차가 콘솔 뒤에 가리지 않게 화면 가운데로
 	world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(sim.units.vehicles[0].pos))
@@ -229,12 +241,19 @@ func _run() -> void:
 		ff.path.clear()
 	u.get_crew(1).leader.pos = Vector2(8.5, 24.5)
 	u.get_crew(1).partner.pos = Vector2(9.5, 24.5)
+	# 진압1 1조는 앞의 인명검색 지시로 현관문을 지나는 중 — 임무를 거두고 바깥 빈 땅에 세운다 (클릭 점검용)
+	sim.tactical.cancel(0)
+	for ff in u.get_crew(0).members():
+		ff.path.clear()
+	u.get_crew(0).leader.pos = Vector2(10.5, 23.5)
+	u.get_crew(0).partner.pos = Vector2(11.5, 23.5)
+	await process_frame
 	_click(u.get_crew(0).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
-	_check("조 클릭 → 원형 메뉴", world.mission_ui.radial.visible, true)
+	_check("조 클릭 → 고르기만 (원형 메뉴 없음, P4-5)", [sel.selected, world.mission_ui.menu.visible], [[0], false])
 	# 예전 동작 칸(수관·직사·분무)은 없다 — 수관은 펌프차 우클릭, 주수 방법은 화점실 앞 카드 (P10-2 결정 ②)
 	_key(KEY_W)
 	var want_mode = sel.Mode.ENTRY_POINT if sim.command.interior.enabled and not sim.command.interior.crew_inside(0) else sel.Mode.ATTACK
-	_check("W → 원형 메뉴 닫힘·(밖의 조면) 진입구 고르기 (P4-2)", [world.mission_ui.radial.visible, world.hud.card.parent, sel.mode], [false, "", want_mode])
+	_check("W → (밖의 조면) 진입구 고르기 (P4-2)", [world.hud.card.parent, sel.mode], ["", want_mode])
 	sel.cancel_mode()
 	_click(sim.units.vehicles[0].pos, MOUSE_BUTTON_RIGHT)
 	# 수관 준비·연장에는 현장 작업 시간이 걸린다 (P4-1)
@@ -251,7 +270,8 @@ func _run() -> void:
 	_until(func() -> bool: return sim.water.hose_of_crew(0).flowing, 300)
 	_click(Vector2(14.5, 15.5), MOUSE_BUTTON_RIGHT)
 	sim.step_ticks(1)
-	_check("방수 중 우클릭 이동 → 자동 방수 중지", sim.water.hose_of_crew(0).flowing, false)
+	_check("방수 중 땅 우클릭 → 지휘관 이동, 방수는 계속 (P4-5: 대원 땅 이동 없음)", [sim.command_log.entries[-1] is CommandOrder, sim.water.hose_of_crew(0).flowing], [true, true])
+	sim.issue(EquipmentCommand.make("stop", [0] as Array[int]))
 	sel._set_selection([1] as Array[int], [] as Array[int])
 	_click(sim.units.vehicles[0].pos, MOUSE_BUTTON_RIGHT)
 	_until(func() -> bool: return sim.water.hose_of_crew(1) != null, 1200)
@@ -262,7 +282,12 @@ func _run() -> void:
 	_until(func() -> bool: return sim.units.vehicles[1].supply_to == 0, 1200)
 	_check("물탱크차 → 펌프차 우클릭 → 급수", sim.units.vehicles[1].supply_to, 0)
 
-	_click(u.get_crew(1).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)  # 1층 거실의 진압1 2조
+	# 앞의 땅 우클릭으로 지휘관이 현관까지 걸어왔다 — 대원 클릭 점검을 위해 제자리로 (지휘관 클릭이 대원보다 먼저 잡힌다)
+	_park_commander()
+	# 진압1 2조 (위쪽 알림 줄에 가리지 않게 화면 가운데로)
+	world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(u.get_crew(1).leader.pos))
+	await process_frame
+	_click(u.get_crew(1).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
 	await _mission(KEY_Q, Vector2(24.5, 17.5))
 	_check("Q → 진입구 → 목표 → 임무 창 → 인명검색 (P4-2)", sel.mode, sel.Mode.NONE)
 	sim.step_ticks(1)
@@ -290,6 +315,8 @@ func _run() -> void:
 	world.set_view_mode(world.ViewMode.ISO)
 	_check("입체", world.view_mode, world.ViewMode.ISO)
 	await process_frame
+	world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(u.get_crew(1).leader.pos))
+	await process_frame
 	_click(u.get_crew(1).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
 	_check("입체: 클릭 선택", sel.selected, [1])
 	world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(Vector2(24.5, 17.5)))
@@ -297,10 +324,10 @@ func _run() -> void:
 	_click(Vector2(24.5, 17.5), MOUSE_BUTTON_RIGHT)
 	sim.step_ticks(1)
 	var last = sim.command_log.entries[-1]
-	_check("입체: 우클릭 이동 명령", last is MoveCommand, true)
-	if last is MoveCommand:
-		var target: Vector3i = last.target
-		_check("입체: 이동 목표 셀", Vector2i(target.x, target.y), Vector2i(24, 17))
+	_park_commander()
+	_check("입체: 땅 우클릭 → 지휘관 이동 (P4-5)", last is CommandOrder and last.action == "commander_move", true)
+	if last is CommandOrder:
+		_check("입체: 지휘관 목표 셀", Vector2i(last.target.x, last.target.y), Vector2i(24, 17))
 
 	# 입체: 물탱크차 선택 → 소화전 기둥 윗부분 우클릭 → 이동 후 점령, 알림 표시
 	var tanker := sim.units.vehicles[1]
@@ -383,7 +410,7 @@ func _run() -> void:
 			await process_frame
 			await process_frame
 			_check("내부 조: 지도 우클릭 이동은 막힌다 (P4-2)", sim.command_log.entries.filter(func(c): return c is MoveCommand).size(), moves_before)
-			_check("원형 메뉴로 지시하라는 알림", world.hud._notice_label.text.contains("원형 메뉴로 지시"), true)
+			_check("땅 우클릭은 지휘관 이동 (P4-5)", sim.command_log.entries[-1] is CommandOrder and sim.command_log.entries[-1].action == "commander_move", true)
 		var here := u.get_crew(inside_id).leader.pos
 		world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(here))
 		await process_frame
@@ -418,7 +445,7 @@ func _run() -> void:
 			var lt = sim.command_log.entries.filter(func(c): return c is TacticalCommand)
 			_check("본 적 없는 방 W → 층 진압", lt[-1].action if not lt.is_empty() else "", "attack_floor")
 			world.set_view_level(1)
-	# 원형 메뉴 (P10-2): 건물 안 조 좌클릭 → 명령 카드와 같은 6칸 → A 대기 → W 보고 요청·Q 대기
+	# 건물 안 조 (P4-5): 좌클릭은 고르기만, 명령은 명령 카드 단축키 — A 대기 → W 보고 요청·Q 대기
 	var mui = world.mission_ui
 	if inside_id >= 0:
 		var lv2 := u.get_crew(inside_id).leader.level
@@ -428,29 +455,15 @@ func _run() -> void:
 		await process_frame
 		_click(here2, MOUSE_BUTTON_LEFT, false, false, true)
 		await process_frame
-		_check("건물 안 조 좌클릭 → 원형 메뉴", mui.radial.visible, true)
-		_check("원형 메뉴 6항목", mui.radial.items.size(), 6)
-		# A 대기(5번째)를 실제로 클릭 → 하위 칸으로 다시 열림 → W 보고 요청(2번째)
-		var ea := InputEventMouseButton.new()
-		ea.button_index = MOUSE_BUTTON_LEFT
-		ea.pressed = true
-		ea.position = mui.radial.item_position(4)
-		root.push_input(ea, true)
-		await process_frame
-		_check("A 대기 → 하위 칸 원형 메뉴", [mui.radial.visible, str(mui.radial.items[1].label)], [true, "W 보고 요청"])
-		var e2 := InputEventMouseButton.new()
-		e2.button_index = MOUSE_BUTTON_LEFT
-		e2.pressed = true
-		e2.position = mui.radial.item_position(1)
-		root.push_input(e2, true)
-		await process_frame
-		_check("메뉴 클릭 → 닫힘", mui.radial.visible, false)
+		_check("건물 안 조 좌클릭 → 고르기만", [sel.selected, mui.menu.visible], [[inside_id], false])
+		_key(KEY_A)
+		_check("A 대기 → 하위 칸", str(world.hud.card.parent), "standby")
+		_key(KEY_W)
 		sim.step_ticks(1)
 		var asked := sim.command.radio.queue.any(func(m): return m.body.contains("상황 보고하라")) or (sim.command.radio.current != null and sim.command.radio.current.body.contains("상황 보고하라"))
 		_check("보고 요청 무전", asked, true)
-		mui.open_crew_menu(inside_id, Vector2(600, 400))
-		mui.radial.pick("A")
-		mui.radial.pick("Q")
+		_key(KEY_A)
+		_key(KEY_Q)
 		var held := sim.issued.filter(func(x): return x.command is TacticalCommand and x.command.action == "hold")
 		_check("대기 지시", held.size(), 1)
 	# 팀 카드(진입대원 통제표, 전술상황판 왼쪽 열)를 상황판 평면도의 방에 끌어다 놓기 → 임무 창 (P10-1)
@@ -595,6 +608,58 @@ func _run() -> void:
 func _screen(cell: Vector2, on_unit := false) -> Vector2:
 	var proj = _world.projection()
 	return root.get_canvas_transform() * proj.to_screen(cell, proj.pick_height_m if on_unit else 0.0)
+
+
+## 지휘관을 처음 자리(건물 앞 왼쪽 아래)에 세운다 — 땅 우클릭 점검 뒤 대원과 겹치지 않게
+func _park_commander() -> void:
+	var c: Firefighter = _world.sim.command.commander
+	c.path.clear()
+	c.pos = Vector2(6.5, 26.5)
+	c.prev_pos = c.pos
+	c.level = 1
+	c.prev_level = 1
+
+
+## 화면에 보이는 빈 바깥 땅 (대원·차량·지휘관·진입구·관계인에서 떨어진 곳) — 선택 해제 클릭용
+func _empty_spot() -> Vector2:
+	var sim: SimWorld = _world.sim
+	# 화면 가운데 (위쪽 알림 줄·아래 콘솔·오른쪽 패널은 클릭을 먹는다)
+	var vr: Rect2 = _world.get_viewport().get_visible_rect()
+	var area := Rect2(vr.size.x * 0.15, vr.size.y * 0.3, vr.size.x * 0.55, vr.size.y * 0.35)
+	var b := sim.building
+	for y in range(2, b.height - 2):
+		for x in range(2, b.width - 2):
+			var c := Vector2(x + 0.5, y + 0.5)
+			if not b.cell(1, x, y) in BuildingData.OUTDOOR or not area.has_point(_screen(c, false)) or _ui_covers(root, _screen(c, false)):
+				continue
+			var near := false
+			for cr in sim.units.crews:
+				for ff in cr.members():
+					near = near or ff.pos.distance_to(c) < 3.0
+			for v in sim.units.vehicles:
+				near = near or v.pos.distance_to(c) < 5.0
+			for e in sim.entries.list:
+				near = near or Vector2(e.door).distance_to(c) < 5.0
+			for w in sim.command.survey.witnesses:
+				near = near or w.pos.distance_to(c) < 3.0
+			near = near or sim.command.commander.pos.distance_to(c) < 3.0
+			if not near:
+				return c
+	return Vector2(30, 20)
+
+
+## 화면 점 위에 마우스를 받는 보이는 UI가 있는가 (그러면 지도 클릭이 닿지 않는다)
+func _ui_covers(n: Node, pos: Vector2) -> bool:
+	if n is CanvasItem and not n.is_visible_in_tree():
+		return false
+	if n is Control and n.mouse_filter != Control.MOUSE_FILTER_IGNORE and n.get_global_rect().has_point(pos) and not n is SubViewportContainer:
+		# 전체 화면을 덮는 투명 바탕(지도 위 HUD 뿌리)은 클릭을 넘긴다
+		if n.get_global_rect().size.x < 1800.0:
+			return true
+	for ch in n.get_children():
+		if _ui_covers(ch, pos):
+			return true
+	return false
 
 
 func _click(cell: Vector2, button: MouseButton, double := false, shift := false, on_unit := false) -> void:

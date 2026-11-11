@@ -1,7 +1,8 @@
 class_name MissionUi
 extends Control
 ## 임무형 내부 지휘 화면 (기획안 9-1·9-2, R7c)
-##   - 원형 메뉴: 지도에서 조를 좌클릭 → 명령 카드와 같은 칸 (data/commands.json, P10-2)
+##   - 대상 메뉴 (P4-5): 조를 고른 채 방을 누르면 화재진압·인명검색·직하층 확인, 곁의 문을 누르면 문 행동.
+##     조를 누를 때마다 뜨던 원형 메뉴는 없앴다 (2026-11-11 사용자 결정 — 명령은 명령 카드와 노란 표시로)
 ##   - 끌어다 놓기: 전술상황판의 팀 카드를 지도의 방·층에 놓으면 임무 창 → 임무(화점 진압·인명 검색) + 임무 조건
 ## 화면만 만든다. 명령은 order_issued로 내보내고 시뮬레이션이 실행한다 (다시 하기에 기록된다).
 
@@ -14,19 +15,20 @@ var sim: SimWorld
 var selection: SelectionController
 ## 화면 좌표 → 칸 (x, y, 층)
 var to_cell: Callable
-var radial: RadialMenu
 var panel: PanelContainer
-
-var _menu_crew := -1
-## 원형 메뉴 종류: "card" (명령 카드) / "door" (문 앞 휠)
-var _radial_kind := "card"
-var _door_index := -1
+## 대상 메뉴 (방·문을 눌렀을 때만, 커서 곁의 작은 목록)
+var menu: PanelContainer
+var _menu_box: VBoxContainer
+var _menu_title: Label
+var _menu_pick := Callable()
+## 대상 메뉴 항목 id (테스트·화면 점검용)
+var menu_ids: Array[String] = []
+var _menu_buttons: Array[Button] = []
 ## 임무 창 (진입 지시 4단계): 받는 조들, 진입구, 기본 임무
 var _drop_crews: Array[int] = []
 var _drop_via := Vector3i(-1, -1, -1)
 var _default_kind := ""
 var _kind_buttons: Dictionary = {}
-var _menu_center := Vector2.ZERO
 ## 명령 카드 (Hud와 같은 것)와 칸 누르기 (World._press_card)
 var card: CommandCard
 var press_card: Callable
@@ -57,9 +59,7 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_to_cell: Callabl
 	_ghost.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ghost.visible = false
 	add_child(_ghost)
-	radial = RadialMenu.new()
-	add_child(radial)
-	radial.picked.connect(_on_radial)
+	_build_menu()
 
 
 func _process(_delta: float) -> void:
@@ -68,74 +68,140 @@ func _process(_delta: float) -> void:
 
 
 func is_open() -> bool:
-	return radial.visible or panel.visible
+	return menu.visible or panel.visible
 
 
 func close_all() -> void:
-	radial.close()
+	close_menu()
 	panel.visible = false
 	end_drag()
 
 
-# --- 원형 메뉴 ---
+# --- 대상 메뉴 (P4-5) ---
 
-## 지도에서 조 좌클릭 (SelectionController.crew_menu): 명령 카드와 같은 칸을 커서 둘레에 (기획안 9-1, P10-2)
-func open_crew_menu(crew_id: int, screen_pos: Vector2) -> void:
-	var c := sim.units.get_crew(crew_id)
-	if c == null or card == null:
+## 방을 눌렀다: 임무 고르기. 조건은 직전에 쓴 값 그대로 (바꾸려면 '조건 바꾸기')
+func open_room_menu(crew_ids: Array[int], target: Vector3i, via: Vector3i, screen_pos: Vector2) -> void:
+	if crew_ids.is_empty():
 		return
-	_menu_crew = crew_id
-	_menu_center = screen_pos
-	_open_radial()
+	_drop_crews = crew_ids.duplicate()
+	_drop_crew = crew_ids[0]
+	_drop_target = target
+	_drop_via = via
+	var names: PackedStringArray = []
+	for id in crew_ids:
+		names.append(_crew_name(id))
+	var items: Array[Dictionary] = [
+		{"id": "attack", "label": "1  화재진압"},
+		{"id": "search", "label": "2  인명검색"},
+		{"id": "check_below", "label": "3  직하층 확인"},
+		{"id": "panel", "label": "4  조건 바꾸기…"},
+	]
+	open_menu("%s → %s" % [" · ".join(names), _target_name()], items, screen_pos, func(id: String) -> void:
+		if id == "panel":
+			open_mission(crew_ids, target, "attack", via, screen_pos)
+			return
+		# 조건은 그 조가 쓰던 것(없으면 직전 값) 그대로
+		var cur: Dictionary = sim.tactical.conditions.get(crew_ids[0], _last)
+		for k: String in _opts:
+			_select_key(_opts[k], _groups[k], str(cur.get(k, _last[k])))
+		assign(id))
 
 
-## 문 앞 휠 (P4-2): 건물 안 조가 2칸 안의 문을 누르면 문 전용 원형 메뉴
+## 문 행동 (건물 안 조가 2칸 안의 문을 누름): 가스 확인 후 개방·문 옆 벽에서 개방·파괴 후 개방·문 닫고 대기 (P4-2)
 func open_door_menu(crew_id: int, door_index: int, screen_pos: Vector2) -> void:
-	_menu_crew = crew_id
-	_door_index = door_index
-	_radial_kind = "door"
 	var items: Array[Dictionary] = []
-	for it: Dictionary in CommandCard.load_sets().get("door", []):
+	var sets: Array = CommandCard.load_sets().get("door", [])
+	var o := sim.fire.openings[door_index]
+	for k in sets.size():
+		var it: Dictionary = sets[k]
 		var enabled := true
-		var o := sim.fire.openings[door_index]
 		if str(it.id) == "door_force":
 			enabled = o.locked or not o.is_open
-		items.append({"id": str(it.id), "label": "%s %s" % [str(it.key), str(it.label)], "tip": str(it.get("hint", "")), "enabled": enabled})
-	radial.open(screen_pos, "%s · %s" % [_crew_name(crew_id), "문 앞"], items)
+		items.append({"id": str(it.id), "label": "%d  %s" % [k + 1, str(it.label)], "enabled": enabled, "tip": str(it.get("hint", ""))})
+	open_menu("%s · 문 앞" % _crew_name(crew_id), items, screen_pos, func(id: String) -> void:
+		for k in sets.size():
+			if str(sets[k].id) == id:
+				order_issued.emit(EquipmentCommand.make("door_method", [crew_id] as Array[int], -1, door_index, Vector3i(k, 0, 0)))
+				notice.emit("%s: %s" % [_crew_name(crew_id), str(sets[k].label)]))
 
 
-func _open_radial() -> void:
-	_radial_kind = "card"
-	var items: Array[Dictionary] = []
-	var slots := card.slots()
-	for i in slots.size():
-		var it: Dictionary = slots[i]
-		if it.is_empty():
-			continue
-		items.append({"id": CommandCard.KEYS[i], "label": "%s %s" % [CommandCard.KEYS[i], str(it.label)],
-			"tip": str(it.get("hint", "")), "enabled": card.is_enabled(it)})
-	var task := sim.tactical.mission_text(_menu_crew)
-	var head := "%s · %s" % [_crew_name(_menu_crew), task if task != "" else "임무 없음"]
-	if card.parent != "":
-		head += " ▸ " + str(card.parent_item().get("label", ""))
-	radial.open(_menu_center, head, items)
+## 커서 곁 작은 목록. 숫자키 1~n·클릭으로 고르고 Esc·바깥 클릭으로 닫는다
+func open_menu(title: String, items: Array[Dictionary], screen_pos: Vector2, on_pick: Callable) -> void:
+	for ch in _menu_box.get_children():
+		if ch != _menu_title:
+			ch.queue_free()
+	_menu_title.text = title
+	menu_ids.clear()
+	_menu_buttons.clear()
+	for it in items:
+		var b := Button.new()
+		b.text = str(it.label)
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.focus_mode = Control.FOCUS_NONE
+		b.custom_minimum_size = Vector2(220, 34)
+		b.disabled = not bool(it.get("enabled", true))
+		b.tooltip_text = str(it.get("tip", ""))
+		b.pressed.connect(pick.bind(str(it.id)))
+		_menu_box.add_child(b)
+		_menu_buttons.append(b)
+		menu_ids.append(str(it.id))
+	_menu_pick = on_pick
+	menu.size = Vector2.ZERO
+	menu.reset_size()
+	var area := get_viewport_rect().size
+	menu.position = Vector2(clampf(screen_pos.x + 12.0, 8.0, area.x - 260.0), clampf(screen_pos.y + 12.0, 8.0, area.y - 60.0 - 40.0 * items.size()))
+	menu.visible = true
 
 
-## 원형 메뉴에서 칸을 고름 = 명령 카드 칸을 누름 (같은 처리). 하위 칸만 펼쳤으면 그 자리에서 다시 연다
-func _on_radial(key: String) -> void:
-	if _radial_kind == "door":
-		var sets: Array = CommandCard.load_sets().get("door", [])
-		for i in sets.size():
-			if str(sets[i].id) == key:
-				order_issued.emit(EquipmentCommand.make("door_method", [_menu_crew] as Array[int], -1, _door_index, Vector3i(i, 0, 0)))
-				notice.emit("%s: %s" % [_crew_name(_menu_crew), str(sets[i].label)])
-		_radial_kind = "card"
+## 대상 메뉴에서 고름 (버튼·숫자키·테스트)
+func pick(id: String) -> void:
+	var f := _menu_pick
+	close_menu()
+	if f.is_valid():
+		f.call(id)
+
+
+func close_menu() -> void:
+	if menu:
+		menu.visible = false
+	_menu_pick = Callable()
+
+
+func _input(event: InputEvent) -> void:
+	if menu == null or not menu.visible:
 		return
-	if not press_card.is_valid():
-		return
-	press_card.call(key)
-	if card.parent != "" and selection.mode == SelectionController.Mode.NONE:
-		_open_radial()
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_ESCAPE:
+			close_menu()
+			get_viewport().set_input_as_handled()
+		elif event.keycode >= KEY_1 and event.keycode <= KEY_9:
+			var n: int = event.keycode - KEY_1
+			if n < menu_ids.size():
+				if not _menu_buttons[n].disabled:
+					pick(menu_ids[n])
+				get_viewport().set_input_as_handled()
+	elif event is InputEventMouseButton and event.pressed and not menu.get_global_rect().has_point(event.position):
+		close_menu()
+
+
+func _build_menu() -> void:
+	menu = PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.04, 0.07, 0.12, 0.96)
+	style.border_color = Color("fbbf24")
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(8)
+	menu.add_theme_stylebox_override("panel", style)
+	menu.visible = false
+	_menu_box = VBoxContainer.new()
+	_menu_box.add_theme_constant_override("separation", 4)
+	menu.add_child(_menu_box)
+	_menu_title = Label.new()
+	_menu_title.add_theme_font_size_override("font_size", 15)
+	_menu_title.add_theme_color_override("font_color", Color("fde68a"))
+	_menu_box.add_child(_menu_title)
+	add_child(menu)
 
 
 ## 지원 투입할 조: 밖에 있고 임무가 없는 조 (같은 출동대 우선, 가까운 순). RIT·안전담당·구급대는 빼고
@@ -198,7 +264,7 @@ func drop_crew(crew_id: int, screen_pos: Vector2) -> void:
 	var t: Vector3i = to_cell.call(screen_pos)
 	var room := sim.fire.compartment_at(t.z, t.x, t.y)
 	if room == null:
-		notice.emit("건물 안 방이나 층 위에 놓으세요 — 밖에서는 우클릭으로 직접 이동합니다")
+		notice.emit("건물 안 방이나 층 위에 놓으세요 — 밖에서는 조를 고르고 노란 진입구를 누릅니다")
 		return
 	_drop_crew = crew_id
 	_drop_crews = [crew_id] as Array[int]

@@ -114,6 +114,19 @@ func building_under(world_pos: Vector2, proj: ViewProjection) -> bool:
 	return false
 
 
+## 층 고르기 (P4-5): 외부 보기에서 world_pos 아래 외벽의 층 (-99 = 없음)
+func shell_level_at(world_pos: Vector2) -> int:
+	if not _exterior or layers.is_empty():
+		return -99
+	return layers[0].shell_level_at(world_pos - layers[0].position)
+
+
+## 층 고르기: 노랗게 테두리를 그릴 층 (-99 = 없음)
+func set_hover_floor(lv: int) -> void:
+	if not layers.is_empty():
+		layers[0].hover_floor = lv if _exterior else -99
+
+
 ## 전환 연출 중인가
 func transitioning() -> bool:
 	return _tween != null and _tween.is_running()

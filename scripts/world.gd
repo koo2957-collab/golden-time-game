@@ -96,19 +96,26 @@ func _ready() -> void:
 	hud.command_ui.dialog_changed.connect(_on_dialog_changed)
 	selection.witness_clicked.connect(hud.command_ui.open_witness)
 	selection.notice.connect(hud.show_notice)
-	# 임무형 내부 지휘: 원형 메뉴·팀 카드 끌어다 놓기 (R7c)
+	# 임무형 내부 지휘: 대상 메뉴(방·문)·팀 카드 끌어다 놓기 (R7c, P4-5)
 	mission_ui = MissionUi.new()
 	hud.add_child(mission_ui)
 	mission_ui.setup(sim, selection, screen_to_cell)
 	mission_ui.order_issued.connect(sim.issue)
 	mission_ui.notice.connect(hud.show_notice)
-	selection.crew_menu.connect(mission_ui.open_crew_menu)
 	mission_ui.card = hud.card
 	# 진입 지시 4단계 (P4-2): 진입구 → 그 층 단면 → 목표 → 임무 창, 문 앞 휠
 	selection.entry_chosen.connect(func(lv: int) -> void: set_view_level(lv, false))
 	selection.entry_mode_started.connect(func(lv: int) -> void: set_view_level(lv, true))
 	selection.mission_target.connect(mission_ui.open_mission)
 	selection.door_menu.connect(mission_ui.open_door_menu)
+	# 안내 흐름 (P4-5): 조를 고르면 진입구·층·계단·방이 노랗게. 방을 누르면 임무 고르기
+	selection.room_menu.connect(mission_ui.open_room_menu)
+	selection.guide_view.connect(func(lv: int, ext: bool) -> void: set_view_level(lv, ext))
+	selection.shell_picker = func(world_pos: Vector2) -> int:
+		if view_mode != ViewMode.ISO or not exterior_view:
+			return -99
+		return iso_view.shell_level_at(world_pos)
+	selection.shell_hover = func(lv: int) -> void: iso_view.set_hover_floor(lv)
 	mission_ui.press_card = _press_card
 	# 단면 보기: 아래층을 누르면 그 층으로 (R17)
 	selection.level_picker = func(world_pos: Vector2) -> int:
@@ -519,9 +526,9 @@ func _card_key(event: InputEvent) -> String:
 
 ## 명령 카드 칸 누르기 (단축키·카드 버튼·원형 메뉴 공통, P10-2). "BACK" = 뒤로
 func _press_card(key: String) -> void:
-	# 단축키·카드 버튼으로 고르면 떠 있던 원형 메뉴는 닫는다 (원형 메뉴에서 고른 것은 이미 닫혀 있다)
-	if mission_ui and mission_ui.radial.visible:
-		mission_ui.radial.close()
+	# 단축키·카드 버튼으로 고르면 떠 있던 대상 메뉴는 닫는다
+	if mission_ui:
+		mission_ui.close_menu()
 	if key == "BACK":
 		selection.cancel_mode()
 		hud.card.back()

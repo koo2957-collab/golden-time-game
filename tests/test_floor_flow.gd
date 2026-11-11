@@ -137,3 +137,27 @@ func test_move_command_clears_floor_goal() -> void:
 	sim.issue(MoveCommand.new([0] as Array[int], sim.units.get_crew(0).leader.cell3()))
 	sim.step_ticks(1)
 	assert_true(not sim.command.floor_goals.has(0), "다른 명령을 받으면 지운다")
+
+
+func test_entry_all_grants_every_waiting_squad() -> void:
+	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)
+	sim.command.entry_order_required = true
+	# 진압1 1조와 구조1 1조를 서로 다른 진입구로 (포위·양방향 진입)
+	var a := sim.units.get_crew(0)
+	var b: Crew = null
+	for c in sim.units.crews:
+		if b == null and c.squad_id != a.squad_id:
+			b = c
+	var e0: EntryPoints.Entry = sim.entries.list[0]
+	var e1: EntryPoints.Entry = sim.entries.list[1]
+	sim.issue(CommandOrder.make("approach", [a.id] as Array[int], e0.index))
+	sim.issue(CommandOrder.make("approach", [b.id] as Array[int], e1.index))
+	var card := func() -> bool: return sim.cards.queue.any(func(q: CardSystem.Card) -> bool: return q.id == "ENTRY-01")
+	assert_true(_until(sim, func() -> bool: return sim.command.waiting_squads().size() == 2 and card.call(), 180.0), "두 출동대가 각자 진입구에서 기다리고 허가 카드가 떠 있다")
+	sim.issue(CommandOrder.make("entry_all"))
+	sim.step_ticks(1)
+	assert_true(not card.call(), "떠 있던 진입 카드는 '허가'로 답함")
+	assert_eq(sim.events.of_type("entry_all").size(), 1, "동시 진입 기록")
+	assert_eq(int(sim.events.of_type("entry_all")[0].count), 2, "두 출동대")
+	assert_true(_until(sim, func() -> bool: return sim.command.can_enter(a.squad_id) and sim.command.can_enter(b.squad_id), 30.0), "두 출동대 모두 진입 허가")
+	assert_true(sim.cards.log.any(func(l: Dictionary) -> bool: return l.id == "ENTRY-01" and l.result != "timeout"), "카드 출동대는 판단 기록")

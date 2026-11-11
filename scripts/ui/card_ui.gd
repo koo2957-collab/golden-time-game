@@ -19,6 +19,8 @@ var _bar: ProgressBar
 var _buttons: Array[Button] = []
 var _more: Label
 var _shown_uid := -1
+## 동시 진입 허가 (P4-5): 진입 허가를 묻는 출동대가 둘 이상이면 진입 카드 아래에
+var _all: Button
 
 
 func setup(p_sim: SimWorld) -> void:
@@ -55,6 +57,14 @@ func setup(p_sim: SimWorld) -> void:
 		b.pressed.connect(choose.bind(i))
 		box.add_child(b)
 		_buttons.append(b)
+	_all = Button.new()
+	_all.focus_mode = Control.FOCUS_NONE
+	_all.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_all.custom_minimum_size = Vector2(0, 34)
+	_all.add_theme_color_override("font_color", Color("fde68a"))
+	_all.pressed.connect(approve_all)
+	_all.visible = false
+	box.add_child(_all)
 	_more = Label.new()
 	_more.add_theme_color_override("font_color", Color("94a3b8"))
 	box.add_child(_more)
@@ -80,6 +90,13 @@ func _process(_delta: float) -> void:
 	var total := float(c.deadline_tick - c.asked_tick)
 	_bar.value = 100.0 * float(c.deadline_tick - sim.clock.tick) / maxf(1.0, total)
 	var waiting := sim.cards.queue.size() - 1
+	var entries := sim.command.waiting_squads().size()
+	var show_all := c.id == CommandOrder.ENTRY_CARD and entries >= 2
+	if _all.visible != show_all:
+		_all.visible = show_all
+		_panel.reset_size()
+	if show_all:
+		_all.text = "5. 진입구 앞에서 기다리는 %d개 출동대 모두 동시 진입 허가" % entries
 	_more.text = "+%d 대기" % waiting if waiting > 0 else ""
 	if _more.visible != (waiting > 0):
 		_more.visible = waiting > 0
@@ -105,6 +122,12 @@ func _fill(c: CardSystem.Card) -> void:
 	_panel.reset_size()
 
 
+## 동시 진입 허가 (5번 키)
+func approve_all() -> void:
+	if sim.command.waiting_squads().size() >= 2:
+		order_issued.emit(CommandOrder.make("entry_all"))
+
+
 ## 맨 앞 카드에 답한다 (화면에 보인 순서 index)
 func choose(index: int) -> void:
 	var c := sim.cards.active()
@@ -123,3 +146,6 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if k >= KEY_1 and k <= KEY_4:
 		get_viewport().set_input_as_handled()
 		choose(k - KEY_1)
+	elif k == KEY_5 and _all.visible:
+		get_viewport().set_input_as_handled()
+		approve_all()

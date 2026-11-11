@@ -22,6 +22,10 @@ extends RefCounted
 ##   approach:       진입구로 가기 (squad_ids = 조 id, value = 진입구 index). 허가 전이면 문 앞에서 허가를 묻는다 (P4-5)
 ##   floor:          층으로 가기 (squad_ids = 조 id, value = 층, answers.entry = 밖의 조가 쓸 진입구 index 또는 -1)
 ##   stair:          계단 고르기 답 (squad_ids = 조 id, value = 그 층 계단 index)
+##   entry_all:      동시 진입 허가 — 진입 허가를 묻는 출동대 모두 (P4-5)
+
+## 진입 허가 요청 카드 (data/cards: ENTRY-01)
+const ENTRY_CARD := "ENTRY-01"
 
 var tick := -1
 var action := ""
@@ -108,6 +112,26 @@ func execute(sim: SimWorld) -> void:
 		"stair":
 			for id in squad_ids:
 				cmd.order_stair(id, value, tick)
+		"entry_all":
+			# 동시 진입 (P4-5, SWAT 4 '고 코드'): 진입구 앞에서 기다리는 출동대 모두에게 진입 허가.
+			# 진입 허가 카드가 떠 있는 출동대는 카드에 '허가'로 답하고(판단 기록), 나머지는 진입 명령
+			var sids := cmd.waiting_squads()
+			var names := PackedStringArray()
+			for card in sim.cards.queue.duplicate():
+				var sid := int(card.ctx.get("squad_id", -1))
+				if card.id != ENTRY_CARD or not sid in sids:
+					continue
+				for i in card.options.size():
+					if str(card.options[i].get("effect", "")) == "entry_grant":
+						sim.cards.answer(card.uid, i, tick)
+						sids.erase(sid)
+						names.append(sim.units.squads[sid].name)
+						break
+			for sid in sids:
+				if cmd.order_entry(sid, tick):
+					names.append(sim.units.squads[sid].name)
+			if not names.is_empty():
+				sim.events.add(tick, "entry_all", {"squads": " · ".join(names), "count": names.size()})
 
 
 func to_dict() -> Dictionary:

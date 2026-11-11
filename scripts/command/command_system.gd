@@ -1409,6 +1409,19 @@ func order_floor(crew_ids: Array, level: int, e: EntryPoints.Entry, tick: int) -
 			func(t: int) -> void: _set_floor_goal([id], level, t))
 
 
+## 진입구 앞에서 진입 허가를 기다리는 출동대 (P4-5 동시 진입)
+func waiting_squads() -> Array[int]:
+	var out: Array[int] = []
+	var ids: Array = approach.keys() + _entry_waiting.keys()
+	for id in ids:
+		var c := units.get_crew(int(id))
+		if c == null or c.leader.is_moving() or can_enter(c.squad_id) or _entry_denied.has(c.squad_id) or _entry_pending.has(c.squad_id):
+			continue
+		if not c.squad_id in out:
+			out.append(c.squad_id)
+	return out
+
+
 func _approach_entry(crew_ids: Array) -> EntryPoints.Entry:
 	var list: Array = interior.entries.list if interior.entries else []
 	if list.is_empty() or crew_ids.is_empty():

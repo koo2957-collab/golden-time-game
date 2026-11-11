@@ -39,6 +39,8 @@ var _level := 1
 var _exterior := false
 var _tween: Tween
 var _links: Node2D
+## 짝 층의 불·연기·사람만 원래 색으로 그리는 겹 (바탕은 흑백, 2026-11-12)
+var partner_live: FloorLayer
 var _shadow: Node2D
 var _hole_shader: Shader
 var _proj: IsoProjection
@@ -67,6 +69,11 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 		add_child(up)
 		up.setup(sim, p_selection, p_proj, stack)
 		upper_layers.append(up)
+	partner_live = FloorLayer.new()
+	partner_live.name = "PartnerLive"
+	add_child(partner_live)
+	partner_live.setup(sim, p_selection, p_proj, stack)
+	partner_live.visible = false
 	# 비켜 놓은 두 층의 계단을 잇는 점선 (위층 위에 그린다)
 	_links = Node2D.new()
 	_links.name = "StairLinks"
@@ -193,8 +200,32 @@ func _apply() -> void:
 		up.ghost_mode = 0 if stack.staggered() else (1 if k == 0 else 3)
 		up.refresh()
 		up.position = -stack.offset_vec(k + 1)
-		# 비켜 놓기: 짝 위층은 흐리게 (25%). 예전 방식은 투명도가 선 색에 들어 있다
+		# 비켜 놓기: 짝 위층은 흐리게. 예전 방식은 투명도가 선 색에 들어 있다
 		up.modulate = Color(1, 1, 1, params.partner_alpha) if stack.staggered() else Color.WHITE
+	_apply_partner()
+
+
+## 비켜 놓기: 짝 층 바탕은 흑백(불·연기·사람 빼고), 그 위 색 겹에 불·연기·사람만 원래 색으로 (2026-11-12 사용자 결정)
+func _apply_partner() -> void:
+	for node in layers + upper_layers:
+		node.skip_live = false
+	if partner_live == null:
+		return
+	partner_live.visible = false
+	var pair := _pair()
+	if pair.is_empty():
+		return
+	var other: FloorLayer = pair[0] if pair[0] != layers[0] else pair[1]
+	other.skip_live = true
+	partner_live.visible = true
+	partner_live.ghost_mode = 4
+	partner_live.depth = ABOVE_DEPTH + 10
+	partner_live.level = other.level
+	partner_live.exterior = false
+	partner_live.thermal = thermal
+	partner_live.position = other.position
+	partner_live.modulate = Color(1, 1, 1, params.partner_live_alpha)
+	partner_live.refresh()
 
 
 func _configure(layer: FloorLayer, depth: int, shown: Array[int], ext: bool) -> void:
@@ -296,10 +327,15 @@ func _pair() -> Array:
 ## 아래층의 대원·발견한 요구조자 둘레만 위층을 반투명하게 (셰이더 uniform)
 func _update_holes() -> void:
 	var pair := _pair()
+	var partner_node: FloorLayer = null
+	var pr := _pair()
+	if not pr.is_empty():
+		partner_node = pr[0] if pr[0] != layers[0] else pr[1]
 	for node in layers + upper_layers:
 		var m := node.material as ShaderMaterial
 		if m:
 			m.set_shader_parameter("count", 0)
+			m.set_shader_parameter("gray", params.partner_gray if node == partner_node else 0.0)
 	if pair.is_empty():
 		return
 	var upper: FloorLayer = pair[0]

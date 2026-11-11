@@ -5,6 +5,8 @@ shader_type canvas_item;
 uniform vec4 holes[16];
 uniform int count = 0;
 uniform float min_alpha = 0.3;
+// 짝 층 흑백 정도 (0 = 원래 색, 1 = 흑백)
+uniform float gray = 0.0;
 
 varying vec2 world_pos;
 
@@ -15,6 +17,8 @@ void vertex() {
 void fragment() {
 	// Godot 4: fragment의 COLOR는 이미 그림 색 × 꼭짓점 색이다 (다시 곱하지 않는다)
 	vec4 c = COLOR;
+	float lum = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+	c.rgb = mix(c.rgb, vec3(lum), gray);
 	float f = 1.0;
 	for (int i = 0; i < 16; i++) {
 		if (i >= count) {

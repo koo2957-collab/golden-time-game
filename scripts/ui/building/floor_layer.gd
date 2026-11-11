@@ -126,11 +126,18 @@ var ghost := false:
 				_ghost_units.visible = v
 			queue_redraw()
 ## 다른 층 그리는 방식: 0 지금 층 / 1 바로 위·아래 / 2 먼 아래층(외관 덩어리) / 3 먼 위층(사람 테두리만). ghost는 0이 아닐 때 켜진다
+## 짝 층 바탕(흑백): 불·연기·사람은 그리지 않는다 — 색 겹(ghost_mode 4)이 따로 그린다
+var skip_live := false:
+	set(v):
+		if v != skip_live:
+			skip_live = v
+			queue_redraw()
 var ghost_mode := 0:
 	set(v):
 		if v != ghost_mode:
 			ghost_mode = v
-			ghost = v != 0
+			# 색 겹(4)은 사람 테두리를 그리지 않는다
+			ghost = v != 0 and v != 4
 			queue_redraw()
 var _ghost_outdoor_idx: Dictionary = {}  # level -> 바깥 땅 칸 삼각형 index
 var _ghost_floor_idx: Dictionary = {}  # level -> 실내 바닥 칸 삼각형 index
@@ -844,6 +851,9 @@ func refresh() -> void:
 func _draw() -> void:
 	if sim == null:
 		return
+	if ghost_mode == 4:
+		_draw_live_only()
+		return
 	if ghost:
 		_draw_ghost()
 		return
@@ -912,9 +922,11 @@ func _draw() -> void:
 				if item[1] == commander:
 					_draw_commander(alpha)
 				elif item[1] is Firefighter:
-					_draw_unit(item[1], alpha)
+					if not skip_live:
+						_draw_unit(item[1], alpha)
 				elif item[1] is Victim:
-					_draw_victim(item[1])
+					if not skip_live:
+						_draw_victim(item[1])
 				elif item[1] is Witness:
 					_draw_witness(item[1])
 				else:
@@ -922,9 +934,10 @@ func _draw() -> void:
 	if _outside():
 		# 외관이 실내(연기층 포함)를 가린다. 연기는 창·문으로 나오는 것만
 		_draw_shell()
-	elif not thermal:
+	elif not thermal and not skip_live:
 		_draw_smoke()
-	_draw_blasts()
+	if not skip_live:
+		_draw_blasts()
 	if not _outside():
 		_draw_open_walls()
 	if _glow:
@@ -1250,7 +1263,8 @@ func _draw_cell_objects(x: int, y: int) -> void:
 		_draw_furniture_sprite(_furn_draw[level][ci], x, y)
 	if upper_level >= 0 and t == BuildingData.Cell.STAIRS:
 		_draw_stair_step(x, y)
-	_draw_flame(x, y, fh)
+	if not skip_live:
+		_draw_flame(x, y, fh)
 
 
 ## 문: 닫힘(블록) / 열림(통로) / 잠김(표시) / 파괴(잔해). 작업 중이면 진행 막대.
@@ -1910,8 +1924,45 @@ func _draw_open_walls() -> void:
 		var b1 := proj.to_screen(run.b, CEILING_M)
 		draw_line(a0, b0, line, 1.5)
 		draw_dashed_line(a1, b1, dash, 1.5, 6.0)
-		draw_dashed_line(a0, a1, dash, 1.2, 6.0)
-		draw_dashed_line(b0, b1, dash, 1.2, 6.0)
+		# 세로기둥은 건물 바깥 모서리에만 (벽이 꺾이는 곳), 굵고 진하게
+		var post := Color(1, 1, 1, stack.params.corner_post_alpha)
+		for end: Vector2 in [run.a, run.b]:
+			if _outer_corner(Vector2i(end.floor())):
+				draw_dashed_line(proj.to_screen(end, 0.02), proj.to_screen(end, CEILING_M), post, 2.5, 8.0)
+
+
+## 건물 바깥 모서리 칸인가: 바깥에 닿은 벽 칸이 가로·세로 두 방향으로 꺾인다
+func _outer_corner(c: Vector2i) -> bool:
+	var b := sim.building
+	var outer := func(p: Vector2i) -> bool:
+		if not b.in_bounds(p.x, p.y) or not b.cell(level, p.x, p.y) in [BuildingData.Cell.WALL, BuildingData.Cell.DOOR, BuildingData.Cell.WINDOW]:
+			return false
+		for d: Vector2i in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+			var n := p + d
+			if not b.in_bounds(n.x, n.y) or b.cell(level, n.x, n.y) in BuildingData.OUTDOOR:
+				return true
+		return false
+	var horizontal: bool = outer.call(c + Vector2i.LEFT) or outer.call(c + Vector2i.RIGHT)
+	var vertical: bool = outer.call(c + Vector2i.UP) or outer.call(c + Vector2i.DOWN)
+	return horizontal and vertical
+
+
+## 짝 층의 색 겹 (ghost_mode 4): 연기·불꽃·대원·발견한 요구조자만 원래 색으로 (바탕은 흑백)
+func _draw_live_only() -> void:
+	var alpha := sim.clock.alpha()
+	if not thermal:
+		_draw_smoke()
+	var grid := sim.fire.grid
+	for i in grid.burning:
+		var c3 := grid.cell_of(i)
+		if c3.z == level:
+			_draw_flame(c3.x, c3.y, _furniture_height(c3.x, c3.y))
+	for ff in sim.units.firefighters:
+		if ff.level == level and not ff.aboard:
+			_draw_unit(ff, alpha)
+	for v in sim.rescue.victims:
+		if v.discovered and v.level == level:
+			_draw_victim(v)
 
 
 ## 투명한 벽 한 칸: 이웃이 벽(벽·문·창)인 쪽 면은 그리지 않아 겹친 이음새가 보이지 않는다.

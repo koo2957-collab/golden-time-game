@@ -5,11 +5,14 @@ extends RefCounted
 var tick := -1
 var crew_ids: Array[int] = []
 var target := Vector3i.ZERO
+## 지나갈 칸 (지휘관이 고른 계단). x < 0이면 가장 짧은 길
+var via := Vector3i(-1, -1, -1)
 
 
-func _init(p_crew_ids: Array[int], p_target: Vector3i) -> void:
+func _init(p_crew_ids: Array[int], p_target: Vector3i, p_via := Vector3i(-1, -1, -1)) -> void:
 	crew_ids = p_crew_ids.duplicate()
 	target = p_target
+	via = p_via
 
 
 func execute(sim: SimWorld) -> void:
@@ -22,7 +25,8 @@ func execute(sim: SimWorld) -> void:
 		sim.ems.cancel(id)
 		sim.falls.cancel(id)
 		sim.vent.cancel(id, tick)
-	sim.units.order_move(crew_ids, target, sim.pathfinder)
+		sim.command.clear_floor_goal(id)
+	sim.units.order_move(crew_ids, target, sim.pathfinder, via)
 
 
 func to_dict() -> Dictionary:
@@ -31,4 +35,5 @@ func to_dict() -> Dictionary:
 		"tick": tick,
 		"crews": crew_ids.duplicate(),
 		"target": [target.x, target.y, target.z],
+		"via": [via.x, via.y, via.z],
 	}

@@ -19,6 +19,9 @@ extends RefCounted
 ##   all_clear:      완진 선언 (소방전술 I 8단계 ⑥, SOP 202-6). 불이 남아 있어도 막지 않고 그때 상태를 기록한다
 ##   placement:      선착 차량 배치 (value = 시나리오 approach.options index, SOP 200-3.1.1)
 ##   role:           안전 임무 지정 (squad_ids = 조 id, value = SafetySystem.Role: 0 해제 / 1 RIT / 2 현장안전담당)
+##   approach:       진입구로 가기 (squad_ids = 조 id, value = 진입구 index). 허가 전이면 문 앞에서 허가를 묻는다 (P4-5)
+##   floor:          층으로 가기 (squad_ids = 조 id, value = 층, answers.entry = 밖의 조가 쓸 진입구 index 또는 -1)
+##   stair:          계단 고르기 답 (squad_ids = 조 id, value = 그 층 계단 index)
 
 var tick := -1
 var action := ""
@@ -94,6 +97,17 @@ func execute(sim: SimWorld) -> void:
 		"role":
 			for id in squad_ids:
 				cmd.order_role(id, value, tick)
+		"approach":
+			cmd.order_approach(squad_ids, sim.entries.list[value] if value >= 0 and value < sim.entries.list.size() else null, tick)
+		"floor":
+			var e: EntryPoints.Entry = null
+			var ei := int(answers.get("entry", -1))
+			if ei >= 0 and ei < sim.entries.list.size():
+				e = sim.entries.list[ei]
+			cmd.order_floor(squad_ids, value, e, tick)
+		"stair":
+			for id in squad_ids:
+				cmd.order_stair(id, value, tick)
 
 
 func to_dict() -> Dictionary:

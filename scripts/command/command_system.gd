@@ -157,6 +157,20 @@ var entry_requests: Dictionary = {}
 ## 활동 종료 때 지정한 감시 (202-6.5): 출동대 이름 / "관계자 감시 당부" / ""
 var watch := ""
 
+## 층 고르기 (P4-5): 지휘관이 고른 층으로 가야 하는 조 {crew id: 층}. 건물 안에서 멈춰 서면
+## 계단이 하나면 그 계단으로 가고, 둘 이상이면 어느 계단으로 갈지 지휘관에게 묻는다 (stair_asks)
+var floor_goals: Dictionary = {}
+## 어느 계단으로 갈지 묻고 답을 기다리는 조 {crew id: {level: 지금 층, goal: 갈 층, cores: [계단 index]}}
+var stair_asks: Dictionary = {}
+## 계단실 (SimWorld가 만든다)
+var stairs: StairCores
+var exposure: ExposureSystem
+var _floor_routed: Dictionary = {}  # crew id -> 계단 답을 보낸 틱 (무전 가는 중), -1 = 계단으로 가는 중
+## 진입구로 가는 조 {crew id: 진입구 index} (P4-5)
+var approach: Dictionary = {}
+## 계단 답 무전이 닿기를 기다리는 최대 틱 (radio_params stair_answer_wait_s)
+var _stair_wait_ticks := 200
+
 ## 진입 명령 규칙을 적용할지 (시나리오 = 적용, 지휘 규칙과 무관한 테스트 = 끔)
 var entry_order_required := false
 ## 중요한 사건에 자동 감속할지
@@ -220,6 +234,7 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, p_res
 	_report_repeat_ticks = roundi(params.value("report_repeat_s") / SimClock.TICK_DT)
 	_entry_wait_ticks = roundi(params.value("entry_wait_repeat_s") / SimClock.TICK_DT)
 	_entry_min_air = params.value("entry_min_air_ratio")
+	_stair_wait_ticks = roundi(params.value("stair_answer_wait_s") / SimClock.TICK_DT)
 	_entry_rit_squads = int(params.value("entry_rit_from_squads"))
 	commander.id = -1
 	commander.squad_id = -1
@@ -469,6 +484,8 @@ func step(dt: float, tick: int) -> void:
 		if e.type == "tactical_start" and not _entry_denied.is_empty():
 			clear_entry_denied(_squad_of_sender(str(e.get("crew", ""))))
 	safety.step(tick)
+	_step_approach(tick)
+	_step_floor_goals(tick)
 	_check_span(tick)
 	radio.step(dt, tick)
 	org.step(dt, tick)
@@ -926,6 +943,7 @@ func _on_entry_received(tick: int, squad_id: int) -> void:
 	if effective_strategy() == Strategy.DEFENSIVE:
 		return
 	entry_allowed[squad_id] = true
+	var waiting_before := _entry_waiting.duplicate()
 	# 입구에서 기다리던 조: 원래 가려던 곳(문 작업 자리·방수 자리·검색 지점 등)으로 다시 간다.
 	# 임무 중이어도 문·방수 단계는 길을 다시 찾지 않으므로 여기서 이어 준다 (P9 봇 점검에서 찾음)
 	for cr in units.squads[squad_id].crews:
@@ -935,6 +953,14 @@ func _on_entry_received(tick: int, squad_id: int) -> void:
 			units.order_move([cr.id], goal, pathfinder)
 		_entry_waiting.erase(cr.id)
 	var squad := units.squads[squad_id]
+	# 입구에서 기다리던 조 중 갈 층·임무가 아직 없는 조가 있으면 지휘관에게 층을 묻는다 (P4-5: 승인 → 층 고르기)
+	var idle: Array[int] = []
+	for cr in squad.crews:
+		var at_door := approach.has(cr.id) or _entry_waiting.has(cr.id) or waiting_before.has(cr.id)
+		if at_door and not floor_goals.has(cr.id) and (tactical == null or tactical.task_of_crew(cr.id) == null):
+			idle.append(cr.id)
+	if not idle.is_empty():
+		events.add(tick, "floor_ask", {"squad": squad.name, "squad_id": squad_id, "crews": idle})
 	events.add(tick, "entry_ordered", {
 		"squad": squad.name,
 		"before_command": not declared(),
@@ -1319,3 +1345,241 @@ func _on_report_requested(tick: int, crew_id: int) -> void:
 	last_report_tick[name] = tick
 	radio.send(Radio.Priority.TACTICS, name, COMMANDER, ", ".join(parts) + ".", tick)
 	events.add(tick, "crew_report", {"crew": name, "text": ", ".join(parts)})
+
+
+# --- 진입구·층·계단 고르기 (P4-5) ---
+
+## 진입구 안쪽 첫 칸 (로비). 진입 허가 전이면 대원은 문 앞에서 멈춰 허가를 묻는다
+func entry_inner(e: EntryPoints.Entry) -> Vector3i:
+	var inward := Vector2i(roundi(-e.outward.x), roundi(-e.outward.y))
+	var c := pathfinder.nearest_walkable(e.level, e.door + inward, 2)
+	if c == Pathfinder.NO_CELL:
+		c = e.door
+	return Vector3i(c.x, c.y, e.level)
+
+
+## 밖의 조를 고른 진입구 앞으로 보낸다 (대면 지시라 바로). 이미 안에 있는 조는 그대로.
+## 문 앞에 닿으면 진입 허가를 묻고(_step_approach), 허가가 있으면 문을 열고 로비로 들어간다
+func order_approach(crew_ids: Array, e: EntryPoints.Entry, tick: int) -> void:
+	if e == null:
+		return
+	var out: Array[int] = []
+	for id in crew_ids:
+		var c := units.get_crew(int(id))
+		if c and not _indoor(c.leader.level, c.leader.pos):
+			out.append(c.id)
+			if tactical:
+				tactical.cancel(c.id)
+			if doors:
+				doors.cancel(c.id)
+			approach[c.id] = e.index
+	if out.is_empty():
+		return
+	units.order_move(out, e.outside, pathfinder, Vector3i(-1, -1, -1), true)
+	var names := PackedStringArray()
+	for id in out:
+		names.append(_crew_name(units.get_crew(id)))
+	events.add(tick, "entry_approach", {"crew": ", ".join(names), "entry": e.name})
+	_decide(tick, "%s 진입구 %s" % [", ".join(names), e.name])
+
+
+## 지휘관이 층을 골랐다. 안의 조는 무전으로, 밖의 조는 대면으로. 밖의 조는 진입구(e, 없으면 가까운 문)로 들어간다
+func order_floor(crew_ids: Array, level: int, e: EntryPoints.Entry, tick: int) -> void:
+	if not fire.building.has_level(level):
+		return
+	var inside: Array[int] = []
+	var outside: Array[int] = []
+	for id in crew_ids:
+		var c := units.get_crew(int(id))
+		if c == null:
+			continue
+		if _indoor(c.leader.level, c.leader.pos):
+			inside.append(c.id)
+		else:
+			outside.append(c.id)
+	if not outside.is_empty():
+		# 진입구를 고르지 않았으면: 이미 가고 있는 진입구, 없으면 가장 가까운 진입구
+		if e == null:
+			e = _approach_entry(outside)
+		order_approach(outside, e, tick)
+		_set_floor_goal(outside, level, tick)
+	for id in inside:
+		var c := units.get_crew(id)
+		radio.send(Radio.Priority.TACTICS, COMMANDER, _crew_name(c), "%s으로 이동하라." % fire.building.floor_name(level), tick,
+			func(t: int) -> void: _set_floor_goal([id], level, t))
+
+
+func _approach_entry(crew_ids: Array) -> EntryPoints.Entry:
+	var list: Array = interior.entries.list if interior.entries else []
+	if list.is_empty() or crew_ids.is_empty():
+		return null
+	var first := int(crew_ids[0])
+	if approach.has(first) and int(approach[first]) < list.size():
+		return list[int(approach[first])]
+	var c := units.get_crew(first)
+	var best: EntryPoints.Entry = null
+	for en: EntryPoints.Entry in list:
+		if en.level == c.leader.level and (best == null or c.leader.pos.distance_to(Vector2(en.outside.x, en.outside.y)) < c.leader.pos.distance_to(Vector2(best.outside.x, best.outside.y))):
+			best = en
+	return best if best else list[0]
+
+
+## 진입구로 가는 조 (1초마다): 문 앞에 닿으면 허가를 묻는다. 허가가 있으면 문을 열고(잠겼으면 파괴) 로비로 들어간다
+func _step_approach(tick: int) -> void:
+	if approach.is_empty() or tick % roundi(1.0 / SimClock.TICK_DT) != 0:
+		return
+	var list: Array = interior.entries.list if interior.entries else []
+	for id: int in approach.keys():
+		var c := units.get_crew(id)
+		var ei: int = approach[id]
+		if c == null or c.leader.incapacitated or ei >= list.size():
+			approach.erase(id)
+			continue
+		var e: EntryPoints.Entry = list[ei]
+		if c.leader.is_moving() or (doors and doors.task_of_crew(id) != null):
+			continue
+		if _indoor(c.leader.level, c.leader.pos):
+			approach.erase(id)
+			continue
+		if c.leader.level != e.level or c.leader.pos.distance_to(Vector2(e.outside.x, e.outside.y) + Vector2(0.5, 0.5)) > ENTRY_WAIT_RADIUS:
+			# 다른 곳에 멈췄다 (다른 명령 등) — 잊는다
+			approach.erase(id)
+			continue
+		if not can_enter(c.squad_id):
+			if _entry_denied.has(c.squad_id):
+				continue
+			var last: int = _entry_wait_tick.get(c.id, -_entry_wait_ticks)
+			if tick - last >= _entry_wait_ticks:
+				_entry_wait_tick[c.id] = tick
+				events.add(tick, "entry_wait", {"crew": _crew_name(c)})
+			_request_entry(c, tick)
+			continue
+		if not e.opening.is_open:
+			if doors:
+				doors.request(id, Vector3i(e.door.x, e.door.y, e.level), true, tick)
+			continue
+		approach.erase(id)
+		units.order_move([id] as Array[int], entry_inner(e), pathfinder)
+
+
+func _set_floor_goal(crew_ids: Array, level: int, tick: int) -> void:
+	var names := PackedStringArray()
+	for id in crew_ids:
+		var c := units.get_crew(int(id))
+		if c == null:
+			continue
+		floor_goals[c.id] = level
+		_floor_routed.erase(c.id)
+		stair_asks.erase(c.id)
+		if tactical and _indoor(c.leader.level, c.leader.pos):
+			tactical.cancel(c.id)
+		names.append(_crew_name(c))
+	if not names.is_empty():
+		_decide(tick, "%s %s으로" % [", ".join(names), fire.building.floor_name(level)])
+
+
+## 계단을 골랐다 (stair_asks의 답): 무전으로 알리고, 받으면 그 계단으로
+func order_stair(crew_id: int, core: int, tick: int) -> void:
+	var c := units.get_crew(crew_id)
+	var ask: Dictionary = stair_asks.get(crew_id, {})
+	if c == null or stairs == null or ask.is_empty():
+		return
+	var lv: int = ask.level
+	var goal: int = ask.goal
+	stair_asks.erase(crew_id)
+	_floor_routed[crew_id] = tick
+	var label := stairs.label(lv, core)
+	var sd := stairs.side(lv, core, exposure)
+	events.add(tick, "stair_picked", {"crew": _crew_name(c), "stair": label, "side": sd, "level": fire.building.floor_name(goal)})
+	_decide(tick, "%s %s%s으로 %s" % [_crew_name(c), label, " (%s)" % sd if sd != "" else "", fire.building.floor_name(goal)])
+	radio.send(Radio.Priority.TACTICS, COMMANDER, _crew_name(c), "%s으로 %s까지 진입하라." % [label, fire.building.floor_name(goal)], tick,
+		func(_t: int) -> void:
+			if int(floor_goals.get(crew_id, -1)) == goal:
+				_route_by_stair(c, core, goal))
+
+
+func _route_by_stair(c: Crew, core: int, goal: int) -> void:
+	var lv := c.leader.level
+	if core < 0 or core >= stairs.cores(lv).size():
+		return
+	var land := stairs.landing(lv, core, goal)
+	if land.x < 0:
+		return
+	var cells: Array = stairs.cores(lv)[core]
+	var via_cell: Vector2i = cells[0]
+	for cell: Vector2i in cells:
+		if c.leader.pos.distance_to(Vector2(cell) + Vector2(0.5, 0.5)) < c.leader.pos.distance_to(Vector2(via_cell) + Vector2(0.5, 0.5)):
+			via_cell = cell
+	_floor_routed[c.id] = -1
+	units.order_move([c.id] as Array[int], Vector3i(land.x, land.y, goal), pathfinder, Vector3i(via_cell.x, via_cell.y, lv))
+
+
+## 층을 받은 조 (1초마다): 그 층에 닿으면 끝. 건물 안에서 멈춰 서 있으면 계단을 정한다 —
+## 아는 계단(본 적 있거나 도면이 있음)이 하나면 그리로, 둘 이상이면 지휘관에게 묻는다 (기획안 9-1 정보 원칙, SSG 4)
+func _step_floor_goals(tick: int) -> void:
+	if floor_goals.is_empty() or stairs == null or tick % roundi(1.0 / SimClock.TICK_DT) != 0:
+		return
+	for id: int in floor_goals.keys():
+		var c := units.get_crew(id)
+		var goal: int = floor_goals[id]
+		if c == null or c.leader.incapacitated:
+			clear_floor_goal(id)
+			continue
+		if c.leader.level == goal and not c.leader.is_moving():
+			clear_floor_goal(id)
+			events.add(tick, "floor_reached", {"crew": _crew_name(c), "crew_id": id, "level": goal})
+			continue
+		if c.leader.is_moving() or stair_asks.has(id) or not _indoor(c.leader.level, c.leader.pos):
+			continue
+		# 계단을 정했으면: 무전 답이 가는 중(정한 틱)이면 기다린다. 가다가 멈췄으면(막힘 등) 다시 정한다
+		if _floor_routed.has(id):
+			var since: int = _floor_routed[id]
+			if since >= 0 and tick - since < _stair_wait_ticks:
+				continue
+			_floor_routed.erase(id)
+		var lv := c.leader.level
+		if lv == goal:
+			continue
+		var options := stairs.toward(lv, goal)
+		if options.is_empty():
+			clear_floor_goal(id)
+			events.add(tick, "floor_unreachable", {"crew": _crew_name(c), "level": fire.building.floor_name(goal)})
+			continue
+		var known: Array[int] = []
+		for i in options:
+			if interior.plan_known or _core_seen(lv, i):
+				known.append(i)
+		if known.size() >= 2:
+			stair_asks[id] = {"level": lv, "goal": goal, "cores": known}
+			var names := PackedStringArray()
+			for i in known:
+				var sd := stairs.side(lv, i, exposure)
+				names.append(stairs.label(lv, i) + (" (%s)" % sd if sd != "" else ""))
+			events.add(tick, "stair_ask", {"crew": _crew_name(c), "crew_id": id, "level": goal, "options": " · ".join(names)})
+			radio.send(Radio.Priority.TACTICS, _crew_name(c), COMMANDER, "계단 %d곳 확인 — %s. %s으로 어느 계단을 쓸까요?" % [known.size(), " · ".join(names), fire.building.floor_name(goal)], tick)
+			continue
+		# 아는 계단이 하나면 그 계단, 아직 못 봤으면 가장 가까운 계단 (대원 스스로)
+		var pick: int = known[0] if known.size() == 1 else options[0]
+		if known.is_empty():
+			var best := INF
+			for i in options:
+				var d := c.leader.pos.distance_to(stairs.center(lv, i))
+				if d < best:
+					best = d
+					pick = i
+		_route_by_stair(c, pick, goal)
+
+
+## 다른 명령을 받으면 층 목표를 지운다 (MoveCommand·TacticalCommand)
+func clear_floor_goal(id: int) -> void:
+	approach.erase(id)
+	floor_goals.erase(id)
+	stair_asks.erase(id)
+	_floor_routed.erase(id)
+
+
+func _core_seen(level: int, index: int) -> bool:
+	for cell: Vector2i in stairs.cores(level)[index]:
+		if perception.is_seen(level, cell.x, cell.y):
+			return true
+	return false

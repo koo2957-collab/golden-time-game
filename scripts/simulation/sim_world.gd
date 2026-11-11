@@ -225,6 +225,9 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.command.interior.entries = sim.entries
 	sim.knowledge = KnowledgeBoard.new(sim.fire, sim.units, sim.rescue)
 	# 지휘소 (P4-4): 지휘소를 떠나 이동지휘 중이면 상황판 갱신이 늦고 일상 보고를 놓친다
+	# 층·계단 고르기 (P4-5)
+	sim.command.stairs = StairCores.new(building)
+	sim.command.exposure = sim.exposure
 	sim.command.post = CommandPost.new(sim.command, sim.units, sim.pathfinder, ParamTable.from_dict(radio_data), sim.events, building.cell_size_m)
 	sim.zones.post = sim.command.post
 	var deliver := sim.command.post.wrap(sim.knowledge.on_message)

@@ -28,6 +28,7 @@ func execute(sim: SimWorld) -> void:
 		sim.ems.cancel(id)
 		sim.falls.cancel(id)
 		sim.vent.cancel(id, tick)
+		sim.command.clear_floor_goal(id)
 		sim.tactical.order(action, id, target, tick, via)
 
 

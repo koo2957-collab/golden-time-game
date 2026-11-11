@@ -11,6 +11,7 @@ var _building: BuildingData
 var _grids: Dictionary = {}  # level -> AStarGrid2D
 ## 닫힌 문 등으로 일시적으로 막힌 셀 (Vector3i -> true)
 var _blocked: Dictionary = {}
+var _outdoor: Dictionary = {}  # level -> AStarGrid2D (건물 밖 칸만, find_path_outdoors)
 ## 차체 바닥이 차도 위에 있는지 볼 때 표본을 찍는 간격 (셀)
 const VEHICLE_SAMPLE_CELLS := 0.5
 
@@ -89,6 +90,32 @@ func find_path_through_doors(start: Vector3i, goal: Vector3i) -> Array[Vector3i]
 	for key: Vector3i in _blocked:
 		_grids[key.z].set_point_solid(Vector2i(key.x, key.y), true)
 	return path
+
+
+## 건물 밖으로만 가는 경로 (P4-5: 고른 진입구까지 건물을 가로지르지 않고 둘러 간다). 같은 층만. 못 가면 빈 배열
+func find_path_outdoors(start: Vector3i, goal: Vector3i) -> Array[Vector3i]:
+	var out: Array[Vector3i] = []
+	if start.z != goal.z or not _grids.has(start.z):
+		return out
+	if not _outdoor.has(start.z):
+		var g := AStarGrid2D.new()
+		g.region = Rect2i(0, 0, _building.width, _building.height)
+		g.cell_size = Vector2.ONE
+		g.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+		g.update()
+		for y in _building.height:
+			for x in _building.width:
+				if not (_building.is_walkable(start.z, x, y) and _building.cell(start.z, x, y) in BuildingData.OUTDOOR):
+					g.set_point_solid(Vector2i(x, y))
+		_outdoor[start.z] = g
+	var grid: AStarGrid2D = _outdoor[start.z]
+	var a := Vector2i(start.x, start.y)
+	var b := Vector2i(goal.x, goal.y)
+	if not grid.is_in_boundsv(a) or not grid.is_in_boundsv(b) or grid.is_point_solid(a) or grid.is_point_solid(b):
+		return find_path(start, goal)
+	for p in grid.get_id_path(a, b):
+		out.append(Vector3i(p.x, p.y, start.z))
+	return out
 
 
 func find_path(start: Vector3i, goal: Vector3i) -> Array[Vector3i]:

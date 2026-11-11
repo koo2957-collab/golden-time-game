@@ -180,7 +180,9 @@ func step(dt: float) -> void:
 
 
 ## 여러 조를 target 주변으로 이동시킨다. 목표에 가까운 조부터 가까운 도착 지점을 배정한다.
-func order_move(crew_ids: Array[int], target: Vector3i, pathfinder: Pathfinder) -> void:
+## via: 지나갈 칸 (고른 계단 등). x < 0이면 가장 짧은 길
+## outdoor: 건물 밖으로만 (고른 진입구로 둘러 가기)
+func order_move(crew_ids: Array[int], target: Vector3i, pathfinder: Pathfinder, via := Vector3i(-1, -1, -1), outdoor := false) -> void:
 	var targets: Array[Crew] = []
 	for crew_id in crew_ids:
 		var c := get_crew(crew_id)
@@ -200,18 +202,24 @@ func order_move(crew_ids: Array[int], target: Vector3i, pathfinder: Pathfinder) 
 		return
 	for i in targets.size():
 		var slot := slots[i % slots.size()]
-		_route_crew(targets[i], Vector3i(slot.x, slot.y, target.z), pathfinder)
+		_route_crew(targets[i], Vector3i(slot.x, slot.y, target.z), pathfinder, via, outdoor)
 
 
-## 조장은 goal까지, 짝은 조장 경로를 따라 한 칸 뒤까지 이동한다.
-func _route_crew(c: Crew, goal: Vector3i, pathfinder: Pathfinder) -> void:
-	var lead_path := pathfinder.find_path(c.leader.cell3(), goal)
+## 조장은 goal까지(via가 있으면 그 칸을 거쳐), 짝은 조장 경로를 따라 한 칸 뒤까지 이동한다.
+func _route_crew(c: Crew, goal: Vector3i, pathfinder: Pathfinder, via := Vector3i(-1, -1, -1), outdoor := false) -> void:
+	var lead_path := pathfinder.find_path_outdoors(c.leader.cell3(), goal) if outdoor else pathfinder.find_path(c.leader.cell3(), goal)
+	if via.x >= 0 and via != c.leader.cell3():
+		var first := pathfinder.find_path(c.leader.cell3(), via)
+		var second := pathfinder.find_path(via, goal)
+		if not first.is_empty() and not second.is_empty():
+			first.append_array(second.slice(1))
+			lead_path = first
 	if lead_path.is_empty():
 		return
 	c.leader.set_path(lead_path)
 	if c.partner == null or lead_path.size() < 2:
 		return
-	var trail := pathfinder.find_path(c.partner.cell3(), lead_path[0])
+	var trail := pathfinder.find_path_outdoors(c.partner.cell3(), lead_path[0]) if outdoor else pathfinder.find_path(c.partner.cell3(), lead_path[0])
 	if trail.is_empty():
 		trail = pathfinder.find_path(c.partner.cell3(), lead_path[-2])
 	else:

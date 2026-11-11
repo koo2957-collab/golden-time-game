@@ -139,6 +139,18 @@ static func describe_text(e: Dictionary) -> String:
 			text = "전략 전파 — %s" % e.strategy
 		"entry_ordered":
 			text = "내부 진입 명령 — %s" % e.squad
+		"entry_approach":
+			text = "진입구로 이동 — %s → %s" % [e.crew, e.entry]
+		"floor_ask":
+			text = "진입 허가 — %s: 올라갈 층을 고르세요" % e.squad
+		"stair_ask":
+			text = "계단 확인 — %s: %s (어느 계단으로?)" % [e.crew, e.options]
+		"stair_picked":
+			text = "계단 지정 — %s: %s%s" % [e.crew, e.stair, " (%s)" % e.side if str(e.side) != "" else ""]
+		"floor_reached":
+			text = "목표 층 도착 — %s" % e.crew
+		"floor_unreachable":
+			text = "그 층으로 이어진 계단 없음 — %s (%s)" % [e.crew, e.level]
 		"entry_rejected":
 			text = "진입 명령 불가 (%s) — %s" % [e.reason, e.squad]
 		"entry_wait":

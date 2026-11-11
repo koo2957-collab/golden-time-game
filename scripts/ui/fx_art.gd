@@ -52,6 +52,16 @@ const PUFF_FIRE := 2
 const PUFF_FLASH := 3
 
 
+## 덩어리 그림을 아무 직사각형에 (납작하게 눌러 그릴 때). 구워져 있지 않으면 false
+static func draw_puff_rect(ci: CanvasItem, rect: Rect2, kind: int, k: int, modulate: Color) -> bool:
+	if not load_all() or puffs == null:
+		return false
+	var p := float(meta.get("puffs", {}).get("size", 96))
+	var per_row := int(meta.get("puffs", {}).get("per_row", 6))
+	ci.draw_texture_rect_region(puffs, rect, Rect2(posmod(k, per_row) * p, kind * p, p, p), modulate)
+	return true
+
+
 ## 덩어리 그림 (PUFF_* 종류). k: 0~5 모양. 그 종류가 구워져 있지 않으면 false
 static func draw_puff(ci: CanvasItem, center: Vector2, size: float, kind: int, k: int, modulate: Color) -> bool:
 	if not load_all() or puffs == null:

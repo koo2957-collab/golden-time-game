@@ -32,8 +32,16 @@ func test_view_params_loaded() -> void:
 	assert_eq(p.visible_floors_below, 2, "아래 2개 층")
 	assert_eq(p.below_modulate, [0.75, 0.55] as Array[float], "아래 층 밝기")
 	assert_eq(p.front_wall, "open", "앞벽은 없음 — 인형집 (2026-11-12 결정)")
-	assert_eq([p.front_wall_alpha, p.inner_wall_m, p.stack_mode, p.stagger_back_ratio], [0.15, 1.2, "stagger", 0.67], "앞벽 15%, 실내 벽 허리 높이 진하게, 비켜 놓기(위층이 뒤 1/3을 덮게)")
+	assert_eq([p.front_wall_alpha, p.inner_wall_m, p.stack_mode, p.stagger_back_ratio, p.stagger_floor_px], [0.15, 1.2, "stagger", 0.3, 260.0], "앞벽 15%, 실내 벽 허리 높이 진하게, 비켜 놓기 B(뒤로 0.3 + 위로 260px)")
 	assert_eq(p.wall_cut_m, 0.2, "잘린 벽 20cm")
+	# 연기층 그림 (2026-11-12 사용자 결정: Kenney 연기 덩어리 구름, 윗면 옅게·앞면 진하게, 높이 눈금)
+	assert_eq([p.smoke_top_alpha < p.smoke_front_alpha, p.smoke_max_puffs > 0, p.smoke_gauge], [true, true, true], "연기 윗면은 앞면보다 옅게, 덩어리 상한, 눈금 켬")
+
+
+func test_smoke_gauge_eye_height_matches_crouch_rule() -> void:
+	# 눈금의 '자세 낮춤' 기준 = 대원이 실제로 자세를 낮추는 눈높이 (data/units/firefighter.json)
+	var world := SimWorld.from_scenario("res://data/scenarios/dev_house_fire.json", false)
+	assert_eq(world.conditions.eye_standing_m(), 1.6, "서 있는 눈높이 1.6m")
 
 
 func test_apartment_12f_shows_10_to_14() -> void:

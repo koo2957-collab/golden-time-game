@@ -52,5 +52,14 @@ func _run() -> void:
 	for i in 20:
 		await process_frame
 	root.get_texture().get_image().save_png(out + "ghost_zoom.png")
+	# 정보 안개를 켠 3층: 본 적 없는 칸은 천장 높이 덮개
+	sim.perception.enabled = true
+	sim.perception.update(sim.clock.tick)
+	world.set_view_level(3, false)
+	world.camera.zoom = Vector2(0.8, 0.8)
+	world.camera.retarget(proj.bounds(sim.building), proj.to_screen(Vector2(sim.building.footprint(3).get_center())))
+	for i in 30:
+		await process_frame
+	root.get_texture().get_image().save_png(out + "fog_view3.png")
 	print("저장 ", out)
 	quit()

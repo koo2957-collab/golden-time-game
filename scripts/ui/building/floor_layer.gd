@@ -119,12 +119,16 @@ var ghost := false:
 			if _ghost_units:
 				_ghost_units.visible = v
 			queue_redraw()
-const GHOST_WALL := Color(1, 1, 1, 0.32)
-const GHOST_FIRE_WALL := Color(1.0, 0.55, 0.15, 0.75)
+const GHOST_WALL := Color(1, 1, 1, 0.42)
+const GHOST_INNER := Color(1, 1, 1, 0.34)
+const GHOST_FIRE_WALL := Color(1.0, 0.55, 0.15, 0.8)
+## 벽 면 채움 (바깥벽은 거의 투명, 확인된 내부 벽은 옅게)
+const GHOST_FACE_ALPHA := 0.04
+const GHOST_INNER_FACE_ALPHA := 0.1
 const GHOST_CREW := Color(1.0, 0.85, 0.2, 0.9)
 const GHOST_VICTIM := Color(1.0, 0.3, 0.3, 0.9)
 var _ghost_units: Node2D
-var _ghost_walls: Dictionary = {}  # level -> [PackedVector2Array 선분(칸 가운데 쌍), Array 선분마다 맞닿은 구획 index 목록]
+var _ghost_walls: Dictionary = {}  # level -> 벽 줄 목록 (_ghost_wall_runs)
 
 ## 층 고르기 (P4-5): 외부 보기에서 노랗게 테두리를 그릴 층 (-99 = 없음)
 var hover_floor := -99:
@@ -2151,59 +2155,83 @@ func _draw_monitors_and_fans() -> void:
 
 # --- 다른 층: 실루엣 (F01) ---
 
-## 벽 칸(벽·문·창)의 가운데를 이웃 벽 칸과 이은 선 = 외곽선 + 방 사이 벽. 층마다 한 번 만든다
-func _ghost_wall_lines(lv: int) -> Array:
+## 벽 줄: 이어진 벽 칸(벽·문·창)을 가로·세로 줄로 묶는다. 층마다 한 번.
+## [{a: 시작(칸 가운데), b: 끝, outer: 바깥벽인가, comps: 맞닿은 방 index}]
+func _ghost_wall_runs(lv: int) -> Array:
 	if _ghost_walls.has(lv):
 		return _ghost_walls[lv]
 	var b := sim.building
-	var segs := PackedVector2Array()
-	var comps: Array = []
 	var wallish := [BuildingData.Cell.WALL, BuildingData.Cell.DOOR, BuildingData.Cell.WINDOW]
-	for y in b.height:
-		for x in b.width:
-			if not b.cell(lv, x, y) in wallish:
-				continue
-			for d: Vector2i in [Vector2i.RIGHT, Vector2i.DOWN]:
-				var n := Vector2i(x, y) + d
-				if not b.in_bounds(n.x, n.y) or not b.cell(lv, n.x, n.y) in wallish:
+	var is_wall := func(x: int, y: int) -> bool: return b.in_bounds(x, y) and b.cell(lv, x, y) in wallish
+	var runs: Array = []
+	for horizontal in [true, false]:
+		var outer_n: int = b.height if horizontal else b.width
+		var inner_n: int = b.width if horizontal else b.height
+		for o in outer_n:
+			var k := 0
+			while k < inner_n:
+				var x: int = k if horizontal else o
+				var y: int = o if horizontal else k
+				if not is_wall.call(x, y):
+					k += 1
 					continue
-				segs.append(Vector2(x + 0.5, y + 0.5))
-				segs.append(Vector2(n.x + 0.5, n.y + 0.5))
-				# 이 선에 맞닿은 방 (불을 아는 방이면 주황)
+				var start := k
+				while k < inner_n and is_wall.call(k if horizontal else o, o if horizontal else k):
+					k += 1
+				var end := k - 1
+				if end - start < 1:
+					continue
+				var cells: Array[Vector2i] = []
+				for t in range(start, end + 1):
+					cells.append(Vector2i(t, o) if horizontal else Vector2i(o, t))
+				var outdoor := 0
 				var touch: Array[int] = []
-				for c: Vector2i in [Vector2i(x, y), n]:
+				for c in cells:
+					var near_out := false
 					for e: Vector2i in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
-						var comp := sim.fire.compartment_at(lv, c.x + e.x, c.y + e.y)
+						var n := c + e
+						if not b.in_bounds(n.x, n.y) or b.cell(lv, n.x, n.y) in BuildingData.OUTDOOR:
+							near_out = true
+						var comp := sim.fire.compartment_at(lv, n.x, n.y)
 						if comp and not comp.index in touch:
 							touch.append(comp.index)
-				comps.append(touch)
-	_ghost_walls[lv] = [segs, comps]
-	return _ghost_walls[lv]
+					if near_out:
+						outdoor += 1
+				runs.append({"a": Vector2(cells[0]) + Vector2(0.5, 0.5), "b": Vector2(cells[-1]) + Vector2(0.5, 0.5),
+					"outer": outdoor * 2 >= cells.size(), "comps": touch})
+	_ghost_walls[lv] = runs
+	return runs
 
 
+## 다른 층 = 유리 상자 (2026-11-11 사용자 결정): 벽을 높이 있는 면으로 — 바깥벽은 반투명 실선(위·아래·양 끝 세로선),
+## 확인된 내부 벽은 옅은 반투명 면 + 반투명 점선 테두리, 모르는 곳의 내부 벽은 그리지 않는다. 불을 아는 방의 벽은 주황
 func _draw_ghost() -> void:
 	_update_fire_rooms()
-	var data := _ghost_wall_lines(level)
-	var segs: PackedVector2Array = data[0]
-	var comps: Array = data[1]
-	var plain := PackedVector2Array()
-	var hot := PackedVector2Array()
-	for i in comps.size():
-		var a := proj.to_screen(segs[i * 2], 0.05)
-		var b := proj.to_screen(segs[i * 2 + 1], 0.05)
+	var p := sim.perception
+	var plan_known := sim.command.interior.plan_known
+	for run: Dictionary in _ghost_wall_runs(level):
+		var outer: bool = run.outer
+		var known := outer or plan_known or not p.enabled
 		var burning := false
-		for ci: int in comps[i]:
+		for ci: int in run.comps:
 			if _fire_rooms.has(ci):
 				burning = true
-				break
-		if burning:
-			hot.append_array([a, b])
+			if not known and p.room_seen[ci] == 1:
+				known = true
+		if not known:
+			continue
+		var a0 := proj.to_screen(run.a, 0.0)
+		var b0 := proj.to_screen(run.b, 0.0)
+		var a1 := proj.to_screen(run.a, CEILING_M)
+		var b1 := proj.to_screen(run.b, CEILING_M)
+		var line: Color = GHOST_FIRE_WALL if burning else (GHOST_WALL if outer else GHOST_INNER)
+		var face := Color(line, GHOST_FACE_ALPHA if outer else GHOST_INNER_FACE_ALPHA)
+		draw_colored_polygon(PackedVector2Array([a0, b0, b1, a1]), face)
+		if outer:
+			draw_polyline(PackedVector2Array([a0, b0, b1, a1, a0]), line, 1.5)
 		else:
-			plain.append_array([a, b])
-	if not plain.is_empty():
-		draw_multiline(plain, GHOST_WALL, 1.5)
-	if not hot.is_empty():
-		draw_multiline(hot, GHOST_FIRE_WALL, 2.0)
+			for seg in [[a1, b1], [a0, a1], [b0, b1], [a0, b0]]:
+				draw_dashed_line(seg[0], seg[1], line, 1.2, 5.0)
 	if _ghost_units:
 		_ghost_units.queue_redraw()
 

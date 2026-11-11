@@ -39,6 +39,8 @@
   "smoke_dark_density": {"value": 0.45, "source": "화면 설정", "note": "이 짙기(1 - 가시거리/10m) 이상이면 검은 연기, 아래면 회색 연기"},
   "smoke_row_m": {"value": 0.4, "source": "화면 설정", "note": "잘린 앞면에 연기 덩어리를 천장부터 겹쳐 쌓는 줄 간격 (m). 연기층이 이만큼 두꺼워질 때마다 아래에 새 줄 (2026-11-12 사용자 결정: 중첩으로 쌓여 내려오는 그림)"},
   "smoke_max_rows": {"value": 6, "source": "화면 설정", "note": "쌓는 줄 최대 수 (천장 2.4m ÷ 0.4m)"},
+  "smoke_outline_below_m": {"value": 1.8, "source": "화면 설정", "note": "연기층 아랫면이 이 높이(사람 키)보다 낮게 내려오면 그 방 사람을 테두리로 (2026-11-12 사용자 결정: 벽 너머 사람과 같은 노랑·빨강 테두리)"},
+  "smoke_outline_density": {"value": 0.4, "source": "화면 설정", "note": "그리고 연기 짙기(1 - 가시거리/10m)가 이 이상일 때"},
   "smoke_sink_s": {"value": 6.0, "source": "화면 설정", "note": "덩어리가 줄 안에서 아래로 흘러내렸다 다시 생기는 주기 (초, 화면 시간)"},
   "pick_magnet_px": {"value": 30, "source": "화면 설정", "note": "정확히 누르지 못해도 이 거리 안의 가장 가까운 조를 잡는다 (자석 선택)"},
   "zoom_switch": {"value": true, "source": "화면 설정", "note": "줌으로 외부↔단면 전환 (끄면 층 막대·PgUp/PgDn으로만)"},

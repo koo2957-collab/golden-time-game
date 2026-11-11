@@ -150,6 +150,9 @@ const GHOST_INNER_FACE_ALPHA := 0.1
 const GHOST_CREW := Color(1.0, 0.85, 0.2, 0.9)
 const GHOST_VICTIM := Color(1.0, 0.3, 0.3, 0.9)
 var _ghost_units: Node2D
+var _smoke_outline: Node2D
+## 이번 그림에서 사람을 덮을 만큼 연기가 짙고 낮게 깔린 방 (Compartment.index → true)
+var _smoky := {}
 var _ghost_walls: Dictionary = {}  # level -> 벽 줄 목록 (_ghost_wall_runs)
 
 ## 층 고르기 (P4-5): 외부 보기에서 노랗게 테두리를 그릴 층 (-99 = 없음)
@@ -240,6 +243,11 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 	_ghost_units.z_index = 100
 	_ghost_units.draw.connect(_draw_ghost_units)
 	add_child(_ghost_units)
+	# 연기에 묻힌 사람 테두리 (2026-11-12 사용자 결정): 이 층 연기 바로 위에 (자식은 부모 그림 위에 그려진다)
+	_smoke_outline = Node2D.new()
+	_smoke_outline.material = mat
+	_smoke_outline.draw.connect(_draw_smoke_outlines)
+	add_child(_smoke_outline)
 
 
 # --- 외부 보기: 건물 외관 (R16) ---
@@ -851,6 +859,9 @@ func refresh() -> void:
 func _draw() -> void:
 	if sim == null:
 		return
+	if not _smoky.is_empty():
+		_smoky.clear()
+		_smoke_outline.queue_redraw()
 	if ghost_mode == 4:
 		_draw_live_only()
 		return
@@ -1655,6 +1666,8 @@ func _draw_smoke() -> void:
 		var a := (SMOKE_MIN_ALPHA + SMOKE_DENSITY_ALPHA * density) * fade
 		var r := c.rect
 		var h := CEILING_M - layer_d
+		if h < stack.params.smoke_outline_below_m and density >= stack.params.smoke_outline_density:
+			_smoky[c.index] = true
 		if _draw_smoke_cloud(c, h, layer_d, a, density):
 			if c.rollover and p.room_visible(c):
 				_draw_rollover(r, h)
@@ -1675,6 +1688,8 @@ func _draw_smoke() -> void:
 		if c.rollover and p.room_visible(c):
 			_draw_rollover(r, h)
 	_draw_smoke_plumes()
+	if _smoke_outline:
+		_smoke_outline.queue_redraw()
 
 
 ## 연기층 = 천장에서부터 겹겹이 쌓이는 연기 덩어리 (Kenney Smoke Particles, 2026-11-12 사용자 결정).
@@ -2600,6 +2615,18 @@ func _draw_far_block() -> void:
 func _draw_ghost_units() -> void:
 	if sim == null or not ghost:
 		return
+	_draw_outlines(_ghost_units, {})
+
+
+## 연기에 묻힌 대원(노랑)·요구조자(빨강): 벽 너머 사람과 같은 테두리를 연기 위에 (2026-11-12 사용자 결정)
+func _draw_smoke_outlines() -> void:
+	if sim == null or _smoky.is_empty() or thermal:
+		return
+	_draw_outlines(_smoke_outline, _smoky)
+
+
+## 사람 테두리를 target에 그린다. rooms가 비어 있지 않으면 그 방(구획 index)에 있는 사람만
+func _draw_outlines(target: CanvasItem, rooms: Dictionary) -> void:
 	var alpha := sim.clock.alpha()
 	var crew_art := SpriteArt.get_set(str(SpriteArt.config().get("crew", ""))) if not thermal else null
 	for c in sim.units.crews:
@@ -2607,16 +2634,26 @@ func _draw_ghost_units() -> void:
 			if ff.level != level or ff.aboard:
 				continue
 			var p := UnitsView.display_pos(ff, alpha)
+			if not rooms.is_empty() and not _in_rooms(p, rooms):
+				continue
 			var feet := proj.to_screen(p, 0.0)
 			var moving := ff.level == ff.prev_level and (ff.pos - ff.prev_pos).length_squared() > 0.000001
 			var anim := "down" if ff.incapacitated else ("walk" if moving else "idle")
-			if crew_art == null or not crew_art.draw(_ghost_units, anim, int(_facing.get(ff.id, 1)), SpriteArt.frame_at(anim, crew_art.frames(anim), ff.id * 0.37), feet, GHOST_CREW):
-				_ghost_units.draw_arc(feet + Vector2(0, -18), 9.0, 0.0, TAU, 16, GHOST_CREW, 2.0)
+			if crew_art == null or not crew_art.draw(target, anim, int(_facing.get(ff.id, 1)), SpriteArt.frame_at(anim, crew_art.frames(anim), ff.id * 0.37), feet, GHOST_CREW):
+				target.draw_arc(feet + Vector2(0, -18), 9.0, 0.0, TAU, 16, GHOST_CREW, 2.0)
 	for v in sim.rescue.victims:
 		if not v.discovered or v.level != level or v.carried_by >= 0:
+			continue
+		if not rooms.is_empty() and not _in_rooms(v.pos, rooms):
 			continue
 		var feet := proj.to_screen(v.pos, 0.05)
 		var art := SpriteArt.victim_set(v.label()) if not thermal else null
 		var anim := "idle" if v.state == Victim.State.CONSCIOUS else "down_up"
-		if art == null or not art.draw(_ghost_units, anim, (v.id * 3) % 8, 0, feet, GHOST_VICTIM):
-			_ghost_units.draw_arc(feet + Vector2(0, -6), 9.0, 0.0, TAU, 16, GHOST_VICTIM, 2.0)
+		if art == null or not art.draw(target, anim, (v.id * 3) % 8, 0, feet, GHOST_VICTIM):
+			target.draw_arc(feet + Vector2(0, -6), 9.0, 0.0, TAU, 16, GHOST_VICTIM, 2.0)
+
+
+## 그 자리(칸 좌표)가 rooms(구획 index 모음) 안인가
+func _in_rooms(p: Vector2, rooms: Dictionary) -> bool:
+	var comp := sim.fire.compartment_at(level, int(p.x), int(p.y))
+	return comp != null and rooms.has(comp.index)

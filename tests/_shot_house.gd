@@ -28,6 +28,16 @@ func _run() -> void:
 		await process_frame
 	world.hud.command_ui.close_all()
 	sim.perception.enabled = false
+	# 대원 한 조를 불난 층(맨 위층) 가운데로 — 연기에 묻힌 테두리 점검
+	var top_lv: int = sim.building.levels()[-1]
+	var mid := Vector2i(sim.building.footprint(top_lv).get_center())
+	var cell := sim.pathfinder.nearest_walkable(top_lv, mid)
+	for ff in sim.units.crews[0].members():
+		ff.path.clear()
+		ff.level = top_lv
+		ff.prev_level = top_lv
+		ff.pos = Vector2(cell) + Vector2(0.5, 0.5) + Vector2(0.7 * (ff.id % 2), 0.3)
+		ff.prev_pos = ff.pos
 	var levels: Array = sim.building.levels()
 	var proj = world.projection()
 	var iso = world.iso_view if "iso_view" in world else world.get_node("IsoView")

@@ -36,6 +36,7 @@ func test_view_params_loaded() -> void:
 	assert_eq(p.wall_cut_m, 0.2, "잘린 벽 20cm")
 	# 연기층 그림 (2026-11-12 사용자 결정: Kenney 연기 덩어리 구름, 윗면 옅게·앞면 진하게, 높이 눈금)
 	assert_eq([p.smoke_top_alpha < p.smoke_front_alpha, p.smoke_max_puffs > 0, p.smoke_row_m, p.smoke_max_rows], [true, true, 0.4, 6], "연기 윗면은 앞면보다 옅게, 덩어리 상한, 0.4m마다 한 줄씩 겹쳐 쌓기(최대 6줄)")
+	assert_eq([p.smoke_outline_below_m, p.smoke_outline_density], [1.8, 0.4], "연기층 아랫면이 1.8m 아래·짙기 0.4 이상이면 그 방 사람은 테두리로")
 
 
 func test_apartment_12f_shows_10_to_14() -> void:

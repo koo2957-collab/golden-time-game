@@ -38,6 +38,8 @@ var thermal := false:
 var _level := 1
 var _exterior := false
 var _tween: Tween
+var _links: Node2D
+var _proj: IsoProjection
 
 
 func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProjection) -> void:
@@ -58,6 +60,14 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 		add_child(up)
 		up.setup(sim, p_selection, p_proj, stack)
 		upper_layers.append(up)
+	# 비켜 놓은 두 층의 계단을 잇는 점선 (위층 위에 그린다)
+	_links = Node2D.new()
+	_links.name = "StairLinks"
+	_links.z_as_relative = false
+	_links.z_index = 60
+	_links.draw.connect(_draw_links)
+	add_child(_links)
+	_proj = p_proj
 	ghost = FloorLayer.new()
 	ghost.name = "Ghost"
 	add_child(ghost)
@@ -143,9 +153,12 @@ func _apply() -> void:
 			continue
 		layer.visible = true
 		_configure(layer, depth, shown, _exterior)
-		layer.position = Vector2(0, stack.offset_px(depth))
-		# 바로 아래층은 회백색 10%, 그 아래는 건물 외관 덩어리 (2026-11-11 사용자 결정)
-		layer.ghost_mode = 0 if depth == 0 else (1 if depth == 1 else 2)
+		layer.position = stack.offset_vec(depth)
+		# 비켜 놓기(2026-11-12): 두 층 모두 온전하게. 예전 방식: 바로 아래층 회백색 10%, 그 아래 외관 덩어리
+		if stack.staggered():
+			layer.ghost_mode = 0
+		else:
+			layer.ghost_mode = 0 if depth == 0 else (1 if depth == 1 else 2)
 		layer.modulate = Color.WHITE
 	# 위층: 지금 층 위로 FLOOR_GAP_PX씩 올려 반투명 (외부 보기에서는 숨김)
 	var above: Array[int] = []
@@ -163,10 +176,10 @@ func _apply() -> void:
 		up.thermal = thermal
 		up.upper_level = above[k + 1] if k + 1 < above.size() else -1
 		up.lower_level = above[k - 1] if k > 0 else _level
-		# 바로 위층은 회백색 10%, 더 위는 잘라 냄(사람 테두리만) — 지금 층을 가리지 않게
-		up.ghost_mode = 1 if k == 0 else 3
+		# 비켜 놓기: 위층도 온전하게(뒤로 비켜 있다). 예전 방식: 바로 위층 회백색 10%, 더 위는 사람 테두리만
+		up.ghost_mode = 0 if stack.staggered() else (1 if k == 0 else 3)
 		up.refresh()
-		up.position = Vector2(0, -stack.offset_px(k + 1))
+		up.position = -stack.offset_vec(k + 1)
 		# 위층도 실루엣만 (F01) — 투명도는 선 색에 들어 있다
 		up.modulate = Color.WHITE
 
@@ -206,3 +219,34 @@ func _animate(old_level: int, old_exterior: bool) -> void:
 		top.modulate.a = 0.0
 		_tween.tween_property(top, "position:y", 0.0, params.transition_s)
 		_tween.tween_property(top, "modulate:a", 1.0, params.transition_s)
+
+
+## 비켜 놓은 두 층: 이어진 계단마다 아래층 계단 → 위층 계단 점선 (2026-11-12)
+func _draw_links() -> void:
+	if _exterior or stack == null or not stack.staggered() or sim == null:
+		return
+	var pa := stack.partner(_level)
+	if pa < 0:
+		return
+	var lower := _level if sim.building.floor_number(pa) > sim.building.floor_number(_level) else pa
+	var upper := pa if lower == _level else _level
+	# 지금 층은 제자리, 짝 층은 offset_vec만큼 비켜 있다
+	var lower_y := Vector2.ZERO if lower == _level else stack.offset_vec(1)
+	var upper_y := -stack.offset_vec(1) if upper != _level else Vector2.ZERO
+	var st: StairCores = sim.command.stairs
+	var color := Color(1.0, 0.85, 0.3, 0.85)
+	for i in st.cores(lower).size():
+		var land := st.landing(lower, i, upper)
+		if land.x < 0:
+			continue
+		var a := _proj.to_screen(st.center(lower, i), 0.05) + lower_y
+		var b := _proj.to_screen(Vector2(land) + Vector2(0.5, 0.5), 0.05) + upper_y
+		_links.draw_dashed_line(a, b, color, 2.0, 8.0)
+		_links.draw_circle(a, 4.0, color)
+		_links.draw_circle(b, 4.0, color)
+		_links.draw_string(PlanStyle.font(), (a + b) * 0.5 + Vector2(8, 0), "%s 계단" % st.label(lower, i), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, color)
+
+
+func _process(_delta: float) -> void:
+	if _links:
+		_links.queue_redraw()

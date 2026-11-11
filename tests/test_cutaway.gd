@@ -6,8 +6,23 @@ const SUPERTALL := "res://data/buildings/supertall_52f.json"
 const BASEMENT := "res://data/buildings/basement_karaoke.json"
 
 
+## 예전 쌓기 방식(stack)으로 — 아래 쌓기·벽 모양 점검은 이 방식 기준
 func _stack(path: String) -> FloorStack:
-	return FloorStack.new(BuildingData.from_file(path), ViewParams.load_default())
+	var p := ViewParams.load_default()
+	p.stack_mode = "stack"
+	return FloorStack.new(BuildingData.from_file(path), p)
+
+
+## 2026-11-12 비켜 놓기(stagger, 기본): 고른 층 + 바로 위층(맨 위층이면 바로 아래층), 위층은 건물 뒤(북)로 비켜 놓는다
+func test_stagger_shows_floor_and_partner() -> void:
+	var s := FloorStack.new(BuildingData.from_file(APT), ViewParams.load_default())
+	assert_true(s.staggered(), "기본은 비켜 놓기")
+	assert_eq([s.visible_levels(12), s.above_levels(12)], [[12] as Array[int], [13] as Array[int]], "12층: 12층 + 위로 13층")
+	var top := s.order[-1]
+	assert_eq([s.visible_levels(top), s.above_levels(top)], [[top, top - 1] as Array[int], [] as Array[int]], "맨 위층: 바로 아래층과 함께")
+	var up := -s.offset_vec(1)
+	assert_true(up.x > 0.0 and up.y < 0.0, "위층은 화면 오른쪽 위(건물 뒤 북쪽)로 비켜 있다 %s" % up)
+	assert_true(-up.y > s.params.stagger_floor_px, "층 높이보다 더 위로")
 
 
 func test_view_params_loaded() -> void:
@@ -17,7 +32,7 @@ func test_view_params_loaded() -> void:
 	assert_eq(p.visible_floors_below, 2, "아래 2개 층")
 	assert_eq(p.below_modulate, [0.75, 0.55] as Array[float], "아래 층 밝기")
 	assert_eq(p.front_wall, "glass", "앞벽은 반투명 (2026-11-11 결정)")
-	assert_eq([p.front_wall_alpha, p.inner_wall_m, p.inner_wall_solid_m, p.adjacent_alpha, p.unknown_cover_alpha], [0.15, 2.4, 1.0, 0.1, 0.85], "앞벽 15%, 실내 벽 천장까지(1m 위로 투명), 위·아래 층 10%, 미발견 덮개 85%")
+	assert_eq([p.front_wall_alpha, p.inner_wall_m, p.inner_wall_solid_m, p.stack_mode, p.stagger_back_ratio], [0.15, 2.4, 1.0, "stagger", 1.15], "앞벽 15%, 실내 벽 천장까지(1m 위로 투명), 비켜 놓기(건물 깊이만큼 뒤로)")
 	assert_eq(p.wall_cut_m, 0.2, "잘린 벽 20cm")
 
 

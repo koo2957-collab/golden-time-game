@@ -31,6 +31,8 @@ func _run() -> void:
 	var iso = world.iso_view
 	var b := sim.building
 	var ground: int = b.levels()[0]
+	# 이 점검은 예전 쌓기 방식(위·아래 여러 층) 기준. 비켜 놓기(기본, 2026-11-12)는 맨 끝에서 따로
+	iso.params.stack_mode = "stack"
 
 	# 1) 시작: 외부 보기 — 외관 노드 하나만
 	_check("시작은 외부 보기", world.exterior_view, true)
@@ -170,6 +172,14 @@ func _run() -> void:
 	sim.clock.paused = true
 	await _measure("단면 보기 (3·2·1층), 일시정지(그리기만)")
 	sim.clock.paused = false
+	# 비켜 놓기 (기본, 2026-11-12): 고른 층 + 바로 위층만, 둘 다 온전하게, 위층은 뒤(오른쪽 위)로
+	iso.params.stack_mode = "stagger"
+	world.set_view_level(12)
+	await process_frame
+	_check("비켜 놓기: 12층 + 위로 13층만", [iso.shown_levels(), iso.upper_layers[0].visible, iso.upper_layers[0].level, iso.upper_layers[1].visible], [[12] as Array[int], true, 13, false])
+	_check("비켜 놓기: 두 층 모두 온전하게 (실루엣 아님)", [iso.layers[0].ghost, iso.upper_layers[0].ghost], [false, false])
+	_check("비켜 놓기: 위층은 건물 뒤(오른쪽 위)로", iso.upper_layers[0].position, -iso.stack.offset_vec(1))
+	await _measure("비켜 놓기 (12·13층), 1배속")
 	var f := FileAccess.open("user://cutaway_fps.txt", FileAccess.WRITE)
 	if f:
 		f.store_string("\n".join(_lines) + "\n")

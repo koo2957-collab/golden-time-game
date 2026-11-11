@@ -55,10 +55,9 @@ const FOG_COLOR := Color(0.04, 0.05, 0.07)
 ## 본 적 있지만 지금 안 보이는 칸: 채도를 빼고 조금 어둡게 (2026-11-11)
 const MEMORY_DESATURATE := 0.55
 const MEMORY_DARKEN := 0.12
-## 본 적 없는 칸의 덮개 색 (회청색)과 테두리·빗금
-const COVER_COLOR := Color(0.3, 0.34, 0.41)
-const COVER_EDGE := Color(0.62, 0.68, 0.76, 0.9)
-const COVER_HATCH := Color(0.75, 0.8, 0.88, 0.14)
+## 본 적 없는 칸 바닥: 색을 더 빼고 어둡게 (까맣게 칠하지 않는다)
+const UNKNOWN_DESATURATE := 0.8
+const UNKNOWN_DARKEN := 0.3
 const FOG_UNKNOWN_ALPHA := 0.82
 const FOG_SEEN_ALPHA := 0.4
 ## 도면도 없고 본 적도 없는 실내: 구조가 거의 보이지 않게 (기획안 9-1 "구조는 직접 밝힌다", R8)
@@ -926,8 +925,6 @@ func _draw() -> void:
 	elif not thermal:
 		_draw_smoke()
 	_draw_blasts()
-	if not _outside() and depth == 0:
-		_draw_unknown_cover()
 	if _glow:
 		_glow.spots = _glow_spots if not thermal and not _outside() else []
 		_glow.queue_redraw()
@@ -1060,12 +1057,13 @@ func _update_ground_colors() -> void:
 			# 벽 바닥도 모르는 곳이면 덮는다 (외벽은 밖에서 보이므로 그대로)
 			@warning_ignore("integer_division")
 			var hidden_wall := structure and p.enabled and not sim.plan.structure_seen(level, k % b.width, k / b.width)
-			# 2026-11-11: 본 적 없는 칸은 바닥을 칠하지 않고 천장 높이 덮개로 덮는다 (_draw_unknown_cover).
-			# 본 적 있지만 지금 안 보이는 칸은 색만 조금 빼서 흐리게
-			if not structure and not vis and seen:
+			# 2026-11-12: 구조는 늘 보인다. 본 적 있지만 지금 안 보이는 칸은 색만 조금 빼고,
+			# 본 적 없는 칸은 색을 더 빼고 어둡게 (안의 것은 _draw_cell_objects가 숨긴다)
+			if not structure and not vis:
 				var gray := color.get_luminance()
-				color = color.lerp(Color(gray, gray, gray), MEMORY_DESATURATE).darkened(MEMORY_DARKEN)
-				fog_of[k] = MEMORY_DARKEN
+				var dark := MEMORY_DARKEN if seen else UNKNOWN_DARKEN
+				color = color.lerp(Color(gray, gray, gray), MEMORY_DESATURATE if seen else UNKNOWN_DESATURATE).darkened(dark)
+				fog_of[k] = dark
 		if holes.has(k):
 			color = Color(0, 0, 0, 0)
 		for j in 4:
@@ -1183,11 +1181,8 @@ func _draw_path(ff: Firefighter, alpha: float) -> void:
 
 func _draw_cell_objects(x: int, y: int) -> void:
 	var t := sim.building.cell(level, x, y)
-	# 모르는 실내 구조는 그리지 않는다. 도면이 있으면 흐린 선만 (R8)
-	if not t in BuildingData.OUTDOOR and not sim.plan.structure_seen(level, x, y):
-		if sim.plan.known:
-			_draw_plan_cell(x, y)
-		return
+	# 2026-11-12 사용자 결정: 구조(벽·문·창)는 늘 그린다. 본 적 없는 칸은 안의 것(가구·불꽃 등)만 숨긴다
+	var contents_seen := t in BuildingData.OUTDOOR or sim.plan.structure_seen(level, x, y)
 	match t:
 		BuildingData.Cell.WALL:
 			var wh := _wall_height(x, y)
@@ -1205,6 +1200,8 @@ func _draw_cell_objects(x: int, y: int) -> void:
 			_draw_window(x, y)
 		BuildingData.Cell.DOOR:
 			_draw_door(x, y)
+	if not contents_seen:
+		return
 	if level == _first_level and Vector2i(x, y) in sim.building.hydrants:
 		_box(Vector2(x + 0.3, y + 0.3), Vector2(x + 0.7, y + 0.7), 0.0, HYDRANT_M, PlanStyle.HYDRANT_COLOR, PlanStyle.HYDRANT_COLOR)
 		var label := proj.to_screen(Vector2(x + 0.5, y + 0.5), HYDRANT_M + 0.4)
@@ -2386,73 +2383,3 @@ func _draw_ghost_units() -> void:
 		var anim := "idle" if v.state == Victim.State.CONSCIOUS else "down_up"
 		if art == null or not art.draw(_ghost_units, anim, (v.id * 3) % 8, 0, feet, GHOST_VICTIM):
 			_ghost_units.draw_arc(feet + Vector2(0, -6), 9.0, 0.0, TAU, 16, GHOST_VICTIM, 2.0)
-
-
-# --- 본 적 없는 곳: 천장 높이 덮개 (2026-11-11 사용자 결정) ---
-
-var _cover_key: Array = []
-var _cover_pts := PackedVector2Array()
-var _cover_idx := PackedInt32Array()
-var _cover_cols := PackedColorArray()
-var _cover_edges := PackedVector2Array()
-var _cover_hatch := PackedVector2Array()
-
-
-## 아직 아무도 본 적 없는 실내 칸 위를 천장 높이 회청색 판으로 덮는다 (폴아웃·Door Kickers 방식).
-## 방 모양은 보이고 안(가구·불·사람)은 보이지 않는다. 대원이 보면 그 칸의 덮개가 걷힌다. 틱이 바뀔 때만 다시 만든다
-func _draw_unknown_cover() -> void:
-	var p := sim.perception
-	if not p.enabled:
-		return
-	var key := [sim.clock.tick, level]
-	if key != _cover_key:
-		_cover_key = key
-		_build_cover()
-	if not _cover_idx.is_empty():
-		RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), _cover_idx, _cover_pts, _cover_cols)
-	if not _cover_hatch.is_empty():
-		draw_multiline(_cover_hatch, COVER_HATCH, 1.0)
-	if not _cover_edges.is_empty():
-		draw_multiline(_cover_edges, COVER_EDGE, 1.5)
-
-
-func _covered(x: int, y: int) -> bool:
-	var b := sim.building
-	if not b.in_bounds(x, y):
-		return false
-	var t := b.cell(level, x, y)
-	return t != BuildingData.Cell.VOID and not t in BuildingData.OUTDOOR and not sim.plan.structure_seen(level, x, y)
-
-
-func _build_cover() -> void:
-	_cover_pts.clear()
-	_cover_idx.clear()
-	_cover_cols.clear()
-	_cover_edges.clear()
-	_cover_hatch.clear()
-	var b := sim.building
-	var h := CEILING_M
-	var col := Color(COVER_COLOR, stack.params.unknown_cover_alpha)
-	for y in b.height:
-		for x in b.width:
-			if not _covered(x, y):
-				continue
-			var nw := proj.to_screen(Vector2(x, y), h)
-			var ne := proj.to_screen(Vector2(x + 1, y), h)
-			var se := proj.to_screen(Vector2(x + 1, y + 1), h)
-			var sw := proj.to_screen(Vector2(x, y + 1), h)
-			var base := _cover_pts.size()
-			_cover_pts.append_array([nw, ne, se, sw])
-			_cover_cols.append_array([col, col, col, col])
-			_cover_idx.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
-			# 빗금: 칸마다 대각선 하나 (이어지면 사선 무늬)
-			_cover_hatch.append_array([sw, ne])
-			# 덮인 곳의 바깥 테두리
-			if not _covered(x, y - 1):
-				_cover_edges.append_array([nw, ne])
-			if not _covered(x + 1, y):
-				_cover_edges.append_array([ne, se])
-			if not _covered(x, y + 1):
-				_cover_edges.append_array([sw, se])
-			if not _covered(x - 1, y):
-				_cover_edges.append_array([nw, sw])

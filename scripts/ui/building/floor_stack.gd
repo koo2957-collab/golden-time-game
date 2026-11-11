@@ -19,6 +19,8 @@ var building: BuildingData
 var params: ViewParams
 ## 층 번호 오름차순 level 목록
 var order: Array[int] = []
+## 비켜 놓기(stagger): 위층을 건물 뒤쪽(북, 칸 -y)으로 보내는 화면 거리 (가장 깊은 층 깊이 × 비율)
+var _back := Vector2.ZERO
 
 
 func _init(p_building: BuildingData, p_params: ViewParams = null) -> void:
@@ -26,6 +28,30 @@ func _init(p_building: BuildingData, p_params: ViewParams = null) -> void:
 	params = p_params if p_params != null else ViewParams.load_default()
 	order = building.levels()
 	order.sort_custom(func(a: int, b: int) -> bool: return building.floor_number(a) < building.floor_number(b))
+	var deepest := 0.0
+	for lv in order:
+		deepest = maxf(deepest, building.footprint(lv).size.y)
+	# 칸 -y 한 칸 = 화면 (+HALF_W, -HALF_H): 건물 앞면(A면, 남)에서 볼 때 '뒤로'
+	_back = Vector2(IsoProjection.HALF_W, -IsoProjection.HALF_H) * deepest * params.stagger_back_ratio
+
+
+## 비켜 놓기 모드인가 (2026-11-12 사용자 결정)
+func staggered() -> bool:
+	return params.stack_mode == "stagger"
+
+
+## 함께 보일 짝 층: 바로 위층, 맨 위층이면 바로 아래층 (층 번호가 이어질 때만, 땅 위·아래를 섞지 않는다). 없으면 -1
+func partner(current: int) -> int:
+	if not building.has_level(current):
+		return -1
+	var n := building.floor_number(current)
+	var up := level_of_number(n + 1)
+	if up >= 0 and not (n <= -1 and n + 1 >= 1):
+		return up
+	var down := level_of_number(n - 1)
+	if down >= 0 and not (n >= 1 and n - 1 < 1):
+		return down
+	return -1
 
 
 ## 지금 층부터 아래로 보일 층 목록 (첫 칸이 지금 층). 층 번호가 하나씩 이어질 때만 아래 층을 쌓는다
@@ -33,6 +59,12 @@ func _init(p_building: BuildingData, p_params: ViewParams = null) -> void:
 func visible_levels(current: int) -> Array[int]:
 	var result: Array[int] = [current]
 	if not building.has_level(current):
+		return result
+	if staggered():
+		# 비켜 놓기: 짝 층이 아래층일 때만 (맨 위층) 아래로 하나
+		var pb := partner(current)
+		if pb >= 0 and building.floor_number(pb) < building.floor_number(current):
+			result.append(pb)
 		return result
 	var n := building.floor_number(current)
 	for depth in range(1, params.visible_floors_below + 1):
@@ -47,6 +79,11 @@ func visible_levels(current: int) -> Array[int]:
 func above_levels(current: int) -> Array[int]:
 	var result: Array[int] = []
 	if not building.has_level(current):
+		return result
+	if staggered():
+		var pa := partner(current)
+		if pa >= 0 and building.floor_number(pa) > building.floor_number(current):
+			result.append(pa)
 		return result
 	var n := building.floor_number(current)
 	for k in range(1, params.visible_floors_above + 1):
@@ -81,7 +118,15 @@ func modulate_for(depth: int) -> float:
 
 ## 층을 화면에서 아래로 내려 그리는 거리 (px)
 func offset_px(depth: int) -> float:
-	return depth * params.floor_height_px
+	return absf(offset_vec(depth).y)
+
+
+## 아래로 depth층 떨어진 층을 그리는 화면 위치 (위층은 음수 depth와 같은 -offset_vec).
+## 비켜 놓기: 위층은 층 높이만큼 위 + 건물 뒤쪽으로 비켜 있으므로 아래층은 그 반대쪽(앞·아래)
+func offset_vec(depth: int) -> Vector2:
+	if staggered():
+		return -(_back + Vector2(0, -params.stagger_floor_px)) * depth
+	return Vector2(0, depth * params.floor_height_px)
 
 
 ## 벽 칸의 모양. exterior면 외부 보기(외벽 모두 온전)
@@ -132,10 +177,16 @@ func stair_links_between(lower: int, upper: int) -> Array[Vector2i]:
 ## 화면 위치(world_pos)를 눌렀을 때 맞은 층. 위층 바닥이 아래층을 가리므로 지금 층부터 본다.
 ## 아무 층에도 맞지 않으면 지금 층
 func pick_level(current: int, world_pos: Vector2, proj: ViewProjection) -> int:
+	# 비켜 놓기: 위층이 아래층 위에 그려지므로 겹친 곳은 위층이 먼저
+	if staggered():
+		for k in above_levels(current).size():
+			var cu := Vector2i(proj.to_cell(world_pos + offset_vec(k + 1)).floor())
+			if building.cell(above_levels(current)[k], cu.x, cu.y) in BuildingData.STRUCTURE:
+				return above_levels(current)[k]
 	var stack := visible_levels(current)
 	for depth in stack.size():
 		var lv: int = stack[depth]
-		var c := Vector2i(proj.to_cell(world_pos - Vector2(0, offset_px(depth))).floor())
+		var c := Vector2i(proj.to_cell(world_pos - offset_vec(depth)).floor())
 		var kind := building.cell(lv, c.x, c.y)
 		if kind in BuildingData.STRUCTURE:
 			return lv
@@ -145,7 +196,7 @@ func pick_level(current: int, world_pos: Vector2, proj: ViewProjection) -> int:
 	# 위층: 지금 층·아래층 어디에도 걸리지 않는 곳에 보이는 위층 구조 (기획안 9-4: 그 층을 누르면 그 층으로)
 	var above := above_levels(current)
 	for k in above.size():
-		var c := Vector2i(proj.to_cell(world_pos + Vector2(0, offset_px(k + 1))).floor())
+		var c := Vector2i(proj.to_cell(world_pos + offset_vec(k + 1)).floor())
 		if building.cell(above[k], c.x, c.y) in BuildingData.STRUCTURE:
 			return above[k]
 	return current

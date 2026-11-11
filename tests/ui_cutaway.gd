@@ -179,6 +179,11 @@ func _run() -> void:
 	_check("비켜 놓기: 12층 + 위로 13층만", [iso.shown_levels(), iso.upper_layers[0].visible, iso.upper_layers[0].level, iso.upper_layers[1].visible], [[12] as Array[int], true, 13, false])
 	_check("비켜 놓기: 두 층 모두 온전하게 (실루엣 아님)", [iso.layers[0].ghost, iso.upper_layers[0].ghost], [false, false])
 	_check("비켜 놓기: 위층은 건물 뒤(오른쪽 위)로", iso.upper_layers[0].position, -iso.stack.offset_vec(1))
+	# 정적인 것은 무채색, 움직이는 것만 색 (2026-11-12 사용자 결정)
+	var hole_mat := iso.layers[0].material as ShaderMaterial
+	_check("지금 층: 바탕은 색을 빼고(사람·불 빼고), 색 겹이 따로", [iso.layers[0].skip_live, iso.current_live.visible, iso.current_live.ghost_mode, iso.current_live.level], [true, true, 4, 12])
+	_check("지금 층 바탕 흑백 정도", hole_mat.get_shader_parameter("gray"), iso.params.current_gray)
+	_check("짝 위층: 불투명, 지금 층보다 어둡게", [iso.upper_layers[0].modulate.a, iso.upper_layers[0].modulate.r < 1.0], [1.0, true])
 	await _measure("비켜 놓기 (12·13층), 1배속")
 	var f := FileAccess.open("user://cutaway_fps.txt", FileAccess.WRITE)
 	if f:

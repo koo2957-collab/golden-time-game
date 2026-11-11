@@ -871,17 +871,10 @@ func _draw() -> void:
 		if depth == 0:
 			_draw_face_labels()
 		_draw_staging()
-		if depth == 0:
+		if depth == 0 and not skip_live:
 			ZoneDraw.draw_ground(self, sim.zones, func(p: Vector2) -> Vector2: return proj.to_screen(p, 0.03), 14)
-	if depth == 0:
-		for crew_id in selection.selected:
-			_draw_path(sim.units.get_crew(crew_id).leader, alpha)
-		if selection.commander_selected:
-			_draw_path(sim.command.commander, alpha)
-	_draw_hoses()
-	if level == _first_level:
-		for line in UnitsView.supply_lines(sim):
-			draw_line(proj.to_screen(line[0], 0.05), proj.to_screen(line[1], 0.05), PlanStyle.SUPPLY_LINE, 4.0)
+	if not skip_live:
+		_draw_route_lines(alpha)
 	# 대원·차량을 대각선(x + y) 깊이별로 모아 벽·가구와 함께 뒤에서 앞으로 그린다
 	var buckets := {}
 	for ff in sim.units.firefighters:
@@ -919,6 +912,8 @@ func _draw() -> void:
 			var group: Array = buckets[d]
 			group.sort_custom(func(a: Array, c: Array) -> bool: return a[0] < c[0])
 			for item: Array in group:
+				if skip_live and not item[1] is Witness:
+					continue
 				if item[1] == commander:
 					_draw_commander(alpha)
 				elif item[1] is Firefighter:
@@ -1947,22 +1942,67 @@ func _outer_corner(c: Vector2i) -> bool:
 	return horizontal and vertical
 
 
-## 짝 층의 색 겹 (ghost_mode 4): 연기·불꽃·대원·발견한 요구조자만 원래 색으로 (바탕은 흑백)
+## 경로·수관·급수선 (지금 층의 색 겹이나, 나누지 않을 때 바탕에서)
+func _draw_route_lines(alpha: float) -> void:
+	if depth == 0:
+		for crew_id in selection.selected:
+			_draw_path(sim.units.get_crew(crew_id).leader, alpha)
+		if selection.commander_selected:
+			_draw_path(sim.command.commander, alpha)
+	_draw_hoses()
+	if level == _first_level:
+		for line in UnitsView.supply_lines(sim):
+			draw_line(proj.to_screen(line[0], 0.05), proj.to_screen(line[1], 0.05), PlanStyle.SUPPLY_LINE, 4.0)
+
+
+## 색 겹 (ghost_mode 4, 2026-11-12 사용자 결정 — 정적인 것은 무채색, 움직이는 것만 색):
+## 바탕(바닥·벽·가구)은 색을 뺀 같은 층 노드가 그리고, 여기서는 구역·경로·수관·차량·불꽃·사람·연기만 원래 색으로
 func _draw_live_only() -> void:
 	var alpha := sim.clock.alpha()
-	if not thermal:
-		_draw_smoke()
+	if level == _first_level and depth == 0:
+		ZoneDraw.draw_ground(self, sim.zones, func(p: Vector2) -> Vector2: return proj.to_screen(p, 0.03), 14)
+	_draw_route_lines(alpha)
 	var grid := sim.fire.grid
 	for i in grid.burning:
 		var c3 := grid.cell_of(i)
 		if c3.z == level:
 			_draw_flame(c3.x, c3.y, _furniture_height(c3.x, c3.y))
+	# 사람·차량은 깊이(x + y) 순서로
+	var items: Array = []
 	for ff in sim.units.firefighters:
 		if ff.level == level and not ff.aboard:
-			_draw_unit(ff, alpha)
+			var p := UnitsView.display_pos(ff, alpha)
+			items.append([p.x + p.y, ff])
 	for v in sim.rescue.victims:
 		if v.discovered and v.level == level:
-			_draw_victim(v)
+			items.append([v.pos.x + v.pos.y, v])
+	var cmd := sim.command.commander
+	if cmd.level == level:
+		var cp := UnitsView.display_pos(cmd, alpha)
+		items.append([cp.x + cp.y, cmd])
+	if level == _first_level:
+		for veh in sim.units.vehicles:
+			if not veh.away:
+				var vp := veh.prev_pos.lerp(veh.pos, alpha)
+				items.append([vp.x + vp.y, veh])
+	items.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+	for it: Array in items:
+		var o: Variant = it[1]
+		if o == cmd:
+			_draw_commander(alpha)
+		elif o is Firefighter:
+			_draw_unit(o, alpha)
+		elif o is Victim:
+			_draw_victim(o)
+		else:
+			_draw_vehicle(o, alpha)
+	if not thermal:
+		_draw_smoke()
+	_draw_blasts()
+	if _glow:
+		_glow.spots = _glow_spots if not thermal else []
+		_glow.queue_redraw()
+		_glow_spots = []
 
 
 ## 투명한 벽 한 칸: 이웃이 벽(벽·문·창)인 쪽 면은 그리지 않아 겹친 이음새가 보이지 않는다.

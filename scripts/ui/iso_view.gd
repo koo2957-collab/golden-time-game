@@ -41,6 +41,8 @@ var _tween: Tween
 var _links: Node2D
 ## 짝 층의 불·연기·사람만 원래 색으로 그리는 겹 (바탕은 흑백, 2026-11-12)
 var partner_live: FloorLayer
+## 지금 층의 움직이는 것(사람·불·연기·수관·구역·차량)을 원래 색으로 그리는 겹 — 바탕은 색을 뺀다 (2026-11-12)
+var current_live: FloorLayer
 var _shadow: Node2D
 var _hole_shader: Shader
 var _proj: IsoProjection
@@ -69,6 +71,13 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 		add_child(up)
 		up.setup(sim, p_selection, p_proj, stack)
 		upper_layers.append(up)
+	current_live = FloorLayer.new()
+	current_live.name = "CurrentLive"
+	add_child(current_live)
+	current_live.setup(sim, p_selection, p_proj, stack)
+	current_live.visible = false
+	# 지금 층 바로 다음에 그린다 (위층보다 먼저 — 위층이 가리는 곳은 구멍으로 비친다)
+	move_child(current_live, layers[0].get_index() + 1)
 	partner_live = FloorLayer.new()
 	partner_live.name = "PartnerLive"
 	add_child(partner_live)
@@ -179,7 +188,8 @@ func _apply() -> void:
 		else:
 			layer.ghost_mode = 0 if depth == 0 else (1 if depth == 1 else 2)
 		# 비켜 놓기: 고른 층이 아닌 짝 층은 흐리게 (2026-11-12 사용자 결정 25%)
-		layer.modulate = Color(1, 1, 1, params.partner_alpha) if stack.staggered() and depth > 0 else Color.WHITE
+		var dim := params.partner_dim
+		layer.modulate = Color(dim, dim, dim, params.partner_alpha) if stack.staggered() and depth > 0 else Color.WHITE
 	# 위층: 지금 층 위로 FLOOR_GAP_PX씩 올려 반투명 (외부 보기에서는 숨김)
 	var above: Array[int] = []
 	if not _exterior and stack != null:
@@ -201,7 +211,8 @@ func _apply() -> void:
 		up.refresh()
 		up.position = -stack.offset_vec(k + 1)
 		# 비켜 놓기: 짝 위층은 흐리게. 예전 방식은 투명도가 선 색에 들어 있다
-		up.modulate = Color(1, 1, 1, params.partner_alpha) if stack.staggered() else Color.WHITE
+		var udim := params.partner_dim
+		up.modulate = Color(udim, udim, udim, params.partner_alpha) if stack.staggered() else Color.WHITE
 	_apply_partner()
 
 
@@ -212,6 +223,22 @@ func _apply_partner() -> void:
 	if partner_live == null:
 		return
 	partner_live.visible = false
+	current_live.visible = false
+	if _exterior or layers.is_empty():
+		return
+	# 지금 층: 바닥·벽·가구는 색을 뺀 바탕, 움직이는 것은 그 위 색 겹
+	layers[0].skip_live = true
+	current_live.visible = true
+	current_live.ghost_mode = 4
+	current_live.depth = 0
+	current_live.level = _level
+	current_live.exterior = false
+	current_live.thermal = thermal
+	current_live.upper_level = layers[0].upper_level
+	current_live.lower_level = layers[0].lower_level
+	current_live.position = layers[0].position
+	current_live.modulate = Color.WHITE
+	current_live.refresh()
 	var pair := _pair()
 	if pair.is_empty():
 		return
@@ -309,6 +336,10 @@ func _process(_delta: float) -> void:
 		_links.queue_redraw()
 	if _shadow:
 		_shadow.queue_redraw()
+	# 지금 층 색 겹은 바탕 층의 전환 연출(위치·투명도)을 그대로 따라간다
+	if current_live and current_live.visible and not layers.is_empty():
+		current_live.position = layers[0].position
+		current_live.modulate.a = layers[0].modulate.a
 	_update_holes()
 
 
@@ -335,7 +366,12 @@ func _update_holes() -> void:
 		var m := node.material as ShaderMaterial
 		if m:
 			m.set_shader_parameter("count", 0)
-			m.set_shader_parameter("gray", params.partner_gray if node == partner_node else 0.0)
+			var g := 0.0
+			if node == partner_node:
+				g = params.partner_gray
+			elif node == layers[0] and not _exterior:
+				g = params.current_gray
+			m.set_shader_parameter("gray", g)
 	if pair.is_empty():
 		return
 	var upper: FloorLayer = pair[0]
@@ -352,6 +388,21 @@ func _update_holes() -> void:
 		if v.discovered and v.level == lv and v.carried_by < 0 and holes.size() < 16:
 			var w2: Vector2 = xf * _proj.to_screen(v.pos, 0.3)
 			holes.append(Vector4(w2.x, w2.y, r, 0.0))
+	# 불난 방 (타는 칸이 있는 구획): 방 가운데, 방 크기에 맞춘 반지름
+	var rooms := {}
+	var grid := sim.fire.grid
+	for i in grid.burning:
+		var c3 := grid.cell_of(i)
+		if c3.z == lv:
+			var comp := sim.fire.compartment_at(c3.z, c3.x, c3.y)
+			if comp:
+				rooms[comp.index] = comp
+	for comp: Compartment in rooms.values():
+		if holes.size() >= 16:
+			break
+		var wc: Vector2 = xf * _proj.to_screen(Vector2(comp.rect.get_center()), 0.5)
+		var rr := clampf(Vector2(comp.rect.size).length() * IsoProjection.HALF_W * 0.6, r, params.fire_hole_px)
+		holes.append(Vector4(wc.x, wc.y, rr, 0.0))
 	var mat := upper.material as ShaderMaterial
 	if mat == null:
 		return

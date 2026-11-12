@@ -57,6 +57,7 @@ var wall_fade_px := 80.0
 var wall_fade_alpha := 0.15
 var ghost_line_alpha := 0.2
 var ghost_body_alpha := 0.25
+var ghost_outline_px := 1.5
 var adjacent_alpha := 0.1
 var wall_cut_m := 0.2
 var slab_m := 0.3
@@ -142,6 +143,7 @@ func apply(data: Dictionary) -> void:
 	adjacent_alpha = float(_value(data, "adjacent_alpha", adjacent_alpha))
 	ghost_line_alpha = float(_value(data, "ghost_line_alpha", ghost_line_alpha))
 	ghost_body_alpha = float(_value(data, "ghost_body_alpha", ghost_body_alpha))
+	ghost_outline_px = float(_value(data, "ghost_outline_px", ghost_outline_px))
 	wall_cut_m = float(_value(data, "wall_cut_m", wall_cut_m))
 	slab_m = float(_value(data, "slab_m", slab_m))
 	transition_s = float(_value(data, "transition_s", transition_s))

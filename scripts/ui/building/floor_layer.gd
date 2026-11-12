@@ -241,6 +241,7 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/ghost_outline.gdshader")
 	mat.set_shader_parameter("fill", stack.params.ghost_body_alpha)
+	mat.set_shader_parameter("thickness", stack.params.ghost_outline_px)
 	_ghost_units.material = mat
 	_ghost_units.visible = ghost
 	# 벽 너머 테두리처럼: 지금 층 그림 위에 그린다 (아래층 사람이 지금 층 바닥에 가려지지 않게)
@@ -2894,10 +2895,7 @@ func _draw_ghost() -> void:
 	_update_fire_rooms()
 	if level == _first_level and ghost_mode != 3:
 		_draw_outdoor_ground()
-		var alpha := sim.clock.alpha()
-		for v in sim.units.vehicles:
-			if not v.away:
-				_draw_vehicle(v, alpha)
+		_draw_outdoor_people()
 	match ghost_mode:
 		1:
 			_draw_adjacent()
@@ -2906,6 +2904,64 @@ func _draw_ghost() -> void:
 	_draw_ghost_glow()
 	if _ghost_units:
 		_ghost_units.queue_redraw()
+
+
+## 다른 층으로 보이는 땅(1층)의 바깥: 차량·대원·지휘관·관계인·발견한 요구조자를 원래대로 (2026-11-12 사용자 결정 —
+## 바깥 땅은 어느 층을 보든 그대로 보인다). 깊이(x + y) 순서로. 위층 건물에 가려지는 자리는 테두리도 함께 (_draw_ghost_units)
+func _draw_outdoor_people() -> void:
+	var alpha := sim.clock.alpha()
+	var items: Array = []
+	for v in sim.units.vehicles:
+		if not v.away:
+			var vp := v.prev_pos.lerp(v.pos, alpha)
+			items.append([vp.x + vp.y, v])
+	for ff in sim.units.firefighters:
+		if ff.level == level and not ff.aboard:
+			var fp := UnitsView.display_pos(ff, alpha)
+			if _outdoor_at(fp):
+				items.append([fp.x + fp.y, ff])
+	for victim in sim.rescue.victims:
+		if victim.discovered and victim.level == level and victim.carried_by < 0 and _outdoor_at(victim.pos):
+			items.append([victim.pos.x + victim.pos.y, victim])
+	var cmd := sim.command.commander
+	if cmd.level == level:
+		var cp := UnitsView.display_pos(cmd, alpha)
+		if _outdoor_at(cp):
+			items.append([cp.x + cp.y, cmd])
+	for w in sim.command.survey.witnesses:
+		if w.present(sim.clock.tick):
+			items.append([w.pos.x + w.pos.y, w])
+	items.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+	for it: Array in items:
+		var o: Variant = it[1]
+		if o == cmd:
+			_draw_commander(alpha)
+		elif o is Firefighter:
+			_draw_unit(o, alpha)
+		elif o is Victim:
+			_draw_victim(o)
+		elif o is Witness:
+			_draw_witness(o)
+		else:
+			_draw_vehicle(o, alpha)
+
+
+## 바깥 땅 칸인가
+func _outdoor_at(p: Vector2) -> bool:
+	return sim.building.cell(level, floori(p.x), floori(p.y)) in BuildingData.OUTDOOR
+
+
+## 이 층(아래로 보이는 층)의 그 자리 사람이 바로 위층 건물(바닥~천장 덩어리)에 화면에서 가려지는가
+func _hidden_by_upper(p: Vector2, h: float) -> bool:
+	if upper_level < 0 or depth <= 0 or depth >= ABOVE_DEPTH:
+		return false
+	var fp: Rect2i = sim.building.footprint(upper_level)
+	var shift := stack.offset_vec(depth - 1) - stack.offset_vec(depth)
+	var pts := PackedVector2Array()
+	for hh: float in [0.0, CEILING_M]:
+		for c: Vector2 in [Vector2(fp.position), Vector2(fp.end.x, fp.position.y), Vector2(fp.end), Vector2(fp.position.x, fp.end.y)]:
+			pts.append(proj.to_screen(c, hh) + shift)
+	return Geometry2D.is_point_in_polygon(proj.to_screen(p, h), Geometry2D.convex_hull(pts))
 
 
 ## 다른 층의 불 (2026-11-12 사용자 결정): 불꽃은 그리지 않고 둘레 빛 번짐만, 지금 층 바닥 위로 비치게.
@@ -3024,6 +3080,8 @@ func _draw_outlines(target: CanvasItem, rooms: Dictionary, hulls: Array[PackedVe
 				continue
 			if not hulls.is_empty() and not _in_hulls(proj.to_screen(p, 1.0), hulls):
 				continue
+			if target == _ghost_units and _outdoor_at(p) and not _hidden_by_upper(p, 1.0):
+				continue
 			var feet := proj.to_screen(p, 0.0)
 			var moving := ff.level == ff.prev_level and (ff.pos - ff.prev_pos).length_squared() > 0.000001
 			var anim := "down" if ff.incapacitated else ("walk" if moving else "idle")
@@ -3035,6 +3093,8 @@ func _draw_outlines(target: CanvasItem, rooms: Dictionary, hulls: Array[PackedVe
 		if not rooms.is_empty() and not _in_rooms(v.pos, rooms):
 			continue
 		if not hulls.is_empty() and not _in_hulls(proj.to_screen(v.pos, 0.4), hulls):
+			continue
+		if target == _ghost_units and _outdoor_at(v.pos) and not _hidden_by_upper(v.pos, 0.4):
 			continue
 		var feet := proj.to_screen(v.pos, 0.05)
 		var art := SpriteArt.victim_set(v.label()) if not thermal else null

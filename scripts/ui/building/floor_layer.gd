@@ -3067,9 +3067,9 @@ func _draw_adjacent() -> void:
 		_draw_upper_outline(line, dash)
 
 
-## 위층 바닥 턱 (2026-11-12 사용자 결정): 위층 바닥을 뒷벽(북)·왼쪽 벽(서)을 따라 좁은 띠로만 남긴다 — 가운데가 뚫린 바닥처럼.
-## 이 시점에서 위층 바닥은 화면에서 뒤로 올라가 보이므로 띠는 지금 층 뒷벽 윗부분만 살짝 물고 방 안은 가리지 않는다.
-## 띠 안쪽 가장자리에는 바닥판 두께를 그린다
+## 위층 바닥 턱 (2026-11-12 사용자 결정): 위층 바닥을 뒷벽(북)·왼쪽 벽(서)을 따라 좁은 띠로만 남긴다 — 가운데가 깨져 뚫린 바닥처럼.
+## 띠는 두 벽의 끝까지 가고, 안쪽 가장자리는 불규칙하게 깨진 모양(고정 난수)이며 바닥판 두께가 보인다.
+## 이 시점에서 위층 바닥은 화면에서 뒤로 올라가 보이므로 띠는 지금 층 뒷벽 윗부분만 물고 방 안은 가리지 않는다
 func _draw_upper_ledge(tone: Color) -> void:
 	var fp: Rect2i = sim.building.footprint(level)
 	var w := stack.params.ghost_ledge_m / sim.building.cell_size_m
@@ -3077,28 +3077,48 @@ func _draw_upper_ledge(tone: Color) -> void:
 		return
 	var x0 := fp.position.x + 1.0
 	var y0 := fp.position.y + 1.0
-	var x1 := fp.end.x - 1.0
-	var y1 := fp.end.y - 1.0
-	w = minf(w, minf(x1 - x0, y1 - y0) * 0.5)
+	var x1 := float(fp.end.x)
+	var y1 := float(fp.end.y)
+	w = minf(w, minf(x1 - x0, y1 - y0) * 0.4)
+	var jag := stack.params.ghost_ledge_jag_m / sim.building.cell_size_m
+	# 안쪽 가장자리: 북쪽 띠의 동쪽 끝 → 꺾이는 곳 → 서쪽 띠의 남쪽 끝. 한 칸 남짓마다 들쭉날쭉
+	var inner: Array[Vector2] = []
+	var x := x1
+	var k := 0
+	while x > x0 + w + 0.6:
+		inner.append(Vector2(x, y0 + w + (_rand01(level * 53 + k) - 0.5) * 2.0 * jag))
+		x -= 0.7 + _rand01(level * 71 + k) * 0.9
+		k += 1
+	inner.append(Vector2(x0 + w + (_rand01(level * 13) - 0.5) * jag, y0 + w + (_rand01(level * 17) - 0.5) * jag))
+	var y := y0 + w + 0.8
+	while y < y1:
+		inner.append(Vector2(x0 + w + (_rand01(level * 59 + k) - 0.5) * 2.0 * jag, y))
+		y += 0.7 + _rand01(level * 73 + k) * 0.9
+		k += 1
+	inner.append(Vector2(x0 + w + (_rand01(level * 61) - 0.5) * 2.0 * jag, y1))
 	var a := stack.params.ghost_back_wall_alpha
-	var top := Color(tone, a)
 	var t := stack.params.ghost_slab_m
-	# 윗면: ㄱ자 (북쪽 띠 + 서쪽 띠)
-	var ledge := PackedVector2Array()
-	for c: Vector2 in [Vector2(x0, y0), Vector2(x1, y0), Vector2(x1, y0 + w), Vector2(x0 + w, y0 + w), Vector2(x0 + w, y1), Vector2(x0, y1)]:
-		ledge.append(proj.to_screen(c, 0.0))
-	draw_colored_polygon(ledge, top)
-	# 바닥판 두께: 안쪽 가장자리(북쪽 띠의 남쪽 변, 서쪽 띠의 동쪽 변)와 띠 끝
+	var ledge := PackedVector2Array([proj.to_screen(Vector2(x0, y0), 0.0), proj.to_screen(Vector2(x1, y0), 0.0)])
+	for q in inner:
+		ledge.append(proj.to_screen(q, 0.0))
+	ledge.append(proj.to_screen(Vector2(x0, y1), 0.0))
+	draw_colored_polygon(ledge, Color(tone, a))
+	# 바닥판 두께: 깨진 가장자리를 따라 (보는 쪽을 향한 변만 — 남쪽을 보면 밝게, 동쪽을 보면 어둡게), 띠 양 끝
 	var south := Color(tone.darkened(SOUTH_SHADE), a)
 	var east := Color(tone.darkened(EAST_SHADE), a)
-	_quad(proj.to_screen(Vector2(x0 + w, y0 + w), -t), proj.to_screen(Vector2(x1, y0 + w), -t),
-		proj.to_screen(Vector2(x1, y0 + w), 0.0), proj.to_screen(Vector2(x0 + w, y0 + w), 0.0), south)
-	_quad(proj.to_screen(Vector2(x0 + w, y0 + w), -t), proj.to_screen(Vector2(x0 + w, y1), -t),
-		proj.to_screen(Vector2(x0 + w, y1), 0.0), proj.to_screen(Vector2(x0 + w, y0 + w), 0.0), east)
-	_quad(proj.to_screen(Vector2(x1, y0), -t), proj.to_screen(Vector2(x1, y0 + w), -t),
-		proj.to_screen(Vector2(x1, y0 + w), 0.0), proj.to_screen(Vector2(x1, y0), 0.0), east)
-	_quad(proj.to_screen(Vector2(x0, y1), -t), proj.to_screen(Vector2(x0 + w, y1), -t),
-		proj.to_screen(Vector2(x0 + w, y1), 0.0), proj.to_screen(Vector2(x0, y1), 0.0), south)
+	var edge: Array[Vector2] = [Vector2(x1, y0)]
+	edge.append_array(inner)
+	edge.append(Vector2(x0, y1))
+	for n in edge.size() - 1:
+		var e0 := edge[n]
+		var e1 := edge[n + 1]
+		var d := e1 - e0
+		# 바깥(뚫린 쪽) 방향 = 진행 방향의 왼쪽. 남(+y)이나 동(+x)을 향하면 보인다
+		var out := Vector2(d.y, -d.x)
+		if out.x + out.y <= 0.0:
+			continue
+		_quad(proj.to_screen(e0, -t), proj.to_screen(e1, -t), proj.to_screen(e1, 0.0), proj.to_screen(e0, 0.0),
+			south if absf(out.y) >= absf(out.x) else east)
 
 
 ## 위층 바깥 윤곽 (2026-11-12 사용자 결정): 반투명 뒷벽·왼쪽 벽이 없는 쪽(앞·오른쪽)은 가장 바깥 점선 한 줄 —

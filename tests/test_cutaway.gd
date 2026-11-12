@@ -33,7 +33,7 @@ func test_view_params_loaded() -> void:
 	var p := ViewParams.load_default()
 	assert_eq(p.floor_height_px, 220.0, "층 간격 220px (2026-11-11 사용자 결정 F01: 건물을 더 높게)")
 	assert_eq([p.visible_floors_above, p.visible_floors_below], [1, 1], "위·아래 한 층씩만 — 더 있는 층은 잘린 벽으로 (2026-11-12)")
-	assert_true(p.stub_height_ratio > 0.2 and p.stub_height_ratio < 0.8, "잘린 벽은 층 높이의 반쯤")
+	assert_true(p.stub_height_ratio > 0.2 and p.stub_height_ratio <= 1.0, "잘린 벽은 층 높이보다 낮게 (2026-11-12: 0.5 → 0.9로 키움)")
 	assert_eq(p.below_modulate, [0.75, 0.55] as Array[float], "아래 층 밝기")
 	assert_eq(p.front_wall, "open", "앞벽은 없음 — 인형집 (2026-11-12 결정)")
 	assert_eq([p.front_wall_alpha, p.inner_wall_m, p.stack_mode, p.stagger_back_ratio, p.stagger_floor_px], [0.15, 2.4, "stack", 0.3, 260.0], "앞벽 15%, 실내 벽 천장까지(F04), 층은 제자리에 쌓고 다른 층은 실루엣 (비켜 놓기 값은 남겨 둠)")

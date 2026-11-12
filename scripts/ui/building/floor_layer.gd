@@ -1685,7 +1685,11 @@ func _draw_smoke() -> void:
 		var h := CEILING_M - layer_d
 		if h < stack.params.smoke_outline_below_m and density >= stack.params.smoke_outline_density:
 			_smoky[c.index] = true
-		if _draw_smoke_cloud(c, h, layer_d, a, density, fires, spread):
+		# 연기 진하기 하나 (2026-11-12 사용자 결정): 위에서 보면 연기층 두께를 꿰뚫어 본다 → 두꺼울수록 진하다.
+		# 커튼 천장 쪽·윗면 판이 같은 값을 쓴다
+		var sp0 := stack.params
+		var op := minf(sp0.smoke_max_opacity, 1.0 - exp(-sp0.smoke_opacity_k * (0.25 + 0.75 * density) * layer_d)) * fade
+		if _draw_smoke_cloud(c, h, layer_d, a, density, fires, spread, op):
 			if c.rollover and p.room_visible(c):
 				_draw_rollover(r, h)
 			continue
@@ -1716,7 +1720,7 @@ func _draw_smoke() -> void:
 ## 방 안쪽: 맨 아래 줄 하나만 옅게 (바닥·대원이 비친다).
 ## 덩어리는 제자리에서 천천히 아래로 흘러내리며 옅어지고 위에서 다시 생긴다 (smoke_sink_s 주기).
 ## 짙으면(가시거리 짧음) 검은 연기, 옅으면 회색 연기
-func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density: float, fires: Array[Vector2] = [], reach := Vector3(0, 0, -1)) -> bool:
+func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density: float, fires: Array[Vector2] = [], reach := Vector3(0, 0, -1), op := -1.0) -> bool:
 	if FxArt.puffs == null and not FxArt.load_all():
 		return false
 	if FxArt.puffs == null:
@@ -1739,8 +1743,10 @@ func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density
 	# 윗면 그림이 있으면 방 안쪽 덩어리 대신 연기 판 하나
 	var sheet := curtain and FxArt.sheet != null
 	var col := Color(0.36, 0.36, 0.38) if dark else Color(0.8, 0.81, 0.84)
+	if op < 0.0:
+		op = minf(sp.smoke_max_opacity, a * 1.3)
 	if sheet:
-		_draw_smoke_sheet(r, h, Color(col, minf(sp.smoke_sheet_alpha, a * 1.3)), c.index, _spread_dir(r, fires), reach)
+		_draw_smoke_sheet(r, h, Color(col, op), c.index, _spread_dir(r, fires), reach)
 	# 그릴 덩어리: [깊이 순서, 칸, 줄]. 뒤(북서)에서 앞(남동)으로, 같은 자리는 위 줄부터
 	var draws: Array = []
 	for j in (0 if sheet else ny):
@@ -1783,9 +1789,9 @@ func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density
 		var bottom := proj.to_screen(at, bottom_m)
 		FxArt.draw_puff_rect(self, Rect2(bottom - Vector2(w * 0.5, hh * 0.9), Vector2(w, hh)), kind, seed, Color(tint, alpha))
 	if curtain:
-		_draw_curtain_faces(r, h, Color(col, minf(sp.smoke_curtain_alpha, a + 0.1)), c.index, reach)
+		_draw_curtain_faces(r, h, Color(col, op), c.index, reach)
 	if reach.z >= 0.0:
-		_draw_smoke_front_edge(r, h, reach, Color(col, minf(sp.smoke_sheet_alpha, a * 1.3)), c.index)
+		_draw_smoke_front_edge(r, h, reach, Color(col, op), c.index)
 	return true
 
 
@@ -1824,6 +1830,11 @@ func _draw_curtain_faces(r: Rect2i, h: float, col: Color, seed: int, front := Ve
 	var body_v := clampf(float(m.get("body_v", 0.75)), 0.3, 1.0)
 	var tile := maxf(1.0, float(m.get("tile_m", 2.0)) / sim.building.cell_size_m)
 	var bottom := maxf(0.0, CEILING_M - (CEILING_M - h) / body_v)
+	# 천장 쪽 진하기 = col.a (그림 평균 불투명도로 나눠 맞춘다). 아래 끝 배율은 연기층 아랫면에서
+	# smoke_curtain_low 가 되게 그림 맨 아래까지 늘인다
+	col = Color(col, minf(1.0, col.a / FxArt.mean_alpha("smoke_curtain", 0.86)))
+	var low := clampf(stack.params.smoke_curtain_low, 0.0, 1.0)
+	var fade_end := maxf(0.0, 1.0 - (1.0 - low) / body_v)
 	# 동쪽 면 (x = 끝, y 방향) → 남쪽 면 (y = 끝, x 방향)
 	for face in 2:
 		var from := float(r.position.y if face == 0 else r.position.x)
@@ -1845,7 +1856,7 @@ func _draw_curtain_faces(r: Rect2i, h: float, col: Color, seed: int, front := Ve
 			var u1 := u0 + (e - s) / tile
 			var pa := Vector2(fixed, s) if face == 0 else Vector2(s, fixed)
 			var pb := Vector2(fixed, e) if face == 0 else Vector2(e, fixed)
-			FxArt.draw_curtain(self, proj.to_screen(pa, CEILING_M), proj.to_screen(pb, CEILING_M), proj.to_screen(pb, bottom), proj.to_screen(pa, bottom), u0, u1, col, seed + face)
+			FxArt.draw_curtain(self, proj.to_screen(pa, CEILING_M), proj.to_screen(pb, CEILING_M), proj.to_screen(pb, bottom), proj.to_screen(pa, bottom), u0, u1, col, seed + face, fade_end)
 			s = e
 
 
@@ -1859,6 +1870,11 @@ func _draw_smoke_sheet(r: Rect2i, h: float, col: Color, seed: int, spread: Vecto
 	var t := Time.get_ticks_msec() / 1000.0
 	# 무늬를 spread 쪽으로 밀면 그림 좌표는 반대로 간다
 	var off := (-spread * stack.params.smoke_sheet_flow_mps / cell * t).posmod(tile)
+	# 평균 진하기 = col.a: 그림 평균(mean)보다 옅으면 그림만 옅게, 진하면 그림 아래에 고른 색 B를 깐다
+	# (1 - (1 - B)(1 - mean) = col.a)
+	var mean := FxArt.mean_alpha("smoke_sheet", 0.42)
+	var base := Color(col, maxf(0.0, 1.0 - (1.0 - col.a) / (1.0 - mean)) if col.a > mean else 0.0)
+	col = Color(col, minf(1.0, col.a / mean))
 	var x := float(r.position.x)
 	while x < r.end.x - 0.001:
 		var kx := floorf((x + off.x) / tile + 0.0001)
@@ -1875,6 +1891,8 @@ func _draw_smoke_sheet(r: Rect2i, h: float, col: Color, seed: int, spread: Vecto
 			if cut.is_empty():
 				var pts := PackedVector2Array([proj.to_screen(Vector2(x, y), h), proj.to_screen(Vector2(xe, y), h),
 					proj.to_screen(Vector2(xe, ye), h), proj.to_screen(Vector2(x, ye), h)])
+				if base.a > 0.0:
+					draw_colored_polygon(pts, base)
 				FxArt.draw_flip(self, FxArt.sheet, "smoke_sheet", pts, Vector2(u0, v0), Vector2(u1, v1), col, seed)
 			else:
 				# 선두 원과 겹친 조각만
@@ -1884,6 +1902,8 @@ func _draw_smoke_sheet(r: Rect2i, h: float, col: Color, seed: int, spread: Vecto
 					for q in poly:
 						spts.append(proj.to_screen(q, h))
 						uvs.append(Vector2(u0 + (q.x - x) / tile, v0 + (q.y - y) / tile))
+					if base.a > 0.0 and spts.size() >= 3:
+						draw_colored_polygon(spts, base)
 					FxArt.draw_flip_poly(self, FxArt.sheet, "smoke_sheet", spts, uvs, col, seed)
 			y = ye
 		x = xe

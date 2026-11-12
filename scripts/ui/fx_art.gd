@@ -69,16 +69,17 @@ const PUFF_FLASH := 3
 
 ## 연기층 앞면 커튼 (Blender 플립북). 화면 네 점: 위a·위b·아래b·아래a, u0~u1 = 가로 한 장 안의 범위(0~1).
 ## 위 = 천장, meta body_v 높이가 연기층 아랫면. 그림이 없으면 false
-static func draw_curtain(ci: CanvasItem, top_a: Vector2, top_b: Vector2, bot_b: Vector2, bot_a: Vector2, u0: float, u1: float, modulate: Color, seed: int) -> bool:
+## bottom: 아래 두 점 진하기 배율 (천장이 가장 진하고 아래로 갈수록 옅게)
+static func draw_curtain(ci: CanvasItem, top_a: Vector2, top_b: Vector2, bot_b: Vector2, bot_a: Vector2, u0: float, u1: float, modulate: Color, seed: int, bottom := 1.0) -> bool:
 	if not load_all():
 		return false
-	return draw_flip(ci, curtain, "smoke_curtain", PackedVector2Array([top_a, top_b, bot_b, bot_a]), Vector2(u0, 0.0), Vector2(u1, 1.0), modulate, seed)
+	return draw_flip(ci, curtain, "smoke_curtain", PackedVector2Array([top_a, top_b, bot_b, bot_a]), Vector2(u0, 0.0), Vector2(u1, 1.0), modulate, seed, bottom)
 
 
 ## 플립북 한 조각: tex = 장을 세로로 쌓은 그림, key = fx.json 이름(장 수·속도).
 ## 화면 네 점(pts) ↔ 한 장 안의 uv 사각형 (uv0.x,uv0.y)·(uv1.x,uv0.y)·(uv1.x,uv1.y)·(uv0.x,uv1.y).
-## 이웃한 두 장을 겹쳐 부드럽게 재생하고, seed로 시작 장을 다르게 한다. 그림이 없으면 false
-static func draw_flip(ci: CanvasItem, tex: Texture2D, key: String, pts: PackedVector2Array, uv0: Vector2, uv1: Vector2, modulate: Color, seed: int) -> bool:
+## 이웃한 두 장을 겹쳐 부드럽게 재생하고, seed로 시작 장을 다르게 한다. bottom = 뒤 두 점(아래쪽) 진하기 배율. 그림이 없으면 false
+static func draw_flip(ci: CanvasItem, tex: Texture2D, key: String, pts: PackedVector2Array, uv0: Vector2, uv1: Vector2, modulate: Color, seed: int, bottom := 1.0) -> bool:
 	if tex == null:
 		return false
 	var m: Dictionary = meta.get(key, {})
@@ -93,8 +94,14 @@ static func draw_flip(ci: CanvasItem, tex: Texture2D, key: String, pts: PackedVe
 		var va := clampf(base + uv0.y * span, base + inset, base + span - inset)
 		var vb := clampf(base + uv1.y * span, base + inset, base + span - inset)
 		var c := Color(modulate, modulate.a * float(pair[1]))
-		ci.draw_polygon(pts, PackedColorArray([c, c, c, c]), PackedVector2Array([Vector2(uv0.x, va), Vector2(uv1.x, va), Vector2(uv1.x, vb), Vector2(uv0.x, vb)]), tex)
+		var cb := Color(c, c.a * bottom)
+		ci.draw_polygon(pts, PackedColorArray([c, c, cb, cb]), PackedVector2Array([Vector2(uv0.x, va), Vector2(uv1.x, va), Vector2(uv1.x, vb), Vector2(uv0.x, vb)]), tex)
 	return true
+
+
+## 그림의 평균 불투명도 (fx.json mean_alpha, 없으면 기본값)
+static func mean_alpha(key: String, fallback: float) -> float:
+	return clampf(float(meta.get(key, {}).get("mean_alpha", fallback)), 0.05, 1.0)
 
 
 ## 플립북을 아무 다각형에: uvs = 점마다 한 장 안의 좌표(0~1). 잘라 낸 조각(연기 선두 안쪽)을 그릴 때

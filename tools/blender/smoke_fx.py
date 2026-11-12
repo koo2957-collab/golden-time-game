@@ -335,6 +335,11 @@ def assemble(paths, cfg):
 
     meta = json.load(open(FX_JSON, encoding="utf-8")) if os.path.exists(FX_JSON) else {}
     entry = {"w": w, "h": h // LOOP, "frames": LOOP, "fps": cfg["fps"], "source": SOURCE}
+    # 평균 불투명도 (게임이 커튼·윗면 진하기를 같은 값에 맞출 때 쓴다). 커튼은 연기층 몸통(위 body_v)만
+    body = out[0]
+    if "body_v" in cfg["meta"]:
+        body = body[: int(body.shape[0] * cfg["meta"]["body_v"] * 0.8)]
+    entry["mean_alpha"] = round(float(body[..., 3].mean()), 3)
     entry.update(cfg["meta"])
     meta["smoke_" + KIND] = entry
     json.dump(meta, open(FX_JSON, "w", encoding="utf-8"), ensure_ascii=False, indent=2, sort_keys=True)

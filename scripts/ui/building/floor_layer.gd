@@ -3134,61 +3134,69 @@ func _draw_stub_below() -> void:
 	_stub_face(Vector2(fp.end.x, fp.position.y), se, Vector2.ZERO, -1.0, wall.darkened(EAST_SHADE), 1.0, level * 13 + 5)
 
 
-## 위층 바닥 턱 (2026-11-12 사용자 결정): 위층 바닥을 뒷벽(북)·왼쪽 벽(서)을 따라 띠로만 남긴다 — 가운데가 깨져 뚫린 바닥처럼.
-## 띠는 두 벽의 끝까지 가고, 안쪽 가장자리는 불규칙하게 깨진 모양(고정 난수).
-## 위층은 뒤(북)로 비켜 놓여 있으므로 뒷벽 쪽 띠는 그 거리만큼 넓혀 깨진 가장자리가 지금 층 뒷벽 바로 위까지 온다.
-## 벽 쪽은 진하고 깨진 가장자리로 갈수록 투명해져 지금 층을 가리지 않는다
+## 위층 바닥 (2026-11-12 사용자 결정): 가운데가 둥글고 불규칙하게 뚫린 바닥판 — 뒷벽(북)·왼쪽 벽(서)에 붙은 쪽만 남는다.
+## 구멍 가장자리: 뒷벽 쪽은 양 끝이 두껍고 가운데가 얇은 활 모양, 두 벽이 만나는 모서리는 둥글게, 한 칸 남짓마다 들쭉날쭉(고정 난수).
+## 위층은 뒤(북)로 비켜 놓여 있어 뒷벽 쪽 폭은 그 거리만큼 넓다 — 가장 두꺼운 곳이 지금 층 뒷벽 바로 위까지 (방 안은 가리지 않는다).
+## 바닥판 두께(ghost_slab_m)는 구멍 가장자리를 따라 어둡고 진하게 — 두께 있는 판으로 보이게
 func _draw_upper_ledge(tone: Color) -> void:
 	var fp: Rect2i = sim.building.footprint(level)
-	var w := stack.params.ghost_ledge_m / sim.building.cell_size_m
+	var sp := stack.params
+	var cell := sim.building.cell_size_m
+	var w := sp.ghost_ledge_m / cell
 	if w <= 0.0 or fp.size.x < 4 or fp.size.y < 4:
 		return
 	var x0 := fp.position.x + 1.0
 	var y0 := fp.position.y + 1.0
 	var x1 := float(fp.end.x)
 	var y1 := float(fp.end.y)
-	w = minf(w, (x1 - x0) * 0.4)
-	# 뒷벽 쪽 띠 폭 = 턱 폭 + 뒤로 비켜 놓은 거리
+	w = minf(w, (x1 - x0) * 0.3)
+	# 뒷벽 쪽 가장 두꺼운 폭 = 턱 폭 + 뒤로 비켜 놓은 거리
 	var wn := minf(w + stack.upper_back_cells(), (y1 - y0) * 0.8)
-	var jag := stack.params.ghost_ledge_jag_m / sim.building.cell_size_m
-	var a := stack.params.ghost_back_wall_alpha
-	var solid := Color(tone, a)
-	var faded := Color(tone, a * stack.params.ghost_ledge_fade)
-	var corner := Vector2(x0 + w, y0 + wn)
-	# 꺾이는 곳
-	draw_polygon(PackedVector2Array([proj.to_screen(Vector2(x0, y0), 0.0), proj.to_screen(Vector2(x0 + w, y0), 0.0),
-		proj.to_screen(corner, 0.0), proj.to_screen(Vector2(x0, y0 + wn), 0.0)]), PackedColorArray([solid, solid, faded, solid]))
-	# 뒷벽 쪽 띠: 꺾이는 곳에서 동쪽 끝까지, 한 칸 남짓마다 들쭉날쭉
-	var edge: Array[Vector2] = [corner]
+	var jag := sp.ghost_ledge_jag_m / cell
+	var bow := minf(sp.ghost_ledge_bow_m / cell, wn - w * 0.5)
+	var r := minf(sp.ghost_ledge_round_m / cell, minf((x1 - x0 - w) * 0.4, (y1 - y0 - wn) * 0.6))
+	# 구멍 가장자리 (동쪽 끝 → 서쪽으로 활 모양 → 둥근 모서리 → 남쪽 끝)
+	var hole: Array[Vector2] = [Vector2(x1, y0 + wn)]
 	var k := 0
-	var x := x0 + w
-	while x < x1 - 0.6:
-		x = minf(x1, x + 0.7 + _rand01(level * 71 + k) * 0.9)
-		edge.append(Vector2(x, y0 + wn + (_rand01(level * 53 + k) - 0.5) * 2.0 * jag))
+	var xa := x0 + w + r
+	var n := maxi(4, ceili((x1 - xa) / 1.2))
+	for q in range(1, n):
+		var u := float(q) / n
+		hole.append(Vector2(lerpf(x1, xa, u), y0 + wn - bow * sin(PI * u) + (_rand01(level * 53 + k) - 0.5) * 2.0 * jag))
 		k += 1
-	for n in edge.size() - 1:
-		draw_polygon(PackedVector2Array([proj.to_screen(Vector2(edge[n].x, y0), 0.0), proj.to_screen(Vector2(edge[n + 1].x, y0), 0.0),
-			proj.to_screen(edge[n + 1], 0.0), proj.to_screen(edge[n], 0.0)]), PackedColorArray([solid, solid, faded, faded]))
-	var north_edge := edge
-	# 왼쪽 벽 쪽 띠: 꺾이는 곳에서 남쪽 끝까지
-	edge = [corner]
-	var y := y0 + wn
-	while y < y1 - 0.6:
-		y = minf(y1, y + 0.7 + _rand01(level * 73 + k) * 0.9)
-		edge.append(Vector2(x0 + w + (_rand01(level * 59 + k) - 0.5) * 2.0 * jag, y))
+	for q in 5:
+		var ang := PI * 0.5 * q / 4.0
+		var rr := r + (_rand01(level * 59 + k) - 0.5) * jag
+		hole.append(Vector2(x0 + w + r - sin(ang) * rr, y0 + wn + r - cos(ang) * rr))
 		k += 1
-	for n in edge.size() - 1:
-		draw_polygon(PackedVector2Array([proj.to_screen(Vector2(x0, edge[n].y), 0.0), proj.to_screen(Vector2(x0, edge[n + 1].y), 0.0),
-			proj.to_screen(edge[n + 1], 0.0), proj.to_screen(edge[n], 0.0)]), PackedColorArray([solid, solid, faded, faded]))
-	# 깨진 가장자리의 바닥판 두께 (옅게 — 깨진 선이 읽힐 만큼만)
-	var t := stack.params.ghost_slab_m
-	var lip := a * stack.params.ghost_ledge_fade
-	for list: Array[Vector2] in [north_edge, edge]:
-		for n in list.size() - 1:
-			var d := list[n + 1] - list[n]
-			var facing_south := absf(d.x) >= absf(d.y)
-			_quad(proj.to_screen(list[n], -t), proj.to_screen(list[n + 1], -t), proj.to_screen(list[n + 1], 0.0), proj.to_screen(list[n], 0.0),
-				Color(tone.darkened(SOUTH_SHADE if facing_south else EAST_SHADE), lip))
+	var ya := y0 + wn + r
+	n = maxi(2, ceili((y1 - ya) / 1.2))
+	for q in range(1, n + 1):
+		var u := float(q) / n
+		hole.append(Vector2(x0 + w - bow * 0.3 * sin(PI * u) + (_rand01(level * 61 + k) - 0.5) * 2.0 * jag * (0.0 if q == n else 1.0), lerpf(ya, y1, u)))
+		k += 1
+	# 윗면
+	var a := sp.ghost_back_wall_alpha
+	var top := PackedVector2Array([proj.to_screen(Vector2(x0, y0), 0.0), proj.to_screen(Vector2(x1, y0), 0.0)])
+	for q in hole:
+		top.append(proj.to_screen(q, 0.0))
+	top.append(proj.to_screen(Vector2(x0, y1), 0.0))
+	draw_colored_polygon(top, Color(tone.lightened(0.25), a))
+	# 바닥판 두께: 보는 쪽(남·동)을 향한 변만, 윗면보다 어둡고 진하게
+	var t := sp.ghost_slab_m
+	var side_a := minf(1.0, a + 0.25)
+	var edge: Array[Vector2] = [Vector2(x1, y0)]
+	edge.append_array(hole)
+	edge.append(Vector2(x0, y1))
+	for q in edge.size() - 1:
+		var e0 := edge[q]
+		var e1 := edge[q + 1]
+		var d := e1 - e0
+		var out := Vector2(d.y, -d.x)
+		if out.x + out.y <= 0.0:
+			continue
+		_quad(proj.to_screen(e0, -t), proj.to_screen(e1, -t), proj.to_screen(e1, 0.0), proj.to_screen(e0, 0.0),
+			Color(tone.darkened(0.35 if absf(out.y) >= absf(out.x) else 0.5), side_a))
 
 
 ## 다른 층의 대원(노랑)·발견한 요구조자(빨강): 그림을 테두리 셰이더로. 그림이 없으면 동그라미 테두리

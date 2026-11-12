@@ -60,3 +60,4 @@
 | 2026-11-12 | F01 위층 뒤로 비키기 | scripts/ui/building/floor_stack(upper_vec, pick_level)·floor_layer(_stub_face lift 벡터), scripts/ui/iso_view, data/ui/view_params(설명), tests(test_cutaway, ui_cutaway) | 계단 디딤판은 수직 220px까지만 — 위층 턱과 어긋남(사용자 감수). 다음: 튜토리얼 단계 정비 |
 | 2026-11-12 | F01 턱 넓히기·그라데이션 | scripts/ui/building/floor_layer(_draw_upper_ledge)·floor_stack(upper_back_cells)·view_params, data/ui/view_params(ghost_ledge_fade), tests/test_cutaway | 다음: 튜토리얼 단계 정비 |
 | 2026-11-12 | F01 턱 그라데이션·위층 점선 없앰 | scripts/ui/building/floor_layer(_draw_upper_outline 지움)·view_params, data/ui/view_params(ghost_ledge_fade 1.0) | 위층 사람 점선 테두리는 기준선 없이 떠 보일 수 있음. 다음: 튜토리얼 단계 정비 |
+| 2026-11-12 | F01 위층 바닥 둥근 구멍 | scripts/ui/building/floor_layer(_draw_upper_ledge)·view_params, data/ui/view_params(ghost_ledge_bow_m·ghost_ledge_round_m·ghost_slab_m 0.3, ghost_ledge_fade 지움) | 다음: 튜토리얼 단계 정비 |

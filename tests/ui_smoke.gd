@@ -527,18 +527,23 @@ func _run() -> void:
 	root.push_input(mc, true)
 	await process_frame
 	_check("도면 전에도 미니맵 클릭 → 화면 이동", world.camera.position != cam_before, true)
-	cam_before = world.camera.position
 	var mmove := InputEventMouseMotion.new()
 	mmove.button_mask = MOUSE_BUTTON_MASK_LEFT
 	mmove.position = mm.get_global_rect().position + mm.size * Vector2(0.3, 0.5)
-	root.push_input(mmove, true)
 	var mup: InputEventMouseButton = mc.duplicate()
 	mup.pressed = false
 	mup.position = mmove.position
-	root.push_input(mup, true)
-	# 무거운 때(뒤에서 테스트가 돌 때)는 한 프레임으로 부족하다
-	for i in 3:
+	# 누른 채 끌기. 창 위에 실제 마우스가 있으면 그 움직임(버튼 없음)이 끼어들어 누름이 풀릴 수 있어 몇 번 다시 해 본다
+	for attempt in 5:
+		root.push_input(mc, true)
 		await process_frame
+		cam_before = world.camera.position
+		root.push_input(mmove, true)
+		await process_frame
+		root.push_input(mup, true)
+		await process_frame
+		if world.camera.position != cam_before:
+			break
 	_check("미니맵 끌기 → 화면 따라 이동", world.camera.position != cam_before, true)
 	sim.plan.acquire("상황실", sim.clock.tick)
 	_check("도면 → 미니맵 평면도 열림", mm.unlocked(), true)

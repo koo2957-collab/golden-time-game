@@ -123,7 +123,15 @@ var ghost := false:
 		if v != ghost:
 			ghost = v
 			if _ghost_units:
-				_ghost_units.visible = v
+				_ghost_units.visible = v or people_outline
+			queue_redraw()
+## 아래층 (2026-11-12 사용자 결정): 구조는 온전히(흑백·어둡게) 그리고 그 층 사람은 점선 테두리로 — 켜면 사람 테두리 노드를 보인다
+var people_outline := false:
+	set(v):
+		if v != people_outline:
+			people_outline = v
+			if _ghost_units:
+				_ghost_units.visible = ghost or v
 			queue_redraw()
 ## 다른 층 그리는 방식: 0 지금 층 / 1 바로 위·아래 / 2 먼 아래층(외관 덩어리) / 3 먼 위층(사람 테두리만). ghost는 0이 아닐 때 켜진다
 ## 짝 층 바탕(흑백): 불·연기·사람은 그리지 않는다 — 색 겹(ghost_mode 4)이 따로 그린다
@@ -136,8 +144,8 @@ var ghost_mode := 0:
 	set(v):
 		if v != ghost_mode:
 			ghost_mode = v
-			# 색 겹(4)은 사람 테두리를 그리지 않는다
-			ghost = v != 0 and v != 4
+			# 색 겹(4)·바깥 땅 겹(5)은 사람 테두리를 그리지 않는다
+			ghost = v != 0 and v != 4 and v != 5
 			queue_redraw()
 var _ghost_outdoor_idx: Dictionary = {}  # level -> 바깥 땅 칸 삼각형 index
 const GHOST_WALL := Color(1, 1, 1, 0.42)
@@ -251,7 +259,7 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 	mat.shader = outline_shader
 	mat.set_shader_parameter("fill", stack.params.ghost_body_alpha)
 	mat.set_shader_parameter("thickness", stack.params.ghost_outline_px)
-	_ghost_units.visible = ghost
+	_ghost_units.visible = ghost or people_outline
 	# 벽 너머 테두리처럼: 지금 층 그림 위에 그린다 (아래층 사람이 지금 층 바닥에 가려지지 않게)
 	_ghost_units.z_as_relative = false
 	_ghost_units.z_index = 100
@@ -861,9 +869,9 @@ func _process(_delta: float) -> void:
 		texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	# 아래층(보이기만 하는 층)은 시뮬레이션 틱이 바뀔 때만, 두 아래층이 틱을 번갈아 다시 그린다 (R17 성능).
 	# 지금 층은 대원 움직임·불꽃이 부드럽게 보이도록 매 프레임
-	if depth > 0 and sim != null:
+	if depth > 0 and sim != null and ghost_mode != 5:
 		# 다른 층 사람 테두리는 매 프레임 (걷는 동작·위치가 끊기지 않게, 2026-11-12) — 사람 몇 명뿐이라 가볍다
-		if ghost and _ghost_units:
+		if (ghost or people_outline) and _ghost_units:
 			_ghost_units.queue_redraw()
 		var tick := sim.clock.tick
 		if tick == _drawn_tick or (tick % 2 != depth % 2 and _drawn_tick >= 0 and tick - _drawn_tick < 2):
@@ -888,6 +896,12 @@ func _draw() -> void:
 	if ghost_mode == 4:
 		_draw_live_only()
 		return
+	# 바깥 땅 겹 (ghost_mode 5): 아래로 보이는 땅 층(흑백 바탕) 위에 차량·바깥 사람만 원래 색으로
+	if ghost_mode == 5:
+		_draw_outdoor_people()
+		return
+	if people_outline and _ghost_units:
+		_ghost_units.queue_redraw()
 	if ghost:
 		_draw_ghost()
 		return
@@ -3041,7 +3055,8 @@ func _draw_adjacent() -> void:
 				if not horizontal and bd.in_bounds(first.x + 1, first.y) 						and bd.cell(level, first.x + 1, first.y) in [BuildingData.Cell.WALL, BuildingData.Cell.DOOR, BuildingData.Cell.WINDOW]:
 					p0.y += 1.0
 				var body := Color(tone, stack.params.ghost_back_wall_alpha)
-				_box(p0, p1, 0.0, CEILING_M, body, body, body)
+				# 벽 아래에도 바닥판 두께만큼 — 턱의 바닥판 아랫면과 벽 아랫면이 맞는다 (2026-11-12 사용자 지적)
+				_box(p0, p1, -stack.params.ghost_slab_m, CEILING_M, body, body, body)
 			continue
 		# 아래층: 바깥벽은 바닥선 + 천장선 + 양 끝 세로선의 점선, 확인된 실내 벽은 바닥 높이 점선
 		var known := outer or plan_known or not p.enabled
@@ -3138,7 +3153,7 @@ func _draw_upper_outline(line: Color, dash: float) -> void:
 
 ## 다른 층의 대원(노랑)·발견한 요구조자(빨강): 그림을 테두리 셰이더로. 그림이 없으면 동그라미 테두리
 func _draw_ghost_units() -> void:
-	if sim == null or not ghost:
+	if sim == null or not (ghost or people_outline):
 		return
 	_draw_outlines(_ghost_units, {})
 

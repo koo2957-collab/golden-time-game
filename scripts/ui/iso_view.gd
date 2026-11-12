@@ -183,13 +183,13 @@ func _apply() -> void:
 		_configure(layer, depth, shown, _exterior)
 		layer.position = stack.offset_vec(depth)
 		# 비켜 놓기(2026-11-12): 두 층 모두 온전하게. 예전 방식: 바로 아래층 회백색 10%, 그 아래 외관 덩어리
-		if stack.staggered():
-			layer.ghost_mode = 0
-		else:
-			layer.ghost_mode = 0 if depth == 0 else (1 if depth == 1 else 2)
-		# 비켜 놓기: 고른 층이 아닌 짝 층은 흐리게 (2026-11-12 사용자 결정 25%)
+		# 아래층도 온전히 그린다 (2026-11-12 사용자 결정): 지금 층이 가리는 곳 빼고 구조 그대로, 흑백 + 한 단계 어둡게.
+		# 연기·불은 그리지 않고 사람은 점선 테두리 (_apply_partner). 비켜 놓기(stagger)의 짝 층도 온전하게
+		layer.ghost_mode = 0
 		var dim := params.partner_dim
 		layer.modulate = Color(dim, dim, dim, params.partner_alpha) if stack.staggered() and depth > 0 else Color.WHITE
+		# 자식(사람 테두리)은 어두워지지 않게 자기 그림만
+		layer.self_modulate = Color(dim, dim, dim) if not stack.staggered() and depth > 0 and not _exterior else Color.WHITE
 	# 위층: 지금 층 위로 FLOOR_GAP_PX씩 올려 반투명 (외부 보기에서는 숨김)
 	var above: Array[int] = []
 	if not _exterior and stack != null:
@@ -224,6 +224,7 @@ func _apply() -> void:
 func _apply_partner() -> void:
 	for node in layers + upper_layers:
 		node.skip_live = false
+		node.people_outline = false
 	if partner_live == null:
 		return
 	partner_live.visible = false
@@ -245,6 +246,25 @@ func _apply_partner() -> void:
 	current_live.refresh()
 	var pair := _pair()
 	if pair.is_empty():
+		# 제자리 쌓기: 아래층들은 흑백 바탕(연기·불·사람 빼고) + 사람 점선 테두리.
+		# 땅 층이 아래로 보이면 그 위에 차량·바깥 사람만 원래 색으로 (바깥 땅 겹)
+		for d in range(1, layers.size()):
+			var low := layers[d]
+			if not low.visible:
+				continue
+			low.skip_live = true
+			low.people_outline = true
+			if low.level == sim.building.levels()[0]:
+				partner_live.visible = true
+				partner_live.ghost_mode = 5
+				partner_live.depth = low.depth
+				partner_live.level = low.level
+				partner_live.exterior = false
+				partner_live.thermal = thermal
+				partner_live.position = low.position
+				partner_live.modulate = Color.WHITE
+				move_child(partner_live, low.get_index() + 1)
+				partner_live.refresh()
 		return
 	var other: FloorLayer = pair[0] if pair[0] != layers[0] else pair[1]
 	other.skip_live = true
@@ -371,7 +391,7 @@ func _update_holes() -> void:
 		if m:
 			m.set_shader_parameter("count", 0)
 			var g := 0.0
-			if node == partner_node:
+			if node == partner_node or (not stack.staggered() and not _exterior and layers.find(node) > 0):
 				g = params.partner_gray
 			elif node == layers[0] and not _exterior:
 				g = params.current_gray

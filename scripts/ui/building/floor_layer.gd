@@ -3098,9 +3098,9 @@ func _draw_adjacent() -> void:
 			draw_dashed_line(a1, b1, line, 1.2, dash)
 			draw_dashed_line(a0, a1, line, 1.2, dash)
 			draw_dashed_line(b0, b1, line, 1.2, dash)
+	# 위층은 뒷벽·왼쪽 벽 상자와 바닥 턱만 — 바깥 윤곽 점선은 그리지 않는다 (2026-11-12 사용자 결정: 지금 층 위를 가로질러 복잡)
 	if upper:
 		_draw_upper_ledge(tone)
-		_draw_upper_outline(line, dash)
 
 
 ## 잘린 벽 한 면: 바닥선 a→b (셀 좌표)를 화면에서 lift 만큼 옮긴 곳을 밑변으로, dir(1 = 위로, -1 = 아래로) 쪽으로
@@ -3182,27 +3182,13 @@ func _draw_upper_ledge(tone: Color) -> void:
 			proj.to_screen(edge[n + 1], 0.0), proj.to_screen(edge[n], 0.0)]), PackedColorArray([solid, solid, faded, faded]))
 	# 깨진 가장자리의 바닥판 두께 (옅게 — 깨진 선이 읽힐 만큼만)
 	var t := stack.params.ghost_slab_m
-	var lip := a * maxf(stack.params.ghost_ledge_fade, 0.3)
+	var lip := a * stack.params.ghost_ledge_fade
 	for list: Array[Vector2] in [north_edge, edge]:
 		for n in list.size() - 1:
 			var d := list[n + 1] - list[n]
 			var facing_south := absf(d.x) >= absf(d.y)
 			_quad(proj.to_screen(list[n], -t), proj.to_screen(list[n + 1], -t), proj.to_screen(list[n + 1], 0.0), proj.to_screen(list[n], 0.0),
 				Color(tone.darkened(SOUTH_SHADE if facing_south else EAST_SHADE), lip))
-
-
-## 위층 바깥 윤곽 (2026-11-12 사용자 결정): 반투명 뒷벽·왼쪽 벽이 없는 쪽(앞·오른쪽)은 가장 바깥 점선 한 줄 —
-## 바닥선·천장선(남쪽 변, 동쪽 변)과 세 모서리(남서·남동·북동) 세로선
-func _draw_upper_outline(line: Color, dash: float) -> void:
-	var fp: Rect2i = sim.building.footprint(level)
-	var sw := Vector2(fp.position.x, fp.end.y)
-	var se := Vector2(fp.end)
-	var ne := Vector2(fp.end.x, fp.position.y)
-	for h: float in [0.0, CEILING_M]:
-		draw_dashed_line(proj.to_screen(sw, h), proj.to_screen(se, h), line, 1.2, dash)
-		draw_dashed_line(proj.to_screen(se, h), proj.to_screen(ne, h), line, 1.2, dash)
-	for c: Vector2 in [sw, se, ne]:
-		draw_dashed_line(proj.to_screen(c, 0.0), proj.to_screen(c, CEILING_M), line, 1.2, dash)
 
 
 ## 다른 층의 대원(노랑)·발견한 요구조자(빨강): 그림을 테두리 셰이더로. 그림이 없으면 동그라미 테두리

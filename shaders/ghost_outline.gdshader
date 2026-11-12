@@ -4,6 +4,9 @@ shader_type canvas_item;
 
 uniform float thickness = 3.0;
 uniform float fill = 0.12;
+// 다른 층 사람 (2026-11-12 사용자 결정): 테두리 없이 색 하나로 채운 흐린 덩어리 — 같은 층에서 가려진 사람(테두리)과 구분
+uniform bool flat_fill = false;
+uniform float flat_alpha = 0.45;
 
 // 그릴 때 준 색(modulate)만 — fragment의 COLOR는 그림 색이 곱해져 있다
 varying vec4 tint;
@@ -15,6 +18,9 @@ void vertex() {
 void fragment() {
 	vec4 tex = texture(TEXTURE, UV);
 	float a = tex.a;
+	if (flat_fill) {
+		COLOR = vec4(tint.rgb, a * flat_alpha * tint.a);
+	} else {
 	vec2 px = TEXTURE_PIXEL_SIZE * thickness;
 	float m = 0.0;
 	m = max(m, texture(TEXTURE, UV + vec2(px.x, 0.0)).a);
@@ -29,4 +35,5 @@ void fragment() {
 	float edge = clamp((m - a) * 1.5, 0.0, 1.0);
 	vec3 rgb = mix(tex.rgb, tint.rgb, edge);
 	COLOR = vec4(rgb, clamp(edge + a * fill, 0.0, 1.0) * mix(1.0, tint.a, edge));
+	}
 }

@@ -39,6 +39,7 @@ func test_view_params_loaded() -> void:
 	assert_eq([p.front_wall_alpha, p.inner_wall_m, p.stack_mode, p.stagger_back_ratio, p.stagger_floor_px], [0.15, 2.4, "stack", 0.3, 260.0], "앞벽 15%, 실내 벽 천장까지(F04), 층은 제자리에 쌓고 다른 층은 실루엣 (비켜 놓기 값은 남겨 둠)")
 	assert_true(p.adjacent_alpha <= 0.1 and p.ghost_line_alpha <= 0.3 and is_equal_approx(p.ghost_body_alpha, 0.25), "다른 층 실루엣 5~10%·벽 윗선, 사람 몸 25% (2026-11-12)")
 	assert_true(p.ghost_outline_px > 0.0 and p.ghost_outline_px < 3.0, "사람 테두리는 얇게 (2026-11-12)")
+	assert_true(p.ghost_flat_alpha > 0.0 and p.ghost_flat_alpha < 1.0, "다른 층 사람은 한 색 흐린 덩어리 + 층 표 (2026-11-12)")
 	assert_true(p.inner_wall_alpha_bottom > p.inner_wall_alpha_top and p.inner_wall_cap_alpha > 0.5, "실내 벽은 아래 진하게·위로 옅게, 흰 윗면 테두리 (2026-11-12)")
 	assert_true(p.ghost_inner_wall_m < p.inner_wall_m, "위·아래 층 실내 벽은 낮게")
 	assert_eq(p.wall_cut_m, 0.2, "잘린 벽 20cm")

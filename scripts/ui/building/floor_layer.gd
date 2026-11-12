@@ -243,6 +243,8 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 	other.shader = outline_shader
 	other.set_shader_parameter("fill", stack.params.ghost_other_fill)
 	other.set_shader_parameter("thickness", stack.params.ghost_outline_px)
+	# 다른 층 사람은 점선 테두리 (같은 층에서 가려진 사람은 실선) (2026-11-12 사용자 결정)
+	other.set_shader_parameter("dash_px", stack.params.ghost_dash_px)
 	_ghost_units.material = other
 	# 같은 층에서 연기에 가려진 사람: 원래 색 + 얇은 테두리
 	var mat := ShaderMaterial.new()
@@ -3021,8 +3023,8 @@ func _draw_outdoor_ground() -> void:
 		RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), oi, _ground_points[level], _ground_colors)
 
 
-## 다른 층 (2026-11-12 사용자 결정): 면 칠 없이 그 층 바닥 높이의 평면도 선만 — 지금 층 연기와 겹쳐 진해지지 않는다.
-## 바깥벽(건물 윤곽)은 얇은 실선, 실내 벽은 점선 (확인된 곳만)
+## 다른 층 (2026-11-12 사용자 결정): 면 칠 없이 흰 점선만 — 지금 층 연기와 겹쳐 진해지지 않는다.
+## 바깥벽은 바닥·천장·모서리 세로선의 3차원 점선 상자, 실내 벽은 바닥 높이 점선 (확인된 곳만)
 func _draw_adjacent() -> void:
 	var tone := Color(0.86, 0.87, 0.9)
 	var line := Color(tone, stack.params.ghost_line_alpha)
@@ -3038,10 +3040,15 @@ func _draw_adjacent() -> void:
 			continue
 		var a0 := proj.to_screen(run.a, 0.02)
 		var b0 := proj.to_screen(run.b, 0.02)
+		var dash := stack.params.ghost_dash_px
+		draw_dashed_line(a0, b0, line, 1.2, dash)
+		# 바깥벽은 3차원 점선 상자: 바닥선 + 천장선 + 양 끝 세로선 (2026-11-12 사용자 결정 — 위·아래에 층 덩어리가 있음을 보인다)
 		if outer:
-			draw_line(a0, b0, line, 1.2)
-		else:
-			draw_dashed_line(a0, b0, line, 1.2, stack.params.ghost_dash_px)
+			var a1 := proj.to_screen(run.a, CEILING_M)
+			var b1 := proj.to_screen(run.b, CEILING_M)
+			draw_dashed_line(a1, b1, line, 1.2, dash)
+			draw_dashed_line(a0, a1, line, 1.2, dash)
+			draw_dashed_line(b0, b1, line, 1.2, dash)
 
 
 ## 다른 층의 대원(노랑)·발견한 요구조자(빨강): 그림을 테두리 셰이더로. 그림이 없으면 동그라미 테두리

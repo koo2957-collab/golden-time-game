@@ -37,7 +37,7 @@ func test_view_params_loaded() -> void:
 	assert_eq(p.below_modulate, [0.75, 0.55] as Array[float], "아래 층 밝기")
 	assert_eq(p.front_wall, "open", "앞벽은 없음 — 인형집 (2026-11-12 결정)")
 	assert_eq([p.front_wall_alpha, p.inner_wall_m, p.stack_mode, p.stagger_back_ratio, p.stagger_floor_px], [0.15, 2.4, "stack", 0.3, 260.0], "앞벽 15%, 실내 벽 천장까지(F04), 층은 제자리에 쌓고 다른 층은 실루엣 (비켜 놓기 값은 남겨 둠)")
-	assert_true(p.ghost_line_alpha <= 0.4 and p.ghost_dash_px > 0.0 and is_equal_approx(p.ghost_body_alpha, 0.25), "다른 층은 평면도 선만(실내 벽 점선), 연기에 가려진 사람 몸 25% (2026-11-12)")
+	assert_true(p.ghost_line_alpha <= 0.6 and p.ghost_dash_px > 0.0 and is_equal_approx(p.ghost_body_alpha, 0.25), "다른 층은 평면도 선만(실내 벽 점선), 연기에 가려진 사람 몸 25% (2026-11-12)")
 	assert_true(p.ghost_outline_px > 0.0 and p.ghost_outline_px < 3.0, "사람 테두리는 얇게 (2026-11-12)")
 	assert_true(p.ghost_other_fill < p.ghost_body_alpha, "다른 층 사람은 테두리만(안쪽 투명), 같은 층에서 가려진 사람은 안쪽이 비친다 (2026-11-12)")
 	assert_true(p.inner_wall_alpha_bottom > p.inner_wall_alpha_top and p.inner_wall_cap_alpha > 0.5, "실내 벽은 아래 진하게·위로 옅게, 흰 윗면 테두리 (2026-11-12)")

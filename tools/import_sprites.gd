@@ -121,7 +121,7 @@ func _pack(folder: String, id: String) -> int:
 		bytes += pages[p].get_width() * pages[p].get_height() * 4
 	var out := {"id": id, "kind": meta.kind, "scale": meta.scale, "frame": meta.frame, "anchor": meta.anchor,
 		"directions": dirs, "pages": page_paths, "anims": anims}
-	for k in ["nominal", "h_m", "size_m", "type"]:
+	for k in ["nominal", "h_m", "size_m", "type", "nozzle"]:
 		if meta.has(k):
 			out[k] = meta[k]
 	var f := FileAccess.open("%s/%s.json" % [DST, id], FileAccess.WRITE)

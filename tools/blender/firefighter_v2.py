@@ -101,6 +101,8 @@ class Builder:
             "metal": _mat("metal", "#9AA0A6", 0.3, 0.8),
             "gold": _mat("gold", "#D4A72C", 0.35, 0.7),
             "white": _mat("white", "#F2F2F2", 0.6),
+            "hose": _mat("hose", "#DCD3AE", 0.75),
+            "brass": _mat("brass", "#B08D3C", 0.35, 0.7),
         }
         # 헬멧: 몸 그림에서는 회색, 색 층에서는 흰색 (bake.py set_helmet)
         self.helmet_mat = _mat("helmet", (0.35, 0.35, 0.35, 1.0), 0.3)
@@ -279,6 +281,10 @@ def build_parts(bld):
         bld.box("sole_" + s, (ft_h[0], -0.045, 0.008), (0.12, 0.28, 0.018), "rubber", "foot." + s)
 
 
+# 관창 길이 (손끝에서 관창 끝까지, m)
+NOZZLE_LEN = 0.36
+
+
 class Rig:
     def __init__(self, arm, bld):
         self.arm = arm
@@ -288,9 +294,18 @@ class Rig:
         # 관창 (방수 때만 보임): 오른손에
         hr = BONES["hand.R"]
         tip = V(hr[1])
-        nozzle = bld.limb("nozzle", tip + V((0, 0.0, 0.02)), tip + V((0, -0.0, -0.2)), 0.022, 0.03, "metal", "hand.R")
-        grip = bld.box("nozzle_grip", tip + V((0, 0.0, -0.03)), (0.03, 0.05, 0.06), "rubber", "hand.R")
-        self.nozzle = [nozzle, grip]
+        # 관창 (2026-11-12 사용자 지적: 물이 사람 몸이 아니라 관창 끝에서 나가야 한다 — 크고 또렷하게, 뒤로 수관이 이어진다).
+        # 손 뼈 방향(쉬는 자세에서 -Z)으로 NOZZLE_LEN 만큼 앞으로 — 방수 자세에서는 앞을 향한다. 끝점은 nozzle_tip()
+        xr = 1.0 if tip.x >= 0 else -1.0
+        nozzle = bld.limb("nozzle", tip + V((0, 0.0, 0.05)), tip + V((0, 0.0, -NOZZLE_LEN + 0.08)), 0.03, 0.036, "rubber", "hand.R")
+        nozzle_tip = bld.limb("nozzle_tip", tip + V((0, 0.0, -NOZZLE_LEN + 0.08)), tip + V((0, 0.0, -NOZZLE_LEN)), 0.04, 0.03, "brass", "hand.R")
+        coupling = bld.limb("nozzle_coupling", tip + V((0, 0.0, 0.05)), tip + V((0, 0.0, 0.1)), 0.036, 0.036, "brass", "hand.R")
+        grip = bld.box("nozzle_grip", tip + V((0, -0.03, -0.03)), (0.03, 0.05, 0.07), "rubber", "hand.R")
+        # 수관: 관창 뒤에서 팔 아래로 (손 뼈에), 허리 옆을 지나 뒤쪽 바닥으로 (골반 뼈에)
+        hose_a = bld.limb("hose_a", tip + V((0, 0.0, 0.1)), tip + V((-0.03 * xr, 0.05, 0.5)), 0.03, 0.03, "hose", "hand.R")
+        hose_b = bld.limb("hose_b", V((0.2 * xr, 0.02, 0.98)), V((0.24 * xr, 0.42, 0.06)), 0.03, 0.03, "hose", "hips")
+        hose_c = bld.limb("hose_c", V((0.24 * xr, 0.42, 0.06)), V((0.12 * xr, 1.0, 0.04)), 0.03, 0.03, "hose", "hips")
+        self.nozzle = [nozzle, nozzle_tip, coupling, grip, hose_a, hose_b, hose_c]
         self.parts = [p for p in bld.parts if p not in self.nozzle]
 
     def reset(self):
@@ -412,6 +427,13 @@ class Rig:
             self.rot("shin.R", "X", 30)
             return True
         return False
+
+    def nozzle_tip(self):
+        """관창 끝의 월드 좌표 (지금 자세). 물줄기가 시작되는 점 — 굽기에서 화면 위치로 바꿔 기록한다"""
+        bpy.context.view_layer.update()
+        pb = self.arm.pose.bones["hand.R"]
+        axis = (pb.tail - pb.head).normalized()
+        return self.arm.matrix_world @ (pb.tail + axis * NOZZLE_LEN)
 
     def bounds(self):
         """보이는 조각들의 월드 경계 (최소, 최대)"""

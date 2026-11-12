@@ -160,3 +160,19 @@ func test_fx_water_stream_art() -> void:
 	assert_true(FxArt.draw_water(ci, Vector2.ZERO, Vector2(120, 40), true, 0.0, Color.WHITE, 1), "직사 그리기")
 	assert_true(FxArt.draw_water(ci, Vector2.ZERO, Vector2(120, 40), false, 30.0, Color.WHITE, 1), "분무 그리기")
 	ci.free()
+
+
+func test_nozzle_tip_recorded_for_spray_pose() -> void:
+	# 2026-11-12 사용자 지적: 물줄기는 관창수 몸이 아니라 관창 끝에서 나간다 — 방수 자세의 방향·장마다 관창 끝 위치가 구워져 있다
+	var art := SpriteArt.get_set(str(SpriteArt.config().get("crew", "")))
+	assert_true(art != null and art.frames("spray") > 0, "대원 방수 그림")
+	var seen := {}
+	for dir in 8:
+		for f in art.frames("spray"):
+			var off := art.nozzle_offset("spray", dir, f, Vector2(999, 999))
+			assert_true(off != Vector2(999, 999), "방향 %d 장 %d: 관창 끝 위치 있음" % [dir, f])
+			# 카메라 쪽·반대쪽을 볼 때는 관창이 화면에서 짧게 보여 기준점 가까이에 온다
+			assert_true(off.length() < 120.0, "관창 끝은 팔 길이 안 (%s)" % off)
+			seen[dir] = off
+	assert_true(seen[0].x > 20.0 and seen[4].x < -20.0, "옆을 볼 때 관창 끝은 몸 밖, 방향에 따라 반대쪽으로")
+	assert_eq(art.nozzle_offset("idle", 0, 0, Vector2(1, 2)), Vector2(1, 2), "기록이 없는 동작은 기본값")

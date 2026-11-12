@@ -23,6 +23,14 @@ class SpriteSet:
 	func has(anim: String) -> bool:
 		return anims.has(anim)
 
+	## 관창 끝 위치: 그림 기준점(발밑)에서의 화면 px (게임 확대 1 기준). 구울 때 기록한 값(meta nozzle) — 없으면 fallback
+	func nozzle_offset(anim: String, dir: int, frame: int, fallback: Vector2) -> Vector2:
+		var table: Dictionary = meta.get("nozzle", {}).get(anim, {})
+		var cell: Variant = table.get("%d_%d" % [posmod(dir, directions), posmod(frame, maxi(1, frames(anim)))])
+		if cell is Array and cell.size() >= 2:
+			return Vector2(float(cell[0]), float(cell[1])) / scale
+		return fallback
+
 	func frames(anim: String) -> int:
 		return int(anims[anim].frames) if anims.has(anim) else 0
 

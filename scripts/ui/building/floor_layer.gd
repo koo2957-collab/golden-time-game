@@ -1492,8 +1492,11 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		anim = "down"
 	elif task is RescueSystem.CarryTask and task.carrying:
 		anim = "carry"
-	elif hose and hose.flowing and not hose.approaching and not moving:
+	elif hose and hose.flowing and not hose.approaching and not moving and ff == crew.leader:
+		# 관창은 조장(관창수) 한 사람만 든다 — 짝은 뒤에서 서 있는다 (2026-11-12)
 		anim = "spray"
+		_facing[ff.id] = SpriteArt.dir8(hose.aim - ff.pos)
+	elif hose and hose.flowing and not hose.approaching and not moving:
 		_facing[ff.id] = SpriteArt.dir8(hose.aim - ff.pos)
 	elif task is RescueSystem.SearchTask and not moving:
 		anim = "search"
@@ -1678,6 +1681,12 @@ func _draw_sprays(alpha: float) -> void:
 		if _outside() and not sim.building.cell(level, floori(leader.pos.x), floori(leader.pos.y)) in BuildingData.OUTDOOR:
 			continue
 		var from := proj.to_screen(UnitsView.display_pos(leader, alpha), NOZZLE_M)
+		# 물줄기는 관창수 그림의 관창 끝에서 시작한다 (2026-11-12 사용자 지적: 몸에서 물이 나갔음) — 구울 때 기록한 위치
+		var crew_art := SpriteArt.get_set(str(SpriteArt.config().get("crew", ""))) if not thermal else null
+		if crew_art != null and not h.approaching:
+			var feet := proj.to_screen(UnitsView.display_pos(leader, alpha), 0.0)
+			var fr := SpriteArt.frame_at("spray", crew_art.frames("spray"), leader.id * 0.37)
+			from = feet + crew_art.nozzle_offset("spray", SpriteArt.dir8(h.aim - leader.pos), fr, from - feet)
 		var to := proj.to_screen(h.impact, IMPACT_M)
 		# 물줄기 그림 (사용자 참고 그림, 2026-11-12): 직사는 가는 줄기와 튀는 물, 그 밖(분무 등)은 원뿔 물안개. 없으면 아래 도형
 		var straight := h.pattern == HoseLine.Pattern.STRAIGHT

@@ -23,6 +23,8 @@ ONLY_NAME = ARGS[2] if len(ARGS) > 2 else ""
 QUICK = len(ARGS) > 3 and ARGS[3] == "quick"
 # 동작 확인: only=walk,carry → 그 동작만, 방향 1만, 모든 프레임
 ONLY_ANIMS = ARGS[3][5:].split(",") if len(ARGS) > 3 and ARGS[3].startswith("only=") else []
+# 일부 동작만 다시 굽기: anims=spray,walk → 그 동작만 모든 방향·프레임, 나머지는 예전 meta.json 을 그대로 둔다
+REDO_ANIMS = ARGS[3][6:].split(",") if len(ARGS) > 3 and ARGS[3].startswith("anims=") else []
 ONLY_DIR = int(ARGS[4]) if len(ARGS) > 4 else 1
 PROJECT = os.path.abspath(os.path.join(os.path.dirname(CONFIG_PATH), "..", ".."))
 CFG = json.load(open(CONFIG_PATH, encoding="utf-8"))
@@ -523,8 +525,17 @@ def bake_built_character(spec):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         bpy.ops.wm.save_as_mainfile(filepath=path, copy=True)
         log("모델 저장", path)
+    if REDO_ANIMS:
+        old_path = os.path.join(folder, "meta.json")
+        if os.path.exists(old_path):
+            old = json.load(open(old_path, encoding="utf-8"))
+            meta["anims"] = old.get("anims", {})
+            meta["nozzle"] = old.get("nozzle", {})
+    from bpy_extras.object_utils import world_to_camera_view
     for anim in spec["anims"]:
         if ONLY_ANIMS and anim not in ONLY_ANIMS:
+            continue
+        if REDO_ANIMS and anim not in REDO_ANIMS:
             continue
         a = CFG["anims"][anim]
         n = int(a["frames"])
@@ -539,6 +550,11 @@ def bake_built_character(spec):
                 arm.matrix_world = mathutils.Matrix.Rotation(dir_angle(k), 4, "Z") @ mathutils.Matrix.Translation(off)
                 upd()
                 name = "%s_%d_%d.png" % (anim, k, i)
+                # 방수 자세: 관창 끝이 그림의 어디에 오는지 기록 (기준점에서의 px, 구운 크기) — 게임이 물줄기를 거기서 시작한다
+                if anim == "spray" and hasattr(rig, "nozzle_tip"):
+                    ndc = world_to_camera_view(sc, sc.camera, rig.nozzle_tip())
+                    meta.setdefault("nozzle", {}).setdefault(anim, {})["%d_%d" % (k, i)] = [
+                        round(ndc.x * spec["frame"][0] - spec["anchor"][0], 2), round((1.0 - ndc.y) * spec["frame"][1] - spec["anchor"][1], 2)]
                 for o in bpy.data.objects:
                     o.is_holdout = False
                 set_helmet(rig.helmet_mat, HELMET_BASE)

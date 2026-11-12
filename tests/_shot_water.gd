@@ -53,6 +53,7 @@ func _run() -> void:
 		h.pattern = spots[k][2]
 		h.aim = spots[k][1]
 		h.impact = spots[k][1]
+	world.iso_view.params.smoke_max_opacity = 0.0
 	var proj = world.projection()
 	world.set_view_level(1, false)
 	world.camera.zoom = Vector2(1.3, 1.3)

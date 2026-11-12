@@ -199,6 +199,7 @@ func test_upper_floor_set_back_in_stack_mode() -> void:
 	var up := s.upper_vec(1)
 	assert_true(up.x > 0.0 and up.y < -s.params.floor_height_px, "위층: 오른쪽 위로 (층 높이보다 더 위) %s" % up)
 	assert_eq(s.offset_vec(1), Vector2(0, s.params.floor_height_px), "아래층: 바로 아래 220px")
+	assert_true(s.upper_back_cells() > 0.0 and is_equal_approx(up.x, s.upper_back_cells() * IsoProjection.HALF_W), "위층 바닥 턱을 넓힐 거리(칸) = 뒤로 비킨 거리")
 	var proj := IsoProjection.new()
 	# 위층(13층)이 보이는 곳 — 13층 북쪽 벽 칸을 그 위치로 옮긴 자리 — 을 누르면 13층
 	var at := proj.to_screen(Vector2(10.5, 4.5)) + up

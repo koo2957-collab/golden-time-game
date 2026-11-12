@@ -22,6 +22,7 @@ var params: ViewParams
 var order: Array[int] = []
 ## 비켜 놓기(stagger): 위층을 건물 뒤쪽(북, 칸 -y)으로 보내는 화면 거리 (가장 깊은 층 깊이 × 비율)
 var _back := Vector2.ZERO
+var _back_cells := 0.0
 
 
 func _init(p_building: BuildingData, p_params: ViewParams = null) -> void:
@@ -34,6 +35,7 @@ func _init(p_building: BuildingData, p_params: ViewParams = null) -> void:
 		deepest = maxf(deepest, building.footprint(lv).size.y)
 	# 칸 -y 한 칸 = 화면 (+HALF_W, -HALF_H): 건물 앞면(A면, 남)에서 볼 때 '뒤로'
 	_back = Vector2(IsoProjection.HALF_W, -IsoProjection.HALF_H) * deepest * params.stagger_back_ratio
+	_back_cells = deepest * params.stagger_back_ratio
 
 
 ## 비켜 놓기 모드인가 (2026-11-12 사용자 결정)
@@ -93,6 +95,11 @@ func above_levels(current: int) -> Array[int]:
 			break
 		result.append(up)
 	return result
+
+
+## 제자리 쌓기에서 위층을 뒤(북)로 비켜 놓은 거리 (칸). 위층 바닥 턱을 그만큼 넓혀 지금 층 뒷벽 위까지 닿게 한다
+func upper_back_cells() -> float:
+	return 0.0 if staggered() else _back_cells
 
 
 ## 위로 k층 떨어진 층을 그리는 화면 위치 (2026-11-12 사용자 결정 B): 층 높이만큼 위 + 건물 뒤쪽(북)으로 비켜서.

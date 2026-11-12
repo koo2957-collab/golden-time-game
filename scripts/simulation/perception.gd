@@ -44,6 +44,8 @@ var room_visible_now: PackedByteArray
 var room_seen: PackedByteArray
 var room_seen_depth: PackedFloat32Array
 var room_seen_visibility: PackedFloat32Array
+## 마지막으로 봤을 때 연기 선두가 간 거리 (m, 다 덮였으면 큰 값)
+var room_seen_reach: PackedFloat32Array
 
 var _eye_stand: float
 var _eye_crouch: float
@@ -136,6 +138,7 @@ func _init(p_fire: FireSim, p_units: UnitSystem, stats: ParamTable) -> void:
 	room_seen.resize(n)
 	room_seen_depth.resize(n)
 	room_seen_visibility.resize(n)
+	room_seen_reach.resize(n)
 	_vis_upper.resize(n)
 	_vis_lower.resize(n)
 
@@ -316,6 +319,7 @@ func _record(tick: int) -> void:
 			room_seen[c.index] = 1
 			room_seen_depth[c.index] = c.layer_depth
 			room_seen_visibility[c.index] = fire.visibility_m(c)
+			room_seen_reach[c.index] = 1.0e6 if c.smoke_covered() else c.smoke_reach_m
 
 
 func _touch(level: int, pos: Vector2) -> void:
@@ -361,7 +365,11 @@ func _cast(level: int, origin: Vector2, eye: float, rays: int, max_cells: float,
 				var vis := _outdoor_vis_cells
 				if r >= 0:
 					var c := fire.comps[r]
-					vis = _vis_upper[r] if eye >= c.height - c.layer_depth else _vis_lower[r]
+					# 연기 선두가 아직 안 온 곳은 맑다
+					if not c.smoke_reaches(Vector2(px, py)):
+						vis = _outdoor_vis_cells
+					else:
+						vis = _vis_upper[r] if eye >= c.height - c.shown_layer_depth() else _vis_lower[r]
 				elif type == BuildingData.Cell.DOOR or type == BuildingData.Cell.WINDOW:
 					vis = 2.0
 				haze += STEP_CELLS / vis

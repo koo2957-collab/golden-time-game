@@ -98,12 +98,35 @@ func step(dt: float, tick: int) -> void:
 			ignite(s.cell, tick)
 			_scheduled.erase(s)
 	grid.step(dt, comps, model)
+	_start_fire_fronts()
 	model.step(dt)
 	_check_windows(tick)
 	_check_doors_burnt(tick)
 	_check_flashover(tick)
 	_update_stages(tick)
 	_check_smoke(tick)
+
+
+## 불이 붙어 연기를 내기 시작한 방: 타는 칸 가운데(불 위)에서 연기 선두가 출발한다 (기획안 5-3-1)
+func _start_fire_fronts() -> void:
+	var need := false
+	for c in comps:
+		if c.q_potential > 0.0 and not c.smoke_started() and c.layer_depth < 0.005:
+			need = true
+			break
+	if not need:
+		return
+	var sums := {}
+	for i in grid.burning:
+		var c3 := grid.cell_of(i)
+		var comp := compartment_at(c3.z, c3.x, c3.y)
+		if comp:
+			var acc: Array = sums.get(comp.index, [Vector2.ZERO, 0])
+			sums[comp.index] = [acc[0] + Vector2(c3.x, c3.y) + Vector2(0.5, 0.5), int(acc[1]) + 1]
+	for c in comps:
+		if c.q_potential > 0.0 and not c.smoke_started() and c.layer_depth < 0.005:
+			var acc: Array = sums.get(c.index, [Vector2(c.rect.get_center()), 1])
+			c.start_smoke_front(acc[0] / float(acc[1]))
 
 
 func compartment_at(level: int, x: int, y: int) -> Compartment:
@@ -164,6 +187,7 @@ func _build_compartments() -> void:
 						c.cells.append(Vector2i(x, y))
 						map[y * building.width + x] = c.index
 			c.area = c.cells.size() * cs * cs
+			c.cell_m = cs
 			c.volume = c.area * c.height
 			c.surface = 2.0 * c.area + 2.0 * (c.rect.size.x + c.rect.size.y) * cs * c.height
 			comps.append(c)

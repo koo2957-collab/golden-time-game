@@ -1657,7 +1657,9 @@ func _draw_smoke() -> void:
 	# 불에서 솟는 연기 기둥 (연기층보다 먼저 — 위쪽은 연기층에 묻힌다)
 	var fires := _draw_fire_plumes()
 	for c in rooms:
-		var layer_d := c.layer_depth
+		# 천장을 다 덮기 전에는 출발점에서 선두까지 둥글게, 천장류 두께로만 (기획안 5-3-1)
+		var layer_d := c.shown_layer_depth()
+		var reach := c.smoke_reach_m if not c.smoke_covered() else INF
 		var vis := sim.fire.visibility_m(c)
 		var fade := 1.0
 		if not p.room_visible(c):
@@ -1665,7 +1667,15 @@ func _draw_smoke() -> void:
 				continue
 			layer_d = p.room_seen_depth[c.index]
 			vis = p.room_seen_visibility[c.index]
+			reach = p.room_seen_reach[c.index]
+			if reach < 1.0e5 and c.smoke_started():
+				layer_d = minf(layer_d, c.jet_depth_m)
+			else:
+				reach = INF
 			fade = 0.5
+		var spread := Vector3(0, 0, -1)
+		if reach < INF:
+			spread = Vector3(c.smoke_origin.x, c.smoke_origin.y, reach / c.cell_m)
 		layer_d = clampf(layer_d, 0.0, CEILING_M)
 		if layer_d < 0.05:
 			continue
@@ -1675,7 +1685,7 @@ func _draw_smoke() -> void:
 		var h := CEILING_M - layer_d
 		if h < stack.params.smoke_outline_below_m and density >= stack.params.smoke_outline_density:
 			_smoky[c.index] = true
-		if _draw_smoke_cloud(c, h, layer_d, a, density, fires):
+		if _draw_smoke_cloud(c, h, layer_d, a, density, fires, spread):
 			if c.rollover and p.room_visible(c):
 				_draw_rollover(r, h)
 			continue
@@ -1706,7 +1716,7 @@ func _draw_smoke() -> void:
 ## 방 안쪽: 맨 아래 줄 하나만 옅게 (바닥·대원이 비친다).
 ## 덩어리는 제자리에서 천천히 아래로 흘러내리며 옅어지고 위에서 다시 생긴다 (smoke_sink_s 주기).
 ## 짙으면(가시거리 짧음) 검은 연기, 옅으면 회색 연기
-func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density: float, fires: Array[Vector2] = []) -> bool:
+func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density: float, fires: Array[Vector2] = [], reach := Vector3(0, 0, -1)) -> bool:
 	if FxArt.puffs == null and not FxArt.load_all():
 		return false
 	if FxArt.puffs == null:
@@ -1730,7 +1740,7 @@ func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density
 	var sheet := curtain and FxArt.sheet != null
 	var col := Color(0.36, 0.36, 0.38) if dark else Color(0.8, 0.81, 0.84)
 	if sheet:
-		_draw_smoke_sheet(r, h, Color(col, minf(sp.smoke_sheet_alpha, a * 1.3)), c.index, _spread_dir(r, fires))
+		_draw_smoke_sheet(r, h, Color(col, minf(sp.smoke_sheet_alpha, a * 1.3)), c.index, _spread_dir(r, fires), reach)
 	# 그릴 덩어리: [깊이 순서, 칸, 줄]. 뒤(북서)에서 앞(남동)으로, 같은 자리는 위 줄부터
 	var draws: Array = []
 	for j in (0 if sheet else ny):
@@ -1738,6 +1748,10 @@ func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density
 			var front := (i == nx - 1 or j == ny - 1) and not curtain
 			for k in (rows if front else 1):
 				var row := k if front else rows - 1
+				# 연기 선두 밖은 아직 연기가 없다
+				var cc := Vector2(r.position) + (Vector2(i, j) + Vector2(0.5, 0.5)) * step
+				if not _in_front(reach, cc):
+					continue
 				draws.append([i + j, Vector2i(i, j), row])
 	if draws.size() > sp.smoke_max_puffs:
 		# 많으면 앞쪽을 남긴다
@@ -1769,13 +1783,43 @@ func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density
 		var bottom := proj.to_screen(at, bottom_m)
 		FxArt.draw_puff_rect(self, Rect2(bottom - Vector2(w * 0.5, hh * 0.9), Vector2(w, hh)), kind, seed, Color(tint, alpha))
 	if curtain:
-		_draw_curtain_faces(r, h, Color(col, minf(sp.smoke_curtain_alpha, a + 0.1)), c.index)
+		_draw_curtain_faces(r, h, Color(col, minf(sp.smoke_curtain_alpha, a + 0.1)), c.index, reach)
+	if reach.z >= 0.0:
+		_draw_smoke_front_edge(r, h, reach, Color(col, minf(sp.smoke_sheet_alpha, a * 1.3)), c.index)
 	return true
+
+
+## 연기 선두 원(출발점 x·y, 반지름 z — 셀) 안인가. z < 0 = 다 덮임
+func _in_front(front: Vector3, p: Vector2) -> bool:
+	return front.z < 0.0 or Vector2(front.x, front.y).distance_to(p) <= front.z
+
+
+## 퍼지는 연기 선두 가장자리: 둥근 선두를 따라 연기 덩어리가 말려 나간다 (방 안쪽만)
+func _draw_smoke_front_edge(r: Rect2i, h: float, front: Vector3, col: Color, seed: int) -> void:
+	var o := Vector2(front.x, front.y)
+	var rad := front.z
+	if rad <= 0.05:
+		return
+	var t := Time.get_ticks_msec() / 1000.0
+	var n := clampi(ceili(TAU * rad / 2.0), 6, 28)
+	var size := IsoProjection.HALF_W * 2.6
+	var inner := Rect2(r).grow(-0.2)
+	for k in n:
+		var ang := TAU * (k + 0.5 * _rand01(seed + k)) / n + t * 0.05
+		var p := o + Vector2(cos(ang), sin(ang)) * rad
+		if not inner.has_point(p):
+			continue
+		var roll := sin(t * 1.3 + k * 1.7)
+		var w := size * (0.85 + 0.25 * _rand01(seed * 3 + k))
+		var hh := w * 0.5
+		var bottom := proj.to_screen(p, h - 0.05 + 0.04 * roll)
+		# 흰 김 덩어리에 연기 판 색을 곱한다 (검은 덩어리는 작게 그리면 테두리가 고리처럼 보인다)
+		FxArt.draw_puff_rect(self, Rect2(bottom - Vector2(w * 0.5, hh * 0.85), Vector2(w, hh)), FxArt.PUFF_WHITE, seed + k, Color(col, col.a * (0.6 + 0.25 * roll)))
 
 
 ## 잘린 앞면(동·남)에 연기 커튼: 위 = 천장, 그림의 body_v 높이 = 연기층 아랫면(h), 그 아래는 말려 내려오는 가장자리.
 ## 가로는 tile_m 마다 한 장 (건물 좌표에 맞춰 이웃 방과 무늬가 이어진다)
-func _draw_curtain_faces(r: Rect2i, h: float, col: Color, seed: int) -> void:
+func _draw_curtain_faces(r: Rect2i, h: float, col: Color, seed: int, front := Vector3(0, 0, -1)) -> void:
 	var m: Dictionary = FxArt.meta.get("smoke_curtain", {})
 	var body_v := clampf(float(m.get("body_v", 0.75)), 0.3, 1.0)
 	var tile := maxf(1.0, float(m.get("tile_m", 2.0)) / sim.building.cell_size_m)
@@ -1785,6 +1829,15 @@ func _draw_curtain_faces(r: Rect2i, h: float, col: Color, seed: int) -> void:
 		var from := float(r.position.y if face == 0 else r.position.x)
 		var to := float(r.end.y if face == 0 else r.end.x)
 		var fixed := float(r.end.x if face == 0 else r.end.y)
+		# 연기 선두가 이 면에 닿은 구간만
+		if front.z >= 0.0:
+			var d := fixed - (front.x if face == 0 else front.y)
+			if absf(d) >= front.z:
+				continue
+			var half := sqrt(front.z * front.z - d * d)
+			var mid := front.y if face == 0 else front.x
+			from = maxf(from, mid - half)
+			to = minf(to, mid + half)
 		var s := from
 		while s < to - 0.001:
 			var e := minf(to, (floorf(s / tile) + 1.0) * tile)
@@ -1799,7 +1852,7 @@ func _draw_curtain_faces(r: Rect2i, h: float, col: Color, seed: int) -> void:
 ## 연기층 윗면 (Blender 플립북, 가로·세로 타일): 방 바닥 모양 그대로 연기층 아랫면 높이(h)에 깐다.
 ## 연기층이 내려오면 판 전체가 내려온다. 틈으로 바닥·대원이 비친다.
 ## spread: 무늬가 흘러가는 방향 (불난 방에서 멀어지는 쪽 — 연기가 퍼지는 모습). 불난 방은 제자리에서 끓는다
-func _draw_smoke_sheet(r: Rect2i, h: float, col: Color, seed: int, spread: Vector2) -> void:
+func _draw_smoke_sheet(r: Rect2i, h: float, col: Color, seed: int, spread: Vector2, front := Vector3(0, 0, -1)) -> void:
 	var m: Dictionary = FxArt.meta.get("smoke_sheet", {})
 	var cell := sim.building.cell_size_m
 	var tile := maxf(1.0, float(m.get("tile_m", 2.0)) / cell)
@@ -1818,11 +1871,43 @@ func _draw_smoke_sheet(r: Rect2i, h: float, col: Color, seed: int, spread: Vecto
 			var ye := minf(r.end.y, (ky + 1.0) * tile - off.y)
 			var v0 := maxf(0.0, (y + off.y) / tile - ky)
 			var v1 := v0 + (ye - y) / tile
-			var pts := PackedVector2Array([proj.to_screen(Vector2(x, y), h), proj.to_screen(Vector2(xe, y), h),
-				proj.to_screen(Vector2(xe, ye), h), proj.to_screen(Vector2(x, ye), h)])
-			FxArt.draw_flip(self, FxArt.sheet, "smoke_sheet", pts, Vector2(u0, v0), Vector2(u1, v1), col, seed)
+			var cut := _front_cut(front, Rect2(x, y, xe - x, ye - y))
+			if cut.is_empty():
+				var pts := PackedVector2Array([proj.to_screen(Vector2(x, y), h), proj.to_screen(Vector2(xe, y), h),
+					proj.to_screen(Vector2(xe, ye), h), proj.to_screen(Vector2(x, ye), h)])
+				FxArt.draw_flip(self, FxArt.sheet, "smoke_sheet", pts, Vector2(u0, v0), Vector2(u1, v1), col, seed)
+			else:
+				# 선두 원과 겹친 조각만
+				for poly: PackedVector2Array in cut:
+					var spts := PackedVector2Array()
+					var uvs := PackedVector2Array()
+					for q in poly:
+						spts.append(proj.to_screen(q, h))
+						uvs.append(Vector2(u0 + (q.x - x) / tile, v0 + (q.y - y) / tile))
+					FxArt.draw_flip_poly(self, FxArt.sheet, "smoke_sheet", spts, uvs, col, seed)
 			y = ye
 		x = xe
+
+
+## 직사각형(셀 좌표)을 연기 선두 원으로 자른다: 빈 배열 = 통째로 안(자르지 않음), [[]] 꼴의 빈 조각 = 통째로 밖
+func _front_cut(front: Vector3, rect: Rect2) -> Array:
+	if front.z < 0.0:
+		return []
+	var o := Vector2(front.x, front.y)
+	var far := 0.0
+	for p: Vector2 in [rect.position, Vector2(rect.end.x, rect.position.y), rect.end, Vector2(rect.position.x, rect.end.y)]:
+		far = maxf(far, o.distance_to(p))
+	if far <= front.z:
+		return []
+	var near := o.clamp(rect.position, rect.end).distance_to(o)
+	if near >= front.z:
+		return [PackedVector2Array()]
+	var circle := PackedVector2Array()
+	for k in 32:
+		circle.append(o + Vector2.from_angle(TAU * k / 32.0) * front.z)
+	var quad := PackedVector2Array([rect.position, Vector2(rect.end.x, rect.position.y), rect.end, Vector2(rect.position.x, rect.end.y)])
+	var out: Array = Geometry2D.intersect_polygons(quad, circle)
+	return out if not out.is_empty() else [PackedVector2Array()]
 
 
 ## 연기가 퍼지는 방향: 가장 가까운 불난 곳에서 이 방 쪽 (불난 방 자신·불 없음이면 0)
@@ -1943,10 +2028,9 @@ static func smoke_spills(p_sim: SimWorld, lv: int) -> Array[Array]:
 				continue
 		if src.height - src.layer_depth >= o.top or src.soot <= 0.001:
 			continue
-		var center := Vector2.ZERO
-		for cell in o.cells:
-			center += Vector2(cell) + Vector2(0.5, 0.5)
-		center /= o.cells.size()
+		var center := o.center()
+		if not src.smoke_reaches(center, CompartmentModel.FRONT_DOOR_MARGIN_M):
+			continue
 		var density := 1.0 - clampf(fire.visibility_m(src) / 10.0, 0.0, 1.0)
 		out.append([center, clampf(0.3 + density, 0.0, 1.0), _spill_dir(p_sim, lv, o, src, dst, center), o.top, interior, src.index, dst.index])
 	return out

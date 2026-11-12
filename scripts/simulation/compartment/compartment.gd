@@ -34,8 +34,18 @@ var flashover_temp := 600.0
 # 상태
 var t_upper := 20.0
 var t_lower := 20.0
-## 천장에서 연기층 하단까지의 깊이 (m)
+## 천장에서 연기층 하단까지의 깊이 (m) — 방 전체 평균 (연기 부피 ÷ 바닥 면적)
 var layer_depth := 0.0
+## 연기 선두 (기획안 5-3-1, 2026-11-12 사용자 결정 A): 연기는 출발점(불 위 또는 연기가 들어온 개구부)에서
+## 천장을 따라 퍼져 벽까지 덮은 뒤에야 아래로 쌓인다. 출발점 (셀 좌표, 없으면 x < 0 → 이미 다 덮인 것으로 본다)
+var smoke_origin := Vector2(-1, -1)
+## 선두가 출발점에서 나아간 거리 / 방에서 가장 먼 곳까지의 거리 (m)
+var smoke_reach_m := 0.0
+var smoke_full_m := 0.0
+## 다 덮기 전 천장류(천장을 따라 퍼지는 얇은 연기) 두께 (m)
+var jet_depth_m := 0.24
+## 셀 한 변 (m)
+var cell_m := 0.5
 ## 산소 질량분율 (대기 0.23)
 var y_o2 := O2_AMBIENT_MASS
 ## 미연소가스 (kg)
@@ -90,6 +100,42 @@ func stage_name() -> String:
 
 func layer_volume() -> float:
 	return layer_depth * area
+
+
+## 연기 선두가 출발했는가
+func smoke_started() -> bool:
+	return smoke_origin.x >= 0.0
+
+
+## 천장을 다 덮었는가 (선두 없이 연기층만 있으면 덮인 것으로 본다)
+func smoke_covered() -> bool:
+	return not smoke_started() or smoke_reach_m >= smoke_full_m
+
+
+## 연기 선두가 이 지점(셀 좌표)에 닿았는가
+func smoke_reaches(p: Vector2, margin_m := 0.0) -> bool:
+	return smoke_covered() or smoke_origin.distance_to(p) * cell_m <= smoke_reach_m + margin_m
+
+
+## 연기 선두 출발 (불 위 또는 연기가 들어온 개구부)
+func start_smoke_front(at: Vector2) -> void:
+	smoke_origin = at
+	smoke_reach_m = 0.0
+	var far := 0.0
+	for corner: Vector2 in [Vector2(rect.position), Vector2(rect.end.x, rect.position.y), Vector2(rect.end), Vector2(rect.position.x, rect.end.y)]:
+		far = maxf(far, at.distance_to(corner))
+	smoke_full_m = far * cell_m
+
+
+func clear_smoke_front() -> void:
+	smoke_origin = Vector2(-1, -1)
+	smoke_reach_m = 0.0
+	smoke_full_m = 0.0
+
+
+## 화면에 보이는 연기층 두께: 다 덮기 전에는 덮인 곳에 천장류 두께까지만
+func shown_layer_depth() -> float:
+	return layer_depth if smoke_covered() else minf(layer_depth, jet_depth_m)
 
 
 func o2_percent() -> float:

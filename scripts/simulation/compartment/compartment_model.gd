@@ -41,6 +41,11 @@ var _gas_max_pct: float
 var _hot_margin: float
 var _stair_coeff: float
 var _stair_depth: float
+var _front_min: float
+var _front_max: float
+var _front_hot_dt: float
+## 연기 선두가 개구부에 '닿았다'고 보는 여유 (m) — 개구부 칸이 방 가장자리 밖에 걸쳐 있다
+const FRONT_DOOR_MARGIN_M := 0.3
 
 
 func _init(p_comps: Array[Compartment], p_openings: Array[Opening], config: FireConfig) -> void:
@@ -65,9 +70,14 @@ func _init(p_comps: Array[Compartment], p_openings: Array[Opening], config: Fire
 	_hot_margin = config.value("hot_layer_flow_margin_c")
 	_stair_coeff = config.value("stair_upflow_coeff")
 	_stair_depth = config.value("stair_upflow_depth_m")
+	_front_min = config.value("smoke_front_min_mps")
+	_front_max = config.value("smoke_front_max_mps")
+	_front_hot_dt = config.value("smoke_front_hot_dt_c")
+	var jet_ratio := config.value("ceiling_jet_depth_ratio")
 	for c in comps:
 		c.t_upper = _t_amb
 		c.t_lower = _t_amb
+		c.jet_depth_m = c.height * jet_ratio
 
 
 func step(dt: float) -> void:
@@ -78,6 +88,20 @@ func step(dt: float) -> void:
 		_flow(o, dt)
 	for c in comps:
 		_update_temperature(c, dt)
+		_advance_front(c, dt)
+
+
+## 연기 선두: 교재 수평 연기 속도(0.5~1m/s, 화재2 제4편 제7절)로 천장을 따라 나아간다 — 뜨거울수록 빠르다.
+## 연기가 다 빠지면 지우고, 다음에 다시 들어오면 그 자리에서 새로 퍼진다
+func _advance_front(c: Compartment, dt: float) -> void:
+	if not c.smoke_started():
+		return
+	if c.layer_depth < 0.005 and c.q_potential <= 0.0:
+		c.clear_smoke_front()
+		return
+	if c.smoke_reach_m < c.smoke_full_m:
+		var hot := clampf((c.t_upper - _t_amb) / _front_hot_dt, 0.0, 1.0)
+		c.smoke_reach_m = minf(c.smoke_full_m, c.smoke_reach_m + lerpf(_front_min, _front_max, hot) * dt)
 
 
 ## 구획의 전체 개구 인자 (닫힌 문은 틈새값, 최소 누설 포함)
@@ -170,10 +194,13 @@ func _layer_outflow(o: Opening, from: int, to: int, dt: float) -> void:
 	var bottom := c.height - c.layer_depth
 	if bottom >= o.top:
 		return
+	# 연기 선두가 아직 이 개구부에 닿지 않았으면 넘치지 않는다
+	if not c.smoke_reaches(o.center(), FRONT_DOOR_MARGIN_M):
+		return
 	var h := o.top - maxf(bottom, o.sill)
 	var d_t := maxf(c.t_upper - _t_amb, 5.0)
 	var rate := OUTFLOW_COEFF * o.width * sqrt(2.0 * G * d_t / (_t_amb + 273.0)) * pow(h, 1.5)
-	_move_layer(c, to, rate * dt, dt)
+	_move_layer(c, to, rate * dt, dt, o)
 
 
 ## 계단: 아래층 연기층이 위층으로 올라간다. 수직 연기 속도가 교재 값(계단 초기 약 1.5m/s, 중기 3~4m/s, 화재2 330쪽)에
@@ -186,13 +213,15 @@ func _layer_outflow_up(o: Opening, dt: float) -> void:
 	# 위층 계단이 연기로 꽉 차면 더 올라가지 못하고 아래층에 쌓인다 → 꼭대기부터 아래로 찬다
 	if upper.layer_depth >= upper.height - STAIR_FULL_MARGIN_M:
 		return
+	if not c.smoke_reaches(o.center(), FRONT_DOOR_MARGIN_M):
+		return
 	var d_t := maxf(c.t_upper - _t_amb, 5.0)
 	var rate := _stair_coeff * o.area * sqrt(2.0 * G * d_t / (_t_amb + 273.0)) * minf(1.0, c.layer_depth / _stair_depth) * stack_factor
-	_move_layer(c, o.room_b, rate * dt, dt)
+	_move_layer(c, o.room_b, rate * dt, dt, o)
 
 
-## 연기층 일부(부피 dv)를 그을음·가스·열과 함께 옮긴다.
-func _move_layer(c: Compartment, to: int, dv: float, dt: float) -> void:
+## 연기층 일부(부피 dv)를 그을음·가스·열과 함께 옮긴다. 받는 방에 연기가 없었으면 그 개구부에서 선두가 출발한다
+func _move_layer(c: Compartment, to: int, dv: float, dt: float, via: Opening = null) -> void:
 	var vol := c.layer_volume()
 	if vol <= 0.0:
 		return
@@ -206,6 +235,8 @@ func _move_layer(c: Compartment, to: int, dv: float, dt: float) -> void:
 	if to == Opening.OUTSIDE:
 		return
 	var d := comps[to]
+	if via and not d.smoke_started() and d.layer_depth < 0.005:
+		d.start_smoke_front(via.center())
 	d.soot += soot_moved
 	d.gas += gas_moved
 	d.toxicity = maxf(d.toxicity, c.toxicity)

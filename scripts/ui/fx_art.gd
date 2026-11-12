@@ -97,6 +97,29 @@ static func draw_flip(ci: CanvasItem, tex: Texture2D, key: String, pts: PackedVe
 	return true
 
 
+## 플립북을 아무 다각형에: uvs = 점마다 한 장 안의 좌표(0~1). 잘라 낸 조각(연기 선두 안쪽)을 그릴 때
+static func draw_flip_poly(ci: CanvasItem, tex: Texture2D, key: String, pts: PackedVector2Array, uvs: PackedVector2Array, modulate: Color, seed: int) -> bool:
+	if tex == null or pts.size() < 3:
+		return false
+	var m: Dictionary = meta.get(key, {})
+	var frames := maxi(1, int(m.get("frames", 24)))
+	var f := Time.get_ticks_msec() / 1000.0 * float(m.get("fps", 6.0)) + float(posmod(seed * 7, frames))
+	var f0 := posmod(int(floorf(f)), frames)
+	var w := f - floorf(f)
+	var inset := 0.5 / float(tex.get_height())
+	var span := 1.0 / frames
+	var cols := PackedColorArray()
+	cols.resize(pts.size())
+	for pair: Array in [[f0, 1.0], [(f0 + 1) % frames, w]]:
+		var base := float(pair[0]) * span
+		var fu := PackedVector2Array()
+		for uv in uvs:
+			fu.append(Vector2(uv.x, clampf(base + uv.y * span, base + inset, base + span - inset)))
+		cols.fill(Color(modulate, modulate.a * float(pair[1])))
+		ci.draw_polygon(pts, cols, fu, tex)
+	return true
+
+
 ## 덩어리 그림을 아무 직사각형에 (납작하게 눌러 그릴 때). 구워져 있지 않으면 false
 static func draw_puff_rect(ci: CanvasItem, rect: Rect2, kind: int, k: int, modulate: Color) -> bool:
 	if not load_all() or puffs == null:

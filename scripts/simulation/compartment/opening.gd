@@ -29,6 +29,19 @@ var forced := false
 var door_check := false
 
 
+var _center := Vector2(-1, -1)
+
+
+## 개구부 가운데 (셀 좌표)
+func center() -> Vector2:
+	if _center.x < 0.0 and not cells.is_empty():
+		var s := Vector2.ZERO
+		for c in cells:
+			s += Vector2(c) + Vector2(0.5, 0.5)
+		_center = s / cells.size()
+	return _center
+
+
 func height() -> float:
 	return top - sill
 

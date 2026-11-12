@@ -38,6 +38,18 @@ func _run() -> void:
 		ff.prev_level = top_lv
 		ff.pos = Vector2(cell) + Vector2(0.5, 0.5) + Vector2(0.7 * (ff.id % 2), 0.3)
 		ff.prev_pos = ff.pos
+	# 세 번째 인자 front: 불 안 난 맨 위층 방들의 연기 선두를 연기가 들어오는 문에서 다시 출발시켜 퍼지는 모습을 찍는다
+	if args.size() > 2 and args[2] == "front":
+		for c in sim.fire.comps:
+			if c.level != top_lv or c.q_potential > 0.0:
+				continue
+			for oi in c.openings:
+				var o: Opening = sim.fire.openings[oi]
+				var other := o.other_side(c.index)
+				if other >= 0 and sim.fire.comps[other].q_potential > 0.0 or (other >= 0 and sim.fire.comps[other].name == "복도" and c.name != "복도"):
+					c.start_smoke_front(o.center())
+					c.smoke_reach_m = c.smoke_full_m * 0.45
+					break
 	var levels: Array = sim.building.levels()
 	var proj = world.projection()
 	var iso = world.iso_view if "iso_view" in world else world.get_node("IsoView")

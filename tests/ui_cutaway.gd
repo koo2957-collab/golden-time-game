@@ -56,7 +56,8 @@ func _run() -> void:
 	# 2026-11-12: 아래층은 온전히 그린다 (흑백·어둡게, 연기·불·사람 빼고 + 사람 점선 테두리). 위층만 턱·점선
 	_check("아래층은 220px씩 아래·온전히(흑백)", [iso.layers[0].ghost, iso.layers[1].position.y, iso.layers[1].ghost], [false, 220.0, false])
 	_check("아래층은 연기·불·사람을 빼고 사람은 테두리로", [iso.layers[1].skip_live, iso.layers[1].people_outline, iso.layers[1].self_modulate.r < 1.0, iso.layers[0].self_modulate.r], [true, true, true, 1.0])
-	_check("위층 13층은 220px 위에 (턱·뒷벽)", [iso.upper_layers[0].visible, iso.upper_layers[0].level, iso.upper_layers[0].position.y, iso.upper_layers[0].ghost], [true, 13, -220.0, true])
+	_check("위층 13층은 220px 위에 (턱·뒷벽)", [iso.upper_layers[0].visible, iso.upper_layers[0].level, iso.upper_layers[0].position, iso.upper_layers[0].ghost], [true, 13, iso.stack.upper_vec(1), true])
+	_check("위층은 층 높이만큼 위 + 건물 뒤(오른쪽 위)로 비켜서 (2026-11-12 B)", [iso.stack.upper_vec(1).y < -220.0, iso.stack.upper_vec(1).x > 0.0], [true, true])
 	_check("12층 남쪽 앞벽은 천장 높이 반투명 (2026-11-11 결정)", iso.layers[0]._wall_height(8, 19), 2.4)
 	# 2026-11-12: 지금 층은 위층(계단 디딤판용 upper_level)이 있어도 가림 표로 칸을 빼지 않는다 — 뒷벽이 사라졌던 결함
 	_check("지금 층은 위층이 있어도 모든 칸을 그린다", [iso.layers[0].upper_level, iso.layers[0]._draw_mask().is_empty()], [13, true])

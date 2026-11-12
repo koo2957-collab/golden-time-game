@@ -95,6 +95,14 @@ func above_levels(current: int) -> Array[int]:
 	return result
 
 
+## 위로 k층 떨어진 층을 그리는 화면 위치 (2026-11-12 사용자 결정 B): 층 높이만큼 위 + 건물 뒤쪽(북)으로 비켜서.
+## 제자리 쌓기에서도 위층은 뒤로 비킨다 (아래층은 지금 층 바로 밑 — 가려지는 칸 계산이 수직 기준)
+func upper_vec(k: int) -> Vector2:
+	if staggered():
+		return -offset_vec(k)
+	return (Vector2(0, -params.floor_height_px) + _back) * k
+
+
 ## 보이는 위층들 위로 층이 더 이어지는가 (잘린 벽으로 알린다, 2026-11-12). 비켜 놓기에서는 쓰지 않는다
 func more_above(current: int) -> bool:
 	if staggered() or not building.has_level(current):
@@ -210,7 +218,7 @@ func pick_level(current: int, world_pos: Vector2, proj: ViewProjection) -> int:
 	# 비켜 놓기: 위층이 아래층 위에 그려지므로 겹친 곳은 위층이 먼저
 	if staggered():
 		for k in above_levels(current).size():
-			var cu := Vector2i(proj.to_cell(world_pos + offset_vec(k + 1)).floor())
+			var cu := Vector2i(proj.to_cell(world_pos - upper_vec(k + 1)).floor())
 			if building.cell(above_levels(current)[k], cu.x, cu.y) in BuildingData.STRUCTURE:
 				return above_levels(current)[k]
 	var stack := visible_levels(current)
@@ -226,7 +234,7 @@ func pick_level(current: int, world_pos: Vector2, proj: ViewProjection) -> int:
 	# 위층: 지금 층·아래층 어디에도 걸리지 않는 곳에 보이는 위층 구조 (기획안 9-4: 그 층을 누르면 그 층으로)
 	var above := above_levels(current)
 	for k in above.size():
-		var c := Vector2i(proj.to_cell(world_pos + offset_vec(k + 1)).floor())
+		var c := Vector2i(proj.to_cell(world_pos - upper_vec(k + 1)).floor())
 		if building.cell(above[k], c.x, c.y) in BuildingData.STRUCTURE:
 			return above[k]
 	return current

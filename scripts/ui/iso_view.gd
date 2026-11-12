@@ -218,7 +218,7 @@ func _apply() -> void:
 		# 비켜 놓기: 위층도 온전하게(뒤로 비켜 있다). 예전 방식: 바로 위층 회백색 10%, 더 위는 사람 테두리만
 		up.ghost_mode = 0 if stack.staggered() else (1 if k == 0 else 3)
 		up.refresh()
-		up.position = -stack.offset_vec(k + 1)
+		up.position = stack.upper_vec(k + 1)
 		# 비켜 놓기: 짝 위층은 흐리게. 예전 방식은 투명도가 선 색에 들어 있다
 		var udim := params.partner_dim
 		up.modulate = Color(udim, udim, udim, params.partner_alpha) if stack.staggered() else Color.WHITE

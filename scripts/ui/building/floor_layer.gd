@@ -3075,7 +3075,7 @@ func _draw_adjacent() -> void:
 				if stub_above:
 					# 안쪽 면(북벽은 남쪽 면, 서벽은 동쪽 면)을 한 층 위에 반쯤
 					var fa := Vector2(p0.x, p1.y) if horizontal else Vector2(p1.x, p0.y)
-					_stub_face(fa, p1, stack.params.floor_height_px, 1.0,
+					_stub_face(fa, p1, stack.upper_vec(1), 1.0,
 						tone.darkened(SOUTH_SHADE if horizontal else EAST_SHADE), stack.params.ghost_back_wall_alpha, level * 7 + (0 if horizontal else 3))
 			continue
 		# 아래층: 바깥벽은 바닥선 + 천장선 + 양 끝 세로선의 점선, 확인된 실내 벽은 바닥 높이 점선
@@ -3103,14 +3103,13 @@ func _draw_adjacent() -> void:
 		_draw_upper_outline(line, dash)
 
 
-## 잘린 벽 한 면: 바닥선 a→b (셀 좌표)에서 화면으로 lift_px 올린 곳을 밑변으로, dir(1 = 위로, -1 = 아래로) 쪽으로
+## 잘린 벽 한 면: 바닥선 a→b (셀 좌표)를 화면에서 lift 만큼 옮긴 곳을 밑변으로, dir(1 = 위로, -1 = 아래로) 쪽으로
 ## 층 높이 × stub_height_ratio(±0.15) 만큼. 밑변은 진하기 alpha, 잘린 변은 거의 투명. 한 칸 남짓마다 높이가 달라 들쭉날쭉하다
-func _stub_face(a: Vector2, b: Vector2, lift_px: float, dir: float, color: Color, alpha: float, seed: int) -> void:
+func _stub_face(a: Vector2, b: Vector2, lift: Vector2, dir: float, color: Color, alpha: float, seed: int) -> void:
 	var length := a.distance_to(b)
 	if length < 0.5:
 		return
 	var n := maxi(2, ceili(length / 1.5))
-	var lift := Vector2(0, -lift_px)
 	var ratio := stack.params.stub_height_ratio
 	var base := Color(color, alpha)
 	var faded := Color(color, alpha * 0.08)
@@ -3131,8 +3130,8 @@ func _draw_stub_below() -> void:
 	var fp: Rect2i = sim.building.footprint(level)
 	var wall := _structure_color(skin.color("wall"))
 	var se := Vector2(fp.end)
-	_stub_face(Vector2(fp.position.x, fp.end.y), se, 0.0, -1.0, wall.darkened(SOUTH_SHADE), 1.0, level * 11)
-	_stub_face(Vector2(fp.end.x, fp.position.y), se, 0.0, -1.0, wall.darkened(EAST_SHADE), 1.0, level * 13 + 5)
+	_stub_face(Vector2(fp.position.x, fp.end.y), se, Vector2.ZERO, -1.0, wall.darkened(SOUTH_SHADE), 1.0, level * 11)
+	_stub_face(Vector2(fp.end.x, fp.position.y), se, Vector2.ZERO, -1.0, wall.darkened(EAST_SHADE), 1.0, level * 13 + 5)
 
 
 ## 위층 바닥 턱 (2026-11-12 사용자 결정): 위층 바닥을 뒷벽(북)·왼쪽 벽(서)을 따라 좁은 띠로만 남긴다 — 가운데가 깨져 뚫린 바닥처럼.

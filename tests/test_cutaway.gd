@@ -191,3 +191,15 @@ func test_smoke_spills_from_fuller_room_and_outside() -> void:
 		if not bool(s[4]) and int(s[5]) == outer.room_a:
 			out_found = true
 	assert_true(out_found, "바깥 창·문으로 넘친다")
+
+
+func test_upper_floor_set_back_in_stack_mode() -> void:
+	# 2026-11-12 사용자 결정 B: 제자리 쌓기에서도 위층은 층 높이만큼 위 + 건물 뒤(북, 화면 오른쪽 위)로 비킨다. 아래층은 바로 밑
+	var s := _stack(APT)
+	var up := s.upper_vec(1)
+	assert_true(up.x > 0.0 and up.y < -s.params.floor_height_px, "위층: 오른쪽 위로 (층 높이보다 더 위) %s" % up)
+	assert_eq(s.offset_vec(1), Vector2(0, s.params.floor_height_px), "아래층: 바로 아래 220px")
+	var proj := IsoProjection.new()
+	# 위층(13층)이 보이는 곳 — 13층 북쪽 벽 칸을 그 위치로 옮긴 자리 — 을 누르면 13층
+	var at := proj.to_screen(Vector2(10.5, 4.5)) + up
+	assert_eq(s.pick_level(12, at, proj), 13, "비켜 놓인 위층을 누르면 위층")

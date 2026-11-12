@@ -48,3 +48,4 @@
 | 2026-11-12 | F04 실내 벽 진하게 | data/ui/view_params(inner_wall_alpha_bottom 0.95·top 0.6), scripts/ui/building/view_params | 다음: 튜토리얼 단계 정비 |
 | 2026-11-12 | F01 다른 층 점선 상자·점선 사람 | scripts/ui/building/floor_layer(_draw_adjacent 3차원 점선, 다른 층 재질 dash_px)·view_params, shaders/ghost_outline(dash_px), data/ui/view_params(ghost_line_alpha 0.45), tests/test_cutaway | 다음: 튜토리얼 단계 정비 |
 | 2026-11-12 | F01 위층 뒷벽 반투명 | scripts/ui/building/floor_layer(_draw_adjacent 위층 북·서 벽 면)·view_params, data/ui/view_params(ghost_back_wall_alpha 0.4), tests/test_cutaway | 다음: 튜토리얼 단계 정비 |
+| 2026-11-12 | F01 위층 뒷벽 면 고침 | scripts/ui/building/floor_layer(_draw_adjacent: 모서리까지·가운데 칸 판정·밝은 면 색) | 다음: 튜토리얼 단계 정비 |

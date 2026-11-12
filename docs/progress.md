@@ -51,3 +51,4 @@
 | 2026-11-12 | F01 위층 뒷벽 면 고침 | scripts/ui/building/floor_layer(_draw_adjacent: 모서리까지·가운데 칸 판정·밝은 면 색) | 다음: 튜토리얼 단계 정비 |
 | 2026-11-12 | F01 위층 뒷벽 두께 상자 | scripts/ui/building/floor_layer(_draw_adjacent: 위층 북·서 바깥벽을 _box로) | 다음: 튜토리얼 단계 정비 |
 | 2026-11-12 | F01 다른 층 점선 벽 두께 상자 | scripts/ui/building/floor_layer(_draw_adjacent 점선 상자 윤곽) | 다음: 튜토리얼 단계 정비 |
+| 2026-11-12 | F01 다른 층 불 숨김 | scripts/ui/building/floor_layer(_draw_ghost_glow는 남은 빛만 지움), data/ui/view_params(설명) | 다음: 튜토리얼 단계 정비 |

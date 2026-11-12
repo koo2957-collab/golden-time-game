@@ -2985,25 +2985,12 @@ func _hidden_by_upper(p: Vector2, h: float) -> bool:
 	return Geometry2D.is_point_in_polygon(proj.to_screen(p, h), Geometry2D.convex_hull(pts))
 
 
-## 다른 층의 불 (2026-11-12 사용자 결정): 불꽃은 그리지 않고 둘레 빛 번짐만, 지금 층 바닥 위로 비치게.
-## 불꽃과 같은 정보 규칙 — 지금 보이는 타는 칸만
+## 다른 층의 불은 화면에 그리지 않는다 (2026-11-12 사용자 결정): 지금 층 바닥 위·방 위에 비쳐 이 층 불처럼 헷갈린다.
+## 어느 층에 불이 있는지는 층 막대(본 불 = 빨강·주황 창)와 무전·상황판으로 안다. 지금 층이었을 때 남은 빛만 지운다
 func _draw_ghost_glow() -> void:
-	if _glow == null:
+	if _glow == null or _glow.spots.is_empty():
 		return
-	_glow.z_as_relative = false
-	_glow.z_index = 99
-	var spots: Array = []
-	if not thermal and ghost_mode != 3:
-		var grid := sim.fire.grid
-		var p := sim.perception
-		for i in grid.burning:
-			var c3 := grid.cell_of(i)
-			if c3.z != level or not p.is_visible(level, c3.x, c3.y):
-				continue
-			var intensity := clampf(grid.hrr[i] / maxf(grid.peak_kw(i), 1.0), 0.15, 1.0)
-			var base := proj.to_screen(Vector2(c3.x + 0.5, c3.y + 0.5), _furniture_height(c3.x, c3.y))
-			spots.append([base, IsoProjection.HALF_W * (3.0 + 3.0 * intensity), intensity, c3.x * 131 + c3.y])
-	_glow.spots = spots
+	_glow.spots = []
 	_glow.queue_redraw()
 
 

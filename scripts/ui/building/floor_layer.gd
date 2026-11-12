@@ -861,6 +861,9 @@ func _process(_delta: float) -> void:
 	# 아래층(보이기만 하는 층)은 시뮬레이션 틱이 바뀔 때만, 두 아래층이 틱을 번갈아 다시 그린다 (R17 성능).
 	# 지금 층은 대원 움직임·불꽃이 부드럽게 보이도록 매 프레임
 	if depth > 0 and sim != null:
+		# 다른 층 사람 테두리는 매 프레임 (걷는 동작·위치가 끊기지 않게, 2026-11-12) — 사람 몇 명뿐이라 가볍다
+		if ghost and _ghost_units:
+			_ghost_units.queue_redraw()
 		var tick := sim.clock.tick
 		if tick == _drawn_tick or (tick % 2 != depth % 2 and _drawn_tick >= 0 and tick - _drawn_tick < 2):
 			return
@@ -1436,6 +1439,15 @@ func _draw_unit_sprite(ff: Firefighter, crew: Crew, squad: Squad, feet: Vector2)
 	var art := SpriteArt.get_set(str(SpriteArt.config().get("crew", "")))
 	if art == null:
 		return false
+	var pose := _unit_pose(ff, crew, art)
+	# 헬멧 색은 출동대 종류로만 (진압 검정·구조 주황·구급 흰색). RIT·안전담당은 임무라 이름표로 (_role_tag)
+	var tint := Color.WHITE.lerp(Color(1.0, 0.45, 0.35), clampf(ff.heat_stress, 0.0, 1.0) * 0.6)
+	return art.draw(self, pose[0], pose[1], pose[2], feet, tint, SpriteArt.helmet_color(squad.type))
+
+
+## 대원 그림 자세 [동작, 방향, 장] — 실제 그림과 테두리(다른 층·연기 속)가 같은 것을 쓴다 (2026-11-12).
+## 걷는 방향·방수 방향을 이 노드의 _facing 에 기억한다
+func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 	var delta := ff.pos - ff.prev_pos
 	var moving := ff.level == ff.prev_level and delta.length_squared() > 0.000001
 	var anim := "idle"
@@ -1459,9 +1471,16 @@ func _draw_unit_sprite(ff: Firefighter, crew: Crew, squad: Squad, feet: Vector2)
 	var frame := 0
 	if moving or anim in ["idle", "spray", "search"]:
 		frame = SpriteArt.frame_at(anim, art.frames(anim), ff.id * 0.37)
-	# 헬멧 색은 출동대 종류로만 (진압 검정·구조 주황·구급 흰색). RIT·안전담당은 임무라 이름표로 (_role_tag)
-	var tint := Color.WHITE.lerp(Color(1.0, 0.45, 0.35), clampf(ff.heat_stress, 0.0, 1.0) * 0.6)
-	return art.draw(self, anim, int(_facing.get(ff.id, 1)), frame, feet, tint, SpriteArt.helmet_color(squad.type))
+	return [anim, int(_facing.get(ff.id, 1)), frame]
+
+
+## 요구조자 그림 자세 [동작, 방향, 장, 색] — 실제 그림과 테두리가 같은 것을 쓴다
+func _victim_pose(v: Victim, art: SpriteArt.SpriteSet) -> Array:
+	var walking := sim.evac.paths.has(v.id) and v.state == Victim.State.CONSCIOUS
+	var standing := v.state == Victim.State.CONSCIOUS
+	var anim := "walk" if walking else ("idle" if standing else "down_up")
+	var tint := Color(0.55, 0.55, 0.6) if v.state == Victim.State.DEAD else Color.WHITE
+	return [anim, (v.id * 3) % 8, SpriteArt.frame_at(anim, art.frames(anim), v.id * 0.5), tint]
 
 
 ## 임무 역할 이름표: RIT·현장안전담당 (헬멧 색은 바꾸지 않는다)
@@ -2209,12 +2228,8 @@ func _draw_victim_sprite(v: Victim, feet: Vector2) -> bool:
 	var art := SpriteArt.victim_set(v.label())
 	if art == null:
 		return false
-	var walking := sim.evac.paths.has(v.id) and v.state == Victim.State.CONSCIOUS
-	var standing := v.state == Victim.State.CONSCIOUS
-	var anim := "walk" if walking else ("idle" if standing else "down_up")
-	var tint := Color(0.55, 0.55, 0.6) if v.state == Victim.State.DEAD else Color.WHITE
-	var dir := (v.id * 3) % 8
-	return art.draw(self, anim, dir, SpriteArt.frame_at(anim, art.frames(anim), v.id * 0.5), feet, tint)
+	var pose := _victim_pose(v, art)
+	return art.draw(self, pose[0], pose[1], pose[2], feet, pose[3])
 
 
 ## 바깥으로 연기가 뿜어져 나오는 창·문 (밖에서 늘 보이는 상황 판단 단서)
@@ -3090,9 +3105,8 @@ func _draw_outlines(target: CanvasItem, rooms: Dictionary, hulls: Array[PackedVe
 			if target == _ghost_units and _outdoor_at(p) and not _hidden_by_upper(p, 1.0):
 				continue
 			var feet := proj.to_screen(p, 0.0)
-			var moving := ff.level == ff.prev_level and (ff.pos - ff.prev_pos).length_squared() > 0.000001
-			var anim := "down" if ff.incapacitated else ("walk" if moving else "idle")
-			if crew_art == null or not crew_art.draw(target, anim, int(_facing.get(ff.id, 1)), SpriteArt.frame_at(anim, crew_art.frames(anim), ff.id * 0.37), feet, GHOST_CREW):
+			var pose := _unit_pose(ff, c, crew_art) if crew_art else []
+			if crew_art == null or not crew_art.draw(target, pose[0], pose[1], pose[2], feet, GHOST_CREW):
 				target.draw_arc(feet + Vector2(0, -18), 9.0, 0.0, TAU, 16, GHOST_CREW, 2.0)
 	for v in sim.rescue.victims:
 		if not v.discovered or v.level != level or v.carried_by >= 0:
@@ -3105,8 +3119,8 @@ func _draw_outlines(target: CanvasItem, rooms: Dictionary, hulls: Array[PackedVe
 			continue
 		var feet := proj.to_screen(v.pos, 0.05)
 		var art := SpriteArt.victim_set(v.label()) if not thermal else null
-		var anim := "idle" if v.state == Victim.State.CONSCIOUS else "down_up"
-		if art == null or not art.draw(target, anim, (v.id * 3) % 8, 0, feet, GHOST_VICTIM):
+		var vpose := _victim_pose(v, art) if art else []
+		if art == null or not art.draw(target, vpose[0], vpose[1], vpose[2], feet, GHOST_VICTIM):
 			target.draw_arc(feet + Vector2(0, -6), 9.0, 0.0, TAU, 16, GHOST_VICTIM, 2.0)
 
 

@@ -43,3 +43,4 @@
 | 2026-11-12 | F01 바깥 땅 사람·얇은 테두리 | scripts/ui/building/floor_layer(_draw_outdoor_people·_outdoor_at·_hidden_by_upper)·view_params, shaders/ghost_outline, data/ui/view_params(ghost_outline_px), tests/test_cutaway | 다음: 튜토리얼 단계 정비 |
 | 2026-11-12 | F01 다른 층 사람 흐린 덩어리·층 표 | shaders/ghost_outline(flat_fill), scripts/ui/building/floor_layer(재질 둘로 나눔·_ghost_badges·_draw_ghost_badges·_badge)·view_params, data/ui/view_params(ghost_flat_alpha), tests/test_cutaway | 기본 확대에서 층 표 글씨가 작음(다른 이름표와 같은 12px) — 필요하면 키움. 다음: 튜토리얼 단계 정비 |
 | 2026-11-12 | F01 다른 층 사람 테두리만 | shaders/ghost_outline(덩어리 모드 지움), scripts/ui/building/floor_layer(층 표 지움)·view_params, data/ui/view_params(ghost_other_fill, ghost_flat_alpha 지움), tests/test_cutaway | 다음: 튜토리얼 단계 정비 |
+| 2026-11-12 | F01 테두리 사람 자세 | scripts/ui/building/floor_layer(_unit_pose·_victim_pose로 실제 그림과 테두리가 같은 동작·방향·장, 다른 층 테두리는 매 프레임 다시 그림) | 고친 결함: 다른 층 테두리가 방향 고정·걷기/서기만·틱마다(초당 5번) 끊김. 헬멧 색은 테두리에 넘기지 않음(안쪽 투명이라 안 보임) |

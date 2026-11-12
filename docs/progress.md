@@ -45,3 +45,4 @@
 | 2026-11-12 | F01 다른 층 사람 테두리만 | shaders/ghost_outline(덩어리 모드 지움), scripts/ui/building/floor_layer(층 표 지움)·view_params, data/ui/view_params(ghost_other_fill, ghost_flat_alpha 지움), tests/test_cutaway | 다음: 튜토리얼 단계 정비 |
 | 2026-11-12 | F01 테두리 사람 자세 | scripts/ui/building/floor_layer(_unit_pose·_victim_pose로 실제 그림과 테두리가 같은 동작·방향·장, 다른 층 테두리는 매 프레임 다시 그림) | 고친 결함: 다른 층 테두리가 방향 고정·걷기/서기만·틱마다(초당 5번) 끊김. 헬멧 색은 테두리에 넘기지 않음(안쪽 투명이라 안 보임) |
 | 2026-11-12 | F01 다른 층 평면도 선만 | scripts/ui/building/floor_layer(_draw_adjacent 선만, _draw_far_block 지움)·view_params, data/ui/view_params(ghost_line_alpha 0.3·ghost_dash_px, adjacent_alpha·ghost_inner_wall_m 지움), tests(test_cutaway, _shot_house tutorial 인자) | 다음: 튜토리얼 단계 정비 |
+| 2026-11-12 | F04 실내 벽 진하게 | data/ui/view_params(inner_wall_alpha_bottom 0.95·top 0.6), scripts/ui/building/view_params | 다음: 튜토리얼 단계 정비 |

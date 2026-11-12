@@ -3059,20 +3059,21 @@ func _draw_adjacent() -> void:
 				var body := Color(tone, stack.params.ghost_back_wall_alpha)
 				_box(p0, p1, 0.0, CEILING_M, body, body, body)
 				continue
-		# 그 밖(앞벽·오른쪽 벽·실내 벽·아래층): 흰 점선. 바깥벽은 모서리까지, 바닥선 + 천장선 + 양 끝 세로선의 3차원 상자
+		# 그 밖의 바깥벽(앞벽·오른쪽 벽, 아래층 바깥벽): 같은 한 칸 두께 상자의 모서리를 흰 점선으로 — 면은 칠하지 않는다
+		# (지금 층 위에 겹치는 자리라 칠하면 가린다). 반투명 상자와 두께·끝이 같아 통일된다 (2026-11-12 사용자 결정)
 		if outer:
-			var along: Vector2 = (rb - ra).normalized() * 0.5
-			ra -= along
-			rb += along
-		var a0 := proj.to_screen(ra, 0.02)
-		var b0 := proj.to_screen(rb, 0.02)
-		draw_dashed_line(a0, b0, line, 1.2, dash)
-		if outer:
-			var a1 := proj.to_screen(ra, CEILING_M)
-			var b1 := proj.to_screen(rb, CEILING_M)
-			draw_dashed_line(a1, b1, line, 1.2, dash)
-			draw_dashed_line(a0, a1, line, 1.2, dash)
-			draw_dashed_line(b0, b1, line, 1.2, dash)
+			var q0 := ra - Vector2(0.5, 0.5)
+			var q1 := rb + Vector2(0.5, 0.5)
+			var corners: Array[Vector2] = [q0, Vector2(q1.x, q0.y), q1, Vector2(q0.x, q1.y)]
+			for k in 4:
+				var c0: Vector2 = corners[k]
+				var c1: Vector2 = corners[(k + 1) % 4]
+				draw_dashed_line(proj.to_screen(c0, 0.02), proj.to_screen(c1, 0.02), line, 1.2, dash)
+				draw_dashed_line(proj.to_screen(c0, CEILING_M), proj.to_screen(c1, CEILING_M), line, 1.2, dash)
+				draw_dashed_line(proj.to_screen(c0, 0.02), proj.to_screen(c0, CEILING_M), line, 1.2, dash)
+			continue
+		# 실내 벽: 바닥 높이 점선 한 줄 (얇은 벽이라 두 줄로 그리면 빽빽해진다)
+		draw_dashed_line(proj.to_screen(ra, 0.02), proj.to_screen(rb, 0.02), line, 1.2, dash)
 
 
 ## 다른 층의 대원(노랑)·발견한 요구조자(빨강): 그림을 테두리 셰이더로. 그림이 없으면 동그라미 테두리

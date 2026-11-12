@@ -19,6 +19,11 @@ static var sheet: Texture2D
 static var plume: Texture2D
 ## 개구부 윗부분으로 흘러나와 말려 오르는 연기
 static var spill: Texture2D
+## 물줄기 (사용자 참고 그림, tools/prep_water_fx.py): 직사 줄기·맞은 자리, 분무 원뿔·닿은 자리. 없으면 null
+static var water_jet: Texture2D
+static var water_splash: Texture2D
+static var water_fog: Texture2D
+static var water_fog_splash: Texture2D
 static var meta: Dictionary = {}
 
 
@@ -35,6 +40,10 @@ static func load_all() -> bool:
 	sheet = _tex(DIR + "/smoke_sheet.png")
 	plume = _tex(DIR + "/smoke_plume.png")
 	spill = _tex(DIR + "/smoke_spill.png")
+	water_jet = _tex(DIR + "/water_jet.png")
+	water_splash = _tex(DIR + "/water_splash.png")
+	water_fog = _tex(DIR + "/water_fog.png")
+	water_fog_splash = _tex(DIR + "/water_fog_splash.png")
 	return flame != null
 
 
@@ -124,6 +133,41 @@ static func draw_flip_poly(ci: CanvasItem, tex: Texture2D, key: String, pts: Pac
 			fu.append(Vector2(uv.x, clampf(base + uv.y * span, base + inset, base + span - inset)))
 		cols.fill(Color(modulate, modulate.a * float(pair[1])))
 		ci.draw_polygon(pts, cols, fu, tex)
+	return true
+
+
+## 물줄기: 관창(from) → 맞는 곳(to), 화면 좌표. straight = 직사(가는 줄기 + 튀는 물), 아니면 분무(원뿔 + 물안개).
+## spread_px = 분무가 퍼지는 반지름(화면 px). 그림을 줄기 방향으로 돌려 늘이고, 위아래를 번갈아 뒤집고 길이를 조금씩 바꿔
+## 흐르는 것처럼 보이게 한다 (화면 시간). seed 로 조마다 박자를 다르게. 그림이 없으면 false (도형으로)
+static func draw_water(ci: CanvasItem, from: Vector2, to: Vector2, straight: bool, spread_px: float, modulate: Color, seed: int) -> bool:
+	if not load_all():
+		return false
+	var body := water_jet if straight else water_fog
+	var splash := water_splash if straight else water_fog_splash
+	if body == null or splash == null:
+		return false
+	var d := to - from
+	var length := d.length()
+	if length < 4.0:
+		return true
+	var t := Time.get_ticks_msec() / 1000.0 + seed * 0.37
+	var beat := int(floorf(t * 10.0))
+	var ang := d.angle()
+	var aspect := float(body.get_height()) / float(body.get_width())
+	# 줄기: 두 겹 — 한 겹은 위아래를 번갈아 뒤집고, 한 겹은 길이가 출렁인다
+	for layer in 2:
+		var flip := -1.0 if (beat + layer) % 2 == 0 else 1.0
+		var stretch := 1.0 + (0.06 * sin(t * 9.0 + layer * 1.7) if layer == 1 else 0.0)
+		var len_px := length * (1.12 if straight else 1.05) * stretch
+		var half := (len_px * aspect * 0.5) if straight else maxf(spread_px, len_px * aspect * 0.5)
+		ci.draw_set_transform(from, ang, Vector2(1.0, flip))
+		ci.draw_texture_rect(body, Rect2(0.0, -half, len_px, half * 2.0), false, Color(modulate, modulate.a * (0.95 if layer == 0 else 0.5)))
+	# 맞은 자리: 바닥에 퍼지므로 납작하게, 크기가 뛰고 좌우를 번갈아 뒤집는다
+	var size := clampf(length * 0.4, 30.0, 70.0) if straight else maxf(spread_px * 2.4, 40.0)
+	size *= 1.0 + 0.12 * sin(t * 13.0)
+	ci.draw_set_transform(to, 0.0, Vector2(-1.0 if beat % 2 == 0 else 1.0, 0.62))
+	ci.draw_texture_rect(splash, Rect2(-size * 0.5, -size * 0.5, size, size), false, Color(modulate, modulate.a * (0.9 if straight else 0.7)))
+	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	return true
 
 

@@ -148,3 +148,15 @@ func test_fx_smoke_sheet_plume_spill_flipbooks() -> void:
 	var ci := Node2D.new()
 	assert_true(not FxArt.draw_flip(ci, null, "smoke_sheet", PackedVector2Array(), Vector2.ZERO, Vector2.ONE, Color.WHITE, 0), "그림이 없으면 false")
 	ci.free()
+
+
+func test_fx_water_stream_art() -> void:
+	# 2026-11-12 사용자 결정: 방수하면 참고 그림의 물줄기가 나간다 — 직사(줄기·튀는 물), 분무(원뿔·물안개)
+	assert_true(FxArt.load_all(), "불꽃 그림 불러옴")
+	for tex: Texture2D in [FxArt.water_jet, FxArt.water_splash, FxArt.water_fog, FxArt.water_fog_splash]:
+		assert_true(tex != null and tex.get_width() >= 128, "물줄기 그림 있음")
+	assert_true(FxArt.water_jet.get_width() > FxArt.water_jet.get_height() * 2, "직사 줄기는 가로로 긴 그림 (왼쪽 = 관창)")
+	var ci := Node2D.new()
+	assert_true(FxArt.draw_water(ci, Vector2.ZERO, Vector2(120, 40), true, 0.0, Color.WHITE, 1), "직사 그리기")
+	assert_true(FxArt.draw_water(ci, Vector2.ZERO, Vector2(120, 40), false, 30.0, Color.WHITE, 1), "분무 그리기")
+	ci.free()

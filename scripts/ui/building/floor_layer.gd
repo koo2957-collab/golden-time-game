@@ -1004,7 +1004,9 @@ func _draw() -> void:
 		_glow.spots = _glow_spots if not thermal and not _outside() else []
 		_glow.queue_redraw()
 		_glow_spots = []
-	_draw_sprays(alpha)
+	# 물줄기는 색 겹(연기 위)에서 그린다 — 바탕에서 그리면 흑백이 되고 연기에 묻힌다 (2026-11-12)
+	if not skip_live:
+		_draw_sprays(alpha)
 	_draw_monitors_and_fans()
 	for e in sim.rekindle.spotted_cells():
 		if e.z == level and not _outside():
@@ -1677,6 +1679,11 @@ func _draw_sprays(alpha: float) -> void:
 			continue
 		var from := proj.to_screen(UnitsView.display_pos(leader, alpha), NOZZLE_M)
 		var to := proj.to_screen(h.impact, IMPACT_M)
+		# 물줄기 그림 (사용자 참고 그림, 2026-11-12): 직사는 가는 줄기와 튀는 물, 그 밖(분무 등)은 원뿔 물안개. 없으면 아래 도형
+		var straight := h.pattern == HoseLine.Pattern.STRAIGHT
+		var spread := 0.0 if straight else sim.water.radius_cells(h.pattern) * IsoProjection.HALF_W
+		if not thermal and FxArt.draw_water(self, from, to, straight, spread, Color(0.88, 0.95, 1.0, 0.95), h.crew_id):
+			continue
 		if h.pattern == HoseLine.Pattern.STRAIGHT:
 			# 포물선을 그리며 날아가는 물방울
 			var arc := PackedVector2Array()
@@ -2501,6 +2508,7 @@ func _draw_live_only() -> void:
 			_draw_vehicle(o, alpha)
 	if not thermal:
 		_draw_smoke()
+	_draw_sprays(alpha)
 	_draw_blasts()
 	if _glow:
 		_glow.z_as_relative = true

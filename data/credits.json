@@ -4,6 +4,7 @@
     "그림: Kenney (kenney.nl), CC0 — Animated Characters Retro, Car Kit, Furniture Kit, Smoke Particles",
     "소방대원 3D 모델: 자체 제작 (Blender 스크립트 tools/blender/firefighter_v2.py, 서울소방 방화복 참고)",
     "펌프차·물탱크차·구조공작차 그림: 사용자 제공 참고 그림(앞·옆·뒤)을 상자 모델에 입혀 제작 (tools/blender/bake.py, prep_truck_refs.py)",
+    "물줄기 그림(직사·분무): 사용자 제공 참고 그림을 잘라 제작 (tools/prep_water_fx.py)",
     "그림 굽기: Blender (blender.org) + tools/blender/bake.py",
     "엔진: Godot Engine (godotengine.org), MIT",
     "근거 자료: 소방청 「재난현장 표준작전절차」(2025), 소방전술Ⅰ(화재1·화재2)·소방전술Ⅱ(구조)·소방전술Ⅲ(구급) 교재",

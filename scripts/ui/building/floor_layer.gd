@@ -3015,27 +3015,23 @@ func _draw_outdoor_ground() -> void:
 func _draw_adjacent() -> void:
 	var tone := Color(0.86, 0.87, 0.9)
 	var line := Color(tone, stack.params.ghost_line_alpha)
+	var dash := stack.params.ghost_dash_px
+	var upper := depth >= ABOVE_DEPTH
+	var bd := sim.building
 	var p := sim.perception
 	var plan_known := sim.command.interior.plan_known
 	for run: Dictionary in _ghost_wall_runs(level):
 		var outer: bool = run.outer
-		var known := outer or plan_known or not p.enabled
-		for ci: int in run.comps:
-			if not known and p.room_seen[ci] == 1:
-				known = true
-		if not known:
-			continue
 		var ra: Vector2 = run.a
 		var rb: Vector2 = run.b
-		var dash := stack.params.ghost_dash_px
-		# 위층의 뒷벽(북)·왼쪽 벽(서): 지금 층 바깥벽과 같은 한 칸 두께의 반투명 상자 (안쪽 면 + 끝면 + 윗면).
-		# 면 한 장으로 그리면 두께가 없어 아래 벽·점선과 어긋난다 (2026-11-12 사용자 지적).
-		# 지금 층 윤곽 바깥(배경 쪽)에 놓여 지금 층을 가리지 않는다. 바깥 방향은 벽 줄 가운데 칸으로 본다
-		if outer and depth >= ABOVE_DEPTH:
+		if upper:
+			# 위층: 뒷벽(북)·왼쪽 벽(서)만 지금 층 바깥벽과 같은 한 칸 두께의 반투명 상자 — 지금 층 윤곽 바깥(배경 쪽)에 놓여
+			# 지금 층을 가리지 않는다. 그 밖의 벽·실내 벽은 그리지 않고 건물 바깥 윤곽 점선 한 줄로 (_draw_upper_outline)
+			if not outer:
+				continue
 			var horizontal := is_equal_approx(ra.y, rb.y)
 			var mid := Vector2i(((ra + rb) * 0.5).floor())
 			var out_cell := mid + (Vector2i(0, -1) if horizontal else Vector2i(-1, 0))
-			var bd := sim.building
 			if not bd.in_bounds(out_cell.x, out_cell.y) or bd.cell(level, out_cell.x, out_cell.y) in BuildingData.OUTDOOR:
 				var p0 := ra - Vector2(0.5, 0.5)
 				var p1 := rb + Vector2(0.5, 0.5)
@@ -3045,22 +3041,78 @@ func _draw_adjacent() -> void:
 					p0.y += 1.0
 				var body := Color(tone, stack.params.ghost_back_wall_alpha)
 				_box(p0, p1, 0.0, CEILING_M, body, body, body)
-				continue
-		# 그 밖의 바깥벽(앞벽·오른쪽 벽, 아래층 바깥벽): 같은 한 칸 두께 상자의 모서리를 흰 점선으로 — 면은 칠하지 않는다
-		# (지금 층 위에 겹치는 자리라 칠하면 가린다). 반투명 상자와 두께·끝이 같아 통일된다 (2026-11-12 사용자 결정)
-		if outer:
-			var q0 := ra - Vector2(0.5, 0.5)
-			var q1 := rb + Vector2(0.5, 0.5)
-			var corners: Array[Vector2] = [q0, Vector2(q1.x, q0.y), q1, Vector2(q0.x, q1.y)]
-			for k in 4:
-				var c0: Vector2 = corners[k]
-				var c1: Vector2 = corners[(k + 1) % 4]
-				draw_dashed_line(proj.to_screen(c0, 0.02), proj.to_screen(c1, 0.02), line, 1.2, dash)
-				draw_dashed_line(proj.to_screen(c0, CEILING_M), proj.to_screen(c1, CEILING_M), line, 1.2, dash)
-				draw_dashed_line(proj.to_screen(c0, 0.02), proj.to_screen(c0, CEILING_M), line, 1.2, dash)
 			continue
-		# 실내 벽: 바닥 높이 점선 한 줄 (얇은 벽이라 두 줄로 그리면 빽빽해진다)
-		draw_dashed_line(proj.to_screen(ra, 0.02), proj.to_screen(rb, 0.02), line, 1.2, dash)
+		# 아래층: 바깥벽은 바닥선 + 천장선 + 양 끝 세로선의 점선, 확인된 실내 벽은 바닥 높이 점선
+		var known := outer or plan_known or not p.enabled
+		for ci: int in run.comps:
+			if not known and p.room_seen[ci] == 1:
+				known = true
+		if not known:
+			continue
+		if outer:
+			var along: Vector2 = (rb - ra).normalized() * 0.5
+			ra -= along
+			rb += along
+		var a0 := proj.to_screen(ra, 0.02)
+		var b0 := proj.to_screen(rb, 0.02)
+		draw_dashed_line(a0, b0, line, 1.2, dash)
+		if outer:
+			var a1 := proj.to_screen(ra, CEILING_M)
+			var b1 := proj.to_screen(rb, CEILING_M)
+			draw_dashed_line(a1, b1, line, 1.2, dash)
+			draw_dashed_line(a0, a1, line, 1.2, dash)
+			draw_dashed_line(b0, b1, line, 1.2, dash)
+	if upper:
+		_draw_upper_ledge(tone)
+		_draw_upper_outline(line, dash)
+
+
+## 위층 바닥 턱 (2026-11-12 사용자 결정): 위층 바닥을 뒷벽(북)·왼쪽 벽(서)을 따라 좁은 띠로만 남긴다 — 가운데가 뚫린 바닥처럼.
+## 이 시점에서 위층 바닥은 화면에서 뒤로 올라가 보이므로 띠는 지금 층 뒷벽 윗부분만 살짝 물고 방 안은 가리지 않는다.
+## 띠 안쪽 가장자리에는 바닥판 두께를 그린다
+func _draw_upper_ledge(tone: Color) -> void:
+	var fp: Rect2i = sim.building.footprint(level)
+	var w := stack.params.ghost_ledge_m / sim.building.cell_size_m
+	if w <= 0.0 or fp.size.x < 4 or fp.size.y < 4:
+		return
+	var x0 := fp.position.x + 1.0
+	var y0 := fp.position.y + 1.0
+	var x1 := fp.end.x - 1.0
+	var y1 := fp.end.y - 1.0
+	w = minf(w, minf(x1 - x0, y1 - y0) * 0.5)
+	var a := stack.params.ghost_back_wall_alpha
+	var top := Color(tone, a)
+	var t := stack.params.ghost_slab_m
+	# 윗면: ㄱ자 (북쪽 띠 + 서쪽 띠)
+	var ledge := PackedVector2Array()
+	for c: Vector2 in [Vector2(x0, y0), Vector2(x1, y0), Vector2(x1, y0 + w), Vector2(x0 + w, y0 + w), Vector2(x0 + w, y1), Vector2(x0, y1)]:
+		ledge.append(proj.to_screen(c, 0.0))
+	draw_colored_polygon(ledge, top)
+	# 바닥판 두께: 안쪽 가장자리(북쪽 띠의 남쪽 변, 서쪽 띠의 동쪽 변)와 띠 끝
+	var south := Color(tone.darkened(SOUTH_SHADE), a)
+	var east := Color(tone.darkened(EAST_SHADE), a)
+	_quad(proj.to_screen(Vector2(x0 + w, y0 + w), -t), proj.to_screen(Vector2(x1, y0 + w), -t),
+		proj.to_screen(Vector2(x1, y0 + w), 0.0), proj.to_screen(Vector2(x0 + w, y0 + w), 0.0), south)
+	_quad(proj.to_screen(Vector2(x0 + w, y0 + w), -t), proj.to_screen(Vector2(x0 + w, y1), -t),
+		proj.to_screen(Vector2(x0 + w, y1), 0.0), proj.to_screen(Vector2(x0 + w, y0 + w), 0.0), east)
+	_quad(proj.to_screen(Vector2(x1, y0), -t), proj.to_screen(Vector2(x1, y0 + w), -t),
+		proj.to_screen(Vector2(x1, y0 + w), 0.0), proj.to_screen(Vector2(x1, y0), 0.0), east)
+	_quad(proj.to_screen(Vector2(x0, y1), -t), proj.to_screen(Vector2(x0 + w, y1), -t),
+		proj.to_screen(Vector2(x0 + w, y1), 0.0), proj.to_screen(Vector2(x0, y1), 0.0), south)
+
+
+## 위층 바깥 윤곽 (2026-11-12 사용자 결정): 반투명 뒷벽·왼쪽 벽이 없는 쪽(앞·오른쪽)은 가장 바깥 점선 한 줄 —
+## 바닥선·천장선(남쪽 변, 동쪽 변)과 세 모서리(남서·남동·북동) 세로선
+func _draw_upper_outline(line: Color, dash: float) -> void:
+	var fp: Rect2i = sim.building.footprint(level)
+	var sw := Vector2(fp.position.x, fp.end.y)
+	var se := Vector2(fp.end)
+	var ne := Vector2(fp.end.x, fp.position.y)
+	for h: float in [0.0, CEILING_M]:
+		draw_dashed_line(proj.to_screen(sw, h), proj.to_screen(se, h), line, 1.2, dash)
+		draw_dashed_line(proj.to_screen(se, h), proj.to_screen(ne, h), line, 1.2, dash)
+	for c: Vector2 in [sw, se, ne]:
+		draw_dashed_line(proj.to_screen(c, 0.0), proj.to_screen(c, CEILING_M), line, 1.2, dash)
 
 
 ## 다른 층의 대원(노랑)·발견한 요구조자(빨강): 그림을 테두리 셰이더로. 그림이 없으면 동그라미 테두리

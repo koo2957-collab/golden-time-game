@@ -32,8 +32,8 @@ func test_stagger_shows_floor_and_partner() -> void:
 func test_view_params_loaded() -> void:
 	var p := ViewParams.load_default()
 	assert_eq(p.floor_height_px, 220.0, "층 간격 220px (2026-11-11 사용자 결정 F01: 건물을 더 높게)")
-	assert_eq([p.visible_floors_above, p.above_alpha], [2, 0.25], "위 2개 층, 반투명 0.25")
-	assert_eq(p.visible_floors_below, 2, "아래 2개 층")
+	assert_eq([p.visible_floors_above, p.visible_floors_below], [1, 1], "위·아래 한 층씩만 — 더 있는 층은 잘린 벽으로 (2026-11-12)")
+	assert_true(p.stub_height_ratio > 0.2 and p.stub_height_ratio < 0.8, "잘린 벽은 층 높이의 반쯤")
 	assert_eq(p.below_modulate, [0.75, 0.55] as Array[float], "아래 층 밝기")
 	assert_eq(p.front_wall, "open", "앞벽은 없음 — 인형집 (2026-11-12 결정)")
 	assert_eq([p.front_wall_alpha, p.inner_wall_m, p.stack_mode, p.stagger_back_ratio, p.stagger_floor_px], [0.15, 2.4, "stack", 0.3, 260.0], "앞벽 15%, 실내 벽 천장까지(F04), 층은 제자리에 쌓고 다른 층은 실루엣 (비켜 놓기 값은 남겨 둠)")
@@ -54,16 +54,19 @@ func test_view_params_loaded() -> void:
 	assert_true(p.smoke_curtain_low > 0.0 and p.smoke_curtain_low < 1.0, "커튼 아래쪽은 천장 쪽보다 옅게")
 
 
-func test_apartment_12f_shows_10_to_14() -> void:
-	# 기획안 9-4·P2-1 (2026-11-10 결정 ②): 초점 층 위·아래 각 2개 층
+func test_apartment_12f_shows_11_to_13_and_stubs() -> void:
+	# 2026-11-12 사용자 결정: 지금 층 위·아래 한 층씩만, 더 있는 층은 잘린 벽으로 알린다 (예전: 각 2개 층)
 	var s := _stack(APT)
 	var shown := s.visible_levels(12)
-	assert_eq(shown, [12, 11, 10] as Array[int], "12층 아래로 11·10층")
-	assert_eq(s.above_levels(12), [13, 14] as Array[int], "위로 13·14층")
+	assert_eq(shown, [12, 11] as Array[int], "12층 아래로 11층")
+	assert_eq(s.above_levels(12), [13] as Array[int], "위로 13층")
 	assert_eq(s.above_levels(15), [] as Array[int], "꼭대기 층은 위층 없음")
 	assert_eq(s.above_levels(14), [15] as Array[int], "14층 위는 15층만")
-	for lv in [15, 9]:
+	for lv in [14, 10]:
 		assert_true(not shown.has(lv) and not s.above_levels(12).has(lv), "%d층은 보이지 않음" % lv)
+	assert_eq([s.more_above(12), s.more_below(12)], [true, true], "12층: 위(14층~)·아래(10층~)로 더 있다")
+	assert_eq([s.more_above(14), s.more_above(15)], [false, false], "14층 위는 15층뿐, 꼭대기는 위가 없다")
+	assert_eq([s.more_below(2), s.more_below(1), s.more_below(3)], [false, false, true], "2층 아래는 1층뿐(땅 밑으로는 잇지 않음), 3층은 1층이 더 있다")
 	assert_eq(s.depth_of(12, 11), 1, "11층은 한 층 아래")
 	assert_eq(s.modulate_for(0), 1.0, "지금 층은 밝게")
 	assert_eq(s.modulate_for(1), 0.75, "한 층 아래 0.75")
@@ -77,7 +80,8 @@ func test_supertall_and_basement_do_not_stack_across_gaps() -> void:
 	var st := _stack(SUPERTALL)
 	# index 2 = 28층: 27층은 생략된 층이라 쌓지 않는다
 	assert_eq(st.visible_levels(2), [2] as Array[int], "28층 아래 생략 층은 쌓지 않음")
-	assert_eq(st.visible_levels(4), [4, 3, 2] as Array[int], "30층은 30·29·28층")
+	assert_eq(st.visible_levels(4), [4, 3] as Array[int], "30층은 30·29층")
+	assert_eq([st.more_below(4), st.more_below(3)], [true, false], "30층 아래로 28층이 더 있고, 29층 아래 28층 밑은 생략 층이라 잇지 않음")
 	assert_eq(st.order, [1, 2, 3, 4, 5, 6, 7, 8] as Array[int], "층 번호 순서")
 	var bm := _stack(BASEMENT)
 	assert_eq(bm.order, [2, 1] as Array[int], "지하1층(index 2)이 1층보다 아래")
@@ -132,7 +136,7 @@ func test_pick_lower_floor_changes_level() -> void:
 	var below := proj.to_screen(Vector2(30.5, 18.5)) + Vector2(0, s.offset_px(1))
 	assert_eq(s.pick_level(12, below, proj), 11, "아래층(11층)이 보이는 곳을 누르면 11층")
 	var below2 := proj.to_screen(Vector2(30.5, 18.5)) + Vector2(0, s.offset_px(2))
-	assert_eq(s.pick_level(12, below2, proj), 10, "두 층 아래(10층)")
+	assert_eq(s.pick_level(12, below2, proj), 12, "두 층 아래(10층)는 보이지 않으므로 고를 수 없다 (2026-11-12: 아래 한 층만) — 층 막대·PgDn으로")
 	# 아무 층도 없는 곳은 지금 층
 	assert_eq(s.pick_level(12, proj.to_screen(Vector2(65, 35)), proj), 12, "빈 곳은 지금 층")
 	# 지상층의 도로는 지금 층

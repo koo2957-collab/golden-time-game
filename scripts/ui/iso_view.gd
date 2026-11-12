@@ -194,6 +194,11 @@ func _apply() -> void:
 	var above: Array[int] = []
 	if not _exterior and stack != null:
 		above = stack.above_levels(_level)
+	# 더 있는 층은 잘린 벽으로만 알린다 (2026-11-12 사용자 결정): 보이는 맨 위층 위, 보이는 맨 아래층 아래
+	for d in layers.size():
+		layers[d].stub_below = not _exterior and d > 0 and d == shown.size() - 1 and stack.more_below(_level)
+	for k in upper_layers.size():
+		upper_layers[k].stub_above = not above.is_empty() and k == above.size() - 1 and stack.more_above(_level)
 	# 지금 층의 올라가는 계단을 입체 디딤판으로 (위층이 함께 보일 때, 2026-11-12 사용자 결정)
 	if not above.is_empty() and layers[0].upper_level != above[0]:
 		layers[0].upper_level = above[0]

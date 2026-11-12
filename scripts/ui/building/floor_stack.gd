@@ -95,6 +95,28 @@ func above_levels(current: int) -> Array[int]:
 	return result
 
 
+## 보이는 위층들 위로 층이 더 이어지는가 (잘린 벽으로 알린다, 2026-11-12). 비켜 놓기에서는 쓰지 않는다
+func more_above(current: int) -> bool:
+	if staggered() or not building.has_level(current):
+		return false
+	var cnt := above_levels(current).size()
+	if cnt == 0:
+		return false
+	var top := building.floor_number(current) + cnt
+	return level_of_number(top + 1) >= 0 and not (top <= -1 and top + 1 >= 1)
+
+
+## 보이는 아래층들 아래로 층이 더 이어지는가 (땅 밑으로는 잇지 않는다)
+func more_below(current: int) -> bool:
+	if staggered() or not building.has_level(current):
+		return false
+	var cnt := visible_levels(current).size() - 1
+	if cnt <= 0:
+		return false
+	var low := building.floor_number(current) - cnt
+	return level_of_number(low - 1) >= 0 and not (low >= 1 and low - 1 < 1)
+
+
 ## 층 번호로 level을 찾는다. 없으면 -1
 func level_of_number(number: int) -> int:
 	for lv in order:

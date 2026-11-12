@@ -125,6 +125,19 @@ var ghost := false:
 			if _ghost_units:
 				_ghost_units.visible = v or people_outline
 			queue_redraw()
+## 더 있는 층을 알리는 잘린 벽 (2026-11-12 사용자 결정): 이 층이 보이는 맨 위층이고 그 위로 층이 더 있으면 stub_above —
+## 한 층 위에 뒷벽·왼쪽 벽을 반쯤 세워 위로 갈수록 투명하게. 보이는 맨 아래층이고 아래로 더 있으면 stub_below —
+## 바닥 아래로 앞·오른쪽 바깥벽을 반쯤 내려 아래로 갈수록 투명하게. 잘린 변은 불규칙
+var stub_above := false:
+	set(v):
+		if v != stub_above:
+			stub_above = v
+			queue_redraw()
+var stub_below := false:
+	set(v):
+		if v != stub_below:
+			stub_below = v
+			queue_redraw()
 ## 아래층 (2026-11-12 사용자 결정): 구조는 온전히(흑백·어둡게) 그리고 그 층 사람은 점선 테두리로 — 켜면 사람 테두리 노드를 보인다
 var people_outline := false:
 	set(v):
@@ -913,6 +926,8 @@ func _draw() -> void:
 	_mask_now = _draw_mask()
 	_draw_ground()
 	_draw_slab_edges()
+	if stub_below and depth > 0 and not _outside():
+		_draw_stub_below()
 	if not _outside() and depth == 0:
 		_draw_room_labels()
 	if level == _first_level:
@@ -3057,6 +3072,11 @@ func _draw_adjacent() -> void:
 				var body := Color(tone, stack.params.ghost_back_wall_alpha)
 				# 벽 아래에도 바닥판 두께만큼 — 턱의 바닥판 아랫면과 벽 아랫면이 맞는다 (2026-11-12 사용자 지적)
 				_box(p0, p1, -stack.params.ghost_slab_m, CEILING_M, body, body, body)
+				if stub_above:
+					# 안쪽 면(북벽은 남쪽 면, 서벽은 동쪽 면)을 한 층 위에 반쯤
+					var fa := Vector2(p0.x, p1.y) if horizontal else Vector2(p1.x, p0.y)
+					_stub_face(fa, p1, stack.params.floor_height_px, 1.0,
+						tone.darkened(SOUTH_SHADE if horizontal else EAST_SHADE), stack.params.ghost_back_wall_alpha, level * 7 + (0 if horizontal else 3))
 			continue
 		# 아래층: 바깥벽은 바닥선 + 천장선 + 양 끝 세로선의 점선, 확인된 실내 벽은 바닥 높이 점선
 		var known := outer or plan_known or not p.enabled
@@ -3081,6 +3101,38 @@ func _draw_adjacent() -> void:
 	if upper:
 		_draw_upper_ledge(tone)
 		_draw_upper_outline(line, dash)
+
+
+## 잘린 벽 한 면: 바닥선 a→b (셀 좌표)에서 화면으로 lift_px 올린 곳을 밑변으로, dir(1 = 위로, -1 = 아래로) 쪽으로
+## 층 높이 × stub_height_ratio(±0.15) 만큼. 밑변은 진하기 alpha, 잘린 변은 거의 투명. 한 칸 남짓마다 높이가 달라 들쭉날쭉하다
+func _stub_face(a: Vector2, b: Vector2, lift_px: float, dir: float, color: Color, alpha: float, seed: int) -> void:
+	var length := a.distance_to(b)
+	if length < 0.5:
+		return
+	var n := maxi(2, ceili(length / 1.5))
+	var lift := Vector2(0, -lift_px)
+	var ratio := stack.params.stub_height_ratio
+	var base := Color(color, alpha)
+	var faded := Color(color, alpha * 0.08)
+	var prev_p := a
+	var prev_h := CEILING_M * (ratio + (_rand01(seed) - 0.5) * 0.3)
+	for k in range(1, n + 1):
+		var cur_p := a.lerp(b, float(k) / n)
+		var cur_h := CEILING_M * (ratio + (_rand01(seed + k * 17) - 0.5) * 0.3)
+		draw_polygon(PackedVector2Array([proj.to_screen(prev_p, 0.0) + lift, proj.to_screen(cur_p, 0.0) + lift,
+			proj.to_screen(cur_p, cur_h * dir) + lift, proj.to_screen(prev_p, prev_h * dir) + lift]),
+			PackedColorArray([base, base, faded, faded]))
+		prev_p = cur_p
+		prev_h = cur_h
+
+
+## 보이는 맨 아래층 밑으로 층이 더 있다: 건물 앞면(남)·오른쪽 면(동) 바깥벽을 바닥 아래로 반쯤 내려 그린다
+func _draw_stub_below() -> void:
+	var fp: Rect2i = sim.building.footprint(level)
+	var wall := _structure_color(skin.color("wall"))
+	var se := Vector2(fp.end)
+	_stub_face(Vector2(fp.position.x, fp.end.y), se, 0.0, -1.0, wall.darkened(SOUTH_SHADE), 1.0, level * 11)
+	_stub_face(Vector2(fp.end.x, fp.position.y), se, 0.0, -1.0, wall.darkened(EAST_SHADE), 1.0, level * 13 + 5)
 
 
 ## 위층 바닥 턱 (2026-11-12 사용자 결정): 위층 바닥을 뒷벽(북)·왼쪽 벽(서)을 따라 좁은 띠로만 남긴다 — 가운데가 깨져 뚫린 바닥처럼.

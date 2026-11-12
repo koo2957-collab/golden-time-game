@@ -37,7 +37,7 @@ func _run() -> void:
 	# 1) 시작: 외부 보기 — 외관 노드 하나만
 	_check("시작은 외부 보기", world.exterior_view, true)
 	_check("외부 보기: 맨 위 노드가 외관", [iso.layers[0].visible, iso.layers[0].exterior], [true, true])
-	_check("외부 보기: 아래층 노드는 숨김", [iso.layers[1].visible, iso.layers[2].visible], [false, false])
+	_check("외부 보기: 아래층 노드는 숨김", iso.layers[1].visible, false)
 	_out("== 시작 직후 (불이 작을 때) ==")
 	await _measure("외부 보기, 1배속")
 
@@ -45,18 +45,18 @@ func _run() -> void:
 	world.set_view_level(12)
 	await process_frame
 	_check("12층 → 단면 보기", world.exterior_view, false)
-	_check("12층을 고르면 12·11·10층만", iso.shown_levels(), [12, 11, 10] as Array[int])
+	_check("12층을 고르면 12·11층만 (2026-11-12: 위·아래 한 층씩)", iso.shown_levels(), [12, 11] as Array[int])
 	var shown_levels: Array = []
 	for layer in iso.layers:
 		if layer.visible:
 			shown_levels.append(layer.level)
-	_check("보이는 층 노드 12·11·10", shown_levels, [12, 11, 10])
-	_check("15층 이상은 그리지 않음 (위로 2개 층까지)", shown_levels.any(func(lv: int) -> bool: return lv >= 15), false)
+	_check("보이는 층 노드 12·11", shown_levels, [12, 11])
+	_check("더 있는 층은 잘린 벽으로 (13층 위, 11층 아래)", [iso.upper_layers[0].stub_above, iso.layers[1].stub_below, iso.layers[0].stub_below], [true, true, false])
 	# F01 (2026-11-11): 다른 층은 실루엣(벽 선·사람 테두리)만 — 흐리게 하지 않고 ghost로 그린다
 	# 2026-11-12: 아래층은 온전히 그린다 (흑백·어둡게, 연기·불·사람 빼고 + 사람 점선 테두리). 위층만 턱·점선
-	_check("아래층은 220px씩 아래·온전히(흑백)", [iso.layers[0].ghost, iso.layers[1].position.y, iso.layers[1].ghost, iso.layers[2].ghost], [false, 220.0, false, false])
+	_check("아래층은 220px씩 아래·온전히(흑백)", [iso.layers[0].ghost, iso.layers[1].position.y, iso.layers[1].ghost], [false, 220.0, false])
 	_check("아래층은 연기·불·사람을 빼고 사람은 테두리로", [iso.layers[1].skip_live, iso.layers[1].people_outline, iso.layers[1].self_modulate.r < 1.0, iso.layers[0].self_modulate.r], [true, true, true, 1.0])
-	_check("위층 13·14층은 220px씩 위에 실루엣", [iso.upper_layers[0].visible, iso.upper_layers[0].level, iso.upper_layers[1].level, iso.upper_layers[0].position.y, iso.upper_layers[0].ghost], [true, 13, 14, -220.0, true])
+	_check("위층 13층은 220px 위에 (턱·뒷벽)", [iso.upper_layers[0].visible, iso.upper_layers[0].level, iso.upper_layers[0].position.y, iso.upper_layers[0].ghost], [true, 13, -220.0, true])
 	_check("12층 남쪽 앞벽은 천장 높이 반투명 (2026-11-11 결정)", iso.layers[0]._wall_height(8, 19), 2.4)
 	# 2026-11-12: 지금 층은 위층(계단 디딤판용 upper_level)이 있어도 가림 표로 칸을 빼지 않는다 — 뒷벽이 사라졌던 결함
 	_check("지금 층은 위층이 있어도 모든 칸을 그린다", [iso.layers[0].upper_level, iso.layers[0]._draw_mask().is_empty()], [13, true])
@@ -76,7 +76,7 @@ func _run() -> void:
 	_press_at(root.get_canvas_transform() * lower_world, MOUSE_BUTTON_LEFT)
 	await process_frame
 	_check("아래층(11층)을 누르면 11층이 지금 층", world.view_level, 11)
-	_check("11층 단면은 11·10·9층", iso.shown_levels(), [11, 10, 9] as Array[int])
+	_check("11층 단면은 11·10층", iso.shown_levels(), [11, 10] as Array[int])
 	_check("내려갈 때는 위층 잔상이 위로 사라짐", iso.ghost.visible, true)
 	await create_timer(0.5).timeout
 	_check("잔상은 연출 뒤 숨김", iso.ghost.visible, false)
@@ -180,7 +180,7 @@ func _run() -> void:
 	iso.params.stack_mode = "stagger"
 	world.set_view_level(12)
 	await process_frame
-	_check("비켜 놓기: 12층 + 위로 13층만", [iso.shown_levels(), iso.upper_layers[0].visible, iso.upper_layers[0].level, iso.upper_layers[1].visible], [[12] as Array[int], true, 13, false])
+	_check("비켜 놓기: 12층 + 위로 13층만", [iso.shown_levels(), iso.upper_layers[0].visible, iso.upper_layers[0].level, iso.upper_layers.size()], [[12] as Array[int], true, 13, 1])
 	_check("비켜 놓기: 두 층 모두 온전하게 (실루엣 아님)", [iso.layers[0].ghost, iso.upper_layers[0].ghost], [false, false])
 	_check("비켜 놓기: 위층은 건물 뒤(오른쪽 위)로", iso.upper_layers[0].position, -iso.stack.offset_vec(1))
 	# 정적인 것은 무채색, 움직이는 것만 색 (2026-11-12 사용자 결정)

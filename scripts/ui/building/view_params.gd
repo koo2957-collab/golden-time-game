@@ -5,8 +5,9 @@ extends RefCounted
 const PATH := "res://data/ui/view_params.json"
 
 var floor_height_px := 143.0
-var visible_floors_below := 2
-var visible_floors_above := 2
+var visible_floors_below := 1
+var visible_floors_above := 1
+var stub_height_ratio := 0.5
 var above_alpha := 0.25
 var pick_w_px := 48.0
 var pick_h_px := 64.0
@@ -91,6 +92,7 @@ func apply(data: Dictionary) -> void:
 	floor_height_px = float(_value(data, "floor_height_px", floor_height_px))
 	visible_floors_below = int(_value(data, "visible_floors_below", visible_floors_below))
 	visible_floors_above = int(_value(data, "visible_floors_above", visible_floors_above))
+	stub_height_ratio = float(_value(data, "stub_height_ratio", stub_height_ratio))
 	above_alpha = float(_value(data, "above_alpha", above_alpha))
 	pick_w_px = float(_value(data, "pick_w_px", pick_w_px))
 	pick_h_px = float(_value(data, "pick_h_px", pick_h_px))

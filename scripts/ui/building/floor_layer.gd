@@ -124,8 +124,6 @@ var ghost := false:
 			ghost = v
 			if _ghost_units:
 				_ghost_units.visible = v
-			if _ghost_badges:
-				_ghost_badges.visible = v
 			queue_redraw()
 ## 다른 층 그리는 방식: 0 지금 층 / 1 바로 위·아래 / 2 먼 아래층(외관 덩어리) / 3 먼 위층(사람 테두리만). ghost는 0이 아닐 때 켜진다
 ## 짝 층 바탕(흑백): 불·연기·사람은 그리지 않는다 — 색 겹(ghost_mode 4)이 따로 그린다
@@ -152,8 +150,6 @@ const GHOST_INNER_FACE_ALPHA := 0.1
 const GHOST_CREW := Color(1.0, 0.85, 0.2, 0.9)
 const GHOST_VICTIM := Color(1.0, 0.3, 0.3, 0.9)
 var _ghost_units: Node2D
-## 다른 층 사람 머리 위 ▲▼층 표 (글자는 테두리 셰이더 없이)
-var _ghost_badges: Node2D
 var _smoke_outline: Node2D
 ## 이번 그림에서 사람을 덮을 만큼 연기가 짙고 낮게 깔린 방 (Compartment.index → true)
 var _smoky := {}
@@ -243,12 +239,12 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 	# 다른 층 사람 테두리: 테두리 셰이더를 입힌 자식에 따로 그린다 (벽 선은 이 층에 그대로)
 	_ghost_units = Node2D.new()
 	var outline_shader: Shader = load("res://shaders/ghost_outline.gdshader")
-	# 다른 층 사람: 한 색 흐린 덩어리 (2026-11-12 사용자 결정)
-	var flat := ShaderMaterial.new()
-	flat.shader = outline_shader
-	flat.set_shader_parameter("flat_fill", true)
-	flat.set_shader_parameter("flat_alpha", stack.params.ghost_flat_alpha)
-	_ghost_units.material = flat
+	# 다른 층 사람: 얇은 테두리만, 안쪽은 투명 (2026-11-12 사용자 결정)
+	var other := ShaderMaterial.new()
+	other.shader = outline_shader
+	other.set_shader_parameter("fill", stack.params.ghost_other_fill)
+	other.set_shader_parameter("thickness", stack.params.ghost_outline_px)
+	_ghost_units.material = other
 	# 같은 층에서 연기에 가려진 사람: 원래 색 + 얇은 테두리
 	var mat := ShaderMaterial.new()
 	mat.shader = outline_shader
@@ -260,12 +256,6 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 	_ghost_units.z_index = 100
 	_ghost_units.draw.connect(_draw_ghost_units)
 	add_child(_ghost_units)
-	_ghost_badges = Node2D.new()
-	_ghost_badges.visible = ghost
-	_ghost_badges.z_as_relative = false
-	_ghost_badges.z_index = 101
-	_ghost_badges.draw.connect(_draw_ghost_badges)
-	add_child(_ghost_badges)
 	# 연기에 묻힌 사람 테두리 (2026-11-12 사용자 결정): 이 층 연기 바로 위에 (자식은 부모 그림 위에 그려진다)
 	_smoke_outline = Node2D.new()
 	_smoke_outline.material = mat
@@ -3074,41 +3064,6 @@ func _draw_ghost_units() -> void:
 	if sim == null or not ghost:
 		return
 	_draw_outlines(_ghost_units, {})
-	if _ghost_badges:
-		_ghost_badges.queue_redraw()
-
-
-## 다른 층 사람 머리 위 층 표: 조마다 하나(▲위층 / ▼아래층 + 층 이름), 발견한 요구조자마다 하나
-func _draw_ghost_badges() -> void:
-	if sim == null or not ghost:
-		return
-	var arrow := "▲" if depth >= ABOVE_DEPTH else "▼"
-	var text := arrow + sim.building.floor_name(level)
-	var alpha := sim.clock.alpha()
-	for crew in sim.units.crews:
-		for ff in crew.members():
-			if ff.level != level or ff.aboard:
-				continue
-			var p := UnitsView.display_pos(ff, alpha)
-			if _outdoor_at(p) and not _hidden_by_upper(p, 1.0):
-				break
-			_badge(proj.to_screen(p, UNIT_LABEL_M), text, GHOST_CREW)
-			break
-	for v in sim.rescue.victims:
-		if not v.discovered or v.level != level or v.carried_by >= 0:
-			continue
-		if _outdoor_at(v.pos) and not _hidden_by_upper(v.pos, 0.4):
-			continue
-		_badge(proj.to_screen(v.pos, 1.0), text, GHOST_VICTIM)
-
-
-func _badge(at: Vector2, text: String, col: Color) -> void:
-	var font := PlanStyle.font()
-	var size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12)
-	var box := Rect2(at - Vector2(size.x * 0.5 + 4.0, size.y * 0.5 + 2.0), size + Vector2(8.0, 4.0))
-	_ghost_badges.draw_rect(box, Color(0.05, 0.07, 0.1, 0.75))
-	_ghost_badges.draw_rect(box, Color(col, 0.9), false, 1.0)
-	_ghost_badges.draw_string(font, Vector2(box.position.x + 4.0, box.end.y - 4.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(col, 1.0))
 
 
 ## 연기에 묻힌 대원(노랑)·요구조자(빨강): 벽 너머 사람과 같은 테두리를 연기 위에 (2026-11-12 사용자 결정)

@@ -140,7 +140,6 @@ var ghost_mode := 0:
 			ghost = v != 0 and v != 4
 			queue_redraw()
 var _ghost_outdoor_idx: Dictionary = {}  # level -> 바깥 땅 칸 삼각형 index
-var _ghost_floor_idx: Dictionary = {}  # level -> 실내 바닥 칸 삼각형 index
 const GHOST_WALL := Color(1, 1, 1, 0.42)
 const GHOST_INNER := Color(1, 1, 1, 0.34)
 const GHOST_FIRE_WALL := Color(1.0, 0.55, 0.15, 0.8)
@@ -2918,11 +2917,9 @@ func _draw_ghost() -> void:
 	if level == _first_level and ghost_mode != 3:
 		_draw_outdoor_ground()
 		_draw_outdoor_people()
-	match ghost_mode:
-		1:
-			_draw_adjacent()
-		2:
-			_draw_far_block()
+	# 다른 층은 바로 위·아래든 먼 아래층이든 평면도 선만 (2026-11-12 사용자 결정)
+	if ghost_mode == 1 or ghost_mode == 2:
+		_draw_adjacent()
 	_draw_ghost_glow()
 	if _ghost_units:
 		_ghost_units.queue_redraw()
@@ -3024,27 +3021,11 @@ func _draw_outdoor_ground() -> void:
 		RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), oi, _ground_points[level], _ground_colors)
 
 
-## 바로 위·아래 층: 실내 바닥 칸과 벽을 회백색 한 톤으로 흐리게
+## 다른 층 (2026-11-12 사용자 결정): 면 칠 없이 그 층 바닥 높이의 평면도 선만 — 지금 층 연기와 겹쳐 진해지지 않는다.
+## 바깥벽(건물 윤곽)은 얇은 실선, 실내 벽은 점선 (확인된 곳만)
 func _draw_adjacent() -> void:
-	var a := stack.params.adjacent_alpha
 	var tone := Color(0.86, 0.87, 0.9)
-	# 바닥: 실내 칸 마름모를 한 번에
-	if not _ghost_floor_idx.has(level):
-		var idx := PackedInt32Array()
-		var types: PackedByteArray = _ground_types[level]
-		for n in types.size():
-			if not types[n] in BuildingData.OUTDOOR:
-				var base := n * 4
-				idx.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
-		_ghost_floor_idx[level] = idx
-	var fi: PackedInt32Array = _ghost_floor_idx[level]
-	# 위층 바닥은 그리지 않는다: 지금 층 전체를 뿌옇게 덮는다 (벽만으로 위층이 있음을 안다)
-	if not fi.is_empty() and depth < ABOVE_DEPTH:
-		var cols := PackedColorArray()
-		cols.resize(_ground_points[level].size())
-		cols.fill(Color(tone, a))
-		RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), fi, _ground_points[level], cols)
-	# 벽: 바깥벽은 천장 높이, 실내 벽은 확인된 곳만 허리 높이
+	var line := Color(tone, stack.params.ghost_line_alpha)
 	var p := sim.perception
 	var plan_known := sim.command.interior.plan_known
 	for run: Dictionary in _ghost_wall_runs(level):
@@ -3055,23 +3036,12 @@ func _draw_adjacent() -> void:
 				known = true
 		if not known:
 			continue
-		var h := CEILING_M if outer else stack.params.ghost_inner_wall_m
-		var a0 := proj.to_screen(run.a, 0.0)
-		var b0 := proj.to_screen(run.b, 0.0)
-		var a1 := proj.to_screen(run.a, h)
-		var b1 := proj.to_screen(run.b, h)
-		draw_colored_polygon(PackedVector2Array([a0, b0, b1, a1]), Color(tone, a))
-		draw_line(a1, b1, Color(tone, stack.params.ghost_line_alpha), 1.2)
-
-
-## 먼 아래층: 건물 외관 덩어리 (외벽 남·동 면 + 지붕 + 창)
-func _draw_far_block() -> void:
-	var fp: Rect2i = _footprint.get(level, _shell_fp)
-	var wall := Color(SHELL_WALL, 1.0)
-	_box(Vector2(fp.position), Vector2(fp.end), 0.0, CEILING_M, wall, wall, ROOF_TOP)
-	# 앞쪽(남·동) 창: 외부 보기와 같은 그림 (불빛·연기 창 색 포함)
-	for w: Dictionary in _ext_windows.get(level, []):
-		_draw_facade_window(w, 0.0, CEILING_M)
+		var a0 := proj.to_screen(run.a, 0.02)
+		var b0 := proj.to_screen(run.b, 0.02)
+		if outer:
+			draw_line(a0, b0, line, 1.2)
+		else:
+			draw_dashed_line(a0, b0, line, 1.2, stack.params.ghost_dash_px)
 
 
 ## 다른 층의 대원(노랑)·발견한 요구조자(빨강): 그림을 테두리 셰이더로. 그림이 없으면 동그라미 테두리

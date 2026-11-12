@@ -10,7 +10,8 @@ func _run() -> void:
 	var args := OS.get_cmdline_user_args()
 	var out: String = (args[0] if not args.is_empty() else OS.get_user_data_dir()) + "/"
 	var gm = root.get_node_or_null("GameManager")
-	gm.scenario_path = "res://data/scenarios/sop214_2_night_upstairs.json"
+	# 인자에 tutorial 이 있으면 튜토리얼(2층 주택, 1층 화재)
+	gm.scenario_path = "res://data/scenarios/tutorial_basics.json" if "tutorial" in args else "res://data/scenarios/sop214_2_night_upstairs.json"
 	gm.skip_menu = true
 	root.add_child(load("res://scenes/main/main.tscn").instantiate())
 	for i in 10:

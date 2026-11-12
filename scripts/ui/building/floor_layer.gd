@@ -996,8 +996,9 @@ func _draw_mask() -> PackedByteArray:
 	var key := ""
 	if _outside():
 		key = "ext:%d" % level
-	elif upper_level >= 0 and depth < ABOVE_DEPTH:
-		# 아래층만: 위층 바닥에 가려지는 칸을 뺀다 (위층 노드는 반투명이라 다 그린다)
+	elif upper_level >= 0 and depth > 0 and depth < ABOVE_DEPTH:
+		# 아래로 보이는 층만: 위층 바닥에 가려지는 칸을 뺀다. 지금 층(depth 0)은 위층이 턱·점선뿐이라 다 그린다
+		# (지금 층도 계단 디딤판 때문에 upper_level 을 가진다, 2026-11-12)
 		key = "%d:%d" % [level, upper_level]
 	else:
 		return PackedByteArray()

@@ -54,3 +54,4 @@
 | 2026-11-12 | F01 다른 층 불 숨김 | scripts/ui/building/floor_layer(_draw_ghost_glow는 남은 빛만 지움), data/ui/view_params(설명) | 다음: 튜토리얼 단계 정비 |
 | 2026-11-12 | F01 위층 바닥 턱·바깥 점선 한 줄 | scripts/ui/building/floor_layer(_draw_adjacent·_draw_upper_ledge·_draw_upper_outline)·view_params, data/ui/view_params(ghost_ledge_m·ghost_slab_m), tests/test_cutaway | 다음: 튜토리얼 단계 정비 |
 | 2026-11-12 | F01 턱 깨진 가장자리·입체 계단 | scripts/ui/building/floor_layer(_draw_upper_ledge)·view_params, scripts/ui/iso_view(지금 층 upper_level), data/ui/view_params(ghost_ledge_m 1.5·ghost_ledge_jag_m), tests/test_cutaway | 다음: 튜토리얼 단계 정비 |
+| 2026-11-12 | F01 지금 층 뒷벽 사라짐 고침 | scripts/ui/building/floor_layer(_draw_mask는 depth > 0 일 때만), tests/ui_cutaway(확인 항목) | 원인: 입체 계단용으로 지금 층에 upper_level을 넘기자 '위층 바닥에 가려지는 칸 빼기'가 지금 층에도 적용됨 (632a4e7에서 생김) |

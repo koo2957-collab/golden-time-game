@@ -645,6 +645,42 @@ def _add_box(name, x0, x1, y0, y1, z0, z1):
     return o
 
 
+def _add_cab(W, y0, y1, z0, z1, z_ws, back, round_m):
+    """운전실: 앞면이 z_ws 높이까지 곧게 서고 그 위 앞 유리는 지붕에서 back(m)만큼 뒤로 기운다. 모서리는 round_m 로 둥글린다
+    (2026-11-12 사용자 지적: 앞면이 너무 네모남)"""
+    prof = [(y0, z0), (y0, z_ws), (y0 + back, z1), (y1, z1), (y1, z0)]
+    n = len(prof)
+    verts = [(W / 2, y, z) for y, z in prof] + [(-W / 2, y, z) for y, z in prof]
+    faces = [tuple(range(n)), tuple(range(2 * n - 1, n - 1, -1))]
+    for k in range(n):
+        k2 = (k + 1) % n
+        faces.append((k2, k, n + k, n + k2))
+    me = bpy.data.meshes.new("cab")
+    me.from_pydata(verts, [], faces)
+    me.update()
+    # 면 방향을 바깥으로 (면의 방향으로 입힐 그림을 고르므로 뒤집히면 앞·뒤 그림이 바뀐다)
+    import bmesh
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    o = bpy.data.objects.new("cab", me)
+    bpy.context.scene.collection.objects.link(o)
+    if round_m > 0.0:
+        bev = o.modifiers.new("round", "BEVEL")
+        bev.width = round_m
+        bev.segments = 3
+        bev.limit_method = "ANGLE"
+        bev.angle_limit = math.radians(40)
+        bpy.context.view_layer.objects.active = o
+        o.select_set(True)
+        bpy.ops.object.modifier_apply(modifier="round")
+        o.select_set(False)
+    return o
+
+
 def build_photo_truck(spec, L, W, H):
     """사용자 참고 그림(앞·옆·뒤 정면 그림)을 상자 모델의 면에 입힌 소방차 (2026-11-12 사용자 결정).
     tools/blender/prep_truck_refs.py 가 잘라 둔 art_source/vehicle_refs/<photo>_<면>.png 를 쓴다.
@@ -659,7 +695,8 @@ def build_photo_truck(spec, L, W, H):
     tail = float(ph.get("tail", 0.0))  # 뒤쪽 크레인 등 좁은 부분 길이 비율
     y_front, y_back = -L / 2, L / 2
     parts = []
-    parts.append(("cab", _add_box("cab", -W / 2, W / 2, y_front, y_front + cab * L, zb, cab_top)))
+    parts.append(("cab", _add_cab(W, y_front, y_front + cab * L, zb, cab_top, float(ph.get("windshield_z", 0.5)) * H,
+        float(ph.get("windshield_back_m", 0.3)), float(ph.get("round_m", 0.14)))))
     parts.append(("body", _add_box("body", -W / 2, W / 2, y_front + cab * L, y_back - tail * L, zb, body_top)))
     if tail > 0.0:
         parts.append(("tail", _add_box("tail", -W * 0.3, W * 0.3, y_back - tail * L, y_back, zb, body_top)))
@@ -747,8 +784,10 @@ def build_photo_truck(spec, L, W, H):
             wobj = bpy.context.active_object
             wobj.rotation_euler = (0, math.radians(90), 0)
             wobj.scale = (r * H, r * H, 0.12 * W)
+            bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
             wobj.location = (sx * W * 0.44, y_front + fy * L, r * H)
-            bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+            wobj.name = "wheel"
+            wloc = wobj.location.copy()
             me = wobj.data
             me.materials.append(side)
             me.materials.append(side_r if side_r else side)
@@ -757,7 +796,7 @@ def build_photo_truck(spec, L, W, H):
             for poly in me.polygons:
                 n = poly.normal
                 for li in poly.loop_indices:
-                    v = me.vertices[me.loops[li].vertex_index].co
+                    v = me.vertices[me.loops[li].vertex_index].co + wloc
                     f2 = (v.y - y_front) / L
                     if n.x > 0.5:
                         poly.material_index = 0
@@ -853,6 +892,10 @@ def bake_vehicle(spec, scale):
     anchor = [frame[0] // 2, int(frame[1] * 0.62)]
     setup_camera(sc, frame, anchor, scale, 0)
     folder = os.path.join(OUT, "vehicles", spec["name"])
+    # 달리는 동작 (2026-11-12 사용자 결정): 바퀴가 도는 프레임 — 바퀴가 따로 있는 모델(photo)만
+    wheels = [o for o in bpy.data.objects if o.name.startswith("wheel")] if "photo" in spec else []
+    drive_n = int(spec.get("drive_frames", 4)) if wheels else 0
+    drive_step = math.radians(float(spec.get("drive_step_deg", 22.5)))
     for kdir in range(NDIR):
         rz = mathutils.Matrix.Rotation(dir_angle(kdir), 4, "Z")
         root.matrix_world = rz @ base
@@ -860,8 +903,18 @@ def bake_vehicle(spec, scale):
             e.matrix_world = rz @ mathutils.Matrix.Translation(loc) @ mathutils.Matrix.Diagonal(tuple(size) + (1.0,))
         upd()
         render_to(os.path.join(folder, "idle_%d_0.png" % kdir), frame)
+        for f in range(drive_n):
+            for wobj in wheels:
+                wobj.rotation_euler = (drive_step * (f + 1), 0, 0)
+            upd()
+            render_to(os.path.join(folder, "drive_%d_%d.png" % (kdir, f)), frame)
+        for wobj in wheels:
+            wobj.rotation_euler = (0, 0, 0)
+    anims = {"idle": {"frames": 1}}
+    if drive_n > 0:
+        anims["drive"] = {"frames": drive_n}
     write_meta(folder, {"kind": "vehicles", "name": spec["name"], "type": spec["type"], "frame": frame, "anchor": anchor, "scale": scale,
-                        "directions": NDIR, "anims": {"idle": {"frames": 1}}, "size_m": [L, W, H]})
+                        "directions": NDIR, "anims": anims, "size_m": [L, W, H]})
     log("vehicle", spec["name"], "done")
 
 

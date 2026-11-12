@@ -189,8 +189,13 @@
      ],
      "note": "사용자 참고 그림(앞·옆·뒤)을 상자 모델 면에 입힘 (2026-11-12 사용자 결정). 그림 자르기: tools/blender/prep_truck_refs.py. 값은 옆 그림에서 잰 비율 — cab: 운전실 길이/전체 길이, wheels: 바퀴 중심 위치(앞 0 ~ 뒤 1), tail: 뒤 크레인 길이",
      "roof": "pump",
-     "top_color": "#A9AEB3"
-    }
+     "top_color": "#A9AEB3",
+     "windshield_z": 0.5,
+     "windshield_back_m": 0.28
+    },
+    "drive_frames": 3,
+    "drive_step_deg": 12,
+    "drive_note": "달리는 동작: 바퀴를 12°씩 3장 (볼트 10개 바퀴는 36°마다 같은 모양 → 이어지는 반복). 장 수는 텍스처 메모리 상한(test_art 48MB) 안에서"
    },
    {
     "type": "물탱크차",
@@ -206,8 +211,13 @@
      "top_color": "#A9AEB3",
      "note": "사용자 참고 그림(앞·옆·뒤)을 상자 모델 면에 입힘 (2026-11-12 사용자 결정). 그림 자르기: tools/blender/prep_truck_refs.py. 값은 옆 그림에서 잰 비율 — cab: 운전실 길이/전체 길이, wheels: 바퀴 중심 위치(앞 0 ~ 뒤 1), tail: 뒤 크레인 길이",
      "roof": "tanker",
-     "lightbar_mid": "#2E6FE0"
-    }
+     "lightbar_mid": "#2E6FE0",
+     "windshield_z": 0.42,
+     "windshield_back_m": 0.55
+    },
+    "drive_frames": 3,
+    "drive_step_deg": 12,
+    "drive_note": "달리는 동작: 바퀴를 12°씩 3장 (볼트 10개 바퀴는 36°마다 같은 모양 → 이어지는 반복). 장 수는 텍스처 메모리 상한(test_art 48MB) 안에서"
    },
    {
     "type": "구급차",
@@ -229,8 +239,13 @@
      "note": "사용자 참고 그림(앞·옆·뒤)을 상자 모델 면에 입힘 (2026-11-12 사용자 결정). 그림 자르기: tools/blender/prep_truck_refs.py. 값은 옆 그림에서 잰 비율 — cab: 운전실 길이/전체 길이, wheels: 바퀴 중심 위치(앞 0 ~ 뒤 1), tail: 뒤 크레인 길이",
      "roof": "rescue",
      "top_color": "#A9AEB3",
-     "lightbar_mid": "#2E6FE0"
-    }
+     "lightbar_mid": "#2E6FE0",
+     "windshield_z": 0.5,
+     "windshield_back_m": 0.28
+    },
+    "drive_frames": 3,
+    "drive_step_deg": 12,
+    "drive_note": "달리는 동작: 바퀴를 12°씩 3장 (볼트 10개 바퀴는 36°마다 같은 모양 → 이어지는 반복). 장 수는 텍스처 메모리 상한(test_art 48MB) 안에서"
    },
    {
     "type": "굴절차",

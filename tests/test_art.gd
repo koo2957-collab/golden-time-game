@@ -121,6 +121,16 @@ func test_fx_smoke_curtain_flipbook() -> void:
 	assert_true(float(m.body_v) > 0.5 and float(m.body_v) < 1.0, "연기층 아랫면은 그림 아래쪽, 그 아래는 말려 내려오는 가장자리")
 
 
+func test_photo_trucks_have_drive_animation() -> void:
+	# 2026-11-12 사용자 결정: 참고 그림으로 만든 소방차 3종은 달릴 때 바퀴가 도는 동작이 있다 (없는 차량은 서 있는 그림 그대로)
+	for type: String in ["펌프차", "물탱크차", "구조공작차"]:
+		var art := SpriteArt.vehicle_set(type)
+		assert_true(art != null, "%s 그림 있음" % type)
+		assert_true(art.frames("idle") == 1 and art.frames("drive") >= 2, "%s: 서 있는 그림 1장 + 달리는 동작 여러 장" % type)
+	assert_eq(SpriteArt.vehicle_set("구급차").frames("drive"), 0, "구급차는 달리는 동작 없음 (서 있는 그림으로)")
+	assert_true(float(SpriteArt.config().get("fps", {}).get("drive", 0.0)) > 0.0, "달리는 동작 속도")
+
+
 func test_fx_smoke_sheet_plume_spill_flipbooks() -> void:
 	# F04 (2026-11-12): 연기층 윗면·불에서 솟는 기둥·개구부 넘침 (tools/blender/smoke_fx.py)
 	assert_true(FxArt.load_all(), "불꽃 그림 불러옴")

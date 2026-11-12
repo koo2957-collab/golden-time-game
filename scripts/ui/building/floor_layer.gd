@@ -1587,7 +1587,10 @@ func _draw_vehicle(v: Vehicle, alpha: float) -> void:
 	var color := THERMAL_FURNITURE if thermal else v.color
 	color.a = VEHICLE_ALPHA
 	var art := SpriteArt.vehicle_set(v.type) if not thermal else null
-	if art != null and art.draw(self, "idle", SpriteArt.dir8(v.heading), 0, proj.to_screen(center, 0.0), Color(1, 1, 1, VEHICLE_ALPHA)):
+	# 달리는 중이면 바퀴가 도는 동작 (그 그림이 구워져 있는 차량만, 2026-11-12 사용자 결정)
+	var anim := "drive" if art != null and v.is_moving() and art.frames("drive") > 0 else "idle"
+	var frame := SpriteArt.frame_at(anim, art.frames(anim), v.id * 0.5) if art != null else 0
+	if art != null and art.draw(self, anim, SpriteArt.dir8(v.heading), frame, proj.to_screen(center, 0.0), Color(1, 1, 1, VEHICLE_ALPHA)):
 		_vehicle_details_sprite(v, center)
 	else:
 		_prism(fp, 0.0, h, color)

@@ -3,7 +3,7 @@
   "source": "Kenney (kenney.nl), CC0 — Animated Characters Retro, Car Kit, Furniture Kit",
   "enabled": true,
   "dir": "res://art/sprites",
-  "fps": {"idle": 3, "walk": 9, "crouch_walk": 6, "carry": 6, "spray": 6, "search": 3, "_source": "화면 설정"},
+  "fps": {"idle": 3, "walk": 9, "crouch_walk": 6, "carry": 6, "spray": 6, "search": 3, "drive": 12, "_source": "화면 설정", "_drive_note": "차량이 달릴 때 바퀴 도는 동작 (펌프차·물탱크차·구조공작차)"},
   "crew": "characters_firefighter_v2",
   "_crew_note": "대원 그림: firefighter_v2 = 사용자 참고 그림으로 Blender에서 만든 사람 비율 모델. 예전 Kenney 대원으로 되돌리려면 crew·commander를 characters_firefighter로",
   "commander": "characters_firefighter_v2",

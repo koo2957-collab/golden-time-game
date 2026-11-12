@@ -1223,8 +1223,8 @@ func _draw_cell_objects(x: int, y: int) -> void:
 				FloorStack.Wall.OPEN:
 					pass  # 인형집: 앞 바깥벽은 그리지 않는다 (문·창은 따로)
 				FloorStack.Wall.HALF:
-					# 실내 벽: 허리 높이 진한 벽 + 윗면 단면 띠, 두께는 바깥벽의 1/3 (2026-11-12 사용자 결정)
-					_thin_wall(x, y, 0.0, wh, _structure_color(skin.color("wall")), _cut_top(wh))
+					# 실내 벽: 천장까지, 아래 진하게·위로 갈수록 옅게 + 흰 윗면 테두리, 두께는 바깥벽의 1/3 (2026-11-12 사용자 결정)
+					_inner_wall(x, y, 0.0, wh, _structure_color(skin.color("wall")))
 				_:
 					_block(x, y, 0.0, wh, _structure_color(skin.color("wall")), _cut_top(wh))
 		BuildingData.Cell.WINDOW:
@@ -1285,6 +1285,9 @@ func _draw_door(x: int, y: int) -> void:
 		return
 	var top := proj.to_screen(Vector2(x + 0.5, y + 0.5), minf(DOOR_TOP_M, _wall_height(x, y)) + 0.3)
 	var first := Vector2i(x, y) == o.cells[0]
+	# 실내 문 위(인방~천장)는 벽으로 채운다 (열려 있어도)
+	if stack.wall_kind(level, x, y, _outside()) == FloorStack.Wall.HALF and _wall_height(x, y) > DOOR_TOP_M:
+		_inner_wall(x, y, DOOR_TOP_M, _wall_height(x, y), _structure_color(skin.color("wall")))
 	if not o.is_open:
 		var dc := _structure_color(PlanStyle.CELL_COLORS[BuildingData.Cell.DOOR])
 		if stack.wall_kind(level, x, y, _outside()) == FloorStack.Wall.HALF:
@@ -2272,7 +2275,7 @@ func _box(p0: Vector2, p1: Vector2, h0: float, h1: float, color: Color, side_col
 
 ## 얇은 벽 한 칸: 가로 막대(서↔동)와 세로 막대(북↔남)를 이어 그린다. 두께 = 칸 × inner_wall_thick.
 ## 이웃 칸으로 벽이 이어지는 쪽 끝면은 그리지 않아 이음새 줄무늬가 생기지 않는다. 그리는 순서: 북쪽 팔 → 가로 막대 → 남쪽 팔
-func _thin_wall(x: int, y: int, h0: float, h1: float, color: Color, top: Color) -> void:
+func _thin_wall(x: int, y: int, h0: float, h1: float, color: Color, top: Color, a0 := -1.0, a1 := -1.0) -> void:
 	var b := sim.building
 	var wallish := [BuildingData.Cell.WALL, BuildingData.Cell.DOOR, BuildingData.Cell.WINDOW]
 	var has := func(dx: int, dy: int) -> bool: return b.in_bounds(x + dx, y + dy) and b.cell(level, x + dx, y + dy) in wallish
@@ -2284,26 +2287,43 @@ func _thin_wall(x: int, y: int, h0: float, h1: float, color: Color, top: Color) 
 	var n: bool = has.call(0, -1)
 	var sth: bool = has.call(0, 1)
 	if n:
-		_thin_box(Vector2(cx - t, y), Vector2(cx + t, cy - t), h0, h1, color, top, false, true)
+		_thin_box(Vector2(cx - t, y), Vector2(cx + t, cy - t), h0, h1, color, top, false, true, a0, a1)
 	var x0 := float(x) if w else cx - t
 	var x1 := float(x + 1) if e else cx + t
-	_thin_box(Vector2(x0, cy - t), Vector2(x1, cy + t), h0, h1, color, top, not sth or x1 - x0 > 2.0 * t + 0.001, not e)
+	_thin_box(Vector2(x0, cy - t), Vector2(x1, cy + t), h0, h1, color, top, not sth or x1 - x0 > 2.0 * t + 0.001, not e, a0, a1)
 	if sth:
-		_thin_box(Vector2(cx - t, cy + t), Vector2(cx + t, y + 1), h0, h1, color, top, false, true)
+		_thin_box(Vector2(cx - t, cy + t), Vector2(cx + t, y + 1), h0, h1, color, top, false, true, a0, a1)
 
 
-## 상자 (_box와 같고 남·동 면을 고를 수 있다)
-func _thin_box(p0: Vector2, p1: Vector2, h0: float, h1: float, color: Color, top: Color, south: bool, east: bool) -> void:
+## 실내 벽 (2026-11-12 사용자 결정 F04): 높이 h0~h1 구간을 바닥 0m 진하기 inner_wall_alpha_bottom → 천장 inner_wall_alpha_top 으로
+## 높이에 따라 옅게 (문 위 조각도 같은 높이면 같은 진하기). 천장 높이에 닿으면 윗면을 흰 테두리로
+func _inner_wall(x: int, y: int, h0: float, h1: float, color: Color) -> void:
+	var sp := stack.params
+	var a_at := func(hm: float) -> float: return lerpf(sp.inner_wall_alpha_bottom, sp.inner_wall_alpha_top, clampf(hm / CEILING_M, 0.0, 1.0))
+	var cap := Color(1, 1, 1, sp.inner_wall_cap_alpha) if h1 >= CEILING_M - 0.01 else Color(_structure_color(skin.color("cut_face")), a_at.call(h1))
+	_thin_wall(x, y, h0, h1, color, cap, a_at.call(h0), a_at.call(h1))
+
+
+## 상자 (_box와 같고 남·동 면을 고를 수 있다). a0·a1 >= 0 이면 옆면 진하기를 아래 a0 → 위 a1 로
+func _thin_box(p0: Vector2, p1: Vector2, h0: float, h1: float, color: Color, top: Color, south: bool, east: bool, a0 := -1.0, a1 := -1.0) -> void:
 	var nw := proj.to_screen(p0)
 	var ne := proj.to_screen(Vector2(p1.x, p0.y))
 	var se := proj.to_screen(p1)
 	var sw := proj.to_screen(Vector2(p0.x, p1.y))
 	var lo := Vector2(0, -h0 * IsoProjection.PX_PER_M)
 	var hi := Vector2(0, -h1 * IsoProjection.PX_PER_M)
-	if south:
-		_quad(sw + lo, se + lo, se + hi, sw + hi, Color(color.darkened(SOUTH_SHADE), color.a))
-	if east:
-		_quad(ne + lo, se + lo, se + hi, ne + hi, Color(color.darkened(EAST_SHADE), color.a))
+	if a0 >= 0.0:
+		if south:
+			var cs := color.darkened(SOUTH_SHADE)
+			_quad_grad(sw + lo, se + lo, se + hi, sw + hi, Color(cs, a0), Color(cs, a1))
+		if east:
+			var ce := color.darkened(EAST_SHADE)
+			_quad_grad(ne + lo, se + lo, se + hi, ne + hi, Color(ce, a0), Color(ce, a1))
+	else:
+		if south:
+			_quad(sw + lo, se + lo, se + hi, sw + hi, Color(color.darkened(SOUTH_SHADE), color.a))
+		if east:
+			_quad(ne + lo, se + lo, se + hi, ne + hi, Color(color.darkened(EAST_SHADE), color.a))
 	_quad(nw + hi, ne + hi, se + hi, sw + hi, top if top.a > 0.0 else color)
 
 
@@ -2908,7 +2928,7 @@ func _draw_adjacent() -> void:
 				known = true
 		if not known:
 			continue
-		var h := CEILING_M if outer else stack.params.inner_wall_m
+		var h := CEILING_M if outer else stack.params.ghost_inner_wall_m
 		var a0 := proj.to_screen(run.a, 0.0)
 		var b0 := proj.to_screen(run.b, 0.0)
 		var a1 := proj.to_screen(run.a, h)

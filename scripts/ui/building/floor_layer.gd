@@ -240,6 +240,7 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 	_ghost_units = Node2D.new()
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/ghost_outline.gdshader")
+	mat.set_shader_parameter("fill", stack.params.ghost_body_alpha)
 	_ghost_units.material = mat
 	_ghost_units.visible = ghost
 	# 벽 너머 테두리처럼: 지금 층 그림 위에 그린다 (아래층 사람이 지금 층 바닥에 가려지지 않게)
@@ -844,7 +845,7 @@ static func _add_dynamic(out: Dictionary, c: Vector2i, b: BuildingData) -> void:
 func _process(_delta: float) -> void:
 	if not is_visible_in_tree():
 		return
-	if _glow == null and depth == 0:
+	if _glow == null:
 		_glow = FireGlowLayer.new()
 		add_child(_glow)
 		# 연기층 질감을 반복해 입힌다 (P15-FX)
@@ -957,6 +958,8 @@ func _draw() -> void:
 	if not _outside():
 		_draw_open_walls()
 	if _glow:
+		_glow.z_as_relative = true
+		_glow.z_index = 0
 		_glow.spots = _glow_spots if not thermal and not _outside() else []
 		_glow.queue_redraw()
 		_glow_spots = []
@@ -2439,6 +2442,8 @@ func _draw_live_only() -> void:
 		_draw_smoke()
 	_draw_blasts()
 	if _glow:
+		_glow.z_as_relative = true
+		_glow.z_index = 0
 		_glow.spots = _glow_spots if not thermal else []
 		_glow.queue_redraw()
 		_glow_spots = []
@@ -2898,8 +2903,31 @@ func _draw_ghost() -> void:
 			_draw_adjacent()
 		2:
 			_draw_far_block()
+	_draw_ghost_glow()
 	if _ghost_units:
 		_ghost_units.queue_redraw()
+
+
+## 다른 층의 불 (2026-11-12 사용자 결정): 불꽃은 그리지 않고 둘레 빛 번짐만, 지금 층 바닥 위로 비치게.
+## 불꽃과 같은 정보 규칙 — 지금 보이는 타는 칸만
+func _draw_ghost_glow() -> void:
+	if _glow == null:
+		return
+	_glow.z_as_relative = false
+	_glow.z_index = 99
+	var spots: Array = []
+	if not thermal and ghost_mode != 3:
+		var grid := sim.fire.grid
+		var p := sim.perception
+		for i in grid.burning:
+			var c3 := grid.cell_of(i)
+			if c3.z != level or not p.is_visible(level, c3.x, c3.y):
+				continue
+			var intensity := clampf(grid.hrr[i] / maxf(grid.peak_kw(i), 1.0), 0.15, 1.0)
+			var base := proj.to_screen(Vector2(c3.x + 0.5, c3.y + 0.5), _furniture_height(c3.x, c3.y))
+			spots.append([base, IsoProjection.HALF_W * (3.0 + 3.0 * intensity), intensity, c3.x * 131 + c3.y])
+	_glow.spots = spots
+	_glow.queue_redraw()
 
 
 ## 바깥 땅만 (건물 안 바닥 칸은 빼고)
@@ -2955,7 +2983,7 @@ func _draw_adjacent() -> void:
 		var a1 := proj.to_screen(run.a, h)
 		var b1 := proj.to_screen(run.b, h)
 		draw_colored_polygon(PackedVector2Array([a0, b0, b1, a1]), Color(tone, a))
-		draw_line(a1, b1, Color(tone, minf(1.0, a * 2.5)), 1.2)
+		draw_line(a1, b1, Color(tone, stack.params.ghost_line_alpha), 1.2)
 
 
 ## 먼 아래층: 건물 외관 덩어리 (외벽 남·동 면 + 지붕 + 창)

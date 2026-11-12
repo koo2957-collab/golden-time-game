@@ -13,10 +13,14 @@ func _stack(path: String) -> FloorStack:
 	return FloorStack.new(BuildingData.from_file(path), p)
 
 
-## 2026-11-12 비켜 놓기(stagger, 기본): 고른 층 + 바로 위층(맨 위층이면 바로 아래층), 위층은 건물 뒤(북)로 비켜 놓는다
+## 비켜 놓기(stagger, 2026-11-12 결정 B — 같은 날 실루엣 방식으로 기본을 바꿈, 값으로 다시 고를 수 있다):
+## 고른 층 + 바로 위층(맨 위층이면 바로 아래층), 위층은 건물 뒤(북)로 비켜 놓는다
 func test_stagger_shows_floor_and_partner() -> void:
-	var s := FloorStack.new(BuildingData.from_file(APT), ViewParams.load_default())
-	assert_true(s.staggered(), "기본은 비켜 놓기")
+	var p := ViewParams.load_default()
+	assert_eq(p.stack_mode, "stack", "기본은 제자리 쌓기 + 다른 층 실루엣 (2026-11-12)")
+	p.stack_mode = "stagger"
+	var s := FloorStack.new(BuildingData.from_file(APT), p)
+	assert_true(s.staggered(), "stagger 로 고르면 비켜 놓기")
 	assert_eq([s.visible_levels(12), s.above_levels(12)], [[12] as Array[int], [13] as Array[int]], "12층: 12층 + 위로 13층")
 	var top := s.order[-1]
 	assert_eq([s.visible_levels(top), s.above_levels(top)], [[top, top - 1] as Array[int], [] as Array[int]], "맨 위층: 바로 아래층과 함께")
@@ -32,7 +36,8 @@ func test_view_params_loaded() -> void:
 	assert_eq(p.visible_floors_below, 2, "아래 2개 층")
 	assert_eq(p.below_modulate, [0.75, 0.55] as Array[float], "아래 층 밝기")
 	assert_eq(p.front_wall, "open", "앞벽은 없음 — 인형집 (2026-11-12 결정)")
-	assert_eq([p.front_wall_alpha, p.inner_wall_m, p.stack_mode, p.stagger_back_ratio, p.stagger_floor_px], [0.15, 2.4, "stagger", 0.3, 260.0], "앞벽 15%, 실내 벽 천장까지(F04), 비켜 놓기 B(뒤로 0.3 + 위로 260px)")
+	assert_eq([p.front_wall_alpha, p.inner_wall_m, p.stack_mode, p.stagger_back_ratio, p.stagger_floor_px], [0.15, 2.4, "stack", 0.3, 260.0], "앞벽 15%, 실내 벽 천장까지(F04), 층은 제자리에 쌓고 다른 층은 실루엣 (비켜 놓기 값은 남겨 둠)")
+	assert_true(p.adjacent_alpha <= 0.1 and p.ghost_line_alpha <= 0.3 and is_equal_approx(p.ghost_body_alpha, 0.25), "다른 층 실루엣 5~10%·벽 윗선, 사람 몸 25% (2026-11-12)")
 	assert_true(p.inner_wall_alpha_bottom > p.inner_wall_alpha_top and p.inner_wall_cap_alpha > 0.5, "실내 벽은 아래 진하게·위로 옅게, 흰 윗면 테두리 (2026-11-12)")
 	assert_true(p.ghost_inner_wall_m < p.inner_wall_m, "위·아래 층 실내 벽은 낮게")
 	assert_eq(p.wall_cut_m, 0.2, "잘린 벽 20cm")

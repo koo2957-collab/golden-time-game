@@ -1,6 +1,6 @@
 {
  "note": "P15 그림 굽기 설정 (tools/blender/bake.py). 3D 모델을 게임 입체 화면과 같은 카메라로 찍어 2D 프레임으로 굽는다 (기획안 9-4-1). 경로는 프로젝트 폴더 기준. 카메라는 기획안 64×32 대신 지금 게임 시점(IsoProjection: 칸 반폭 28px·반높이 21px, 칸 0.5m)에 맞춘다 (2026-11-10 사용자 결정). scale = 게임 확대 1일 때 크기 대비 굽는 비율 (게임이 1/scale로 키워 그린다).",
- "source": "Kenney (kenney.nl) CC0 — Animated Characters Retro, Car Kit, Furniture Kit",
+ "source": "Kenney (kenney.nl) CC0 — Animated Characters Retro, Car Kit, Furniture Kit · 펌프차·물탱크차·구조공작차: 사용자 제공 참고 그림",
  "packs": "art_source/kenney",
  "out_dir": "art_source/baked",
  "camera": {
@@ -180,14 +180,34 @@
    {
     "type": "펌프차",
     "name": "pump",
-    "model": "firetruck"
+    "photo": {
+     "name": "pump",
+     "cab": 0.41,
+     "wheels": [
+      0.175,
+      0.735
+     ],
+     "note": "사용자 참고 그림(앞·옆·뒤)을 상자 모델 면에 입힘 (2026-11-12 사용자 결정). 그림 자르기: tools/blender/prep_truck_refs.py. 값은 옆 그림에서 잰 비율 — cab: 운전실 길이/전체 길이, wheels: 바퀴 중심 위치(앞 0 ~ 뒤 1), tail: 뒤 크레인 길이",
+     "roof": "pump",
+     "top_color": "#A9AEB3"
+    }
    },
    {
     "type": "물탱크차",
     "name": "tanker",
-    "model": "firetruck",
-    "tank": true,
-    "note": "소방차 + 지붕 물탱크 (Kenney에 물탱크차 없음)"
+    "photo": {
+     "name": "tanker",
+     "cab": 0.3,
+     "wheels": [
+      0.18,
+      0.75
+     ],
+     "cab_top": 0.9,
+     "top_color": "#A9AEB3",
+     "note": "사용자 참고 그림(앞·옆·뒤)을 상자 모델 면에 입힘 (2026-11-12 사용자 결정). 그림 자르기: tools/blender/prep_truck_refs.py. 값은 옆 그림에서 잰 비율 — cab: 운전실 길이/전체 길이, wheels: 바퀴 중심 위치(앞 0 ~ 뒤 1), tail: 뒤 크레인 길이",
+     "roof": "tanker",
+     "lightbar_mid": "#2E6FE0"
+    }
    },
    {
     "type": "구급차",
@@ -197,9 +217,20 @@
    {
     "type": "구조공작차",
     "name": "rescue",
-    "model": "firetruck",
-    "hue": 0.035,
-    "note": "소방차를 주황으로 (색상 이동)"
+    "photo": {
+     "name": "rescue",
+     "cab": 0.4,
+     "wheels": [
+      0.205,
+      0.755
+     ],
+     "tail": 0.12,
+     "lightbar": "#C8283A",
+     "note": "사용자 참고 그림(앞·옆·뒤)을 상자 모델 면에 입힘 (2026-11-12 사용자 결정). 그림 자르기: tools/blender/prep_truck_refs.py. 값은 옆 그림에서 잰 비율 — cab: 운전실 길이/전체 길이, wheels: 바퀴 중심 위치(앞 0 ~ 뒤 1), tail: 뒤 크레인 길이",
+     "roof": "rescue",
+     "top_color": "#A9AEB3",
+     "lightbar_mid": "#2E6FE0"
+    }
    },
    {
     "type": "굴절차",

@@ -631,12 +631,155 @@ def vehicle_stats():
     return json.load(open(path, encoding="utf-8"))
 
 
+def lerp(a, b, t):
+    return a + (b - a) * t
+
+
+def _add_box(name, x0, x1, y0, y1, z0, z1):
+    bpy.ops.mesh.primitive_cube_add(size=1.0)
+    o = bpy.context.active_object
+    o.name = name
+    o.scale = (x1 - x0, y1 - y0, z1 - z0)
+    o.location = ((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2)
+    bpy.ops.object.transform_apply(location=True, scale=True)
+    return o
+
+
+def build_photo_truck(spec, L, W, H):
+    """사용자 참고 그림(앞·옆·뒤 정면 그림)을 상자 모델의 면에 입힌 소방차 (2026-11-12 사용자 결정).
+    tools/blender/prep_truck_refs.py 가 잘라 둔 art_source/vehicle_refs/<photo>_<면>.png 를 쓴다.
+    모델: 운전실 상자 + 적재함 상자 (+ 뒤 크레인 상자) + 바퀴 4 + 차대. 앞 = -Y, 왼쪽 = +X. 실제 크기 m (L × W × H = 제원). 높이 값들은 H 에 대한 비율.
+    면의 방향으로 그림을 고른다: 옆(±X) = 옆 그림, 앞(-Y) = 앞 그림, 뒤(+Y) = 뒤 그림, 위(+Z) = 단색."""
+    ph = spec["photo"]
+    refs = os.path.join(PROJECT, "art_source", "vehicle_refs")
+    cab = float(ph.get("cab", 0.4))
+    zb = float(ph.get("body_bottom", 0.15)) * H
+    cab_top = float(ph.get("cab_top", 0.93)) * H
+    body_top = float(ph.get("body_top", 0.93)) * H
+    tail = float(ph.get("tail", 0.0))  # 뒤쪽 크레인 등 좁은 부분 길이 비율
+    y_front, y_back = -L / 2, L / 2
+    parts = []
+    parts.append(("cab", _add_box("cab", -W / 2, W / 2, y_front, y_front + cab * L, zb, cab_top)))
+    parts.append(("body", _add_box("body", -W / 2, W / 2, y_front + cab * L, y_back - tail * L, zb, body_top)))
+    if tail > 0.0:
+        parts.append(("tail", _add_box("tail", -W * 0.3, W * 0.3, y_back - tail * L, y_back, zb, body_top)))
+    # 경광등: 운전실 지붕 앞쪽, 차 폭 방향으로 긴 막대 (가운데는 파랑·흰색일 수 있다)
+    lby = y_front + cab * L * 0.22
+    lb = _add_box("lightbar", -W * 0.36, W * 0.36, lby, lby + 0.32, cab_top, cab_top + 0.2)
+    lb.data.materials.append(flat_mat("lightbar", hexcol(ph.get("lightbar", "#D8202A")), 0.35, 0.4))
+    if "lightbar_mid" in ph:
+        lm = _add_box("lightbar_mid", -W * 0.1, W * 0.1, lby - 0.01, lby + 0.33, cab_top, cab_top + 0.21)
+        lm.data.materials.append(flat_mat("lightbar_mid", hexcol(ph["lightbar_mid"]), 0.35, 0.4))
+    # 지붕 장비 (위 그림이 없어 단순 도형): 무늬강판 덮개, 양옆 난간, 종류별 장비
+    by0 = y_front + cab * L + 0.25
+    by1 = y_back - tail * L - 0.2
+    deck = _add_box("deck", -W * 0.34, W * 0.34, by0, by1, body_top, body_top + 0.12)
+    deck.data.materials.append(flat_mat("deck", hexcol("#C6CACE"), 0.45))
+    for sx in (-1, 1):
+        rail = _add_box("rail", sx * W * 0.47 - 0.03, sx * W * 0.47 + 0.03, by0 - 0.15, by1 + 0.1, body_top, body_top + 0.16)
+        rail.data.materials.append(flat_mat("rail", hexcol("#8D9297"), 0.5))
+    roof = ph.get("roof", "")
+    if roof == "pump":
+        # 사다리(한쪽)와 뒤쪽 방수총
+        for k in range(2):
+            bar = _add_box("ladder", W * (0.12 + 0.14 * k), W * (0.12 + 0.14 * k) + 0.04, by0 + 0.2, by1 - 0.5, body_top + 0.12, body_top + 0.2)
+            bar.data.materials.append(flat_mat("ladder", hexcol("#E4E6E8"), 0.4))
+        gun = _add_box("monitor", -W * 0.08, W * 0.08, by1 - 0.45, by1 - 0.1, body_top + 0.12, body_top + 0.42)
+        gun.data.materials.append(flat_mat("monitor", hexcol("#C4202A"), 0.5))
+    elif roof == "tanker":
+        # 물탱크 맨홀 덮개 둘
+        for fy in (0.3, 0.7):
+            yc = lerp(by0, by1, fy)
+            hatch = _add_box("hatch", -W * 0.14, W * 0.14, yc - 0.35, yc + 0.35, body_top + 0.12, body_top + 0.2)
+            hatch.data.materials.append(flat_mat("hatch", hexcol("#9EA3A8"), 0.5))
+    elif roof == "rescue":
+        # 장비 상자와 뒤쪽 크레인 기둥·접힌 붐
+        box = _add_box("gearbox", -W * 0.28, W * 0.28, by0 + 0.3, lerp(by0, by1, 0.6), body_top + 0.12, body_top + 0.34)
+        box.data.materials.append(flat_mat("gearbox", hexcol("#D3D6D9"), 0.45))
+        post = _add_box("crane_post", -W * 0.12, W * 0.12, y_back - tail * L * 0.8, y_back - tail * L * 0.2, body_top, body_top + 0.35)
+        post.data.materials.append(flat_mat("crane", hexcol("#E8641C"), 0.55))
+        boom = _add_box("crane_boom", W * 0.02, W * 0.2, lerp(by0, by1, 0.55), y_back - tail * L * 0.3, body_top + 0.2, body_top + 0.42)
+        boom.data.materials.append(flat_mat("crane", hexcol("#E8641C"), 0.55))
+    ch = _add_box("chassis", -W * 0.4, W * 0.4, y_front + 0.02, y_back - 0.02, zb * 0.45, zb)
+    ch.data.materials.append(flat_mat("chassis", hexcol("#26272B"), 0.9))
+    side = image_mat("side", os.path.join(refs, "%s_side.png" % ph["name"]))
+    side_r_path = os.path.join(refs, "%s_side_r.png" % ph["name"])
+    side_r = image_mat("side_r", side_r_path) if os.path.exists(side_r_path) else None
+    front = image_mat("front", os.path.join(refs, "%s_front.png" % ph["name"]))
+    rear = image_mat("rear", os.path.join(refs, "%s_rear.png" % ph["name"]))
+    for m in [side, side_r, front, rear]:
+        if m:
+            m.node_tree.nodes["Image Texture"].interpolation = "Linear"
+    inset = float(ph.get("front_inset", 0.09))  # 앞·뒤 그림에서 거울이 튀어나온 폭 (차 폭 밖)
+    for kind, o in parts:
+        me = o.data
+        top_col = ph.get("cab_color", "#EE6A1E") if kind == "cab" else (ph.get("tail_color", "#E8641C") if kind == "tail" else ph.get("top_color", "#B4B8BD"))
+        mats = [side, side_r if side_r else side, front, rear, flat_mat(kind + "_top", hexcol(top_col), 0.6)]
+        for m in mats:
+            me.materials.append(m)
+        uv = me.uv_layers.new(name="photo") if not me.uv_layers else me.uv_layers[0]
+        for poly in me.polygons:
+            n = poly.normal
+            for li in poly.loop_indices:
+                v = me.vertices[me.loops[li].vertex_index].co
+                fy = (v.y - y_front) / L   # 0 = 앞
+                fz = v.z / H
+                if n.x > 0.5:      # 왼쪽 면: 옆 그림 그대로 (그림 왼쪽 = 앞)
+                    poly.material_index = 0
+                    uv.data[li].uv = (fy, fz)
+                elif n.x < -0.5:   # 오른쪽 면: 오른쪽 그림이 있으면 그것(그림 오른쪽 = 앞), 없으면 왼쪽 그림을 뒤집어
+                    poly.material_index = 1
+                    uv.data[li].uv = ((1.0 - fy) if side_r else fy, fz)
+                elif n.y < -0.5:   # 앞
+                    poly.material_index = 2
+                    uv.data[li].uv = (inset + (v.x + W / 2) / W * (1.0 - 2.0 * inset), fz)
+                elif n.y > 0.5:    # 뒤
+                    poly.material_index = 3
+                    uv.data[li].uv = (inset + (W / 2 - v.x) / W * (1.0 - 2.0 * inset), fz)
+                else:
+                    poly.material_index = 4
+    # 바퀴: 옆 그림의 바퀴가 바깥 면에 오도록 같은 방식으로 입힌다
+    r = float(ph.get("wheel_r", 0.14))
+    tire = flat_mat("tire", hexcol("#1B1B1D"), 0.95)
+    for fy in ph.get("wheels", [0.18, 0.74]):
+        for sx in (-1, 1):
+            bpy.ops.mesh.primitive_cylinder_add(vertices=20, radius=1.0, depth=1.0)
+            wobj = bpy.context.active_object
+            wobj.rotation_euler = (0, math.radians(90), 0)
+            wobj.scale = (r * H, r * H, 0.12 * W)
+            wobj.location = (sx * W * 0.44, y_front + fy * L, r * H)
+            bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+            me = wobj.data
+            me.materials.append(side)
+            me.materials.append(side_r if side_r else side)
+            me.materials.append(tire)
+            uv = me.uv_layers.new(name="photo") if not me.uv_layers else me.uv_layers[0]
+            for poly in me.polygons:
+                n = poly.normal
+                for li in poly.loop_indices:
+                    v = me.vertices[me.loops[li].vertex_index].co
+                    f2 = (v.y - y_front) / L
+                    if n.x > 0.5:
+                        poly.material_index = 0
+                        uv.data[li].uv = (f2, v.z / H)
+                    elif n.x < -0.5:
+                        poly.material_index = 1
+                        uv.data[li].uv = ((1.0 - f2) if side_r else f2, v.z / H)
+                    else:
+                        poly.material_index = 2
+    return [o for o in bpy.data.objects if o.type == "MESH"]
+
+
 def bake_vehicle(spec, scale):
     sc = reset()
     stats = vehicle_stats()
-    path = os.path.join(PACKS, "car-kit", "Models", "GLB format", spec["model"] + ".glb")
-    bpy.ops.import_scene.gltf(filepath=path)
-    parts = [o for o in bpy.data.objects if o.type == "MESH"]
+    if "photo" in spec:
+        st0 = stats[spec["type"]]
+        parts = build_photo_truck(spec, float(st0["length_m"]), float(st0["width_m"]), float(st0["height_m"]))
+    else:
+        path = os.path.join(PACKS, "car-kit", "Models", "GLB format", spec["model"] + ".glb")
+        bpy.ops.import_scene.gltf(filepath=path)
+        parts = [o for o in bpy.data.objects if o.type == "MESH"]
     # 색 바꾸기: hue = 색상 이동(흰·회색은 그대로), tint = 곱하기 색
     if "tint" in spec or "hue" in spec:
         done = set()

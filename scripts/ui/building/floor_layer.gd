@@ -3046,6 +3046,16 @@ func _draw_adjacent() -> void:
 		if outer:
 			var a1 := proj.to_screen(run.a, CEILING_M)
 			var b1 := proj.to_screen(run.b, CEILING_M)
+			# 위층의 뒷벽(북)·왼쪽 벽(서)은 반투명 면으로 — 지금 층 윤곽 바깥(배경 쪽)에 놓여 지금 층을 가리지 않는다 (2026-11-12 사용자 결정)
+			if depth >= ABOVE_DEPTH:
+				var ac := Vector2i(run.a.floor())
+				if stack.wall_kind(level, ac.x, ac.y, false) == FloorStack.Wall.FULL:
+					var along: Vector2 = (run.b - run.a).normalized() * 0.5
+					var north := is_equal_approx(run.a.y, run.b.y)
+					var face := _structure_color(skin.color("wall")).darkened(SOUTH_SHADE if north else EAST_SHADE)
+					draw_colored_polygon(PackedVector2Array([proj.to_screen(run.a - along, 0.0), proj.to_screen(run.b + along, 0.0),
+						proj.to_screen(run.b + along, CEILING_M), proj.to_screen(run.a - along, CEILING_M)]),
+						Color(face, stack.params.ghost_back_wall_alpha))
 			draw_dashed_line(a1, b1, line, 1.2, dash)
 			draw_dashed_line(a0, a1, line, 1.2, dash)
 			draw_dashed_line(b0, b1, line, 1.2, dash)

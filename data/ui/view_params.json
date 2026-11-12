@@ -44,7 +44,7 @@
   "smoke_style": {"value": "curtain", "source": "화면 설정", "note": "연기층 앞면: curtain = Blender로 구운 연기 커튼 플립북(art/fx/smoke_curtain.png, 2026-11-12 시험), puffs = Kenney 덩어리를 줄로 겹쳐 쌓기"},
   "smoke_max_opacity": {"value": 0.75, "source": "화면 설정", "note": "연기 진하기 상한 (커튼 천장 쪽·윗면 판 공통, 바닥·대원이 조금은 비치게)"},
   "smoke_opacity_k": {"value": 1.2, "source": "화면 설정", "note": "연기 진하기 = 1 - e^(-k × 짙기 × 연기층 두께m) — 위에서 보면 두께를 꿰뚫어 보므로 쌓일수록 진하다 (빛 감쇠 비어-람베르트 꼴). 짙기 = 0.25 + 0.75 × (1 - 가시거리/10m)"},
-  "smoke_curtain_low": {"value": 0.4, "source": "화면 설정", "note": "커튼 진하기: 천장 쪽 1 → 연기층 아랫면에서 이 배율 (천장이 가장 진하고 아래로 갈수록 옅게, 2026-11-12 사용자 결정)"},
+  "smoke_curtain_low": {"value": 0.15, "source": "화면 설정", "note": "연기 상자 앞면 진하기: 천장 쪽 = 윗면과 같은 값 → 연기층 아랫면에서 이 배율. 앞면의 높이 z에서 시선은 z부터 아랫면까지만 연기를 지나므로 아래로 갈수록 옅다 (2026-11-12 사용자 결정, 0이면 말려 내려오는 가장자리가 안 보여 조금 남김)"},
   "smoke_sheet_flow_mps": {"value": 0.06, "source": "화면 설정", "note": "연기층 무늬가 불난 곳에서 멀어지는 쪽으로 흘러가는 속도 (m/s, 화면 연출 — 퍼지는 모습)"},
   "smoke_plume_alpha": {"value": 0.55, "source": "화면 설정", "note": "불에서 솟는 연기 기둥 진하기"},
   "smoke_spill_alpha": {"value": 0.75, "source": "화면 설정", "note": "개구부(창·문) 윗부분으로 흘러나오는 연기 진하기"},

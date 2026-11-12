@@ -1746,7 +1746,8 @@ func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density
 	if op < 0.0:
 		op = minf(sp.smoke_max_opacity, a * 1.3)
 	if sheet:
-		_draw_smoke_sheet(r, h, Color(col, op), c.index, _spread_dir(r, fires), reach)
+		# 연기 상자 (2026-11-12 사용자 결정): 윗면은 천장 높이에 — 윗면·앞면 두 개만 그려 화면에서 겹치지 않는다
+		_draw_smoke_sheet(r, CEILING_M, Color(col, op), c.index, _spread_dir(r, fires), reach)
 	# 그릴 덩어리: [깊이 순서, 칸, 줄]. 뒤(북서)에서 앞(남동)으로, 같은 자리는 위 줄부터
 	var draws: Array = []
 	for j in (0 if sheet else ny):
@@ -1860,8 +1861,8 @@ func _draw_curtain_faces(r: Rect2i, h: float, col: Color, seed: int, front := Ve
 			s = e
 
 
-## 연기층 윗면 (Blender 플립북, 가로·세로 타일): 방 바닥 모양 그대로 연기층 아랫면 높이(h)에 깐다.
-## 연기층이 내려오면 판 전체가 내려온다. 틈으로 바닥·대원이 비친다.
+## 연기 상자 윗면 (Blender 플립북, 가로·세로 타일): 방 바닥 모양 그대로 높이 h(천장)에 깐다.
+## 진하기 = 시선이 연기층 두께를 지나는 만큼 — 쌓일수록 진해진다. 틈으로 바닥·대원이 비친다.
 ## spread: 무늬가 흘러가는 방향 (불난 방에서 멀어지는 쪽 — 연기가 퍼지는 모습). 불난 방은 제자리에서 끓는다
 func _draw_smoke_sheet(r: Rect2i, h: float, col: Color, seed: int, spread: Vector2, front := Vector3(0, 0, -1)) -> void:
 	var m: Dictionary = FxArt.meta.get("smoke_sheet", {})

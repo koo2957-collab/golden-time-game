@@ -153,6 +153,10 @@ var _ghost_units: Node2D
 var _smoke_outline: Node2D
 ## 이번 그림에서 사람을 덮을 만큼 연기가 짙고 낮게 깔린 방 (Compartment.index → true)
 var _smoky := {}
+## 연기 상자 화면 윤곽 (진하기가 smoke_outline_opacity 이상인 방) — 그 안에 든 사람은 테두리로
+var _smoke_hulls: Array[PackedVector2Array] = []
+## 지금 그리는 벽 조각 표시: UV.x = 1000 + 벽 깊이(칸 x + y). 0이면 벽이 아님 (unit_hole 셰이더가 대상 앞 벽만 옅게)
+var _wall_uv := Vector2.ZERO
 var _ghost_walls: Dictionary = {}  # level -> 벽 줄 목록 (_ghost_wall_runs)
 
 ## 층 고르기 (P4-5): 외부 보기에서 노랗게 테두리를 그릴 층 (-99 = 없음)
@@ -864,8 +868,9 @@ func refresh() -> void:
 func _draw() -> void:
 	if sim == null:
 		return
-	if not _smoky.is_empty():
+	if not _smoky.is_empty() or not _smoke_hulls.is_empty():
 		_smoky.clear()
+		_smoke_hulls.clear()
 		_smoke_outline.queue_redraw()
 	if ghost_mode == 4:
 		_draw_live_only()
@@ -1291,7 +1296,9 @@ func _draw_door(x: int, y: int) -> void:
 	if not o.is_open:
 		var dc := _structure_color(PlanStyle.CELL_COLORS[BuildingData.Cell.DOOR])
 		if stack.wall_kind(level, x, y, _outside()) == FloorStack.Wall.HALF:
+			_wall_uv = Vector2(1000.0 + x + y + 1.0, 0.0)
 			_thin_wall(x, y, 0.0, minf(DOOR_TOP_M, _wall_height(x, y)), dc, Color(0, 0, 0, 0))
+			_wall_uv = Vector2.ZERO
 		else:
 			_block(x, y, 0.0, minf(DOOR_TOP_M, _wall_height(x, y)), dc)
 		if o.locked and first and not thermal:
@@ -1686,12 +1693,17 @@ func _draw_smoke() -> void:
 		var a := (SMOKE_MIN_ALPHA + SMOKE_DENSITY_ALPHA * density) * fade
 		var r := c.rect
 		var h := CEILING_M - layer_d
-		if h < stack.params.smoke_outline_below_m and density >= stack.params.smoke_outline_density:
-			_smoky[c.index] = true
 		# 연기 진하기 하나 (2026-11-12 사용자 결정): 위에서 보면 연기층 두께를 꿰뚫어 본다 → 두꺼울수록 진하다.
 		# 커튼 천장 쪽·윗면 판이 같은 값을 쓴다
 		var sp0 := stack.params
 		var op := minf(sp0.smoke_max_opacity, 1.0 - exp(-sp0.smoke_opacity_k * (0.25 + 0.75 * density) * layer_d)) * fade
+		# 화면에서 이 연기 상자(윗면 + 앞면)에 덮인 사람은 테두리로 — 어느 방 연기든 (2026-11-12 사용자 결정)
+		if op >= stack.params.smoke_outline_opacity:
+			_smoke_hulls.append(Geometry2D.convex_hull(PackedVector2Array([
+				proj.to_screen(Vector2(r.position), CEILING_M), proj.to_screen(Vector2(r.end.x, r.position.y), CEILING_M),
+				proj.to_screen(Vector2(r.end), CEILING_M), proj.to_screen(Vector2(r.position.x, r.end.y), CEILING_M),
+				proj.to_screen(Vector2(r.end.x, r.position.y), h), proj.to_screen(Vector2(r.end), h),
+				proj.to_screen(Vector2(r.position.x, r.end.y), h)])))
 		if _draw_smoke_cloud(c, h, layer_d, a, density, fires, spread, op):
 			if c.rollover and p.room_visible(c):
 				_draw_rollover(r, h)
@@ -2301,7 +2313,9 @@ func _inner_wall(x: int, y: int, h0: float, h1: float, color: Color) -> void:
 	var sp := stack.params
 	var a_at := func(hm: float) -> float: return lerpf(sp.inner_wall_alpha_bottom, sp.inner_wall_alpha_top, clampf(hm / CEILING_M, 0.0, 1.0))
 	var cap := Color(1, 1, 1, sp.inner_wall_cap_alpha) if h1 >= CEILING_M - 0.01 else Color(_structure_color(skin.color("cut_face")), a_at.call(h1))
+	_wall_uv = Vector2(1000.0 + x + y + 1.0, 0.0)
 	_thin_wall(x, y, h0, h1, color, cap, a_at.call(h0), a_at.call(h1))
+	_wall_uv = Vector2.ZERO
 
 
 ## 상자 (_box와 같고 남·동 면을 고를 수 있다). a0·a1 >= 0 이면 옆면 진하기를 아래 a0 → 위 a1 로
@@ -2461,7 +2475,14 @@ func _quad_grad(a: Vector2, b: Vector2, c: Vector2, d: Vector2, bottom: Color, t
 		_bq_cols.append_array([bottom, bottom, top, top])
 		_bq_idx.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
 		return
-	draw_primitive(PackedVector2Array([a, b, c, d]), PackedColorArray([bottom, bottom, top, top]), PackedVector2Array())
+	draw_primitive(PackedVector2Array([a, b, c, d]), PackedColorArray([bottom, bottom, top, top]), _wall_uvs())
+
+
+## 벽 조각이면 네 점 모두 벽 표시 UV, 아니면 빈 배열
+func _wall_uvs() -> PackedVector2Array:
+	if _wall_uv == Vector2.ZERO:
+		return PackedVector2Array()
+	return PackedVector2Array([_wall_uv, _wall_uv, _wall_uv, _wall_uv])
 
 
 func _quad(a: Vector2, b: Vector2, c: Vector2, d: Vector2, color: Color) -> void:
@@ -2471,7 +2492,7 @@ func _quad(a: Vector2, b: Vector2, c: Vector2, d: Vector2, color: Color) -> void
 		_bq_cols.append_array([color, color, color, color])
 		_bq_idx.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
 		return
-	draw_primitive(PackedVector2Array([a, b, c, d]), PackedColorArray([color, color, color, color]), PackedVector2Array())
+	draw_primitive(PackedVector2Array([a, b, c, d]), PackedColorArray([color, color, color, color]), _wall_uvs())
 
 
 ## 선 (묶어 그리는 중이면 모았다가 한 번에)
@@ -2956,13 +2977,14 @@ func _draw_ghost_units() -> void:
 
 ## 연기에 묻힌 대원(노랑)·요구조자(빨강): 벽 너머 사람과 같은 테두리를 연기 위에 (2026-11-12 사용자 결정)
 func _draw_smoke_outlines() -> void:
-	if sim == null or _smoky.is_empty() or thermal:
+	if sim == null or _smoke_hulls.is_empty() or thermal:
 		return
-	_draw_outlines(_smoke_outline, _smoky)
+	_draw_outlines(_smoke_outline, {}, _smoke_hulls)
 
 
-## 사람 테두리를 target에 그린다. rooms가 비어 있지 않으면 그 방(구획 index)에 있는 사람만
-func _draw_outlines(target: CanvasItem, rooms: Dictionary) -> void:
+## 사람 테두리를 target에 그린다. rooms가 비어 있지 않으면 그 방(구획 index)에 있는 사람만,
+## hulls가 비어 있지 않으면 화면에서 그 윤곽(연기 상자) 안에 몸이 든 사람만
+func _draw_outlines(target: CanvasItem, rooms: Dictionary, hulls: Array[PackedVector2Array] = []) -> void:
 	var alpha := sim.clock.alpha()
 	var crew_art := SpriteArt.get_set(str(SpriteArt.config().get("crew", ""))) if not thermal else null
 	for c in sim.units.crews:
@@ -2971,6 +2993,8 @@ func _draw_outlines(target: CanvasItem, rooms: Dictionary) -> void:
 				continue
 			var p := UnitsView.display_pos(ff, alpha)
 			if not rooms.is_empty() and not _in_rooms(p, rooms):
+				continue
+			if not hulls.is_empty() and not _in_hulls(proj.to_screen(p, 1.0), hulls):
 				continue
 			var feet := proj.to_screen(p, 0.0)
 			var moving := ff.level == ff.prev_level and (ff.pos - ff.prev_pos).length_squared() > 0.000001
@@ -2982,11 +3006,21 @@ func _draw_outlines(target: CanvasItem, rooms: Dictionary) -> void:
 			continue
 		if not rooms.is_empty() and not _in_rooms(v.pos, rooms):
 			continue
+		if not hulls.is_empty() and not _in_hulls(proj.to_screen(v.pos, 0.4), hulls):
+			continue
 		var feet := proj.to_screen(v.pos, 0.05)
 		var art := SpriteArt.victim_set(v.label()) if not thermal else null
 		var anim := "idle" if v.state == Victim.State.CONSCIOUS else "down_up"
 		if art == null or not art.draw(target, anim, (v.id * 3) % 8, 0, feet, GHOST_VICTIM):
 			target.draw_arc(feet + Vector2(0, -6), 9.0, 0.0, TAU, 16, GHOST_VICTIM, 2.0)
+
+
+## 화면 점이 윤곽들 중 하나 안인가
+func _in_hulls(at: Vector2, hulls: Array[PackedVector2Array]) -> bool:
+	for hull in hulls:
+		if Geometry2D.is_point_in_polygon(at, hull):
+			return true
+	return false
 
 
 ## 그 자리(칸 좌표)가 rooms(구획 index 모음) 안인가

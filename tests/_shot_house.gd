@@ -53,6 +53,9 @@ func _run() -> void:
 	var levels: Array = sim.building.levels()
 	var proj = world.projection()
 	var iso = world.iso_view if "iso_view" in world else world.get_node("IsoView")
+	# 세 번째 인자 nosmoke: 연기를 그리지 않고 벽·사람만 (벽 옅게 하기 점검)
+	if args.size() > 2 and args[2] == "nosmoke":
+		iso.params.smoke_max_opacity = 0.0
 	var fp: Rect2i = sim.building.footprint(levels[0])
 	print("집 바닥 칸: ", fp)
 	# 배치 후보: [이름, 뒤로 비율, 위로 px]

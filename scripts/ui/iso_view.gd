@@ -372,6 +372,12 @@ func _update_holes() -> void:
 			elif node == layers[0] and not _exterior:
 				g = params.current_gray
 			m.set_shader_parameter("gray", g)
+	# 지금 층: 대원·발견한 요구조자·불난 방보다 앞에 선 실내 벽만 옅게 (F04 3단계, 2026-11-12 사용자 결정)
+	var wall_holes: Array[Vector4] = []
+	if not _exterior and not layers.is_empty():
+		wall_holes = _wall_fade_holes(layers[0])
+	if pair.is_empty() or pair[0] != layers[0]:
+		_set_holes(layers[0], wall_holes)
 	if pair.is_empty():
 		return
 	var upper: FloorLayer = pair[0]
@@ -403,14 +409,56 @@ func _update_holes() -> void:
 		var wc: Vector2 = xf * _proj.to_screen(Vector2(comp.rect.get_center()), 0.5)
 		var rr := clampf(Vector2(comp.rect.size).length() * IsoProjection.HALF_W * 0.6, r, params.fire_hole_px)
 		holes.append(Vector4(wc.x, wc.y, rr, 0.0))
-	var mat := upper.material as ShaderMaterial
+	# 지금 층이 위층(맨 위층에서 아래층과 짝)이면 벽 구멍도 같은 그림에
+	if upper == layers[0]:
+		holes.append_array(wall_holes)
+	_set_holes(upper, holes)
+
+
+## 셰이더 구멍 설정 (16개까지)
+func _set_holes(node: FloorLayer, holes: Array[Vector4]) -> void:
+	var mat := node.material as ShaderMaterial
 	if mat == null:
 		return
-	while holes.size() < 16:
-		holes.append(Vector4.ZERO)
-	mat.set_shader_parameter("holes", holes)
-	mat.set_shader_parameter("count", mini(16, holes.filter(func(h: Vector4) -> bool: return h.z > 0.0).size()))
+	var list := holes.slice(0, 16)
+	var n := list.size()
+	while list.size() < 16:
+		list.append(Vector4.ZERO)
+	mat.set_shader_parameter("holes", list)
+	mat.set_shader_parameter("count", n)
 	mat.set_shader_parameter("min_alpha", params.unit_hole_alpha)
+	mat.set_shader_parameter("wall_min_alpha", params.wall_fade_alpha)
+
+
+## 지금 층에서 벽을 옅게 할 대상: [화면 x, y, 반지름, 대상 깊이(칸 x + y) + 1].
+## 대원(조 단위로 겹치면 하나), 발견한 요구조자, 타는 칸이 있는 방 가운데
+func _wall_fade_holes(node: FloorLayer) -> Array[Vector4]:
+	var out: Array[Vector4] = []
+	var xf := node.get_global_transform()
+	var r := params.wall_fade_px
+	var add := func(p: Vector2, h: float, rr: float) -> void:
+		var w: Vector2 = xf * _proj.to_screen(p, h)
+		for o in out:
+			if Vector2(o.x, o.y).distance_to(w) < rr * 0.3:
+				return
+		out.append(Vector4(w.x, w.y, rr, p.x + p.y + 1.0))
+	for ff in sim.units.firefighters:
+		if ff.level == _level and not ff.aboard:
+			add.call(ff.pos, 1.0, r)
+	for v in sim.rescue.victims:
+		if v.discovered and v.level == _level and v.carried_by < 0:
+			add.call(v.pos, 0.4, r)
+	var rooms := {}
+	var grid := sim.fire.grid
+	for i in grid.burning:
+		var c3 := grid.cell_of(i)
+		if c3.z == _level:
+			var comp := sim.fire.compartment_at(c3.z, c3.x, c3.y)
+			if comp:
+				rooms[comp.index] = comp
+	for comp: Compartment in rooms.values():
+		add.call(Vector2(comp.rect.get_center()), 1.0, clampf(Vector2(comp.rect.size).length() * IsoProjection.HALF_W * 0.6, r, params.fire_hole_px))
+	return out
 
 
 ## 위층 그림자: 위층 바닥을 아래층 바닥 높이로 내린 자리

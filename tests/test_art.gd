@@ -129,6 +129,10 @@ func test_photo_trucks_have_drive_animation() -> void:
 		assert_true(art.frames("idle") == 1 and art.frames("drive") >= 2, "%s: 서 있는 그림 1장 + 달리는 동작 여러 장" % type)
 	assert_eq(SpriteArt.vehicle_set("구급차").frames("drive"), 0, "구급차는 달리는 동작 없음 (서 있는 그림으로)")
 	assert_true(float(SpriteArt.config().get("fps", {}).get("drive", 0.0)) > 0.0, "달리는 동작 속도")
+	# 깜박이는 경광등 불빛은 그림의 경광등 막대 위에 (예전 모델 위치 0.3으로 두면 막대 뒤에 뜬다)
+	var bars: Dictionary = SpriteArt.config().get("vehicle_lightbar", {})
+	for type: String in ["펌프차", "물탱크차", "구조공작차"]:
+		assert_true(float(bars[type].forward) > 0.35 and float(bars[type].h_m) < 3.2, "%s 경광등 불빛 위치" % type)
 
 
 func test_fx_smoke_sheet_plume_spill_flipbooks() -> void:

@@ -15,6 +15,14 @@
     "_note": "지휘 = 현장지휘관 파란 헬멧 (2026-11-11 사용자 결정). default = 굴절차 등 그 밖의 출동대(진압대원이 운용)"
   },
   "vehicles": {"펌프차": "vehicles_pump", "물탱크차": "vehicles_tanker", "구급차": "vehicles_ambulance", "구조공작차": "vehicles_rescue", "굴절차": "vehicles_aerial"},
+  "vehicle_lightbar": {
+    "_note": "깜박이는 경광등 불빛 위치 (차량 그림 위에 덧그린다). forward = 차 가운데에서 앞으로(차 길이 비율), side = 가운데에서 옆으로(차 폭 비율), h_m = 높이(m, 없으면 차 높이). 그림 모델의 경광등 막대 위치와 같아야 한다 (tools/blender/bake.py build_photo_truck: 운전실 길이 × 0.22 + 0.16m 뒤, 운전실 지붕 + 0.1m)",
+    "_source": "화면 설정",
+    "default": {"forward": 0.3, "side": 0.2},
+    "펌프차": {"forward": 0.387, "side": 0.24, "h_m": 2.9},
+    "물탱크차": {"forward": 0.414, "side": 0.24, "h_m": 2.8},
+    "구조공작차": {"forward": 0.389, "side": 0.24, "h_m": 3.1}
+  },
   "furniture": {
     "_note": "가구 이름 → 묶음. 이름이 정확히 없으면 keywords 순서대로 이름에 들어간 낱말로 찾는다. 묶음의 nominal(칸)보다 긴 가구는 긴 쪽으로 이어 붙여 그린다",
     "names": {

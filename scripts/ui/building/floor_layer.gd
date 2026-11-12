@@ -1654,10 +1654,14 @@ func _vehicle_details_sprite(v: Vehicle, center: Vector2) -> void:
 		return
 	var t := Time.get_ticks_msec() / 1000.0
 	var on := int(t * 3.0) % 2 == 0
-	var front := center + v.heading * v.length_cells * 0.3
-	var side := Vector2(-v.heading.y, v.heading.x) * v.width_cells * 0.2
-	draw_circle(proj.to_screen(front + side, v.height_m + 0.05), 4.0, Color("ef4444") if on else Color("7f1d1d"))
-	draw_circle(proj.to_screen(front - side, v.height_m + 0.05), 4.0, Color("3b82f6") if not on else Color("1e3a8a"))
+	# 불빛 위치는 차종별 그림의 경광등 막대에 맞춘다 (data/art.json vehicle_lightbar, 2026-11-12)
+	var bars: Dictionary = SpriteArt.config().get("vehicle_lightbar", {})
+	var bar: Dictionary = bars.get(v.type, bars.get("default", {}))
+	var front := center + v.heading * v.length_cells * float(bar.get("forward", 0.3))
+	var side := Vector2(-v.heading.y, v.heading.x) * v.width_cells * float(bar.get("side", 0.2))
+	var h := float(bar.get("h_m", v.height_m)) + 0.05
+	draw_circle(proj.to_screen(front + side, h), 4.0, Color("ef4444") if on else Color("7f1d1d"))
+	draw_circle(proj.to_screen(front - side, h), 4.0, Color("3b82f6") if not on else Color("1e3a8a"))
 
 
 func _draw_sprays(alpha: float) -> void:

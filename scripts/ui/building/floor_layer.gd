@@ -3040,30 +3040,36 @@ func _draw_adjacent() -> void:
 			continue
 		var ra: Vector2 = run.a
 		var rb: Vector2 = run.b
-		# 바깥벽은 모서리까지 (점선 상자와 면의 끝이 맞게)
+		var dash := stack.params.ghost_dash_px
+		# 위층의 뒷벽(북)·왼쪽 벽(서): 지금 층 바깥벽과 같은 한 칸 두께의 반투명 상자 (안쪽 면 + 끝면 + 윗면).
+		# 면 한 장으로 그리면 두께가 없어 아래 벽·점선과 어긋난다 (2026-11-12 사용자 지적).
+		# 지금 층 윤곽 바깥(배경 쪽)에 놓여 지금 층을 가리지 않는다. 바깥 방향은 벽 줄 가운데 칸으로 본다
+		if outer and depth >= ABOVE_DEPTH:
+			var horizontal := is_equal_approx(ra.y, rb.y)
+			var mid := Vector2i(((ra + rb) * 0.5).floor())
+			var out_cell := mid + (Vector2i(0, -1) if horizontal else Vector2i(-1, 0))
+			var bd := sim.building
+			if not bd.in_bounds(out_cell.x, out_cell.y) or bd.cell(level, out_cell.x, out_cell.y) in BuildingData.OUTDOOR:
+				var p0 := ra - Vector2(0.5, 0.5)
+				var p1 := rb + Vector2(0.5, 0.5)
+				# 왼쪽 벽의 맨 위 모서리 칸은 뒷벽 상자가 이미 그렸다 (겹쳐 진해지지 않게)
+				var first := Vector2i(ra.floor())
+				if not horizontal and bd.in_bounds(first.x + 1, first.y) 						and bd.cell(level, first.x + 1, first.y) in [BuildingData.Cell.WALL, BuildingData.Cell.DOOR, BuildingData.Cell.WINDOW]:
+					p0.y += 1.0
+				var body := Color(tone, stack.params.ghost_back_wall_alpha)
+				_box(p0, p1, 0.0, CEILING_M, body, body, body)
+				continue
+		# 그 밖(앞벽·오른쪽 벽·실내 벽·아래층): 흰 점선. 바깥벽은 모서리까지, 바닥선 + 천장선 + 양 끝 세로선의 3차원 상자
 		if outer:
 			var along: Vector2 = (rb - ra).normalized() * 0.5
 			ra -= along
 			rb += along
 		var a0 := proj.to_screen(ra, 0.02)
 		var b0 := proj.to_screen(rb, 0.02)
-		var dash := stack.params.ghost_dash_px
 		draw_dashed_line(a0, b0, line, 1.2, dash)
-		# 바깥벽은 3차원 점선 상자: 바닥선 + 천장선 + 양 끝 세로선 (2026-11-12 사용자 결정 — 위·아래에 층 덩어리가 있음을 보인다)
 		if outer:
 			var a1 := proj.to_screen(ra, CEILING_M)
 			var b1 := proj.to_screen(rb, CEILING_M)
-			# 위층의 뒷벽(북)·왼쪽 벽(서)만 반투명 면 — 지금 층 윤곽 바깥(배경 쪽)에 놓여 지금 층을 가리지 않는다.
-			# 앞벽(남)·오른쪽 벽(동)은 점선만 (2026-11-12 사용자 결정). 바깥 방향은 벽 줄 가운데 칸으로 본다 (모서리 칸은 양쪽이 바깥)
-			if depth >= ABOVE_DEPTH:
-				var north := is_equal_approx(run.a.y, run.b.y)
-				var mid := Vector2i(((run.a + run.b) * 0.5).floor())
-				var out_cell := mid + (Vector2i(0, -1) if north else Vector2i(-1, 0))
-				var b := sim.building
-				if not b.in_bounds(out_cell.x, out_cell.y) or b.cell(level, out_cell.x, out_cell.y) in BuildingData.OUTDOOR:
-					# 점선과 같은 밝은 색 (벽 회색은 배경 회색과 같아 안 보인다). 뒷벽은 밝게, 왼쪽 벽은 한 단계 어둡게
-					var face := tone.darkened(0.0 if north else SOUTH_SHADE)
-					draw_colored_polygon(PackedVector2Array([a0, b0, b1, a1]), Color(face, stack.params.ghost_back_wall_alpha))
 			draw_dashed_line(a1, b1, line, 1.2, dash)
 			draw_dashed_line(a0, a1, line, 1.2, dash)
 			draw_dashed_line(b0, b1, line, 1.2, dash)

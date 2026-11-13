@@ -248,3 +248,37 @@ func test_water_damage_after_fire_out() -> void:
 	sim.step_ticks(1200)
 	assert_true(living.water_damage_l > damage_at_out + 100.0, "진화 후에도 계속 방수하면 수손 증가")
 	assert_eq(living.stage, Compartment.Stage.EXTINGUISHED, "거실 단계: 진화")
+
+
+func test_burning_door_can_be_put_out() -> void:
+	# 2026-11-13 고침: 문 칸은 어느 구획에도 들지 않아 문에 맞은 물이 방수량 0으로 잡혔고, 타는 문은 아무리 쏴도 꺼지지 않았다
+	# (튜토리얼에서 진압조가 현관문이 다 탈 때까지 약 9분 동안 입구에 묶였다)
+	var sim := _sim()
+	var grid := sim.fire.grid
+	# 현관문(A면) 칸에 불을 붙이고 밖에서 그 문을 쏜다
+	var door := Vector3i(13, 20, 1)
+	var di := grid.index(door.z, door.x, door.y)
+	assert_true(grid.door_rooms.has(di), "현관문 칸")
+	sim.fire.opening_at(door).is_open = true
+	sim.doors.sync_blocking()
+	grid.ignite(di, 1.0)
+	sim.step_ticks(5)
+	assert_eq(grid.state[di], FuelGrid.State.BURNING, "문이 탄다")
+	var crew := sim.units.get_crew(0)
+	var spot := Vector2(13.5, 22.5)
+	crew.leader.pos = spot
+	crew.leader.prev_pos = spot
+	crew.partner.pos = spot + Vector2(1, 0)
+	crew.partner.prev_pos = crew.partner.pos
+	sim.issue(EquipmentCommand.make("hose", [0] as Array[int], PUMP))
+	sim.issue(EquipmentCommand.make("spray", [0] as Array[int], -1, HoseLine.Pattern.STRAIGHT, door))
+	_wait_water(sim, [0])
+	var out_s := -1.0
+	for s in 60:
+		sim.step_ticks(roundi(1.0 / SimClock.TICK_DT))
+		if grid.state[di] != FuelGrid.State.BURNING:
+			out_s = s + 1.0
+			break
+	assert_true(out_s > 0.0, "타는 문에 물을 쏘면 60초 안에 꺼진다 (%.0f초)" % out_s)
+	var living := _living(sim)
+	assert_true(living.water_applied_l > 0.0, "문에 맞은 물은 그 문이 붙은 방에 닿은 것으로 센다 (%.0fL)" % living.water_applied_l)

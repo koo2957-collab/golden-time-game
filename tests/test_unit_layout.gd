@@ -75,7 +75,8 @@ func test_cluttered_unit_burns_more_and_walks_slower() -> void:
 			fuel_701 += c.fuel_initial
 		elif c.display_name().contains("702호"):
 			fuel_702 += c.fuel_initial
-	assert_true(fuel_701 > fuel_702 * 1.15, "짐 많은 세대 가연물이 큼 (%.0f MJ > %.0f MJ)" % [fuel_701, fuel_702])
+	# 2026-11-13 (P1): 생활용품은 용도별 화재하중에 맞춰 함께 늘고 쌓아 둔 짐(적재물)은 그대로라 차이 비율이 줄었다 (예전 1.15배 이상)
+	assert_true(fuel_701 > fuel_702 * 1.05, "짐 많은 세대 가연물이 큼 (%.0f MJ > %.0f MJ)" % [fuel_701, fuel_702])
 	var block := 0
 	for item in sim.building.furniture(7):
 		if str(item.get("unit", "")) == "701호" and str(item.get("pass", "")) == "block":

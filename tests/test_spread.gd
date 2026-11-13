@@ -66,9 +66,11 @@ func test_house_left_alone_spreads_to_upper_floor() -> void:
 		if c.ever_burned and not sim.fire.is_exposure_comp(c):
 			burned_levels[c.level] = true
 	assert_true(burned_levels.has(2), "2층까지 번짐")
-	assert_true(sim.mission_end.loss_ratio() >= 0.7, "건물 70%% 이상 소실 (%.0f%%)" % (sim.mission_end.loss_ratio() * 100.0))
-	assert_eq(sim.mission_end.loss_class(), "전소", "소실 정도 전소 (화재1 5쪽)")
-	assert_eq(sim.fire.grid.burning.size(), 0, "다 타면 꺼진다 (쇠퇴기 끝 소진)")
+	# 2026-11-13 (P1 화재하중 Eurocode 780MJ/㎡): 1시간으로는 다 타지 않는다 — 반소를 넘겨 계속 탄다.
+	# 끝까지 타서 전소로 끝나는 것은 test_mission_end의 전소 테스트가 본다 (예전: 연료가 1/5이라 1시간 안에 70% 소실·소진)
+	assert_true(sim.mission_end.loss_ratio() >= 0.25, "1시간에 건물 25%% 이상 소실 (%.0f%%)" % (sim.mission_end.loss_ratio() * 100.0))
+	assert_true(sim.mission_end.loss_class() in ["반소", "전소"], "소실 정도 반소 이상 (화재1 5쪽): %s" % sim.mission_end.loss_class())
+	assert_true(sim.fire.grid.burning.size() > 0, "1시간이 지나도 스스로 꺼지지 않고 계속 탄다")
 	assert_true(sim.events.of_type("door_burnt_through").size() >= 1, "닫힌 나무 문이 타서 뚫림")
 
 

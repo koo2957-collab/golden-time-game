@@ -64,7 +64,17 @@ func test_living_room_fire_follows_textbook_stages() -> void:
 	for e in sim.events.of_type("stage"):
 		if e.room == "1층 거실":
 			order.append(e.to)
-	assert_eq(order.slice(0, 5), ["발화기", "성장기", "플래시오버", "최성기", "쇠퇴기"] as Array[String], "거실 단계 순서")
+	assert_eq(order.slice(0, 4), ["발화기", "성장기", "플래시오버", "최성기"] as Array[String], "거실 단계 순서")
+	# 2026-11-13 (P1 화재하중 Eurocode 780MJ/㎡): 가연물이 실제 수준이라 25분에는 아직 최성기 — 쇠퇴기는 그 뒤에 온다 (예전: 15분쯤 쇠퇴)
+	assert_eq(living.stage, Compartment.Stage.FULLY_DEVELOPED, "25분에도 최성기 (%s)" % living.stage_name())
+	# 그 뒤는 화재 계산만 돌린다 (전체를 돌리면 벽돌조 붕괴 판정으로 36분쯤 '전소'로 끝나 쇠퇴기를 못 본다)
+	var extra := 0
+	while living.stage != Compartment.Stage.DECAY and extra < 60:
+		for i in MINUTE_TICKS:
+			sim.fire.step(SimClock.TICK_DT, sim.clock.tick)
+		extra += 1
+	assert_eq(living.stage, Compartment.Stage.DECAY, "가연물이 줄면 쇠퇴기로 (발화 %d분, 화재1 22쪽)" % (25 + extra))
+	assert_true(25 + extra >= 30, "최성기가 30분 넘게 이어진다 (%d분)" % (25 + extra))
 	assert_true(not sim.events.of_type("window_broken").is_empty(), "유리창 파손 발생")
 
 

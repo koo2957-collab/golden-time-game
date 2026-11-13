@@ -85,7 +85,47 @@ func _status() -> void:
 	var vs := PackedStringArray()
 	for v in sim.rescue.victims:
 		vs.append("%s:%s" % [v.name, v.state_name()])
+	_attack_diag()
 	print(" ▷ %s 불칸 %d · 소실 %d%% · %s · 카드 %d | %s" % [_stamp(), burning, roundi(sim.mission_end.loss_ratio() * 100), ",".join(vs), sim.cards.queue.size(), " / ".join(rows)])
+
+
+## 방수 중인 수관마다: 관창수 위치·겨눈 곳·맞는 곳, 목표 방의 타는 칸 중 물줄기가 닿는 칸 수, 방수량 비율, 방 온도, 관창수 자리 열기 (G4 점검)
+func _attack_diag() -> void:
+	var grid := sim.fire.grid
+	for h in sim.water.hoses:
+		if not h.flowing:
+			continue
+		var c := sim.units.get_crew(h.crew_id)
+		var ff := c.leader
+		var room := sim.fire.compartment_at(h.target.z, h.target.x, h.target.y)
+		if room == null:
+			continue
+		var rng := sim.water.range_cells(h.pattern)
+		var burning := 0
+		var reach := 0
+		var far := 0
+		var hidden := 0
+		for i in grid.room_and_door_cells[room.index]:
+			if grid.state[i] != FuelGrid.State.BURNING:
+				continue
+			burning += 1
+			var p := grid.cell_of(i)
+			var q := Vector2(p.x + 0.5, p.y + 0.5)
+			if ff.level != p.z or ff.pos.distance_to(q) > rng:
+				far += 1
+			elif sim.water._trace(ff.level, ff.pos, q, rng).blocked:
+				hidden += 1
+			else:
+				reach += 1
+		var others := 0
+		for i in grid.burning:
+			if grid.room[i] != room.index:
+				others += 1
+		var heat_here := sim.conditions.heat_at(ff.level, Vector2i(ff.pos.floor()), ff.crouched)
+		print("   ◇ 수관 조%d %s (%.1f,%.1f)%s%s 겨눔(%.1f,%.1f) 맞음(%.1f,%.1f) | %s: 타는 칸 %d = 닿음 %d · 가려짐 %d · 사거리 밖 %d, 다른 방 %d칸 | Q %dkW 필요 %d 실제 %d L/분 비율 %.2f | 상부 %d℃ 연기층 %.1fm | 관창수 자리 열 %.1f kW/㎡" % [
+			c.id, ["직사", "분무", "펜슬링", "엄호"][h.pattern], ff.pos.x, ff.pos.y, " 이동중" if h.approaching else "", " 막힘" if h.blocked else "",
+			h.aim.x, h.aim.y, h.impact.x, h.impact.y, room.display_name(), burning, reach, hidden, far, others,
+			roundi(room.q), roundi(room.required_lpm), roundi(room.applied_lpm), room.flow_ratio, roundi(room.t_upper), room.layer_depth, heat_here])
 
 
 func _done(step: Dictionary) -> bool:

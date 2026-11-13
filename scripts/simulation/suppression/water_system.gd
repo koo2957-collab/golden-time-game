@@ -743,6 +743,13 @@ func _apply_sprays(dt: float, tick: int) -> void:
 				if not _steam_warned.has(comp.index):
 					_steam_warned[comp.index] = true
 					events.add(tick, "steam_mix", {"room": comp.display_name(), "crew": _crew_name(units.get_crew(h.crew_id))})
+		elif grid.door_rooms.has(grid.index(leader.level, impact_cell.x, impact_cell.y)):
+			# 문 칸에 맞은 물은 그 문이 붙은 방에 닿은 것으로 센다. 문 칸은 어느 구획에도 들지 않아 예전에는 방수량이 0으로 잡혔고,
+			# 그래서 타는 문은 아무리 쏴도 '방수량 부족'으로 꺼지지 않았다 (2026-11-13 고침: 현관문이 다 탈 때까지 진압조가 입구에 묶였다)
+			for r: int in grid.door_rooms[grid.index(leader.level, impact_cell.x, impact_cell.y)]:
+				if r >= 0:
+					fire.comps[r].applied_lpm += liters / dt * 60.0
+					fire.comps[r].water_applied_l += liters
 		# 타는 셀에 물이 먼저 가도록 열방출률로 가중
 		var cells := grid.cells_in_radius(leader.level, h.impact, _radius[h.pattern])
 		var weights := PackedFloat32Array()

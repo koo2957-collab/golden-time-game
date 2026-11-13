@@ -42,6 +42,12 @@ var upper_shadow_alpha := 0.2
 var stagger_guide_alpha := 0.45
 var stagger_back_ratio := 0.3
 var stagger_floor_px := 260.0
+## 층 분리 보기 (시험 화면, 2026-11-14)
+var split_lift_ratio := 1.0
+var split_gap_px := 40.0
+var split_step_px := 60.0
+var split_min_px := 120.0
+var split_zoom_min := 0.3
 var smoke_puff_spacing_m := 1.0
 var smoke_max_puffs := 90
 var smoke_top_alpha := 0.4
@@ -138,6 +144,11 @@ func apply(data: Dictionary) -> void:
 	stagger_guide_alpha = float(_value(data, "stagger_guide_alpha", stagger_guide_alpha))
 	stagger_back_ratio = float(_value(data, "stagger_back_ratio", stagger_back_ratio))
 	stagger_floor_px = float(_value(data, "stagger_floor_px", stagger_floor_px))
+	split_lift_ratio = float(_value(data, "split_lift_ratio", split_lift_ratio))
+	split_gap_px = float(_value(data, "split_gap_px", split_gap_px))
+	split_step_px = float(_value(data, "split_step_px", split_step_px))
+	split_min_px = float(_value(data, "split_min_px", split_min_px))
+	split_zoom_min = float(_value(data, "split_zoom_min", split_zoom_min))
 	smoke_puff_spacing_m = float(_value(data, "smoke_puff_spacing_m", smoke_puff_spacing_m))
 	smoke_max_puffs = int(_value(data, "smoke_max_puffs", smoke_max_puffs))
 	smoke_top_alpha = float(_value(data, "smoke_top_alpha", smoke_top_alpha))

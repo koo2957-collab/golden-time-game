@@ -95,6 +95,9 @@ func _ready() -> void:
 	hud.card_key_pressed.connect(_press_card)
 	hud.card.enabled_fn = _card_item_enabled
 	hud.board_pressed.connect(_press_board)
+	hud.split_toggled.connect(set_split_view)
+	hud.split_gap_step.connect(_step_split_gap)
+	hud.set_split_available(iso_view.split_available())
 	hud.board_done_fn = _board_done
 	hud.command_ui.order_issued.connect(sim.issue)
 	hud.command_ui.dialog_changed.connect(_on_dialog_changed)
@@ -385,12 +388,16 @@ func set_view_mode(mode: ViewMode) -> void:
 func set_view_level(level: int, exterior := false) -> void:
 	if not sim.building.has_level(level):
 		return
+	# 층 분리 보기: 층을 바꾸면 '지금 층'이 기준 자리로 오므로, 두 층이 화면에서 제자리에 있게 카메라를 같이 옮긴다
+	var split_from := iso_view.split_rect().get_center() if iso_view.split and not exterior_view else Vector2.INF
 	view_level = level
 	exterior_view = exterior and level == sim.building.levels()[0]
 	floor_view.set_level(level)
 	fire_view.level = level
 	units_view.level = level
 	iso_view.show_view(level, exterior_view)
+	if split_from != Vector2.INF and not exterior_view:
+		camera.position += iso_view.split_rect().get_center() - split_from
 	selection.level = level
 	if hud.minimap:
 		hud.minimap.level = level
@@ -412,7 +419,54 @@ func _view_bounds() -> Rect2:
 	elif view_mode == ViewMode.ISO:
 		# 단면 보기: 아래로 쌓인 층까지 (R17)
 		r.size.y += iso_view.stack_depth_px()
+		# 층 분리 보기: 위로 띄운 층까지
+		if iso_view.split:
+			r = r.merge(iso_view.split_rect().grow(120.0))
 	return r
+
+
+## 층 분리 보기 (시험 화면, 2026-11-14): 지금 층과 짝 층을 위아래로 떼어 둘 다 온전하게 보인다.
+## 켜면 단면 보기로 들어가 두 층이 한 화면에 들어오게 축소한다. 화면 표시만 바꾼다 — 시뮬레이션 좌표는 그대로
+func set_split_view(on: bool) -> void:
+	if view_mode != ViewMode.ISO or not iso_view.split_available():
+		hud.set_split_state(false, 0.0)
+		return
+	if on and exterior_view:
+		set_view_level(_entry_level(sim.building.levels()[0]))
+	iso_view.set_split(on)
+	camera.zoom_min = iso_view.params.split_zoom_min if on else RtsCamera.ZOOM_MIN
+	if on:
+		_frame_split()
+	else:
+		var z := maxf(camera.zoom.x, START_ZOOM[ViewMode.ISO])
+		camera.zoom = Vector2(z, z)
+		camera.retarget(_view_bounds(), iso_view.split_rect().get_center())
+	hud.set_split_state(on, iso_view.split_lift_px)
+	_update_mode_text()
+
+
+## 층 분리 보기의 층 간격을 한 단계 넓히거나 좁힌다 (dir = +1 / -1)
+func _step_split_gap(dir: int) -> void:
+	if not iso_view.split:
+		return
+	iso_view.set_split(true, iso_view.split_lift_px + dir * iso_view.params.split_step_px)
+	_frame_split()
+	hud.set_split_state(true, iso_view.split_lift_px)
+
+
+## 두 층이 화면(위쪽 표시줄과 아래 콘솔 사이)에 다 들어오게 배율과 위치를 맞춘다
+func _frame_split() -> void:
+	var r := iso_view.split_rect()
+	var vp := get_viewport().get_visible_rect().size
+	# 위쪽은 시계·단계 표시줄과 알림 줄 자리
+	var top := 130.0
+	var bottom := (hud.console.size.y if hud.console else 0.0) + 24.0
+	# 오른쪽은 무전 기록 패널이 가린다
+	var right := RadioLogPanel.WIDTH + 24.0
+	var avail := Vector2(vp.x - right - 180.0, vp.y - top - bottom)
+	var z := clampf(minf(avail.x / r.size.x, avail.y / r.size.y), camera.zoom_min, START_ZOOM[ViewMode.ISO])
+	camera.zoom = Vector2(z, z)
+	camera.retarget(_view_bounds(), r.get_center() + Vector2((right - 180.0) * 0.5, (bottom - top) * 0.5) / z)
 
 
 ## 그 위치(셀)가 건물 밖인가 — 화면 이동 때 외부 보기로 갈지 정한다
@@ -426,7 +480,7 @@ func _on_camera_zoomed(world_pos: Vector2) -> void:
 	if exterior_view and z >= iso_view.params.zoom_enter_interior:
 		if iso_view.building_under(world_pos, projection()):
 			set_view_level(_entry_level(ground))
-	elif not exterior_view and z <= iso_view.params.zoom_exit_exterior:
+	elif not exterior_view and not iso_view.split and z <= iso_view.params.zoom_exit_exterior:
 		set_view_level(ground, true)
 
 
@@ -807,6 +861,8 @@ func _update_mode_text() -> void:
 	var modes: PackedStringArray = ["입체" if view_mode == ViewMode.ISO else "상황판"]
 	if view_mode == ViewMode.ISO:
 		modes.append("외부 보기" if exterior_view else "%s 단면" % sim.building.floor_name(view_level))
+		if iso_view.split and not exterior_view:
+			modes.append("층 분리 보기(시험)")
 	if thermal:
 		modes.append("열화상")
 	if not sim.perception.enabled:

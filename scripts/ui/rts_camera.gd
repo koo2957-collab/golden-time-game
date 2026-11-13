@@ -10,6 +10,8 @@ const PAN_SPEED_PX := 900.0
 const ZOOM_STEP := 1.15
 const ZOOM_MIN := 0.5
 const ZOOM_MAX := 3.0
+## 지금 허용하는 최소 배율 (층 분리 보기에서는 더 축소할 수 있다)
+var zoom_min := ZOOM_MIN
 var bounds := Rect2()
 ## 화면 가장자리 자동 스크롤 (기획안 9-3). 마우스가 가장자리 EDGE_PX 안에 있으면 그쪽으로 흐른다
 var edge_scroll := true
@@ -62,7 +64,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _zoom_at(screen_pos: Vector2, factor: float) -> void:
 	var offset := screen_pos - get_viewport().get_visible_rect().size / 2.0
 	var world_under_cursor := position + offset / zoom.x
-	var z := clampf(zoom.x * factor, ZOOM_MIN, ZOOM_MAX)
+	var z := clampf(zoom.x * factor, zoom_min, ZOOM_MAX)
 	zoom = Vector2(z, z)
 	position = world_under_cursor - offset / z
 	_clamp()

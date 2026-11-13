@@ -97,6 +97,22 @@ func above_levels(current: int) -> Array[int]:
 	return result
 
 
+## 층 분리 보기: 위층을 위로만 띄울 때 두 층이 화면에서 겹치지 않는 최소 거리 (px).
+## 건물 바닥(가로 w × 세로 d 칸)은 화면에서 마름모이고 그 세로 두께는 가장 두꺼운 곳이 2 × min(w, d) × HALF_H 이다.
+## 여기에 아래층 벽 높이와 위층 바닥판 두께를 더한다 (화면 계산만 — 실제 층·칸 좌표와 무관)
+func split_min_lift_px() -> float:
+	var thick := 0.0
+	for lv in order:
+		var fp := building.footprint(lv)
+		thick = maxf(thick, 2.0 * minf(fp.size.x, fp.size.y) * IsoProjection.HALF_H)
+	return thick + (params.inner_wall_m + params.slab_m) * IsoProjection.PX_PER_M
+
+
+## 층 분리 보기의 기본 간격 (px): 겹치지 않는 최소 거리 × 비율 + 빈 틈
+func split_default_lift_px() -> float:
+	return split_min_lift_px() * params.split_lift_ratio + params.split_gap_px
+
+
 ## 제자리 쌓기에서 위층을 뒤(북)로 비켜 놓은 거리 (칸). 위층 바닥 턱을 그만큼 넓혀 지금 층 뒷벽 위까지 닿게 한다
 func upper_back_cells() -> float:
 	return 0.0 if staggered() else _back_cells

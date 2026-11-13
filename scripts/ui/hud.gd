@@ -5,6 +5,9 @@ extends Control
 
 ## 명령 카드 칸을 눌렀을 때 (Q W E R A S — 단축키와 같은 처리, P10-2)
 signal card_key_pressed(key: String)
+## 층 분리 보기 (시험 화면): 켜고 끄기, 층 간격 넓히기(+1)·좁히기(-1)
+signal split_toggled(on: bool)
+signal split_gap_step(dir: int)
 ## 지휘관 명령 칸의 단추를 눌렀을 때 (명령 id — data/commands.json commander_board·commander_tools)
 signal board_pressed(id: String)
 
@@ -98,6 +101,7 @@ func setup(p_sim: SimWorld, on_floor_selected: Callable) -> void:
 	floor_bar.tooltip_text = " "  # _get_tooltip이 칸마다 문구를 돌려준다
 	floor_bar.floor_pressed.connect(on_floor_selected)
 	floor_tabs.add_child(floor_bar)
+	_build_split_controls()
 	$ClockPanel.gui_input.connect(_on_badge_input)
 	$ClockPanel.tooltip_text = "클릭: 지휘권 선언 · 전략 변경"
 	_build_subtitles()
@@ -291,7 +295,7 @@ func _refresh_selection() -> void:
 		var cmd := sim.command
 		var ask := cmd.survey.asking()
 		lines.append("현장지휘관 %s %s (%s) — 지휘 위치: %s%s
-    우클릭: 이동 (건물 안으로는 혼자 들어가지 않음) · 관계인 클릭: 질문" % [
+	우클릭: 이동 (건물 안으로는 혼자 들어가지 않음) · 관계인 클릭: 질문" % [
 			cmd.commander.name, cmd.commander.rank, cmd.commander_title, cmd.commander_position_text(),
 			" · 관계인에게 질문 중 (%d개 남음)" % ask.questions.size() if not ask.is_empty() else ""])
 	selection_label.text = "\n".join(lines) if not lines.is_empty() else _squad_summary()
@@ -812,6 +816,56 @@ func _build_console() -> void:
 	$HelpLabel.visible = false
 	add_child(console)
 	move_child(console, 0)
+
+
+# --- 층 분리 보기 (시험 화면, 2026-11-14) ---
+
+var split_button: Button
+var _split_row: HBoxContainer
+var _split_label: Label
+
+
+## 층 막대 아래: '층 분리 보기' 켜고 끄는 단추와 (켰을 때) 층 간격 − +
+func _build_split_controls() -> void:
+	split_button = Button.new()
+	split_button.text = "층 분리 보기 (시험)"
+	split_button.toggle_mode = true
+	split_button.focus_mode = Control.FOCUS_NONE
+	split_button.add_theme_font_size_override("font_size", 14)
+	split_button.tooltip_text = "지금 층과 이웃 층을 위아래로 떼어 둘 다 온전하게 봅니다 (위층을 투명하게 하지 않음).\n보이는 위치만 바뀌고 대원·불의 실제 위치는 그대로입니다. 다른 층을 누르면 그 층이 지금 층이 됩니다"
+	split_button.toggled.connect(func(on: bool) -> void: split_toggled.emit(on))
+	floor_tabs.add_child(split_button)
+	_split_row = HBoxContainer.new()
+	_split_row.visible = false
+	for spec: Array in [["−", -1], ["+", 1]]:
+		var dir: int = spec[1]
+		var b := Button.new()
+		b.text = spec[0]
+		b.focus_mode = Control.FOCUS_NONE
+		b.custom_minimum_size = Vector2(30, 26)
+		b.tooltip_text = "층 간격 좁히기" if dir < 0 else "층 간격 넓히기"
+		b.pressed.connect(func() -> void: split_gap_step.emit(dir))
+		_split_row.add_child(b)
+		if dir < 0:
+			_split_label = Label.new()
+			_split_label.add_theme_font_size_override("font_size", 13)
+			_split_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			_split_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			_split_row.add_child(_split_label)
+	floor_tabs.add_child(_split_row)
+
+
+## 층이 이어진 건물에서만 단추를 보인다
+func set_split_available(on: bool) -> void:
+	split_button.visible = on
+
+
+## 지금 상태를 단추에 반영한다 (World가 부른다)
+func set_split_state(on: bool, lift_px: float) -> void:
+	split_button.set_pressed_no_signal(on)
+	_split_row.visible = on
+	_split_label.text = "간격 %dpx" % roundi(lift_px)
+	floor_tabs.reset_size()
 
 
 # --- 지휘관 명령 칸 (G3, 2026-11-14 결정) ---

@@ -46,6 +46,14 @@ var current_live: FloorLayer
 var _shadow: Node2D
 var _hole_shader: Shader
 var _proj: IsoProjection
+## 층 분리 보기 (시험 화면, 2026-11-14): 지금 층과 짝 층을 화면 위아래로 떼어 둘 다 온전하게 보인다.
+## 위층을 반투명하게 하거나 뚫지 않는다. 실제 층·칸 좌표는 그대로이고 그리는 위치만 띄운다.
+## 그리기는 예전 비켜 놓기(stagger)를 그대로 쓰되 뒤로 비키지 않고 위로만 띄운다
+var split := false
+## 위층을 띄운 거리 (화면 px)
+var split_lift_px := 0.0
+## 끄면 되돌릴 설정 [stack_mode, stagger_back_ratio, stagger_floor_px]
+var _split_saved: Array = []
 
 
 func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProjection) -> void:
@@ -119,6 +127,66 @@ func show_view(p_level: int, p_exterior: bool, animate := true) -> void:
 	var changed := p_level != old_level or p_exterior != old_exterior
 	if changed and animate and params.transition_s > 0.0 and is_inside_tree():
 		_animate(old_level, old_exterior)
+
+
+## 층 분리 보기를 쓸 수 있는 건물인가 (층 번호가 이어진 층이 둘 이상)
+func split_available() -> bool:
+	if stack == null or sim == null:
+		return false
+	for lv in sim.building.levels():
+		if stack.partner(lv) >= 0:
+			return true
+	return false
+
+
+## 층 분리 보기를 켜고 끈다. lift_px 를 주면 그 간격으로 (0 이하면 기본 간격)
+func set_split(on: bool, lift_px := -1.0) -> void:
+	if layers.is_empty():
+		return
+	if on and not split:
+		_split_saved = [params.stack_mode, params.stagger_back_ratio, params.stagger_floor_px]
+	if on:
+		split_lift_px = maxf(params.split_min_px, lift_px) if lift_px > 0.0 else stack.split_default_lift_px()
+		params.stack_mode = "stagger"
+		params.stagger_back_ratio = 0.0
+		params.stagger_floor_px = split_lift_px
+	elif split:
+		params.stack_mode = _split_saved[0]
+		params.stagger_back_ratio = _split_saved[1]
+		params.stagger_floor_px = _split_saved[2]
+	split = on
+	stack = FloorStack.new(sim.building, params)
+	for node: FloorLayer in layers + upper_layers + [current_live, partner_live, ghost]:
+		node.stack = stack
+	if _tween != null:
+		_tween.kill()
+	ghost.visible = false
+	_apply()
+
+
+## 층 분리 보기에서 지금 층과 짝 층이 차지하는 화면 범위 (world 좌표, 벽 높이까지). 카메라 맞춤·이동 범위용.
+## 분리 보기가 아니거나 짝 층이 없으면 지금 층만
+func split_rect() -> Rect2:
+	var specs: Array = [[_level, Vector2.ZERO]]
+	if split and not _exterior:
+		var pa := stack.partner(_level)
+		if pa >= 0:
+			var up: bool = sim.building.floor_number(pa) > sim.building.floor_number(_level)
+			specs.append([pa, stack.upper_vec(1) if up else stack.offset_vec(1)])
+	var r := Rect2()
+	var first := true
+	for spec: Array in specs:
+		var fp := sim.building.footprint(spec[0])
+		var off: Vector2 = spec[1]
+		for c: Vector2 in [Vector2(fp.position), Vector2(fp.end.x, fp.position.y), Vector2(fp.end), Vector2(fp.position.x, fp.end.y)]:
+			for h: float in [0.0, params.inner_wall_m]:
+				var p: Vector2 = _proj.to_screen(c, h) + off
+				if first:
+					r = Rect2(p, Vector2.ZERO)
+					first = false
+				else:
+					r = r.expand(p)
+	return r
 
 
 ## 지금 보이는 층 (깊이 순서)
@@ -493,7 +561,8 @@ func _wall_fade_holes(node: FloorLayer) -> Array[Vector4]:
 ## 위층 그림자: 위층 바닥을 아래층 바닥 높이로 내린 자리
 func _draw_shadow() -> void:
 	var pair := _pair()
-	if pair.is_empty():
+	# 층 분리 보기는 위로만 띄워 그림자가 아래층 전체를 덮으므로 그리지 않는다
+	if pair.is_empty() or split:
 		return
 	var upper: FloorLayer = pair[0]
 	var fp := sim.building.footprint(upper.level)

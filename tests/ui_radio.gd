@@ -73,7 +73,8 @@ func _play(realism: String) -> void:
 	_check("말하는 사람 그림 (진압대)", [str(sp.portrait), ui._portrait.texture != null], ["res://art/portraits/crew_fire.png", true])
 	_check("무전 내용에서 이름표를 뗀다", [ui._text.text.contains("진압1 1조:"), ui._text.text.contains("진입 허가 요청")], [false, true])
 	var cx: float = world.hud.command_ui.map_center_x()
-	_check("화면 가운데쯤", absf(ui._panel.position.x + ui._panel.size.x * 0.5 - cx) < 4.0 and ui._panel.position.y > 60.0, true)
+	_check("화면 가운데쯤 (먹물 바탕 장면)", absf(ui._panel.position.x + ui._panel.size.x * ui._panel.scale.x * 0.5 - cx) < 4.0 and ui._panel.position.y >= 20.0, true)
+	_check("선택 단추가 선택지 수만큼", ui._buttons.filter(func(b): return b.visible).size(), card.options.size())
 	var t0 := sim.clock.tick
 	for i in 20:
 		await process_frame
@@ -82,9 +83,9 @@ func _play(realism: String) -> void:
 		if str(card.options[k].get("effect", "")) == "entry_grant":
 			pick = k
 	if realism == "훈련":
-		_check("훈련: 장면이 떠 있는 동안 시간이 멈춘다", [sim.clock.paused, sim.clock.tick - t0, ui._shade.visible, ui._bar.visible], [true, 0, true, false])
+		_check("훈련: 장면이 떠 있는 동안 시간이 멈추고 뒤 화면 조작을 막는다", [sim.clock.paused, sim.clock.tick - t0, ui._shade.mouse_filter == Control.MOUSE_FILTER_STOP, ui._bar.visible], [true, 0, true, false])
 	else:
-		_check("실전: 멈추지 않고 남은 시간 막대", [sim.clock.paused, sim.clock.tick > t0, ui._shade.visible, ui._bar.visible], [false, true, false, true])
+		_check("실전: 멈추지 않고 남은 시간 막대, 뒤 화면 조작 가능", [sim.clock.paused, sim.clock.tick > t0, ui._shade.mouse_filter == Control.MOUSE_FILTER_IGNORE, ui._bar.visible], [false, true, true, true])
 	if ui.current() == null:
 		_check("아직 떠 있다", false, true)
 		main.free()

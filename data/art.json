@@ -36,5 +36,5 @@
     "keywords": [["진열대", "furniture_shelf"], ["적재 랙", "furniture_rack"], ["더미", "furniture_boxes"], ["상자", "furniture_boxes"],
       ["박스", "furniture_boxes"], ["짐", "furniture_boxes"], ["포대", "furniture_boxes"], ["팔레트", "furniture_boxes"], ["주차 차량", "vehicles_sedan"]]
   },
-  "portraits": {"_source": "화면 설정 — 무전 장면의 말하는 사람 그림 (2026-11-14 사용자 결정). 출동대 종류별. 대원 3D 모델 상반신을 tools/blender/portrait.py로 찍은 임시 그림 — 따로 그린 그림이 생기면 경로만 바꾼다", "진압대": "res://art/portraits/crew_fire.png", "구조대": "res://art/portraits/crew_rescue.png", "구급대": "res://art/portraits/crew_ems.png", "지휘": "res://art/portraits/crew_command.png", "물탱크차 운전원": "res://art/portraits/crew_fire.png", "차량 운전원": "res://art/portraits/crew_fire.png", "default": "res://art/portraits/crew_fire.png"}
+  "portraits": {"_source": "화면 설정 — 무전 장면의 말하는 사람 그림 (2026-11-14 사용자 결정). 출동대 종류별. 사용자 제공 그림(서울소방 방화복 캐릭터)의 정면 상반신을 tools/prep_radio_art.py로 잘라 헬멧만 종류 색으로 물들임. 다른 그림이 생기면 경로만 바꾼다", "진압대": "res://art/portraits/crew_fire.png", "구조대": "res://art/portraits/crew_rescue.png", "구급대": "res://art/portraits/crew_ems.png", "지휘": "res://art/portraits/crew_command.png", "물탱크차 운전원": "res://art/portraits/crew_fire.png", "차량 운전원": "res://art/portraits/crew_fire.png", "default": "res://art/portraits/crew_fire.png"}
 }

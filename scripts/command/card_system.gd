@@ -25,6 +25,12 @@ class Card:
 	var ctx: Dictionary = {}
 	var asked_tick := 0
 	var deadline_tick := 0
+	## 조장의 판단 장면이면 그 속말 (spec.scene == "judgment"). 지휘관에게 오는 무전이면 ""
+	var monologue := ""
+
+	## 조장이 스스로 판단하는 장면인가 (아니면 지휘관에게 오는 무전)
+	func judgment() -> bool:
+		return str(spec.get("scene", "")) == "judgment" and crew_id >= 0
 
 
 ## 시뮬레이션 전체 (사건에 없는 문맥 — 방·구조대상자·차량·가까운 조 — 을 상태에서 찾는다)
@@ -40,6 +46,9 @@ var events: SimEventLog
 var cards: Array = []
 ## 대기 중인 카드 (맨 앞이 화면에 보이는 카드)
 var queue: Array[Card] = []
+## 대원 판단 장면 (2026-11-14 사용자 결정): true = 플레이어가 그 조장으로서 고른다 (전 직원 훈련).
+## false = 대원이 SOP대로(최선) 알아서 한다 (지휘관 훈련) — 장면이 뜨지 않고 보고만 온다
+var crew_judgment := true
 ## 켜 둔 선제지시 키
 var preorders: Dictionary = {}
 ## 결정 기록 [{uid, id, title, asked_tick, answered_tick, option, grade, result, sop}]
@@ -115,7 +124,8 @@ func answer(uid: int, index: int, tick: int) -> bool:
 		queue.erase(c)
 		var opt: Dictionary = c.options[index]
 		_log(c, tick, opt, "answered")
-		events.add(tick, "card_answered", {"crew": _crew_name(c.crew_id), "title": str(c.spec.get("title", c.id)), "option": str(opt.text)})
+		# 조장의 판단은 지휘관의 지시가 아니라 그 조의 보고로 남긴다
+		events.add(tick, "crew_decided" if c.judgment() else "card_answered", {"crew": _crew_name(c.crew_id), "title": str(c.spec.get("title", c.id)), "option": str(opt.text)})
 		# 정보 확인 선택지: 그만큼 시간이 흐른 뒤 then 행동을 한다 (그동안 대원은 기다린다)
 		if opt.has("time_cost_sec"):
 			_delayed.append({"tick": tick + roundi(float(opt.time_cost_sec) / SimClock.TICK_DT), "effect": str(opt.get("then", "hold")), "card": c})
@@ -258,6 +268,7 @@ func _raise(spec: Dictionary, e: Dictionary, tick: int) -> void:
 			opts = v.get("options", opts)
 			c.urgency = str(v.get("urgency", c.urgency))
 	c.text = c.text.format(c.ctx)
+	c.monologue = str(spec.get("monologue", "")).format(c.ctx)
 	c.options = _shuffled(opts, c.uid)
 	c.asked_tick = tick
 	# 지휘권 이양 뒤 단위대에 묶인 출동대: 단위지휘관이 대신 처리한다 (기획안 3-3, R13)
@@ -300,6 +311,17 @@ func _raise(spec: Dictionary, e: Dictionary, tick: int) -> void:
 		events.add(tick, "card_preordered", {"crew": _crew_name(c.crew_id), "title": str(spec.get("title", c.id))})
 		if not best.is_empty():
 			_apply(str(best.get("effect", "")), c, tick)
+		return
+	# 대원 판단 장면을 껐으면: 대원이 SOP대로 알아서 하고 보고만 한다 (지휘관 훈련)
+	if c.judgment() and not crew_judgment:
+		var sop: Dictionary = {}
+		for o: Dictionary in opts:
+			if str(o.get("grade", "")) == "최선":
+				sop = o
+		_log(c, tick, sop, "crew_auto")
+		events.add(tick, "crew_decided", {"crew": _crew_name(c.crew_id), "title": str(spec.get("title", c.id)), "option": str(sop.get("text", "")), "auto": true})
+		if not sop.is_empty():
+			_apply(str(sop.get("effect", "")), c, tick)
 		return
 	if queue.size() >= _queue_max:
 		_log(c, tick, null, "overflow")
@@ -788,7 +810,8 @@ func _log(c: Card, tick: int, opt: Variant, result: String) -> void:
 	var o: Dictionary = opt if opt is Dictionary else {}
 	log.append({"uid": c.uid, "id": c.id, "title": str(c.spec.get("title", c.id)), "asked_tick": c.asked_tick, "answered_tick": tick,
 		"option": str(o.get("text", "")), "grade": str(o.get("grade", "")), "result": result,
-		"sop": ", ".join(PackedStringArray(c.spec.get("sop_ref", []))), "debrief": str(c.spec.get("debrief", ""))})
+		"sop": ", ".join(PackedStringArray(c.spec.get("sop_ref", []))), "debrief": str(c.spec.get("debrief", "")),
+		"scene": "judgment" if c.judgment() else "radio"})
 
 
 func _crew_name(crew_id: int) -> String:

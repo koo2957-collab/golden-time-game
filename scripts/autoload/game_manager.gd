@@ -14,6 +14,8 @@ var mode := "평가"
 var difficulty := ""
 ## 난이도: "훈련"(질문 카드 제한시간 2배, 일시정지·배속) / "실전"(1배속 고정, 일시정지 없음) / "악조건"(실전 + 강풍·후착대 지연·소화전 고장)
 var realism := "실전"
+## 대원 판단 장면 (2026-11-14): true = 대원이 스스로 판단할 일도 플레이어가 그 조장으로서 고른다 (전 직원 훈련) / false = 대원이 SOP대로 알아서 한다 (지휘관 훈련)
+var crew_judgment := true
 ## 다시 하기 요청 {entries: [{tick, command}], tick, seed, automation, realism}. 비어 있으면 처음부터
 var replay: Dictionary = {}
 ## 교관 설정의 시작 화면 기본값을 한 번 적용했는가

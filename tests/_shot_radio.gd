@@ -49,7 +49,7 @@ func _run() -> void:
 		sim.step_ticks(2)
 		var c := sim.cards.active()
 		if c != null:
-			if c.id == CommandOrder.ENTRY_CARD:
+			if c.id == ("NOZZLE-01" if "judgment" in args else CommandOrder.ENTRY_CARD):
 				found = true
 				break
 			var best := 0
@@ -63,6 +63,10 @@ func _run() -> void:
 	for i in 20:
 		await process_frame
 	print("장면 열림 ", card_ui.scene_open(), " · 시간 멈춤 ", sim.clock.paused, " · 방식 ", sim.realism)
+	if "judgment" in args:
+		await _shot(out + "judgment_scene.png")
+		quit()
+		return
 	await _shot(out + "radio_1_scene.png")
 	var t0 := sim.clock.tick
 	for i in 30:

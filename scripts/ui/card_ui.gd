@@ -7,6 +7,9 @@ extends Control
 ##   실전·악조건: 멈추지 않고 남은 시간 막대가 줄어든다. 등급은 끝난 뒤 평가 화면에서만 본다
 ##   뒤에서 기다리는 무전은 '+N 대기'. 답은 order_issued로 CommandOrder "card_answer"를 내보낸다 (기록·다시 하기)
 ## 누가 말하는지: 묻는 조의 조장(이름·계급) + 출동대 종류별 그림(data/art.json portraits). 조가 아니면 카드의 asker 글자
+## 조장의 판단 장면 (카드 scene: judgment, 2026-11-14 사용자 결정 — 프로스트펑크의 독백 방식, 사용자 예시 그림):
+##   대원이 스스로 판단할 일은 무전이 아니라 그 조장의 속말로 보여 준다. 왼쪽에 얼굴 반쪽 그림(portraits_half), 세로 줄,
+##   오른쪽에 기울인 글씨의 속말과 선택 단추. 꼬리표가 '무전' 대신 '조장의 판단'이고 색이 다르다 (누구로서 고르는지 헷갈리지 않게)
 
 signal order_issued(order: CommandOrder)
 ## 장면이 뜨거나 닫힘 (World가 훈련 방식에서 시간을 멈추고 푼다)
@@ -24,6 +27,9 @@ const GRADE_COLORS := {"최선": Color("4ade80"), "허용": Color("facc15"), "�
 ## 고른 직후 한 줄이 떠 있는 실제 시간 (초) — 화면 설정값
 const FEEDBACK_S := 4.0
 const LINE_COLOR := Color(0.78, 0.9, 0.95, 0.85)
+## 꼬리표 색: 지휘관에게 오는 무전 / 조장의 판단
+const RADIO_TAG := Color("7dd3fc")
+const JUDGMENT_TAG := Color("fdba74")
 
 var sim: SimWorld
 ## 장면이 뜨면 시간이 멈추는 방식인가 (World가 준다: 훈련 = true). 없으면 멈추지 않는 것으로 본다
@@ -34,6 +40,10 @@ var _glow: TextureRect
 var _portrait: TextureRect
 var _badge: Label
 var _who: Label
+var _tag: Label
+var _vline: ColorRect
+var _box: VBoxContainer
+var _italic: FontVariation
 var _ornament: Control
 var _head: Label
 var _text: Label
@@ -111,12 +121,29 @@ func setup(p_sim: SimWorld) -> void:
 	_badge.add_theme_font_size_override("font_size", 44)
 	_badge.add_theme_color_override("font_color", Color(0.75, 0.82, 0.9, 0.6))
 	_panel.add_child(_badge)
-	# 오른쪽: 누구·어디(작게) → 꾸밈 줄 → 제목(크게) → 무전 내용 → 선택 단추
+	# 판단 장면에서 얼굴 반쪽과 글 사이의 세로 줄
+	_vline = ColorRect.new()
+	_vline.color = Color(0.85, 0.9, 0.95, 0.55)
+	_vline.position = Vector2(452, 44)
+	_vline.size = Vector2(2, 552)
+	_vline.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_vline.visible = false
+	_panel.add_child(_vline)
+	# 속말은 기울인 글씨로
+	_italic = FontVariation.new()
+	_italic.base_font = ThemeDB.fallback_font
+	_italic.variation_transform = Transform2D(Vector2(1.0, 0.0), Vector2(-0.2, 1.0), Vector2.ZERO)
+	# 오른쪽: 꼬리표 → 꾸밈 줄 → 누구·어디(작게) → 제목(크게) → 무전 내용 → 선택 단추
 	var box := VBoxContainer.new()
 	box.position = Vector2(530, 96)
 	box.custom_minimum_size = Vector2(TEXT_W, 0)
 	box.add_theme_constant_override("separation", 8)
 	_panel.add_child(box)
+	_box = box
+	_tag = Label.new()
+	_tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_tag.add_theme_font_size_override("font_size", 14)
+	box.add_child(_tag)
 	_ornament = Control.new()
 	_ornament.custom_minimum_size = Vector2(TEXT_W, 14)
 	_ornament.draw.connect(_draw_ornament)
@@ -290,26 +317,48 @@ static func speaker(p_sim: SimWorld, c: CardSystem.Card) -> Dictionary:
 	var squad := p_sim.units.squad_of_crew(crew.id)
 	var ff := crew.leader
 	var air := minf(ff.air_ratio(), crew.partner.air_ratio() if crew.partner else 1.0)
+	var halves: Dictionary = SpriteArt.config().get("portraits_half", {})
+	var kind := squad.type if squad else ""
 	return {
 		"name": "%s %d조 · %s %s" % [squad.name if squad else "", crew.number, ff.rank, ff.name],
 		"where": "%s · 공기 %d%%" % [p_sim.building.floor_name(ff.level), roundi(air * 100.0)],
-		"portrait": str(portraits.get(squad.type if squad else "", portraits.get("default", ""))),
+		"portrait": str(portraits.get(kind, portraits.get("default", ""))),
+		"half": str(halves.get(kind, halves.get("default", ""))),
 	}
 
 
 func _fill(c: CardSystem.Card) -> void:
 	_accent = URGENCY_COLORS.get(c.urgency, Color.WHITE)
 	var sp := speaker(sim, c)
+	var judgment := c.judgment() and str(sp.get("half", "")) != ""
 	_who.text = "%s%s" % [str(sp.name), "  ·  " + str(sp.where) if str(sp.where) != "" else ""]
-	var tex := _texture(str(sp.portrait))
+	var tex := _texture(str(sp.half) if judgment else str(sp.portrait))
 	_portrait.texture = tex
 	_portrait.visible = tex != null
-	_glow.visible = tex != null
+	_glow.visible = false
 	_badge.visible = tex == null
+	_vline.visible = judgment
+	# 무전: 왼쪽에 말하는 사람 온 모습 / 판단: 왼쪽에 얼굴 반쪽 (오른쪽 변이 세로 줄에 맞닿는다)
+	if judgment:
+		_portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		_portrait.position = Vector2(162, 44)
+		_portrait.size = Vector2(290, 552)
+		_box.position = Vector2(486, 92)
+	else:
+		_portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		_portrait.position = Vector2(86, 118)
+		_portrait.size = Vector2(460, 382)
+		_box.position = Vector2(548, 96)
+	_tag.text = "조장의 판단" if judgment else "무전"
+	_tag.add_theme_color_override("font_color", JUDGMENT_TAG if judgment else RADIO_TAG)
 	_head.text = str(c.spec.get("title", ""))
 	_head.add_theme_color_override("font_color", _accent)
 	_ornament.queue_redraw()
-	_text.text = spoken(c.text)
+	_text.text = c.monologue if judgment and c.monologue != "" else spoken(c.text)
+	if judgment:
+		_text.add_theme_font_override("font", _italic)
+	else:
+		_text.remove_theme_font_override("font")
 	for i in _buttons.size():
 		var b := _buttons[i]
 		b.visible = i < c.options.size()

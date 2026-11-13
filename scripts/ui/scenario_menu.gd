@@ -15,6 +15,7 @@ var _start: Button
 var _mode: OptionButton
 var _difficulty: OptionButton
 var _realism: OptionButton
+var _judgment: OptionButton
 ## 열려 있는 내 기록·교관 설정 화면
 var overlay: Control
 var _profile_label: Label
@@ -109,6 +110,14 @@ func _ready() -> void:
 	_realism.select(maxi(0, ["훈련", "실전", "악조건"].find(GameManager.realism)))
 	_realism.tooltip_text = "실전·악조건은 시간이 멈추지 않습니다 (창·힌트가 떠도 진행, 배속 없음). 출동 지령을 읽는 동안만 멈춥니다."
 	opts.add_child(_realism)
+	_judgment = OptionButton.new()
+	_judgment.focus_mode = Control.FOCUS_NONE
+	_judgment.custom_minimum_size = Vector2(300, 48)
+	_judgment.add_item("대원 판단: 직접 고름 (전 직원 훈련)")
+	_judgment.add_item("대원 판단: 대원이 알아서 (지휘관 훈련)")
+	_judgment.select(0 if GameManager.crew_judgment else 1)
+	_judgment.tooltip_text = "롤오버 징후·문 개방·주수 방법처럼 대원이 스스로 판단할 일을 조장의 눈으로 직접 고를지, 대원이 SOP대로 알아서 하게 할지"
+	opts.add_child(_judgment)
 	_difficulty = OptionButton.new()
 	_difficulty.focus_mode = Control.FOCUS_NONE
 	_difficulty.custom_minimum_size = Vector2(300, 48)
@@ -335,4 +344,5 @@ func _on_start() -> void:
 	GameManager.mode = "교육" if _mode.selected == 1 else "평가"
 	GameManager.difficulty = ["", "입문", "중급", "상급"][_difficulty.selected]
 	GameManager.realism = ["훈련", "실전", "악조건"][_realism.selected]
+	GameManager.crew_judgment = _judgment.selected == 0
 	start_requested.emit(scenarios[sel[0]].path)

@@ -117,3 +117,40 @@ func test_card_rule() -> void:
 	sim.end_activity("활동 종료 선언")
 	var r: Dictionary = Evaluator.evaluate(sim).rules.filter(func(x: Dictionary) -> bool: return x.id == "command.cards")[0]
 	assert_true(r.applicable and absf(r.score - 2.0 / 3.0) < 0.01, "카드 정답률 (최선·미응답·선제지시) %s" % r.detail)
+
+
+func test_crew_judgment_scene_and_auto() -> void:
+	# 2026-11-14: 대원이 스스로 판단할 일(잠긴 문 등)은 조장의 판단 장면 — 켜면 플레이어가 조장으로서 고르고, 끄면 대원이 SOP대로 알아서 한다
+	var data: Dictionary = JsonData.load_file("res://data/cards/cards.json")
+	var judged: Array = (data.cards as Array).filter(func(c: Dictionary) -> bool: return str(c.get("scene", "")) == "judgment")
+	assert_true(judged.size() >= 10, "판단 장면 카드 %d장" % judged.size())
+	for spec: Dictionary in judged:
+		assert_true(str(spec.get("monologue", "")) != "", "%s 속말" % spec.id)
+	var entry: Dictionary = (data.cards as Array).filter(func(c: Dictionary) -> bool: return c.id == "ENTRY-01")[0]
+	assert_true(not entry.has("scene"), "진입 허가 요청은 지휘관에게 오는 무전")
+	# 켬: 장면이 뜨고, 고르면 지휘관의 지시가 아니라 그 조의 판단으로 기록된다
+	var sim := _sim()
+	_attack_locked_door(sim)
+	var c := _step_until_card(sim)
+	assert_true(c != null and c.id == "DOOR-LOCKED-01", "잠긴 문 장면")
+	if c == null:
+		return
+	assert_true(c.judgment() and c.monologue.contains("잠겨 있다"), "조장의 판단 장면과 속말: %s" % c.monologue)
+	sim.issue(CommandOrder.make("card_answer", [], 0, Vector3i.ZERO, {"uid": c.uid}))
+	sim.step_ticks(2)
+	assert_eq([sim.events.of_type("crew_decided").size(), sim.events.of_type("card_answered").size()], [1, 0], "조의 판단으로 기록")
+	assert_eq(str(sim.cards.log[-1].scene), "judgment", "기록에 장면 종류")
+	# 끔: 장면 없이 대원이 최선을 고른 것처럼 움직이고 보고만 한다
+	var auto := _sim()
+	auto.cards.crew_judgment = false
+	_attack_locked_door(auto)
+	for i in roundi(60.0 / SimClock.TICK_DT):
+		auto.step_ticks(1)
+		if not auto.events.of_type("crew_decided").is_empty():
+			break
+	assert_true(auto.cards.active() == null or not auto.cards.active().judgment(), "판단 장면이 뜨지 않는다")
+	var done := auto.events.of_type("crew_decided")
+	assert_eq(done.size(), 1, "대원이 알아서 판단하고 보고")
+	if not done.is_empty():
+		assert_true(bool(done[0].get("auto", false)), "자동 판단 표시")
+		assert_eq([str(auto.cards.log[-1].result), str(auto.cards.log[-1].grade)], ["crew_auto", "최선"], "SOP대로(최선)")

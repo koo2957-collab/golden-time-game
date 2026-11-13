@@ -70,6 +70,7 @@ func _ready() -> void:
 		if sim:
 			sim.tactical.set_level(_automation_level(data if data is Dictionary else {}))
 			sim.apply_realism(GameManager.realism)
+			sim.cards.crew_judgment = GameManager.crew_judgment
 			# 대원 성장 기록 적용 (신임·일반·숙련·고참, R12)
 			sim.apply_growth(CrewGrowth.load_xp())
 	if sim == null:
@@ -215,6 +216,9 @@ func _run_replay(path: String) -> SimWorld:
 	entries.assign(info.get("entries", []))
 	var r := Replay.begin(path, entries, int(info.get("tick", 0)), int(info.get("seed", -1)), str(info.get("automation", "")), str(info.get("realism", "")),
 		info.get("growth", {}))
+	# 대원 판단 장면 설정도 같아야 같은 결과가 나온다 (꺼져 있었으면 대원이 알아서 한 판)
+	if r:
+		r.sim.cards.crew_judgment = GameManager.crew_judgment
 	if r == null:
 		return null
 	# 리플레이 보기: 그 뒤의 기록도 시간에 맞춰 다시 넣는다 (플레이어 명령은 받지 않음)

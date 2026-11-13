@@ -1,6 +1,7 @@
 extends SceneTree
-## P10-2 명령 카드 점검 (창이 열린다): 원형 메뉴와 명령 카드 항목·단축키 일치, 선택 해제 → 지휘관 세트,
-## 하위 칸 펼치기·Esc 뒤로, 예전 동작 단축키 없음, 좌클릭 → 원형 메뉴
+## P10-2 명령 카드 점검 (창이 열린다): 원형 메뉴와 명령 카드 항목·단축키 일치, 선택 해제 → 카드 숨김,
+## 하위 칸 펼치기·Esc 뒤로, 예전 동작 단축키 없음, 좌클릭 → 원형 메뉴.
+## G3: 지휘관 명령 칸 (보고·지원·안전·구역 — 항상 보임, 한 번에 누름, 때가 됐다고 나타나지 않음)
 ## 사용: godot --path . -s res://tests/ui_command_card.gd
 
 var _failed := 0
@@ -24,22 +25,78 @@ func _run() -> void:
 	var sim: SimWorld = world.sim
 	var card: CommandCard = world.hud.card
 	var sets := CommandCard.load_sets()
-	# 선택 없음 = 지휘관 명령
+	var hud = world.hud
+	var cui = hud.command_ui
+	var board: Dictionary = hud.board_buttons
+	# 선택 없음 = 명령 카드 숨김. 지휘관 명령은 늘 보이는 지휘관 명령 칸에 (G3)
 	sel._set_selection([] as Array[int], [] as Array[int])
 	await process_frame
-	_check("선택 없음 → 지휘관 세트", card.set_name, "commander")
-	_check("지휘관 6칸", _labels(card), _expected(sets.commander))
-	_check("카드 버튼 글자 = Q 전략 변경", world.hud._card_buttons[0].text.begins_with("Q  전략 변경"), true)
-	# 지휘관 Q → 하위 칸 (실행 없이 펼침), Esc 뒤로
+	_check("선택 없음 → 세트 없음 · 카드 숨김", [card.set_name, hud._command_panel.visible], ["", false])
+	_check("지휘관 세트는 없다 (명령 칸으로 옮김)", sets.has("commander"), false)
 	world._press_card("Q")
-	_check("Q 전략 변경 → 하위 칸", card.parent, "strategy_menu")
-	_check("하위 칸 이름", _labels(card), ["Q 선언·전략", "W 선제지시"])
-	world._press_card("BACK")
-	_check("뒤로 → 첫 칸", card.parent, "")
-	# 구역 지정 (P10-2 ⓑ): A 구역 지정 → Q 안전구역 → 끌기 → 무전 → 지정, W 환자 집결지 클릭
-	world._press_card("A")
-	world._press_card("Q")
-	_check("A → Q → 안전구역 모드", sel.mode, sel.Mode.ZONE_SAFE)
+	_check("선택 없이 Q → 아무 일 없음", [card.parent, cui.any_dialog_open()], ["", false])
+	# 지휘관 명령 칸: 네 묶음이 모두 펼쳐져 있다 (2단 메뉴 없음)
+	var groups := CommandCard.load_board()
+	_check("네 묶음", groups.map(func(g): return str(g.label)), ["보고", "지원", "안전", "구역"])
+	var missing: Array = []
+	for id in CommandCard.board_ids():
+		if not board.has(id) or not board[id].is_visible_in_tree():
+			missing.append(id)
+	_check("모든 명령이 처음부터 화면에 보인다", missing, [])
+	_check("완진 선언·지휘권 이양도 처음부터 보이고 눌린다 (때가 돼야 나타나지 않는다)",
+		[board["all_clear"].disabled, board["transfer"].disabled, board["end"].disabled], [false, false, false])
+	_check("명령 칸이 화면 안에 있다", hud.get_rect().encloses(hud.console.get_rect()), true)
+	root.get_texture().get_image().save_png("user://ui_board.png")
+	# 보고: 선언 전에는 보완 보고가 없다(알림), 선언 양식, 선언 뒤에는 선언 단추가 흐려진다
+	board["update_report"].pressed.emit()
+	_check("선언 전 보완 보고 → 창 없음", cui.any_dialog_open(), false)
+	board["strategy"].pressed.emit()
+	_check("선언 전 전략 변경 → 최초 상황보고 양식 (전략은 그 보고의 항목)", cui.report_visible(), true)
+	cui.close_all()
+	board["declare"].pressed.emit()
+	_check("지휘권 선언·보고 → 상황보고 양식", cui.report_visible(), true)
+	cui.close_all()
+	# 일찍 눌러도 막지 않는다: 초진 전 완진 선언 창이 열리고 확인 목록이 '초진 보고 없음'을 보여 준다
+	board["all_clear"].pressed.emit()
+	_check("초진 전 완진 선언 → 창이 열린다", [cui.all_clear_visible(), cui.all_clear_checklist().begins_with("✗ 초진 보고")], [true, true])
+	cui.close_all()
+	# 할 수 없는 일: 지휘대가 오기 전 이양은 창이 열리지 않는다 (넘겨받을 사람이 없다)
+	board["transfer"].pressed.emit()
+	_check("지휘대 도착 전 이양 → 창 없음", cui.any_dialog_open(), false)
+	# 안전: RIT 지정 → 조를 누르면 무전으로 지정, 다시 누르면 해제
+	board["rit"].pressed.emit()
+	_check("RIT 지정 → 조 고르는 창", cui.role_visible(), true)
+	var rit_crew: int = cui.role_crews()[-1]
+	cui.pick_role_crew(rit_crew)
+	sim.clock.paused = false
+	for i in 600:
+		if sim.command.safety.role_of(rit_crew) == SafetySystem.Role.RIT:
+			break
+		sim.step_ticks(1)
+	_check("조 누름 → RIT 지정 (무전 뒤)", [cui.role_visible(), sim.command.safety.role_of(rit_crew)], [false, SafetySystem.Role.RIT])
+	board["rit"].pressed.emit()
+	cui.pick_role_crew(rit_crew)
+	sim.clock.paused = false
+	for i in 600:
+		if sim.command.safety.role_of(rit_crew) == SafetySystem.Role.NONE:
+			break
+		sim.step_ticks(1)
+	_check("맡은 조를 다시 누름 → 해제", sim.command.safety.role_of(rit_crew), SafetySystem.Role.NONE)
+	board["officer"].pressed.emit()
+	_check("안전담당 지정 → 조 고르는 창", cui.role_visible(), true)
+	cui.close_all()
+	sim.clock.paused = false
+	# 지원: 한 번 요청하면 그 단추만 흐려진다
+	board["support_more"].pressed.emit()
+	for i in 600:
+		if sim.command.resources.support_level != "":
+			break
+		sim.step_ticks(1)
+	hud._refresh_selection()
+	_check("추가 출동대 요청 → 요청됨 · 단추 흐림", [sim.command.resources.support_level, board["support_more"].disabled, board["response_1"].disabled], ["추가 출동대 요청", true, false])
+	# 구역 (P10-2 ⓑ): 안전구역 → 끌기 → 무전 → 지정, 환자 집결지 클릭
+	board["zone_safe"].pressed.emit()
+	_check("구역 ▸ 안전구역 → 안전구역 모드", sel.mode, sel.Mode.ZONE_SAFE)
 	var zr := Rect2i()
 	var fp := sim.building.footprint(1)
 	for y in range(fp.end.y + 2, sim.building.height - 8):
@@ -60,9 +117,8 @@ func _run() -> void:
 			break
 		sim.step_ticks(1)
 	_check("끌기 → 안전구역 지정 (무전·설치 후)", sim.zones.safe, zr)
-	world._press_card("A")
-	world._press_card("W")
-	_check("A → W → 환자 집결지 모드", sel.mode, sel.Mode.ZONE_CASUALTY)
+	board["zone_casualty"].pressed.emit()
+	_check("구역 ▸ 환자 집결지 → 환자 집결지 모드", sel.mode, sel.Mode.ZONE_CASUALTY)
 	sel._complete_mode(proj.to_screen(Vector2(zr.get_center())))
 	sel.cancel_mode()
 	for i in 3000:
@@ -79,7 +135,9 @@ func _run() -> void:
 	var crew_id := 0
 	sel._set_selection([crew_id] as Array[int], [] as Array[int])
 	await process_frame
-	_check("팀 선택 → 팀 세트", card.set_name, "team")
+	_check("팀 선택 → 팀 세트 · 카드 보임 · 지휘관 명령 칸도 그대로", [card.set_name, hud._command_panel.visible, hud.board_box.is_visible_in_tree()], ["team", true, true])
+	_check("팀 카드와 명령 칸이 함께 화면 안에", hud.get_rect().encloses(hud.console.get_rect()), true)
+	root.get_texture().get_image().save_png("user://ui_board_team.png")
 	_check("팀 6칸 (기획안 9-1)", _labels(card), ["Q 인명검색", "W 화점진압", "E 경계", "R 배연", "A 대기", "S 철수"])
 	_check("조를 골라도 메뉴가 뜨지 않는다", world.mission_ui.menu.visible, false)
 	# A 대기(하위 칸만) → 명령 카드가 하위 칸으로
@@ -201,10 +259,10 @@ func _run() -> void:
 	await process_frame
 	_check("차량 선택 → 차량 세트", card.set_name, "vehicle")
 	_check("펌프차: 방수포 칸 사용", world.hud._card_buttons[1].disabled, not sim.units.get_vehicle(0).is_pump())
-	# 선택 해제 → 다시 지휘관
+	# 선택 해제 → 카드 숨김
 	sel._set_selection([] as Array[int], [] as Array[int])
 	await process_frame
-	_check("선택 해제 → 지휘관 세트", card.set_name, "commander")
+	_check("선택 해제 → 카드 숨김", [card.set_name, hud._command_panel.visible], ["", false])
 	print("결과: %s (실패 %d)" % ["통과" if _failed == 0 else "실패", _failed])
 	quit(1 if _failed > 0 else 0)
 
@@ -215,13 +273,6 @@ func _labels(card: CommandCard) -> Array:
 	for i in slots.size():
 		if not slots[i].is_empty():
 			out.append("%s %s" % [CommandCard.KEYS[i], str(slots[i].label)])
-	return out
-
-
-func _expected(list: Array) -> Array:
-	var out: Array = []
-	for it: Dictionary in list:
-		out.append("%s %s" % [str(it.key), str(it.label)])
 	return out
 
 

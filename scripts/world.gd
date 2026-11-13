@@ -94,6 +94,8 @@ func _ready() -> void:
 	hud.setup(sim, set_view_level)
 	hud.card_key_pressed.connect(_press_card)
 	hud.card.enabled_fn = _card_item_enabled
+	hud.board_pressed.connect(_press_board)
+	hud.board_done_fn = _board_done
 	hud.command_ui.order_issued.connect(sim.issue)
 	hud.command_ui.dialog_changed.connect(_on_dialog_changed)
 	selection.witness_clicked.connect(hud.command_ui.open_witness)
@@ -253,7 +255,7 @@ func _process_sim(delta: float) -> void:
 	if sim and sim.rescue.zone_prompt:
 		sim.rescue.zone_prompt = false
 		selection.begin_mode(SelectionController.Mode.ZONE_CASUALTY if sim.zones.has_safe() else SelectionController.Mode.ZONE_SAFE)
-		hud.show_notice("구조한 조가 입구에서 기다립니다 — %s" % ("안전구역 안에 환자 집결지를 찍으세요" if sim.zones.has_safe() else "먼저 안전구역을 끌어서 지정하세요 (그다음 A → W 환자 집결지)"))
+		hud.show_notice("구조한 조가 입구에서 기다립니다 — %s" % ("안전구역 안에 환자 집결지를 찍으세요" if sim.zones.has_safe() else "먼저 안전구역을 끌어서 지정하세요 (그다음 지휘관 명령 칸 '구역'의 환자 집결지)"))
 	if sim and sim.view_only:
 		# 리플레이 보기: 한 틱씩 진행하며 기록된 명령을 그 틱에 넣는다
 		for i in sim.clock.consume(delta):
@@ -613,11 +615,34 @@ func _card_item_enabled(item: Dictionary) -> bool:
 			return sim.elevator.available()
 		"support":
 			return selection.selected.size() == 1 and mission_ui.support_crew(selection.selected[0]) >= 0
-		"response_1":
-			return sim.command.resources.support_level != "대응 1단계 발령"
-		"support_more":
-			return sim.command.resources.support_level == ""
 	return true
+
+
+## 지휘관 명령 칸의 단추 누르기 (G3). 조·차량을 고른 채로도 쓴다 — 하던 대상 고르기는 그만둔다
+func _press_board(id: String) -> void:
+	if sim.view_only:
+		return
+	if mission_ui:
+		mission_ui.close_menu()
+	selection.cancel_mode()
+	hud.card.back()
+	_commander_command(id)
+
+
+## 지휘관 명령 칸에서 이미 한 일 (단추를 흐리게): 한 번 하면 끝나는 선언·요청만
+func _board_done(id: String) -> bool:
+	match id:
+		"declare":
+			return sim.command.declared() or sim.command.is_declaring()
+		"all_clear":
+			return not sim.phases.all_clear.is_empty()
+		"transfer":
+			return sim.transfer.transferred()
+		"support_more":
+			return sim.command.resources.support_level != ""
+		"response_1":
+			return sim.command.resources.support_level == "대응 1단계 발령"
+	return false
 
 
 ## 명령 실행. 지휘관·차량 명령은 조를 고르지 않아도 된다
@@ -665,14 +690,46 @@ func _on_command(id: String) -> void:
 			sim.issue(TacticalCommand.make("withdraw", selection.selected))
 
 
-## 지휘관 명령 (명령 카드 commander 세트). 처리했으면 true
+## 지휘관 명령 (지휘관 명령 칸 — data/commands.json commander_board·commander_tools). 처리했으면 true.
+## 때가 아니어도 막지 않는다. 할 수 없는 일(이양받을 지휘대가 없음 등)만 알림으로 답한다
 func _commander_command(id: String) -> bool:
 	var ui := hud.command_ui
 	match id:
+		"declare":
+			if sim.command.declared():
+				hud.show_notice("이미 지휘권을 선언했습니다 — 새로 알게 된 것은 상황 보완 보고로 전파합니다")
+			else:
+				ui.open_command_dialog()
+		"update_report":
+			if sim.command.declared():
+				ui.open_update_dialog()
+			else:
+				hud.show_notice("최초 상황보고 전입니다 — 보완할 보고가 없습니다")
 		"strategy":
+			# 선언 전이면 최초 상황보고 양식이 열린다 (전략은 그 보고의 한 항목)
 			ui.open_command_dialog()
-		"preorder":
-			ui.open_preorder()
+		"all_clear":
+			if sim.phases.all_clear.is_empty():
+				ui.open_all_clear()
+			else:
+				hud.show_notice("이미 완진을 선언했습니다")
+		"transfer":
+			if sim.transfer.transferred():
+				hud.show_notice("이미 지휘권을 이양했습니다")
+			elif not sim.transfer.arrived():
+				hud.show_notice("지휘대가 아직 도착하지 않았습니다 — 지휘권을 넘겨받을 사람이 없습니다")
+			else:
+				ui.open_transfer_dialog()
+		"end":
+			ui.open_end_confirm()
+		"rit":
+			ui.open_role_dialog(SafetySystem.Role.RIT)
+		"officer":
+			ui.open_role_dialog(SafetySystem.Role.OFFICER)
+		"info":
+			ui.open_info_dialog()
+		"survey":
+			sim.issue(CommandOrder.make("survey"))
 		"response_1":
 			sim.issue(CommandOrder.make("support", [], 0, Vector3i.ZERO, {"level": "대응 1단계 발령"}))
 		"support_more":
@@ -696,7 +753,7 @@ func _commander_command(id: String) -> bool:
 			selection.begin_mode(SelectionController.Mode.ZONE_SAFE)
 		"zone_casualty":
 			if not sim.zones.has_safe():
-				hud.show_notice("안전구역을 먼저 지정하세요 (A 구역 지정 → Q 안전구역)")
+				hud.show_notice("안전구역을 먼저 지정하세요 (지휘관 명령 칸 '구역'의 안전구역)")
 			else:
 				selection.begin_mode(SelectionController.Mode.ZONE_CASUALTY)
 		"zone_line":

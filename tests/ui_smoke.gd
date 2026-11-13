@@ -124,11 +124,13 @@ func _run() -> void:
 	cui.open_info_dialog()
 	_check("현장 정보 버튼 → 현장 정보 창", cui.info_visible(), true)
 	cui._close(cui._info)
-	# 지휘관 명령 Q 전략 변경 → Q 선언·전략 → 지휘권 선언·최초 상황보고 양식 (P10-2)
-	_check("지휘관 선택 → 지휘관 명령 카드", world.hud.card.set_name, "commander")
+	# 지휘관 명령 칸 (G3): 조를 안 고르면 명령 카드는 숨고, 지휘관 명령 칸은 늘 보인다. 보고 ▸ 지휘권 선언·보고 → 양식
+	var hud_board: Dictionary = world.hud.board_buttons
+	_check("지휘관 선택 → 명령 카드 숨김 · 지휘관 명령 칸 보임", [world.hud.card.set_name, world.hud._command_panel.visible, world.hud.board_box.is_visible_in_tree()], ["", false, true])
 	_key(KEY_Q)
-	_key(KEY_Q)
-	_check("Q → Q → 상황보고 양식", cui._report.visible, true)
+	_check("고른 조가 없으면 Q 키는 아무 일도 하지 않는다", cui.any_dialog_open(), false)
+	hud_board["declare"].pressed.emit()
+	_check("보고 ▸ 지휘권 선언·보고 → 상황보고 양식", cui._report.visible, true)
 	_check("양식이 떠 있는 동안 일시정지", sim.clock.paused, true)
 	for choice in [["fire", "연기만 확인"], ["victims", "있음"], ["use", "단독주택"], ["floors", "2층"],
 			["structure", "벽돌조"], ["strategy", "공격"], ["support", "불필요"], ["access", "진입 가능, 회차 불가"]]:
@@ -297,11 +299,12 @@ func _run() -> void:
 	var searches := sim.command_log.entries.filter(func(c): return c is TacticalCommand and str(c.action).begins_with("search"))
 	_check("방 클릭 → 인명검색 임무", searches.size() >= 1, true)
 
-	# 지휘관 명령 E 지원 요청 → W 조직 → 조직·지원 창, 단위대 지정
+	# 지휘관 명령 칸 지원 ▸ 단위대 지정 → 단위대 창. 조를 고른 채로 눌러도 된다 (칸은 늘 보인다)
+	sel._set_selection([1] as Array[int], [] as Array[int])
+	_check("조를 고르면 명령 카드가 나오고 지휘관 명령 칸도 그대로 보인다", [world.hud._command_panel.visible, world.hud.board_box.is_visible_in_tree()], [true, true])
+	hud_board["org"].pressed.emit()
 	sel._set_selection([] as Array[int], [] as Array[int])
-	_key(KEY_E)
-	_key(KEY_W)
-	_check("E → W → 조직·지원 창", [cui.org_visible(), sim.clock.paused], [true, true])
+	_check("지원 ▸ 단위대 지정 → 단위대 창", [cui.org_visible(), sim.clock.paused], [true, true])
 	cui.assign_division("A면", 0, [1] as Array[int])
 	_check("단위대 지정하면 창 닫힘", [cui.org_visible(), sim.clock.paused], [false, false])
 	sim.step_ticks(200)
@@ -371,10 +374,13 @@ func _run() -> void:
 	var tacts := sim.command_log.entries.filter(func(c): return c is TacticalCommand)
 	_check("진압대 → 진압, 구조대 → 수색", tacts.slice(-2).map(func(c): return c.action), ["attack", "search"])
 	_check("RECEO 상태판", cui._receo_label.text.contains("R 구조"), true)
-	# 안전 임무 지정(RIT)·인원 점검 (지휘관 명령 R)
-	cui.assign_role(3, SafetySystem.Role.RIT)
+	# 지휘관 명령 칸 안전 ▸ RIT 지정 → 조 누르기, 안전 ▸ 인원 점검
+	hud_board["rit"].pressed.emit()
+	_check("안전 ▸ RIT 지정 → 조 고르는 창", [cui.role_visible(), cui.role_crews().has(3)], [true, true])
+	cui.pick_role_crew(3)
+	_check("조를 누르면 창 닫힘", cui.role_visible(), false)
 	sel._set_selection([] as Array[int], [] as Array[int])
-	_key(KEY_R)
+	hud_board["par"].pressed.emit()
 	sim.clock.paused = false
 	sim.step_ticks(300)
 	_check("RIT 지정 (구조1 2조)", sim.command.safety.role_of(3), SafetySystem.Role.RIT)

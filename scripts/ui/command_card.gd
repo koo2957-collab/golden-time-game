@@ -2,7 +2,8 @@ class_name CommandCard
 extends RefCounted
 ## 명령 카드 상태 (기획안 9-1 "명령 카드 하나로 통일", P10-2).
 ## data/commands.json 하나를 원형 메뉴·하단 명령 카드·단축키(Q W E R A S)가 같이 쓴다.
-##   - 세트: team(진압·구조) · ems(구급) · vehicle(차량) · commander(선택 없음·지휘관)
+##   - 세트: team(진압·구조) · ems(구급) · vehicle(차량). 아무것도 안 고르면 세트 없음("") — 카드는 숨는다
+##   - 지휘관 명령은 카드가 아니라 항상 보이는 '지휘관 명령 칸'이다 (load_board, G3 2026-11-14 결정)
 ##   - act: false 항목은 누르면 하위 칸을 펼친다. 실행 항목에 sub가 있으면 실행(대상 클릭 대기) 중에 세부 동작을 펼친다
 ##   - Esc·뒤로 → 첫 칸. 화면은 만들지 않는다 (Hud·MissionUi가 그린다)
 
@@ -11,10 +12,10 @@ signal changed
 const PATH := "res://data/commands.json"
 ## 칸 순서 = 키보드 배치 (윗줄 Q W E R, 아랫줄 A S)
 const KEYS: Array[String] = ["Q", "W", "E", "R", "A", "S"]
-const SET_TITLES := {"team": "팀 명령", "ems": "구급대 명령", "vehicle": "차량 명령", "commander": "지휘관 명령"}
+const SET_TITLES := {"team": "팀 명령", "ems": "구급대 명령", "vehicle": "차량 명령"}
 
 var sets: Dictionary = {}
-var set_name := "commander"
+var set_name := ""
 ## 펼친 상위 항목 id ("" = 첫 칸)
 var parent := ""
 ## 항목을 쓸 수 있는지 (항목 Dictionary -> bool). 기본은 need가 later가 아니면 쓸 수 있다
@@ -31,6 +32,35 @@ static func load_sets() -> Dictionary:
 		return data.sets
 	push_error("명령 카드 파일을 읽지 못함: %s" % PATH)
 	return {}
+
+
+## 지휘관 명령 칸의 묶음들: [{id, label, items: [{id, label, hint}]}] (보고·지원·안전·구역)
+static func load_board() -> Array[Dictionary]:
+	return _load_list("commander_board")
+
+
+## 지휘관 명령 칸 옆의 확인 단추 (명령이 아닌 것): [{id, label, hint}]
+static func load_tools() -> Array[Dictionary]:
+	return _load_list("commander_tools")
+
+
+## 지휘관 명령 칸의 모든 명령 id (묶음 순서대로)
+static func board_ids() -> PackedStringArray:
+	var out: PackedStringArray = []
+	for g in load_board():
+		for it: Dictionary in g.get("items", []):
+			out.append(str(it.id))
+	return out
+
+
+static func _load_list(key: String) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var data: Variant = JsonData.load_file(PATH)
+	if data is Dictionary and data.get(key) is Array:
+		out.assign(data[key])
+	else:
+		push_error("명령 카드 파일에 %s 가 없음: %s" % [key, PATH])
+	return out
 
 
 ## 고른 대상이 바뀌면 세트를 바꾸고 첫 칸으로

@@ -5,6 +5,8 @@ extends Control
 
 ## 명령 카드 칸을 눌렀을 때 (Q W E R A S — 단축키와 같은 처리, P10-2)
 signal card_key_pressed(key: String)
+## 지휘관 명령 칸의 단추를 눌렀을 때 (명령 id — data/commands.json commander_board·commander_tools)
+signal board_pressed(id: String)
 
 const DEBUG_REFRESH_S := 0.25
 const SELECTION_REFRESH_S := 0.25
@@ -49,7 +51,8 @@ var _crew_ids: Array[int] = []
 var _vehicle_ids: Array[int] = []
 var _selection_timer := 0.0
 var _victim_label: Label
-## 명령 카드 (기획안 9-1, P10-2): 6칸 Q W E R / A S. 원형 메뉴와 같은 CommandCard를 그린다
+## 명령 카드 (기획안 9-1, P10-2): 6칸 Q W E R / A S. 원형 메뉴와 같은 CommandCard를 그린다.
+## 조·차량을 골랐을 때만 보인다 — 지휘관 명령은 항상 보이는 지휘관 명령 칸(board_box)에 있다
 var card: CommandCard
 var _command_panel: VBoxContainer
 var _card_title: Label
@@ -96,7 +99,7 @@ func setup(p_sim: SimWorld, on_floor_selected: Callable) -> void:
 	floor_bar.floor_pressed.connect(on_floor_selected)
 	floor_tabs.add_child(floor_bar)
 	$ClockPanel.gui_input.connect(_on_badge_input)
-	$ClockPanel.tooltip_text = "클릭: 전략 변경 (지휘 C)"
+	$ClockPanel.tooltip_text = "클릭: 지휘권 선언 · 전략 변경"
 	_build_subtitles()
 	_build_emergency()
 	_build_legend()
@@ -288,24 +291,25 @@ func _refresh_selection() -> void:
 		var cmd := sim.command
 		var ask := cmd.survey.asking()
 		lines.append("현장지휘관 %s %s (%s) — 지휘 위치: %s%s
-    우클릭: 이동 (건물 안으로는 혼자 들어가지 않음) · Q: 지휘권 선언·전략 · 관계인 클릭: 질문" % [
+    우클릭: 이동 (건물 안으로는 혼자 들어가지 않음) · 관계인 클릭: 질문" % [
 			cmd.commander.name, cmd.commander.rank, cmd.commander_title, cmd.commander_position_text(),
 			" · 관계인에게 질문 중 (%d개 남음)" % ask.questions.size() if not ask.is_empty() else ""])
 	selection_label.text = "\n".join(lines) if not lines.is_empty() else _squad_summary()
-	# 선택 대상에 따라 명령 카드 세트가 바뀐다 (기획안 9-1: 선택 없음 = 지휘관 명령)
+	# 선택 대상에 따라 명령 카드 세트가 바뀐다. 아무것도 안 고르면 카드는 숨는다 (지휘관 명령 칸은 늘 보인다)
 	card.set_target(card_set())
-	_commander_box.visible = card.set_name == "commander"
+	_command_panel.visible = card.set_name != ""
 	_refresh_card()
+	_refresh_board()
 
 
-## 고른 것 → 명령 카드 세트: 조(구급대면 ems) > 차량 > 지휘관
+## 고른 것 → 명령 카드 세트: 조(구급대면 ems) > 차량 > 없음("")
 func card_set() -> String:
 	if not _crew_ids.is_empty():
 		var squad := sim.units.squad_of_crew(_crew_ids[0])
 		return "ems" if squad and squad.type == "구급대" else "team"
 	if not _vehicle_ids.is_empty():
 		return "vehicle"
-	return "commander"
+	return ""
 
 
 ## 명령 카드 6칸을 지금 상태로 다시 쓴다 (칸 이름·쓸 수 있는지·하위 칸)
@@ -500,7 +504,7 @@ func _build_command_panel() -> void:
 		var b := Button.new()
 		b.focus_mode = Control.FOCUS_NONE
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.custom_minimum_size = Vector2(150, 40)
+		b.custom_minimum_size = Vector2(118, 40)
 		b.clip_text = true
 		var key := CommandCard.KEYS[i]
 		b.pressed.connect(func() -> void: card_key_pressed.emit(key))
@@ -724,7 +728,7 @@ func _build_emergency() -> void:
 	_vignette.draw.connect(_draw_vignette)
 	add_child(_vignette)
 	_emergency_button = Button.new()
-	_emergency_button.text = "⚠ 긴급탈출 상황 — 눌러서 전원 긴급탈출 지시 (RIT는 조직 창·카드로 투입)"
+	_emergency_button.text = "⚠ 긴급탈출 상황 — 눌러서 전원 긴급탈출 지시 (RIT 투입은 긴급탈출 무전에 답해서)"
 	_emergency_button.focus_mode = Control.FOCUS_NONE
 	_emergency_button.custom_minimum_size = Vector2(620, 48)
 	_emergency_button.add_theme_font_size_override("font_size", 18)
@@ -766,12 +770,11 @@ func _draw_vignette() -> void:
 
 const CONSOLE_MIN_H := 150.0
 var console: PanelContainer
-var _commander_box: VBoxContainer
 var minimap: MinimapView
 var _minimap_ms := 0
 
 
-## 화면 아래 반투명 띠: 왼쪽 미니맵 자리 · 가운데 선택 정보 · 오른쪽 명령 버튼 (선택 대상에 따라)
+## 화면 아래 반투명 띠: 왼쪽 미니맵 · 가운데 선택 정보 · (조·차량을 골랐을 때) 명령 카드 · 오른쪽 지휘관 명령 칸
 func _build_console() -> void:
 	console = PanelContainer.new()
 	var style := StyleBoxFlat.new()
@@ -798,27 +801,86 @@ func _build_console() -> void:
 	info.add_child(selection_label)
 	row.add_child(info)
 	$SelectionPanel.visible = false
-	# 명령: 조를 고르면 출동대 명령칸·세부 명령, 아니면 지휘관 명령
-	var cmd := VBoxContainer.new()
-	cmd.alignment = BoxContainer.ALIGNMENT_END
+	# 고른 조·차량의 명령 카드 (선택이 없으면 숨는다)
 	_command_panel.get_parent().remove_child(_command_panel)
 	_command_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	cmd.add_child(_command_panel)
-	_commander_box = VBoxContainer.new()
-	for r in command_ui.command_rows:
-		r.get_parent().remove_child(r)
-		_commander_box.add_child(r)
-	cmd.add_child(_commander_box)
+	_command_panel.visible = false
+	row.add_child(_command_panel)
+	# 지휘관 명령 칸: 무엇을 고르고 있든 항상 보인다
+	row.add_child(VSeparator.new())
+	row.add_child(_build_board())
+	$HelpLabel.visible = false
+	add_child(console)
+	move_child(console, 0)
+
+
+# --- 지휘관 명령 칸 (G3, 2026-11-14 결정) ---
+
+const BOARD_BUTTON := Vector2(146, 27)
+const BOARD_FONT := 14
+var board_box: HBoxContainer
+## 명령 id -> Button (지휘관 명령 칸·확인 단추)
+var board_buttons: Dictionary = {}
+## 이미 한 일이라 흐리게 둘 것인가 (명령 id -> bool). World가 넣는다
+var board_done_fn: Callable
+
+
+## 보고·지원·안전·구역 네 묶음을 기둥으로 모두 펼친다 (data/commands.json commander_board).
+## 무엇을 고르고 있든 항상 보이고, 때가 됐다고 나타나거나 빛나지 않는다 — 이미 한 일만 흐려진다.
+## 일찍 눌러도 막지 않는다: 그대로 실행·기록되고 평가가 시점·순서를 본다
+func _build_board() -> HBoxContainer:
+	board_box = HBoxContainer.new()
+	board_box.add_theme_constant_override("separation", 8)
+	for g in CommandCard.load_board():
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 2)
+		var head := Label.new()
+		head.text = str(g.label)
+		head.add_theme_font_size_override("font_size", BOARD_FONT)
+		head.add_theme_color_override("font_color", Color("fde68a"))
+		col.add_child(head)
+		for it: Dictionary in g.get("items", []):
+			col.add_child(_make_board_button(it))
+		board_box.add_child(col)
+	# 명령이 아닌 확인 단추와 조작 도움말은 묶음 밖 오른쪽 아래에
+	var tools := VBoxContainer.new()
+	tools.add_theme_constant_override("separation", 2)
+	tools.alignment = BoxContainer.ALIGNMENT_END
+	for it in CommandCard.load_tools():
+		tools.add_child(_make_board_button(it))
 	var help := Button.new()
 	help.text = "? 조작"
 	help.focus_mode = Control.FOCUS_NONE
+	help.add_theme_font_size_override("font_size", BOARD_FONT)
+	help.custom_minimum_size = Vector2(0, BOARD_BUTTON.y)
 	help.tooltip_text = $HelpLabel.text
-	help.size_flags_horizontal = Control.SIZE_SHRINK_END
-	cmd.add_child(help)
-	$HelpLabel.visible = false
-	row.add_child(cmd)
-	add_child(console)
-	move_child(console, 0)
+	tools.add_child(help)
+	board_box.add_child(tools)
+	return board_box
+
+
+func _make_board_button(item: Dictionary) -> Button:
+	var b := Button.new()
+	var id := str(item.id)
+	b.text = str(item.label)
+	b.tooltip_text = str(item.get("hint", ""))
+	b.focus_mode = Control.FOCUS_NONE
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.clip_text = true
+	b.custom_minimum_size = BOARD_BUTTON
+	b.add_theme_font_size_override("font_size", BOARD_FONT)
+	if item.get("danger", false):
+		b.add_theme_color_override("font_color", Color("fca5a5"))
+	b.pressed.connect(func() -> void: board_pressed.emit(id))
+	board_buttons[id] = b
+	return b
+
+
+## 이미 한 일(선언·지원 요청·완진 선언·이양)과 보기 전용에서는 흐리게
+func _refresh_board() -> void:
+	for id: String in board_buttons:
+		var b: Button = board_buttons[id]
+		b.disabled = sim.view_only or (board_done_fn.is_valid() and board_done_fn.call(id))
 
 
 ## 아무것도 고르지 않았을 때: 출동대 전체 요약 (기획안 9-2)
@@ -841,7 +903,8 @@ func _squad_summary() -> String:
 func _layout_console() -> void:
 	if console == null:
 		return
-	var h := maxf(CONSOLE_MIN_H, size.y * 0.18)
+	# 지휘관 명령 칸(가장 긴 묶음 6줄)이 다 들어가는 높이까지
+	var h := maxf(maxf(CONSOLE_MIN_H, size.y * 0.18), console.get_combined_minimum_size().y)
 	console.position = Vector2(8.0, size.y - h - 8.0)
 	if radio_log:
 		radio_log.position = Vector2(size.x - radio_log.size.x - 16.0, 64.0)

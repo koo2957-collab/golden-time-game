@@ -75,8 +75,6 @@ var _board_scroll: ScrollContainer
 ## 상황판이 내려갈 수 있는 화면 y (HUD가 하단 콘솔 위로 맞춘다. 0이면 화면 끝)
 var board_bottom := 0.0
 var _fold_button: Button
-## 지휘관 명령 버튼 줄 (HUD 하단 콘솔이 가져간다, R6b)
-var command_rows: Array[HBoxContainer] = []
 ## 전술상황판을 접었는가 (Tab)
 var board_folded := false
 ## 처음 차량이 들어오는 간격 (data/command/phase_params.json arrival_gap_s)
@@ -88,7 +86,6 @@ var _org_name: OptionButton
 var _org_supervisor: OptionButton
 var _org_members: HFlowContainer
 var _org_list: VBoxContainer
-var _org_support: HBoxContainer
 var _org_squads: Array[int] = []  # 단위지휘관 보기 순서 -> squad id
 var _survey_label: Label
 var _witness: PanelContainer
@@ -104,18 +101,17 @@ var _update: PanelContainer
 var _update_victims: OptionButton
 var _update_hazards: Array[CheckBox] = []
 var _end: PanelContainer
-## 선제지시 창
-var _preorder: PanelContainer
-var _preorder_checks: Dictionary = {}  # key -> CheckBox
 ## 완진 선언 창 (노출된 곳 확인 목록)
 var _all_clear: PanelContainer
 var _all_clear_status: Label
 var _end_warning: Label
 var _end_status: Label
 var _end_watch: OptionButton
-var _role_crew: OptionButton
-var _role_crews: Array[int] = []
-var _role_list: Label
+## 안전 임무 창 (지휘관 명령 칸 '안전' ▸ RIT 지정·안전담당 지정): 조를 눌러 맡긴다
+var _role: PanelContainer
+var _role_kind := 0
+var _role_title: Label
+var _role_box: HFlowContainer
 
 
 func setup(p_sim: SimWorld) -> void:
@@ -134,7 +130,7 @@ func setup(p_sim: SimWorld) -> void:
 	_build_update()
 	_build_end()
 	_build_all_clear()
-	_build_preorder()
+	_build_role()
 
 
 func _process(delta: float) -> void:
@@ -145,12 +141,8 @@ func _process(delta: float) -> void:
 	if _refresh <= 0.0:
 		_refresh = REFRESH_S
 		_refresh_radio()
-		# 지휘대 도착: 이양 버튼을 보이고, 처음 한 번은 브리핑 창을 연다 (R13)
+		# 지휘대 도착: 처음 한 번은 브리핑 창을 연다 (R13). 이양·완진 선언 단추는 지휘관 명령 칸에 늘 있다
 		var t := sim.transfer
-		if _transfer_button:
-			_transfer_button.visible = t.arrived() and not t.transferred()
-		if _all_clear_button:
-			_all_clear_button.visible = sim.phases.knockdown_tick >= 0 and sim.phases.all_clear.is_empty()
 		if t.arrived() and not t.transferred() and not _transfer_prompted and not any_dialog_open():
 			_transfer_prompted = true
 			open_transfer_dialog()
@@ -217,7 +209,7 @@ func todo_items() -> Array[String]:
 
 func any_dialog_open() -> bool:
 	return _dispatch.visible or _report.visible or _strategy.visible or _confirm.visible or _org.visible \
-		or _witness.visible or _info.visible or _update.visible or _end.visible or _all_clear.visible or _preorder.visible
+		or _witness.visible or _info.visible or _update.visible or _end.visible or _all_clear.visible or _role.visible
 
 
 func set_radio_visible(on: bool) -> void:
@@ -241,7 +233,62 @@ func open_command_dialog() -> void:
 		_open(_report)
 
 
-## 조직·지원 창 (지휘관 명령 E 지원 요청 ▸ 조직): 지원 요청, 단위대 지정·해제
+## 상황 보완 보고 창 (지휘관 명령 칸 '보고'). 최초 상황보고 뒤에 쓴다
+func open_update_dialog() -> void:
+	if any_dialog_open():
+		return
+	_update_victims.select(0)
+	for cb in _update_hazards:
+		cb.button_pressed = false
+	_open(_update)
+
+
+func update_visible() -> bool:
+	return _update.visible
+
+
+func strategy_visible() -> bool:
+	return _strategy.visible
+
+
+func report_visible() -> bool:
+	return _report.visible
+
+
+func all_clear_visible() -> bool:
+	return _all_clear.visible
+
+
+## 안전 임무 창 (지휘관 명령 칸 '안전'): 현장에 있는 조를 눌러 RIT·현장안전담당을 맡긴다. 맡은 조를 누르면 해제
+func open_role_dialog(role: int) -> void:
+	if any_dialog_open():
+		return
+	_role_kind = role
+	_rebuild_role()
+	_open(_role)
+
+
+func role_visible() -> bool:
+	return _role.visible
+
+
+## 안전 임무 창에 보이는 조 (조작 점검용)
+func role_crews() -> Array[int]:
+	var out: Array[int] = []
+	for b in _role_box.get_children():
+		out.append(int(b.get_meta("crew")))
+	return out
+
+
+## 안전 임무 창에서 그 조를 누른다 (조작 점검용)
+func pick_role_crew(crew_id: int) -> void:
+	for b: Button in _role_box.get_children():
+		if int(b.get_meta("crew")) == crew_id:
+			b.pressed.emit()
+			return
+
+
+## 단위대 창 (지휘관 명령 칸 '지원' ▸ 단위대 지정): 단위대 지정·해제
 func open_org_dialog() -> void:
 	if any_dialog_open():
 		return
@@ -284,7 +331,7 @@ func ask_witness(questions: Array[String]) -> void:
 	_submit_ask()
 
 
-## 현장 정보 창 (명령 카드 옆 현장 정보 버튼): 둘러보기·진술·물증 기록
+## 현장 정보 창 (지휘관 명령 칸 옆 현장 정보 단추): 둘러보기·진술·물증 기록
 func open_info_dialog() -> void:
 	if any_dialog_open():
 		return
@@ -298,7 +345,7 @@ func info_visible() -> bool:
 
 ## 열린 창을 모두 닫는다 (디브리핑으로 넘어갈 때)
 func close_all() -> void:
-	for p in [_dispatch, _report, _strategy, _confirm, _org, _witness, _info, _update, _end, _transfer]:
+	for p in [_dispatch, _report, _strategy, _confirm, _org, _witness, _info, _update, _end, _all_clear, _role, _transfer]:
 		if p:
 			_close(p)
 	_radio_panel.visible = false
@@ -484,7 +531,7 @@ func _refresh_radio() -> void:
 	var n := cmd.direct_count()
 	var span := "직접 지휘 %d (적정 %d, 한계 %d)" % [n, cmd.org.span_ideal, cmd.org.span_max]
 	if n > cmd.org.span_ideal:
-		span += " — 초과: 명령 %.0f초 지연. 단위대를 지정하세요 (지휘관 명령 E ▸ 조직)" % cmd.span_delay_s()
+		span += " — 초과: 명령 %.0f초 지연. 단위대를 지정하세요 (지휘관 명령 칸 '지원')" % cmd.span_delay_s()
 	if cmd.held_count() > 0:
 		span += "  · 실행 대기 명령 %d건" % cmd.held_count()
 	_span_label.text = span
@@ -500,7 +547,7 @@ func _refresh_radio() -> void:
 func _entry_text() -> String:
 	var cmd := sim.command
 	var lines: PackedStringArray = ["전략: %s%s" % [CommandSystem.STRATEGY_NAMES[cmd.strategy],
-		"" if cmd.declared() else "  (지휘권 미선언 — 지휘관 명령 Q)"]]
+		"" if cmd.declared() else "  (지휘권 미선언)"]]
 	if cmd.safety.emergency():
 		lines.insert(0, "⚠ 긴급탈출 상황 — 무선 침묵 (SOP 109). 쓰러진 대원에게 RIT·가까운 조 투입 (우클릭)")
 	var res := cmd.resources
@@ -595,23 +642,6 @@ func _build_radio_panel() -> void:
 	_survey_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_survey_label.custom_minimum_size = Vector2(RADIO_WIDTH - 16, 0)
 	box.add_child(_survey_label)
-	# 명령 카드(Q W E R A S)에 없는 지휘관 기능 (P10-2): 정보는 늘, 완진 선언은 초진 뒤, 지휘권 이양은 지휘대 도착 뒤
-	var row := HBoxContainer.new()
-	var info_button := _button("현장 정보", open_info_dialog)
-	var walk_button := _button("360° 둘러보기", func() -> void: order_issued.emit(CommandOrder.make("survey")))
-	_all_clear_button = _button("완진 선언", open_all_clear)
-	_all_clear_button.visible = false
-	var end := _button("활동 종료", open_end_confirm)
-	# 지휘대가 도착하면 보이는 지휘권 이양 버튼 (SOP 112, R13)
-	_transfer_button = _button("지휘권 이양", open_transfer_dialog)
-	_transfer_button.add_theme_color_override("font_color", Color("fde68a"))
-	_transfer_button.visible = false
-	for b in [info_button, walk_button, _all_clear_button, end, _transfer_button]:
-		b.custom_minimum_size = Vector2(118, 30)
-		b.add_theme_font_size_override("font_size", 13)
-		row.add_child(b)
-	box.add_child(row)
-	command_rows.append(row)
 	add_child(_radio_panel)
 
 
@@ -634,7 +664,7 @@ func _build_dispatch() -> void:
 		l.custom_minimum_size = Vector2(DIALOG_WIDTH - 40, 0)
 		box.add_child(l)
 		_dispatch_lines.append(l)
-	box.add_child(_label("도착하면 지휘권을 선언하고 최초 상황보고를 하십시오 (지휘관 명령 Q 전략 변경). 건물 안 임무를 받은 조는 입구에서 진입 허가를 무전으로 요청합니다.", 16, DIM_COLOR))
+	box.add_child(_label("도착하면 지휘권을 선언하고 최초 상황보고를 하십시오 (화면 아래 지휘관 명령 칸 '보고'). 건물 안 임무를 받은 조는 입구에서 진입 허가를 무전으로 요청합니다.", 16, DIM_COLOR))
 	var opts := Placement.options(sim)
 	if not opts.is_empty():
 		box.add_child(_label("선착 차량 배치 (SOP 200-3.1.1) — 화염·낙하물 피해, 후착대·특수차 공간, 소화전을 생각해 고르세요", 17, Color("fde68a")))
@@ -726,17 +756,6 @@ func _build_strategy() -> void:
 		_strategy_buttons.append(b)
 	row.add_child(_button("취소", func() -> void: _close(_strategy)))
 	box.add_child(row)
-	box.add_child(HSeparator.new())
-	box.add_child(_label("둘러보기·진술로 새로 알게 된 구조대상자·위험 요소는 보완 보고로 전파합니다 (SOP 101-2.2①).", 15, DIM_COLOR))
-	var more := HBoxContainer.new()
-	more.add_child(_button("활동 종료 선언", open_end_confirm))
-	more.add_child(_button("상황 보완 보고", func() -> void:
-		_close(_strategy)
-		_update_victims.select(0)
-		for cb in _update_hazards:
-			cb.button_pressed = false
-		_open(_update)))
-	box.add_child(more)
 
 
 func _build_confirm() -> void:
@@ -757,11 +776,7 @@ func _build_confirm() -> void:
 func _build_org() -> void:
 	_org = _dialog()
 	var box: VBoxContainer = _org.get_child(0)
-	box.add_child(_label("조직·지원 (SOP 103, 105) — 무전으로 지시", 22, Color("fde68a")))
-	box.add_child(_label("지원 요청 (상황실)", 17, DIM_COLOR))
-	_org_support = HBoxContainer.new()
-	box.add_child(_org_support)
-	box.add_child(HSeparator.new())
+	box.add_child(_label("단위대 지정 (SOP 105) — 무전으로 지시", 22, Color("fde68a")))
 	box.add_child(_label("단위대 지정: 출동대장 한 명을 단위지휘관으로 정하고 소속 출동대를 묶는다. 단위대는 통솔범위에서 1로 센다.", 15, DIM_COLOR))
 	var grid := GridContainer.new()
 	grid.columns = 2
@@ -792,24 +807,6 @@ func _build_org() -> void:
 	box.add_child(_label("현재 단위대", 17, DIM_COLOR))
 	_org_list = VBoxContainer.new()
 	box.add_child(_org_list)
-	box.add_child(HSeparator.new())
-	box.add_child(_label("안전 임무 (SSG 9 RIT, SOP 108-1.4 현장안전담당) — 맡은 조는 다른 임무를 받지 않고 밖에서 대기", 15, DIM_COLOR))
-	var roles := HBoxContainer.new()
-	_role_crew = OptionButton.new()
-	_role_crew.focus_mode = Control.FOCUS_NONE
-	_role_crew.custom_minimum_size = Vector2(260, 38)
-	roles.add_child(_role_crew)
-	for spec in [["RIT 지정", SafetySystem.Role.RIT], ["현장안전담당 지정", SafetySystem.Role.OFFICER], ["임무 해제", SafetySystem.Role.NONE]]:
-		var role: int = spec[1]
-		var b := _button(spec[0], func() -> void:
-			if _role_crew.selected >= 0 and _role_crew.selected < _role_crews.size():
-				order_issued.emit(CommandOrder.make("role", [_role_crews[_role_crew.selected]], role))
-				_close(_org))
-		b.custom_minimum_size = Vector2(170, 38)
-		roles.add_child(b)
-	box.add_child(roles)
-	_role_list = _label("", 15, TEXT_COLOR)
-	box.add_child(_role_list)
 	var close := HBoxContainer.new()
 	close.alignment = BoxContainer.ALIGNMENT_END
 	close.add_child(_button("닫기", func() -> void: _close(_org)))
@@ -819,18 +816,6 @@ func _build_org() -> void:
 ## 창을 열 때마다 현장 출동대·단위대에 맞춰 다시 만든다
 func _rebuild_org() -> void:
 	var cmd := sim.command
-	for c in _org_support.get_children():
-		c.queue_free()
-		_org_support.remove_child(c)
-	for level in cmd.resources.support_options():
-		var b := _button(level, func() -> void:
-			order_issued.emit(CommandOrder.make("support", [], 0, Vector3i.ZERO, {"level": level}))
-			_close(_org))
-		b.custom_minimum_size = Vector2(220, 38)
-		b.disabled = cmd.resources.support_level == level
-		_org_support.add_child(b)
-	if cmd.resources.support_level != "":
-		_org_support.add_child(_label("  요청함: %s" % cmd.resources.support_level, 15, DIM_COLOR))
 	_org_supervisor.clear()
 	_org_squads.clear()
 	for c in _org_members.get_children():
@@ -846,19 +831,6 @@ func _rebuild_org() -> void:
 		cb.focus_mode = Control.FOCUS_NONE
 		cb.set_meta("squad", squad.id)
 		_org_members.add_child(cb)
-	_role_crew.clear()
-	_role_crews.clear()
-	var role_lines: PackedStringArray = []
-	for c in sim.units.crews:
-		if not cmd.resources.on_scene(c.squad_id):
-			continue
-		var name := "%s %d조" % [sim.units.squads[c.squad_id].name, c.number]
-		var role := cmd.safety.role_of(c.id)
-		_role_crew.add_item(name + ("  [%s]" % SafetySystem.ROLE_NAMES[role] if role != SafetySystem.Role.NONE else ""))
-		_role_crews.append(c.id)
-		if role != SafetySystem.Role.NONE:
-			role_lines.append("%s — %s%s" % [name, SafetySystem.ROLE_NAMES[role], " (투입)" if cmd.safety.deployed.has(c.id) else ""])
-	_role_list.text = "현재: " + (", ".join(role_lines) if not role_lines.is_empty() else "없음")
 	for c in _org_list.get_children():
 		c.queue_free()
 		_org_list.remove_child(c)
@@ -1209,7 +1181,7 @@ func _rebuild_end() -> void:
 	for ff in sim.units.firefighters:
 		if not sim.building.cell(ff.level, floori(ff.pos.x), floori(ff.pos.y)) in BuildingData.OUTDOOR:
 			inside += 1
-	var par_text := "인원점검: %s" % ("하지 않음 — 지휘관 명령 R 인원 점검으로 먼저 확인하세요 (SOP 200-4.1)" if pars.is_empty()
+	var par_text := "인원점검: %s" % ("하지 않음 — 지휘관 명령 칸 '안전'의 인원 점검으로 먼저 확인하세요 (SOP 200-4.1)" if pars.is_empty()
 		else "마지막 %s (%s)" % [_time(pars[-1].tick), "이상 없음" if pars[-1].missing == 0 and pars[-1].indoor == 0 else "건물 안 %d명, 미확인 %d명" % [pars[-1].indoor, pars[-1].missing]])
 	_end_status.text = "%s\n지금 건물 안 대원: %d명" % [par_text, inside]
 	_end_warning.text = "\n".join(end_warnings())
@@ -1267,7 +1239,7 @@ func _build_all_clear() -> void:
 	_all_clear = _dialog()
 	var box: VBoxContainer = _all_clear.get_child(0)
 	box.add_child(_label("완진 선언 (소방전술 I 8단계 ⑥, SOP 202-6)", 22, Color("fde68a")))
-	var l := _label("발화층·직상층·각 진압 구역 등 노출된 모든 곳을 확인했으면 완진을 선언합니다. 아직 불이 남아 있어도 선언은 할 수 있지만 그대로 평가됩니다. 선언 뒤에는 인원 점검(지휘관 명령 R)과 활동 종료(재발화 감시 지정)로 마무리합니다.", 16, TEXT_COLOR)
+	var l := _label("발화층·직상층·각 진압 구역 등 노출된 모든 곳을 확인했으면 완진을 선언합니다. 아직 불이 남아 있어도 선언은 할 수 있지만 그대로 평가됩니다. 선언 뒤에는 인원 점검(지휘관 명령 칸 '안전')과 활동 종료(재발화 감시 지정)로 마무리합니다.", 16, TEXT_COLOR)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.custom_minimum_size = Vector2(DIALOG_WIDTH - 40, 0)
 	box.add_child(l)
@@ -1280,37 +1252,44 @@ func _build_all_clear() -> void:
 	box.add_child(row)
 
 
-## 선제지시 창: 자주 묻는 상황을 미리 정해 두면 그 질문 카드가 뜨지 않는다 (기획안 3-3 ⑤)
-func open_preorder() -> void:
-	_close(_strategy)
-	if any_dialog_open():
-		return
-	for key: String in _preorder_checks:
-		_preorder_checks[key].set_pressed_no_signal(sim.cards.preorders.has(key))
-	_open(_preorder)
-
-
-func set_preorder(key: String, on: bool) -> void:
-	order_issued.emit(CommandOrder.make("preorder", [], 1 if on else 0, Vector3i.ZERO, {"key": key}))
-
-
-func _build_preorder() -> void:
-	_preorder = _dialog()
-	var box: VBoxContainer = _preorder.get_child(0)
-	box.add_child(_label("선제지시 — 미리 정해 두면 대원이 묻지 않고 그대로 합니다", 22, Color("fde68a")))
-	var data: Variant = JsonData.load_file(SimWorld.CARDS_PATH)
-	for p: Dictionary in (data.get("preorders", []) if data is Dictionary else []):
-		var cb := CheckBox.new()
-		cb.text = "%s (SOP %s)" % [p.label, p.sop]
-		cb.focus_mode = Control.FOCUS_NONE
-		var key := str(p.key)
-		cb.toggled.connect(func(on: bool) -> void: set_preorder(key, on))
-		box.add_child(cb)
-		_preorder_checks[key] = cb
+## 안전 임무 창: 조 단추만 있다. 누르면 무전으로 지정하고 닫는다
+func _build_role() -> void:
+	_role = _dialog()
+	var box: VBoxContainer = _role.get_child(0)
+	_role_title = _label("", 22, Color("fde68a"))
+	box.add_child(_role_title)
+	box.add_child(_label("맡길 조를 누르세요. 맡은 조는 다른 임무를 받지 않고 밖에서 대기합니다. 이미 맡은 조를 누르면 해제합니다.", 15, DIM_COLOR))
+	_role_box = HFlowContainer.new()
+	_role_box.custom_minimum_size = Vector2(DIALOG_WIDTH - 40, 0)
+	box.add_child(_role_box)
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_END
-	row.add_child(_button("닫기", func() -> void: _close(_preorder)))
+	row.add_child(_button("취소", func() -> void: _close(_role)))
 	box.add_child(row)
+
+
+## 창을 열 때마다 현장에 있는 조로 다시 만든다
+func _rebuild_role() -> void:
+	var cmd := sim.command
+	_role_title.text = "RIT 지정 (SSG 9)" if _role_kind == SafetySystem.Role.RIT else "현장안전담당 지정 (SOP 108-1.4)"
+	for c in _role_box.get_children():
+		_role_box.remove_child(c)
+		c.queue_free()
+	for c in sim.units.crews:
+		if not cmd.resources.on_scene(c.squad_id):
+			continue
+		var crew_id := c.id
+		var now := cmd.safety.role_of(crew_id)
+		var text := "%s %d조" % [sim.units.squads[c.squad_id].name, c.number]
+		if now != SafetySystem.Role.NONE:
+			text += "  [%s%s]" % [SafetySystem.ROLE_NAMES[now], " · 누르면 해제" if now == _role_kind else ""]
+		var give: int = SafetySystem.Role.NONE if now == _role_kind else _role_kind
+		var b := _button(text, func() -> void:
+			order_issued.emit(CommandOrder.make("role", [crew_id], give))
+			_close(_role))
+		b.custom_minimum_size = Vector2(240, 42)
+		b.set_meta("crew", crew_id)
+		_role_box.add_child(b)
 
 
 func confirm_all_clear() -> void:
@@ -1567,9 +1546,6 @@ func loadout_selection() -> Array:
 # --- 지휘권 이양 (SOP 112, R13) ---
 
 var _transfer: PanelContainer
-var _transfer_button: Button
-## 초진 뒤에 보이는 완진 선언 버튼
-var _all_clear_button: Button
 ## 무전 패널 맨 위 긴급 줄 (인원 점검 무응답)
 var _par_alert: Label
 var _transfer_prompted := false

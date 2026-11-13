@@ -1185,6 +1185,12 @@ func end_warnings() -> PackedStringArray:
 	var unsearched: Array[Compartment] = sim.unsearched_rooms()
 	if not unsearched.is_empty():
 		out.append("⚠ 검색하지 않은 곳 %d곳: %s — 남은 구조대상자는 미구조로 처리됩니다 (기획안 8-3)" % [unsearched.size(), _room_list(unsearched)])
+	# 구조·인계·인원점검 (2026-11-13: 작전 완료 조건)
+	for gap in sim.completion_gaps():
+		if gap.contains("구조") or gap.contains("인원점검"):
+			out.append("⚠ %s" % gap)
+	if not out.is_empty():
+		out.append("→ 지금 종료하면 '조기 종료'로 기록됩니다. 모두 마치면 '작전 완료'입니다.")
 	return out
 
 

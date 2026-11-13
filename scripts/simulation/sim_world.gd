@@ -518,10 +518,49 @@ func end_activity(reason: String, p_type := "") -> void:
 		return
 	ended_tick = clock.tick
 	end_reason = reason
-	end_type = p_type if p_type != "" else mission_end.declared_type(unsearched_rooms().size())
+	end_type = p_type if p_type != "" else (MissionEndChecker.END_COMPLETE if completion_gaps().is_empty() else MissionEndChecker.END_EARLY)
 	clock.paused = true
 	phases.on_ended(clock.tick)
 	events.add(clock.tick, "activity_ended", {"reason": reason})
+
+
+## 작전 완료에 모자란 것 (2026-11-13 사용자 결정, SOP 202-6·200-4.1·400-3.2). 비어 있으면 활동 종료 선언이 '작전 완료',
+## 하나라도 있으면 '조기 종료'. 종료는 막지 않는다 — 종료 창이 이 목록을 경고로 보여 준다.
+##   완진 선언 · 타는 곳 없음 · 미검색 없음 (예전 조건) + 발견한 구조대상자 구조 · 구조자 구급대 인계 · 대원이 모두 나온 뒤 인원점검
+func completion_gaps() -> PackedStringArray:
+	var out: PackedStringArray = []
+	if phases.all_clear.is_empty():
+		out.append("완진 선언 전")
+	if fire.grid.burning.size() > 0:
+		out.append("타는 곳이 남아 있음")
+	var unsearched := unsearched_rooms().size()
+	if unsearched > 0:
+		out.append("검색하지 않은 곳 %d곳" % unsearched)
+	var has_ems := false
+	for s in units.squads:
+		if s.type == "구급대":
+			has_ems = true
+	var not_out := 0
+	var not_handed := 0
+	for v in rescue.victims:
+		if v.state == Victim.State.RESCUED:
+			if v.state_at_rescue == Victim.State.DEAD:
+				continue
+			var p := ems.patient_of(v.id)
+			if v.left_at_entrance or (has_ems and (p == null or p.stage == EmsSystem.Stage.WAITING)):
+				not_handed += 1
+		elif v.alive() and (v.discovered or v.carried_by >= 0):
+			not_out += 1
+	if not_out > 0:
+		out.append("발견하고 구조를 마치지 못한 구조대상자 %d명" % not_out)
+	if not_handed > 0:
+		out.append("구급대에 인계하지 않은 구조자 %d명" % not_handed)
+	var pars := command.safety.par_log
+	if pars.is_empty():
+		out.append("인원점검을 하지 않음")
+	elif int(pars[-1].indoor) > 0:
+		out.append("마지막 인원점검 때 건물 안에 대원 %d명" % int(pars[-1].indoor))
+	return out
 
 
 func issue(command: RefCounted) -> void:

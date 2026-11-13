@@ -1,7 +1,7 @@
 class_name MissionEndChecker
 extends RefCounted
 ## 게임이 끝나는 조건 (기획안 8-3, P11-1). 시나리오 제한시간은 두지 않고 현장 상황으로 끝낸다.
-##   작전 완료 / 조기 종료: 지휘관의 활동 종료 선언(CommandOrder "end"). 완진·연소·미검색 상태로 어느 쪽인지 정한다
+##   작전 완료 / 조기 종료: 지휘관의 활동 종료 선언(CommandOrder "end"). 완진·연소·미검색 + 구조·인계·인원점검으로 정한다 (SimWorld.completion_gaps)
 ##   전소: 대원이 잡지 못한 채 불이 스스로 꺼지고(초진 없음) 화재 건물 가연물이 70% 이상 탐, 또는 화재 건물 구획이 기준 비율 이상 붕괴 → 자동 종료
 ##         (화재1 5쪽 소실 정도: 전소 70% 이상, 반소 30~70%, 부분소 그 밖 — 화재조사 및 보고규정 제16조)
 ##   전소 확실: 진압 없이 타는 구획이 모두 최성기·쇠퇴기이고 한동안 방수가 없음 → '결과 보기'로 그 자리에서 전소 확정 (남은 계산은 하지 않음, 2026-11-10 결정)
@@ -136,7 +136,7 @@ func burnout_certain(tick: int) -> bool:
 	return developed
 
 
-## 지휘관 활동 종료 선언의 종류: 완진 선언 뒤 타는 칸이 없고 미검색 구역이 없으면 작전 완료, 아니면 조기 종료
+## 화재·검색만 본 종료 종류 (예전 조건). 실제 종료 종류는 SimWorld.completion_gaps()가 인원점검·인계까지 보고 정한다 (2026-11-13)
 func declared_type(unsearched: int) -> String:
 	if not phases.all_clear.is_empty() and fire.grid.burning.size() == 0 and unsearched == 0:
 		return END_COMPLETE

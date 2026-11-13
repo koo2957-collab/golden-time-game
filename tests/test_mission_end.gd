@@ -71,8 +71,37 @@ func test_declared_complete_vs_early() -> void:
 		sim.fire.grid.state[i] = FuelGrid.State.UNBURNED
 	sim.fire.grid.burning.clear()
 	assert_eq(sim.unsearched_rooms().size(), 0, "모두 검색")
+	# 2026-11-13: 구조·인계·인원점검까지 마쳐야 작전 완료
+	assert_true(sim.completion_gaps().has("인원점검을 하지 않음"), "인원점검 전에는 모자람: %s" % [sim.completion_gaps()])
+	sim.command.safety.par_log.append({"tick": sim.clock.tick, "missing": 0, "indoor": 2})
+	assert_true(not sim.completion_gaps().is_empty(), "건물 안에 대원이 있을 때 한 인원점검은 모자람")
+	sim.command.safety.par_log.append({"tick": sim.clock.tick, "missing": 0, "indoor": 0})
+	var v: Victim = sim.rescue.victims[0]
+	v.discovered = true
+	assert_true(sim.completion_gaps().size() == 1 and sim.completion_gaps()[0].contains("구조를 마치지 못한"), "발견하고 못 구한 사람: %s" % [sim.completion_gaps()])
+	for x in sim.rescue.victims:
+		x.state = Victim.State.RESCUED
+	v.left_at_entrance = true
+	assert_true(sim.completion_gaps().size() == 1 and sim.completion_gaps()[0].contains("인계하지 않은"), "입구에 둔 구조자: %s" % [sim.completion_gaps()])
+	v.left_at_entrance = false
+	assert_eq(sim.completion_gaps().size(), 0, "모자란 것 없음 (구급대 없는 편성은 인계를 묻지 않음): %s" % [sim.completion_gaps()])
 	sim.end_activity("활동 종료 선언")
 	assert_eq(sim.end_type, MissionEndChecker.END_COMPLETE, "작전 완료")
+
+
+func test_early_end_when_par_or_handover_missing() -> void:
+	# 2026-11-13: 불을 끄고 다 검색했어도 인원점검·인계가 빠지면 조기 종료
+	var sim := _sim()
+	sim.phases.declare_all_clear(sim.clock.tick)
+	for c in sim.fire.comps:
+		c.searched_tick = 10
+	for i in sim.fire.grid.burning:
+		sim.fire.grid.state[i] = FuelGrid.State.UNBURNED
+	sim.fire.grid.burning.clear()
+	for x in sim.rescue.victims:
+		x.state = Victim.State.RESCUED
+	sim.end_activity("활동 종료 선언")
+	assert_eq(sim.end_type, MissionEndChecker.END_EARLY, "인원점검 없이 끝내면 조기 종료")
 
 
 func test_crew_death_does_not_end() -> void:

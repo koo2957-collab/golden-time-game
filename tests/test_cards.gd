@@ -55,15 +55,34 @@ func test_locked_door_card_and_answer() -> void:
 	assert_true(sim.doors.task_of(sim.fire.opening_at(Vector3i(13, 20, 1))) != null, "문 파괴 시작 (결과는 시뮬레이션이)")
 
 
-func test_timeout_leaves_crew_waiting() -> void:
+func test_no_time_limit_crew_waits_and_calls_again() -> void:
+	# 2026-11-14 사용자 결정: 제한 시간 없음 — 답할 때까지 남고, 그 조는 기다리며 다시 부른다 (예전: 중요 12초 뒤 사라짐)
 	var sim := _sim()
 	_attack_locked_door(sim)
 	var c := _step_until_card(sim)
 	assert_true(c != null, "카드")
+	assert_true(not sim.cards.timed and c.deadline_tick < 0, "제한 시간 없음")
+	sim.step_ticks(roundi(90.0 / SimClock.TICK_DT))
+	assert_true(sim.cards.queue.has(c), "90초가 지나도 남아 있다")
+	assert_true(sim.events.of_type("card_timeout").is_empty(), "시간 초과 없음")
+	assert_true(sim.events.of_type("radio_recall").size() >= 2, "기다리는 조가 다시 부른다 (%d번)" % sim.events.of_type("radio_recall").size())
+	assert_true(sim.doors.task_of(sim.fire.opening_at(Vector3i(13, 20, 1))) == null, "답하기 전에는 움직이지 않는다 — 문은 그대로")
+	# 늦게라도 답하면 그대로 실행된다
+	sim.issue(CommandOrder.make("card_answer", [], 0, Vector3i.ZERO, {"uid": c.uid}))
+	sim.step_ticks(2)
+	assert_true(not sim.cards.queue.has(c), "답하면 닫힌다")
+
+
+func test_time_limit_still_works_when_enabled() -> void:
+	# 제한 시간을 켜면(card_params time_limit_enabled) 예전처럼 사라진다
+	var sim := _sim()
+	sim.cards.timed = true
+	_attack_locked_door(sim)
+	var c := _step_until_card(sim)
+	assert_true(c != null and c.deadline_tick > 0, "제한 시간 있음")
 	sim.step_ticks(roundi(13.0 / SimClock.TICK_DT))
 	assert_true(not sim.cards.queue.any(func(q: CardSystem.Card) -> bool: return q.id == "DOOR-LOCKED-01"), "중요 12초 지나면 사라짐")
 	assert_eq(sim.cards.log.filter(func(l: Dictionary) -> bool: return l.id == "DOOR-LOCKED-01")[0].result, "timeout", "미응답 기록")
-	assert_true(sim.doors.task_of(sim.fire.opening_at(Vector3i(13, 20, 1))) == null, "안전한 기본값 없음 — 문은 그대로")
 
 
 func test_preorder_skips_card() -> void:
@@ -87,16 +106,17 @@ func test_queue_priority_and_overflow() -> void:
 	sim.events.add(1, "tactical_halt", {"crew": "구조1 1조", "crew_id": 2, "kind": "victim", "victim_name": "아이(7)", "state": "의식 있음", "reason": "", "safety": false})
 	sim.events.add(1, "tactical_halt", {"crew": "구조1 2조", "crew_id": 3, "kind": "closed", "door_name": "방1 문", "reason": "", "safety": false})
 	cs.step(0.1, 1)
-	assert_eq(cs.queue.size(), 3, "최대 3장")
-	assert_eq(cs.active().urgency, "긴급", "긴급 카드가 맨 앞")
-	assert_true(cs.log.filter(func(e: Dictionary) -> bool: return e.result == "overflow").size() >= 1, "만장이면 대기 중으로 밀림")
-	assert_true(sim.events.of_type("card_overflow").size() >= 1, "대기 중 기록")
+	# 2026-11-14: 제한 시간이 없어져 뒤의 무전은 버려지지 않고 차례를 기다린다 (예전: 최대 3장, 넘치면 버림)
+	assert_true(cs.queue.size() >= 4, "무전이 모두 차례를 기다린다 (%d건)" % cs.queue.size())
+	assert_eq(cs.active().urgency, "긴급", "긴급 무전이 맨 앞")
+	assert_true(sim.events.of_type("card_overflow").is_empty(), "버려지는 무전 없음")
 
 
 func test_training_doubles_time_and_replay_same() -> void:
 	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, true, 5)
 	sim.command.resources.clear_schedule()
 	sim.apply_realism("훈련")
+	sim.cards.timed = true
 	sim.events.add(1, "air_alarm", {"crew": "진압1 1조", "crew_id": 0})
 	sim.cards.step(0.1, 1)
 	var c := sim.cards.active()

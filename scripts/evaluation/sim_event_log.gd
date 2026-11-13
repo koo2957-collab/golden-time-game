@@ -441,6 +441,8 @@ static func describe_text(e: Dictionary) -> String:
 			text = "판단 요청 대기 중 — %s" % e.title
 		"card_info_check":
 			text = "정보 확인 중 (약 %d초) — %s" % [e.seconds, e.crew]
+		"radio_recall":
+			text = "%s: 지휘관, 응답 바랍니다 — %s (%d초째 대기)" % [e.crew, e.title, int(e.get("waited_s", 0))]
 		"crew_decided":
 			text = "%s 판단 — %s: %s" % [e.crew, e.title, e.option]
 		"card_preordered":

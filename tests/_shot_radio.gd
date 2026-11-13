@@ -63,6 +63,7 @@ func _run() -> void:
 	for i in 20:
 		await process_frame
 	print("장면 열림 ", card_ui.scene_open(), " · 시간 멈춤 ", sim.clock.paused, " · 방식 ", sim.realism)
+	print("화면 ", root.size, " · 장면 층 ", card_ui.size, " · 장면 위치 ", card_ui._panel.position, " 크기 ", card_ui._panel.size, " 배율 ", card_ui._panel.scale, " · 글 상자 ", card_ui._box.position, card_ui._box.size, " · 그림 ", card_ui._portrait.position, card_ui._portrait.size)
 	if "judgment" in args:
 		await _shot(out + "judgment_scene.png")
 		quit()

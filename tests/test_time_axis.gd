@@ -32,6 +32,7 @@ func test_card_time_is_real_seconds() -> void:
 	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, true, 5)
 	sim.command.resources.clear_schedule()
 	sim.apply_realism("실전")
+	sim.cards.timed = true
 	sim.events.add(1, "air_alarm", {"crew": "진압1 1조", "crew_id": 0})
 	sim.cards.step(0.1, 1)
 	var card := sim.cards.active()

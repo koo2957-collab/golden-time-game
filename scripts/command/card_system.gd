@@ -24,7 +24,10 @@ class Card:
 	var crew_id := -1
 	var ctx: Dictionary = {}
 	var asked_tick := 0
-	var deadline_tick := 0
+	## 사라지는 틱. 제한 시간이 없으면(2026-11-14 기본) -1 — 답할 때까지 남는다
+	var deadline_tick := -1
+	## 다음에 다시 부를 틱 (답을 기다리는 동안)
+	var recall_tick := 0
 	## 조장의 판단 장면이면 그 속말 (spec.scene == "judgment"). 지휘관에게 오는 무전이면 ""
 	var monologue := ""
 
@@ -59,6 +62,9 @@ var time_factor := 1.0
 var clock_scale := 1.0
 
 var _seconds: Dictionary = {}
+## 제한 시간을 쓰는가 (card_params time_limit_enabled, 2026-11-14 기본 끔)
+var timed := false
+var _recall_s := 20.0
 var _queue_max := 3
 var _event_index := 0
 var _next_uid := 1
@@ -84,6 +90,8 @@ func _init(p_units: UnitSystem, p_tactical: TacticalSystem, p_doors: DoorSystem,
 	_seed = p_seed
 	cards = card_data.get("cards", [])
 	_seconds = {"긴급": params.value("urgent_s"), "중요": params.value("important_s"), "일반": params.value("normal_s")}
+	timed = params.value("time_limit_enabled") > 0.0
+	_recall_s = params.value("recall_s")
 	_queue_max = int(params.value("queue_max"))
 
 
@@ -104,8 +112,14 @@ func step(_dt: float, tick: int) -> void:
 	if tick % 10 == 0:
 		_check_pending_smoke(tick)
 	_step_followups(tick)
+	# 답을 기다리는 맨 앞 무전: 그 조가 다시 부른다 (자막). 시간이 멈춰 있으면 틱이 흐르지 않아 부르지 않는다
+	if not queue.is_empty() and queue[0].recall_tick > 0 and tick >= queue[0].recall_tick:
+		var front: Card = queue[0]
+		front.recall_tick = tick + roundi(_recall_s * clock_scale / SimClock.TICK_DT)
+		events.add(tick, "radio_recall", {"crew": _crew_name(front.crew_id) if front.crew_id >= 0 else str(front.spec.get("asker", "무전")),
+			"title": str(front.spec.get("title", front.id)), "waited_s": roundi((tick - front.asked_tick) * SimClock.TICK_DT / maxf(clock_scale, 0.01))})
 	for c in queue.duplicate():
-		if tick >= c.deadline_tick:
+		if c.deadline_tick >= 0 and tick >= c.deadline_tick:
 			queue.erase(c)
 			_log(c, tick, null, "timeout")
 			events.add(tick, "card_timeout", {"crew": _crew_name(c.crew_id), "title": str(c.spec.get("title", c.id))})
@@ -329,7 +343,9 @@ func _raise(spec: Dictionary, e: Dictionary, tick: int) -> void:
 			sim.command.entry_request_expired(int(c.ctx.squad_id), tick)
 		events.add(tick, "card_overflow", {"crew": _crew_name(c.crew_id), "title": str(spec.get("title", c.id))})
 		return
-	c.deadline_tick = tick + roundi(float(spec.get("time_limit_sec", _seconds.get(c.urgency, 20.0))) * time_factor * clock_scale / SimClock.TICK_DT)
+	if timed:
+		c.deadline_tick = tick + roundi(float(spec.get("time_limit_sec", _seconds.get(c.urgency, 20.0))) * time_factor * clock_scale / SimClock.TICK_DT)
+	c.recall_tick = tick + roundi(_recall_s * clock_scale / SimClock.TICK_DT)
 	queue.append(c)
 	queue.sort_custom(func(a: Card, b: Card) -> bool:
 		var ua: int = URGENCY_ORDER.get(a.urgency, 2)

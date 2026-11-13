@@ -4,7 +4,7 @@ extends Control
 ## 대원·상황실이 지휘관에게 판단을 물어 오면 화면 가운데에 띄운다:
 ##   먹물이 번진 어두운 바탕(테두리 상자 없음) · 왼쪽에 말하는 사람 큰 그림 · 작은 글씨로 누구·어디 · 큰 제목 · 무전 내용 · 둥근 선택 단추
 ##   훈련 방식: 장면이 떠 있는 동안 현장 시간이 멈춘다(World가 scene_changed를 받아 멈춤). 고르면 등급과 근거를 한 줄로 알려 준다
-##   실전·악조건: 멈추지 않고 남은 시간 막대가 줄어든다. 등급은 끝난 뒤 평가 화면에서만 본다
+##   실전·악조건: 멈추지 않는다 — 답할 때까지 장면이 남고 그 조는 기다린다 (제한 시간·막대 없음, 2026-11-14 사용자 결정). 등급은 끝난 뒤 평가 화면에서만 본다
 ##   뒤에서 기다리는 무전은 '+N 대기'. 답은 order_issued로 CommandOrder "card_answer"를 내보낸다 (기록·다시 하기)
 ## 누가 말하는지: 묻는 조의 조장(이름·계급) + 출동대 종류별 그림(data/art.json portraits). 조가 아니면 카드의 asker 글자
 ## 조장의 판단 장면 (카드 scene: judgment, 2026-11-14 사용자 결정 — 프로스트펑크의 독백 방식, 사용자 예시 그림):
@@ -47,7 +47,6 @@ var _italic: FontVariation
 var _ornament: Control
 var _head: Label
 var _text: Label
-var _bar: ProgressBar
 var _buttons: Array[Button] = []
 var _more: Label
 var _feedback: Label
@@ -164,10 +163,6 @@ func setup(p_sim: SimWorld) -> void:
 	_text.add_theme_color_override("font_color", Color(0.86, 0.88, 0.9))
 	_text.add_theme_constant_override("line_spacing", 5)
 	box.add_child(_text)
-	_bar = ProgressBar.new()
-	_bar.show_percentage = false
-	_bar.custom_minimum_size = Vector2(0, 5)
-	box.add_child(_bar)
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 10)
 	box.add_child(gap)
@@ -268,7 +263,7 @@ func _process(delta: float) -> void:
 	if _feedback_left > 0.0:
 		_feedback_left -= delta
 		_feedback_box.modulate.a = clampf(_feedback_left, 0.0, 1.0)
-		_feedback_box.position = Vector2(_map_center_x() - _feedback_box.size.x * 0.5, 150.0)
+		_feedback_box.position = Vector2((size.x - _feedback_box.size.x) * 0.5, 150.0)
 		if _feedback_left <= 0.0:
 			_feedback_box.visible = false
 	var c := current()
@@ -286,13 +281,11 @@ func _process(delta: float) -> void:
 	if c.uid != _shown_uid:
 		_shown_uid = c.uid
 		_fill(c)
-	# 지도 영역 가운데에 (오른쪽 상황판이 가리지 않는 곳). 화면이 작으면 줄여서 넣는다
+	# 화면 정가운데에 (2026-11-14 사용자 결정 — 예전에는 오른쪽 무전 기록 패널을 뺀 지도 영역 가운데라 왼쪽으로 쏠려 보였다).
+	# 장면은 다른 화면 요소 위에 그린다. 화면이 작으면 줄여서 넣는다
 	var k := minf(1.0, minf(size.x / (SCENE.x + 40.0), size.y / (SCENE.y + 40.0)))
 	_panel.scale = Vector2(k, k)
-	_panel.position = Vector2(_map_center_x() - SCENE.x * k * 0.5, maxf(20.0, (size.y - SCENE.y * k) * 0.44))
-	var total := float(c.deadline_tick - c.asked_tick)
-	_bar.visible = not pausing()
-	_bar.value = 100.0 * float(c.deadline_tick - sim.clock.tick) / maxf(1.0, total)
+	_panel.position = Vector2((size.x - SCENE.x * k) * 0.5, maxf(20.0, (size.y - SCENE.y * k) * 0.46))
 	var waiting := sim.cards.queue.size() - 1
 	var entries := sim.command.waiting_squads().size()
 	_all.visible = c.id == CommandOrder.ENTRY_CARD and entries >= 2
@@ -300,11 +293,6 @@ func _process(delta: float) -> void:
 		_all.text = "5. 기다리는 %d개 출동대 모두 진입 허가" % entries
 	_more.text = "+%d 대기" % waiting if waiting > 0 else ""
 	_more.visible = waiting > 0
-
-
-func _map_center_x() -> float:
-	var hud := get_parent() as Hud
-	return hud.command_ui.map_center_x() if hud and hud.command_ui else size.x * 0.5
 
 
 ## 말하는 사람: {name: 이름 줄, where: 층·공기, portrait: 그림 경로(없으면 "")}

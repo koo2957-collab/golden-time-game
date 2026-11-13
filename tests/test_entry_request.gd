@@ -94,7 +94,9 @@ func test_defensive_deny_cancels_and_stays_out() -> void:
 
 
 func test_timeout_asks_again() -> void:
+	# 제한 시간을 켰을 때의 동작 (2026-11-14부터 기본은 제한 시간 없음 — 답할 때까지 남는다)
 	var sim := _sim()
+	sim.cards.timed = true
 	var c := _ask(sim)
 	assert_true(c != null, "카드")
 	sim.step_ticks(c.deadline_tick - sim.clock.tick + 1)

@@ -506,9 +506,11 @@ var _scene_paused := false
 
 
 func _on_radio_scene(open: bool) -> void:
-	if sim == null or realtime():
+	if sim == null:
 		return
 	if open:
+		if not hud.card_ui.pausing():
+			return
 		if hud.command_ui.any_dialog_open():
 			return
 		_paused_before_scene = sim.clock.paused

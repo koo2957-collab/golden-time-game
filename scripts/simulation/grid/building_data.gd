@@ -33,6 +33,8 @@ class FloorData:
 var id := ""
 var name := ""
 var structure := ""
+## 용도 (주택·사무·판매·공연 …): 화재하중을 고른다 (fire_params.json fire_load_mj_m2, Eurocode 표 E.4). 비어 있으면 맞추지 않는다
+var occupancy := ""
 var cell_size_m := 0.5
 var width := 0
 var height := 0
@@ -171,6 +173,7 @@ func _parse(data: Dictionary) -> void:
 	id = str(data.get("id", ""))
 	name = str(data.get("name", ""))
 	structure = str(data.get("structure", ""))
+	occupancy = str(data.get("occupancy", ""))
 	cell_size_m = float(data.get("cell_size_m", 0.5))
 	width = int(data.get("width", 0))
 	height = int(data.get("height", 0))

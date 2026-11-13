@@ -2,6 +2,7 @@
   "id": "house_2f",
   "name": "2층 단독주택",
   "structure": "벽돌조",
+  "occupancy": "주택",
   "cell_size_m": 0.5,
   "width": 72,
   "height": 40,

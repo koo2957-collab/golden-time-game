@@ -40,7 +40,8 @@ var safe_cell := Callable()
 var _cell_m: float
 var _water_kj: float
 var _hydrant_lpm: float
-var _req_per_m2: float
+var _req_per_mw: float
+var _critical_per_m2: float
 ## 현장 작업 시간 (data fire_params task_times)
 var _tt: Dictionary = {}
 var _fog_mix: float
@@ -75,7 +76,8 @@ func _init(p_building: BuildingData, p_units: UnitSystem, p_pathfinder: Pathfind
 	_cell_m = building.cell_size_m
 	_water_kj = config.value("water_cooling_kj_per_l")
 	_hydrant_lpm = config.value("hydrant_lpm")
-	_req_per_m2 = config.value("required_flow_lpm_per_m2")
+	_req_per_mw = config.value("required_flow_lps_per_mw") * 60.0
+	_critical_per_m2 = config.value("critical_flow_lpm_per_m2")
 	_tt = config.params.get("task_times", {})
 	_fog_mix = config.value("fog_no_vent_mix_per_s")
 	_short_ticks = roundi(config.value("flow_short_report_s") / SimClock.TICK_DT)
@@ -477,9 +479,10 @@ func hose_lpm(h: HoseLine, v: Vehicle) -> float:
 
 
 ## 방마다 필요 방수량과 실제 방수량 비율 (지난 틱에 닿은 물 기준). 모자란 상태가 이어지면 관창수 보고 (기획안 5-4)
+## 필요 방수량 (2026-11-13 사용자 결정 P2): 그 방 열방출률 1MW당 0.38 L/s (Barnett TP 2004/1), 타는 면적당 2 L/min 아래로는 내려가지 않는다 (Grimwood)
 func _update_flow_ratio(tick: int) -> void:
 	for c in fire.comps:
-		c.required_lpm = _req_per_m2 * c.burning_area_m2 * c.load_factor
+		c.required_lpm = maxf(_req_per_mw * c.q / 1000.0, _critical_per_m2 * c.burning_area_m2) * c.load_factor if c.burning_area_m2 > 0.0 else 0.0
 		c.flow_ratio = c.applied_lpm / c.required_lpm if c.required_lpm > 0.0 else (10.0 if c.applied_lpm > 0.0 else 0.0)
 		if c.applied_lpm > 0.0 and c.required_lpm > 0.0 and c.flow_ratio < 1.0:
 			if not _short_since.has(c.index):

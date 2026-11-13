@@ -36,6 +36,15 @@ func by_structure(key: String, structure: String) -> float:
 	return value(key)
 
 
+## 건물 용도에 따라 다른 값 (params[key].by_occupancy: {용도: 값}). 없으면 value
+func by_occupancy(key: String, occupancy: String) -> float:
+	var entry: Dictionary = params.get(key, {})
+	var table: Dictionary = entry.get("by_occupancy", {})
+	if occupancy != "" and table.has(occupancy):
+		return float(table[occupancy])
+	return value(key)
+
+
 func range_of(key: String) -> Vector2:
 	var entry: Dictionary = params.get(key, {})
 	return Vector2(float(entry.get("min", 0.0)), float(entry.get("max", 0.0)))

@@ -2,6 +2,7 @@
  "id": "supertall_52f",
  "name": "초고층 업무시설 (52층 중 1·28~34층)",
  "structure": "철골철근콘크리트조",
+ "occupancy": "사무",
  "cell_size_m": 0.5,
  "width": 72,
  "height": 40,

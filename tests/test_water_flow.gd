@@ -1,5 +1,5 @@
 extends TestSuite
-## P6-1·P3-1 [4]: 필요 방수량(13.6 L/min·㎡) 대 실제 방수량 — 물량 경쟁, 늦을수록 물이 더 든다, 물 소모 수치 (기획안 5-4)
+## P6-1·P3-1 [4]: 필요 방수량(열방출률 1MW당 0.38 L/s) 대 실제 방수량 — 물량 경쟁, 늦을수록 물이 더 든다, 물 소모 수치 (기획안 5-4)
 
 
 func _house() -> SimWorld:
@@ -51,10 +51,14 @@ func test_required_flow() -> void:
 	var room := _living(sim)
 	sim.step_ticks(1)
 	assert_true(room.burning_area_m2 > 10.0, "최성기 거실 연소 면적 %.0f㎡" % room.burning_area_m2)
-	assert_true(absf(room.required_lpm - 13.6 * room.burning_area_m2 * room.load_factor) < 1.0, "필요 방수량 = 13.6 × 면적 (%.0fL/분)" % room.required_lpm)
+	# 2026-11-13 (P2): 면적 기준 13.6 L/분/㎡ → 열방출률 기준 0.38 L/s/MW (Barnett), 하한 2 L/분/㎡ (Grimwood)
+	var want := maxf(0.38 * 60.0 * room.q / 1000.0, 2.0 * room.burning_area_m2) * room.load_factor
+	assert_true(absf(room.required_lpm - want) < 1.0, "필요 방수량 = 0.38 L/s × 열방출률(MW) (%.0fL/분)" % room.required_lpm)
 
 
-func test_one_line_cannot_but_three_can() -> void:
+func test_one_line_holds_one_room_and_short_flow_reports() -> void:
+	# 2026-11-13 (P2): 필요 방수량을 열방출률 기준(Barnett 0.38 L/s/MW)으로 바꿔, 40mm 1선(275L/분)이 최성기 방 하나를 감당한다
+	# (예전 13.6 L/분/㎡에서는 1선이 20㎡ 거실을 끝내 못 껐다 — 실제 화재 자료의 2~3배였다)
 	var one := _house()
 	one.step_ticks(roundi(540.0 / SimClock.TICK_DT))
 	var room1 := _living(one)
@@ -66,10 +70,18 @@ func test_one_line_cannot_but_three_can() -> void:
 	var room3 := _living(three)
 	_spray(three, room3, 3, 90.0)
 	var after3 := _burning(three, room3)
-	assert_true(room1.flow_ratio < 1.0, "40mm 1선 비율 %.2f (1 미만)" % room1.flow_ratio)
-	assert_true(after1 > before * 0.5, "1선은 최성기 거실을 못 끈다 (%d → %d칸)" % [before, after1])
-	assert_true(after3 < after1 * 0.5, "3선이면 줄어든다 (1선 %d칸, 3선 %d칸)" % [after1, after3])
-	assert_true(one.events.of_type("flow_short").size() >= 1, "관창수 '수량이 부족합니다' 보고")
+	assert_true(room1.required_lpm <= 275.0, "최성기 거실 필요 방수량 %.0fL/분 ≤ 40mm 1선" % room1.required_lpm)
+	assert_true(after1 < before, "1선으로 타는 칸이 준다 (%d → %d칸)" % [before, after1])
+	assert_true(after3 <= after1, "3선이면 더 빨리 준다 (1선 %d칸, 3선 %d칸)" % [after1, after3])
+	# 닿는 물이 필요 방수량에 못 미치는 상태가 이어지면 관창수가 보고한다
+	var low := _house()
+	low.step_ticks(roundi(540.0 / SimClock.TICK_DT))
+	var room := _living(low)
+	for t in roundi(40.0 / SimClock.TICK_DT):
+		room.applied_lpm = 40.0
+		low.water._update_flow_ratio(low.clock.tick + t)
+	assert_true(room.flow_ratio < 1.0, "분당 40L는 모자람 (비율 %.2f)" % room.flow_ratio)
+	assert_true(low.events.of_type("flow_short").size() >= 1, "관창수 '수량이 부족합니다' 보고")
 
 
 func test_later_attack_needs_more_water() -> void:

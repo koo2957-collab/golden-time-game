@@ -2,6 +2,7 @@
  "id": "market_2f",
  "name": "전통시장 (1층 점포·아케이드, 2층 주택)",
  "structure": "조적조·경량철골 아케이드",
+ "occupancy": "판매",
  "cell_size_m": 0.5,
  "width": 72,
  "height": 40,

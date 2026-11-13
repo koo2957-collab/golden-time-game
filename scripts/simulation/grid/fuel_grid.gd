@@ -369,6 +369,7 @@ func _setup(building: BuildingData, config: FireConfig, comps: Array[Compartment
 	for i: int in door_rooms:
 		for r in door_rooms[i]:
 			room_and_door_cells[r].append(i)
+	_scale_fire_load(building, config, comps)
 	for i in fuel_cells:
 		_link_neighbors(i)
 	# 구석(벽 두 면 이상에 붙은) 가연물 칸
@@ -507,6 +508,37 @@ func _external_heat(dt: float, comps: Array[Compartment]) -> void:
 			_ext[cells[k]] += q * f[k]
 			_active[room[cells[k]]] = 1
 		_ext_touched.append_array(cells)
+
+
+## 화재하중 맞추기 (2026-11-13 사용자 결정 P1, Eurocode EN 1991-1-2 표 E.4): 건물 용도의 면적당 화재하중(MJ/㎡)이 되도록
+## 방 안 생활용품·내장재(재질의 contents) 칸의 연료를 같은 비율로 늘린다. 가구 하나하나의 열량에는 옷·책·이불 같은
+## 생활용품이 빠져 있기 때문이다. 최대 열방출률·착화는 그대로라 타는 시간만 길어진다. 줄이지는 않는다 (배율 1 이상)
+var fire_load_scale := 1.0
+
+
+func _scale_fire_load(building: BuildingData, config: FireConfig, comps: Array[Compartment]) -> void:
+	var target := config.by_occupancy("fire_load_mj_m2", building.occupancy)
+	if target <= 0.0:
+		return
+	var area := 0.0
+	for c in comps:
+		area += c.area
+	var fixed := 0.0
+	var scalable := 0.0
+	var cells := PackedInt32Array()
+	for r in room_cells.size():
+		for i in room_cells[r]:
+			if bool(config.materials[mat_names[mat[i]]].get("contents", false)):
+				scalable += fuel0[i]
+				cells.append(i)
+			else:
+				fixed += fuel0[i]
+	if scalable <= 0.0 or area <= 0.0:
+		return
+	fire_load_scale = maxf(1.0, (target * area - fixed) / scalable)
+	for i in cells:
+		fuel[i] *= fire_load_scale
+		fuel0[i] = fuel[i]
 
 
 func _lining_of(building: BuildingData, c: Compartment) -> String:

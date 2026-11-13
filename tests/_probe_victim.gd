@@ -50,4 +50,9 @@ func _initialize() -> void:
 			row += "%s 층%.1fm CO%d 상%d℃ 하%d℃ | " % [c.display_name().replace("1층 ", ""), c.layer_depth, roundi(cc), roundi(c.t_upper), roundi(c.t_lower)]
 		print(row)
 		sim.step_ticks(roundi(60.0 / SimClock.TICK_DT))
+	for type: String in ["door_burnt_through", "flashover", "stage"]:
+		for e in sim.events.of_type(type):
+			var line := SimEventLog.describe(e)
+			if type != "stage" or line.contains("발화기"):
+				print("사건 ", line, " ", str(e.get("room", e.get("cell", ""))))
 	quit()

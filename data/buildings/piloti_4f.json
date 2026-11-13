@@ -2,6 +2,7 @@
  "id": "piloti_4f",
  "name": "필로티 다세대주택 (4층, 가연성 외장재)",
  "structure": "철근콘크리트조 (가연성 외장재)",
+ "occupancy": "주택",
  "cell_size_m": 0.5,
  "width": 72,
  "height": 40,

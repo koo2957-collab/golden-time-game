@@ -87,6 +87,7 @@ func _ready() -> void:
 	$Iso.move_child(city, 0)
 	city.setup(sim.building, projections[ViewMode.ISO], sim.rng_seed, sim)
 	fire_view.setup(sim)
+	_setup_mood()
 	selection.setup(sim)
 	units_view.setup(sim, selection)
 	iso_view.setup(sim, selection, projections[ViewMode.ISO])
@@ -498,6 +499,32 @@ func _on_dialog_changed(open: bool) -> void:
 		sim.clock.paused = true
 	else:
 		sim.clock.paused = _paused_before_dialog
+
+
+## 화면 분위기 (2026-11-14 사용자 결정, 프로스트펑크 느낌): 지도 위·화면 요소 아래에 화면 색을 바꾸는 겹을 하나 둔다.
+## 시나리오 시각(clock)에 따라 낮은 약하게, 밤은 강하게 (data/ui/view_params.json mood_*). 저사양 설정에서는 두지 않는다
+var mood_rect: ColorRect
+
+
+func _setup_mood() -> void:
+	var vp := ViewParams.load_default()
+	if not vp.mood_enabled or DisplaySettings.low_spec:
+		return
+	var layer := CanvasLayer.new()
+	layer.name = "Mood"
+	layer.layer = 0
+	add_child(layer)
+	move_child(layer, $UI.get_index())
+	mood_rect = ColorRect.new()
+	mood_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mood_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/mood_grade.gdshader")
+	var m := vp.mood_at(ViewParams.clock_hour(str(sim.scenario.get("clock", ""))))
+	for key: String in m:
+		mat.set_shader_parameter(key, m[key])
+	mood_rect.material = mat
+	layer.add_child(mood_rect)
 
 
 ## 무전 장면이 뜨거나 닫힘: 훈련 방식이면 그동안 현장 시간을 멈춘다 (지휘 창과 같은 방식). 다른 창이 열려 있으면 그 창이 시간을 맡는다

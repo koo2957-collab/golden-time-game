@@ -1,6 +1,7 @@
 {
   "id": "sop214_1_day_living",
   "title": "주택화재 ① 낮 · 1층 거실",
+  "clock": "14:20",
   "note": "정식 시나리오 (M6b). 개발용 dev_house_fire.json과 같은 상황이다. 인물은 모두 가상.",
   "building": "res://data/buildings/house_2f.json",
   "roster": "res://data/units/test_roster.json",

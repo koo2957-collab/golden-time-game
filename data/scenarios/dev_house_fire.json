@@ -1,6 +1,7 @@
 {
   "id": "dev_house_fire",
   "title": "개발용: 2층 주택 거실 화재",
+  "clock": "14:20",
   "note": "개발·테스트용 (테스트가 이 파일을 쓴다). 정식 시나리오는 sop214_*.json.",
   "meta": {"order": 99, "sop": "214 주택화재", "difficulty": "개발용", "role": "선착대장", "estimated_min": 20, "summary": "개발·자동 테스트용 시나리오입니다. 내용은 ① 낮 · 1층 거실과 같습니다."},
   "building": "res://data/buildings/house_2f.json",

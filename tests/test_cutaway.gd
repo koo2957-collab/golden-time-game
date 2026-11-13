@@ -204,3 +204,22 @@ func test_upper_floor_set_back_in_stack_mode() -> void:
 	# 위층(13층)이 보이는 곳 — 13층 북쪽 벽 칸을 그 위치로 옮긴 자리 — 을 누르면 13층
 	var at := proj.to_screen(Vector2(10.5, 4.5)) + up
 	assert_eq(s.pick_level(12, at, proj), 13, "비켜 놓인 위층을 누르면 위층")
+
+
+func test_mood_follows_scenario_clock() -> void:
+	# 2026-11-14: 화면 분위기는 시나리오 시각에 따라 — 낮은 약하게, 밤은 강하게, 새벽·저녁은 그 사이
+	var p := ViewParams.load_default()
+	assert_true(p.mood_enabled, "화면 분위기 켜짐")
+	assert_eq([ViewParams.clock_hour("14:20") > 14.3 and ViewParams.clock_hour("14:20") < 14.4, ViewParams.clock_hour("03:05") < 3.1, ViewParams.clock_hour("")], [true, true, 12.0], "시각 읽기 (없으면 낮 12시)")
+	assert_eq([p.night_factor(14.3), p.night_factor(3.0), p.night_factor(23.5)], [0.0, 1.0, 1.0], "낮 0 · 밤 1")
+	var dusk := p.night_factor(18.5)
+	assert_true(dusk > 0.2 and dusk < 0.8, "저녁은 그 사이 (%.2f)" % dusk)
+	var day := p.mood_at(14.3)
+	var night := p.mood_at(3.0)
+	assert_true(float(day.dark) > 0.85 and float(day.desat) < 0.3, "낮은 약하게 (밝기 %.2f)" % float(day.dark))
+	assert_true(float(night.dark) < 0.8 and float(night.vignette) > float(day.vignette), "밤은 어둡고 가장자리가 더 어둡다")
+	# 모든 시나리오에 시각이 있다
+	for path: String in DirAccess.get_files_at("res://data/scenarios"):
+		if path.ends_with(".json"):
+			var d: Dictionary = JsonData.load_file("res://data/scenarios/" + path)
+			assert_true(str(d.get("clock", "")).contains(":"), "%s 시각(clock)" % path)

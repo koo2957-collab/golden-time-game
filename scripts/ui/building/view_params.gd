@@ -5,6 +5,11 @@ extends RefCounted
 const PATH := "res://data/ui/view_params.json"
 
 var floor_height_px := 143.0
+## 화면 분위기 (2026-11-14): 시나리오 시각에 따라 낮 값과 밤 값 사이를 쓴다 (mood_at)
+var mood_enabled := true
+var mood_hours: Array = [5.0, 8.0, 17.0, 20.0]
+var mood_day: Dictionary = {"desat": 0.2, "dark": 0.93, "vignette": 0.3, "tint": [0.93, 0.96, 1.0], "warm_boost": 1.04}
+var mood_night: Dictionary = {"desat": 0.5, "dark": 0.7, "vignette": 0.6, "tint": [0.66, 0.76, 0.92], "warm_boost": 1.12}
 var visible_floors_below := 1
 var visible_floors_above := 1
 var stub_height_ratio := 0.9
@@ -92,6 +97,10 @@ static func from_file(path: String) -> ViewParams:
 
 func apply(data: Dictionary) -> void:
 	floor_height_px = float(_value(data, "floor_height_px", floor_height_px))
+	mood_enabled = bool(_value(data, "mood_enabled", mood_enabled))
+	mood_hours = _value(data, "mood_hours", mood_hours)
+	mood_day = _value(data, "mood_day", mood_day)
+	mood_night = _value(data, "mood_night", mood_night)
 	visible_floors_below = int(_value(data, "visible_floors_below", visible_floors_below))
 	visible_floors_above = int(_value(data, "visible_floors_above", visible_floors_above))
 	stub_height_ratio = float(_value(data, "stub_height_ratio", stub_height_ratio))
@@ -165,6 +174,41 @@ func apply(data: Dictionary) -> void:
 	zoom_switch = bool(_value(data, "zoom_switch", zoom_switch))
 	zoom_enter_interior = float(_value(data, "zoom_enter_interior", zoom_enter_interior))
 	zoom_exit_exterior = float(_value(data, "zoom_exit_exterior", zoom_exit_exterior))
+
+
+## "14:20" → 14.33 (시). 읽을 수 없으면 낮 12시
+static func clock_hour(clock: String) -> float:
+	var parts := clock.split(":")
+	if parts.size() != 2 or not parts[0].is_valid_int() or not parts[1].is_valid_int():
+		return 12.0
+	return clampf(float(int(parts[0])) + float(int(parts[1])) / 60.0, 0.0, 24.0)
+
+
+## 그 시각의 밤 정도 (0 = 낮, 1 = 밤). 새벽·저녁에는 서서히 바뀐다
+func night_factor(hour: float) -> float:
+	var dawn := float(mood_hours[0])
+	var day := float(mood_hours[1])
+	var dusk := float(mood_hours[2])
+	var night := float(mood_hours[3])
+	if hour >= night or hour < dawn:
+		return 1.0
+	if hour >= day and hour < dusk:
+		return 0.0
+	if hour < day:
+		return 1.0 - (hour - dawn) / maxf(0.01, day - dawn)
+	return (hour - dusk) / maxf(0.01, night - dusk)
+
+
+## 그 시각의 분위기 값 {desat, dark, vignette, tint: Vector3, warm_boost} — 낮 값과 밤 값을 밤 정도로 섞는다
+func mood_at(hour: float) -> Dictionary:
+	var k := night_factor(hour)
+	var out := {}
+	for key: String in ["desat", "dark", "vignette", "warm_boost"]:
+		out[key] = lerpf(float(mood_day.get(key, 0.0)), float(mood_night.get(key, 0.0)), k)
+	var a: Array = mood_day.get("tint", [1.0, 1.0, 1.0])
+	var b: Array = mood_night.get("tint", [1.0, 1.0, 1.0])
+	out["tint"] = Vector3(lerpf(float(a[0]), float(b[0]), k), lerpf(float(a[1]), float(b[1]), k), lerpf(float(a[2]), float(b[2]), k))
+	return out
 
 
 static func _value(data: Dictionary, key: String, fallback: Variant) -> Variant:

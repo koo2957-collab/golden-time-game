@@ -1,6 +1,7 @@
 {
   "id": "stage0_training_tower",
   "title": "훈련탑 · 기본 조작 (스테이지 0)",
+  "clock": "10:00",
   "note": "스테이지 0 (기획안 4장). 인물·기관은 모두 가상.",
   "meta": {
     "order": 0.5,

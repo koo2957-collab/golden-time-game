@@ -1,5 +1,5 @@
 shader_type canvas_item;
-// 화면 분위기 (2026-11-14 시안, 프로스트펑크 느낌): 전체를 차갑고 어둡게 가라앉히고, 따뜻한 색(불·경광등·방화복)만 살린다.
+// 화면 분위기 (2026-11-14 사용자 결정, 프로스트펑크 느낌 — 값은 World가 시나리오 시각에 맞춰 넣는다: data/ui/view_params.json mood_day·mood_night): 전체를 차갑고 어둡게 가라앉히고, 따뜻한 색(불·경광등·방화복)만 살린다.
 // 가장자리는 어둡게(비네트). 화면 전체를 한 번 읽어 색만 바꾼다 — 광원·그림자 계산 없음 (사무실 PC용)
 uniform sampler2D screen : hint_screen_texture, filter_linear;
 uniform float desat = 0.5;

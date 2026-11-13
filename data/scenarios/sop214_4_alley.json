@@ -1,6 +1,7 @@
 {
   "id": "sop214_4_alley",
   "title": "주택화재 ④ 낮 · 골목 안 주택",
+  "clock": "14:20",
   "note": "정식 시나리오 (M9c). 큰길에서 폭 3m 막다른 골목으로만 닿는 주택. 인물은 모두 가상.",
   "building": "res://data/buildings/house_alley.json",
   "roster": "res://data/units/test_roster.json",

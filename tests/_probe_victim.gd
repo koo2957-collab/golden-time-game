@@ -12,6 +12,14 @@ func _initialize() -> void:
 	if args.size() > 1:
 		minutes = int(args[1])
 	var sim := SimWorld.from_scenario(path)
+	# 셋째 인자 closed: 구조대상자가 있는 방의 안쪽 문을 모두 닫고 시작한다 (문 열림·닫힘 비교, UL 실험 대조)
+	if args.size() > 2 and args[2] == "closed":
+		for v in sim.rescue.victims:
+			var room := sim.fire.compartment_at(v.level, floori(v.pos.x), floori(v.pos.y))
+			for o in sim.fire.openings:
+				if o.kind == Opening.Kind.DOOR and (o.room_a == room.index or o.room_b == room.index):
+					o.is_open = false
+		sim.doors.sync_blocking()
 	sim.apply_realism("훈련")
 	var hz := ParamTable.from_dict(JsonData.load_file("res://data/fire/hazard_params.json"))
 	var co_per_soot: float = hz.value("co_per_soot")
@@ -33,5 +41,13 @@ func _initialize() -> void:
 				m, v.name, v.state_name(), c.display_name(), c.layer_depth, c.height, "잠김" if in_layer else "층 아래",
 				roundi(ppm_layer), roundi(ppm), RescueSystem.co_death_minutes(ppm, table) if ppm > 1.0 else 99999.0,
 				roundi(c.t_upper), roundi(c.t_lower), roundi(temp), c.o2_percent(), v.fed_toxic, v.fed_heat, Compartment.Stage.keys()[c.stage]])
+		# 불이 난 방과 그 사이 통로도 함께 (연구 자료와 비교용)
+		var row := "      "
+		for c in sim.fire.comps:
+			if c.level != 1 or c.soot <= 0.0:
+				continue
+			var cc := c.soot / maxf(c.layer_volume(), 0.05 * c.volume) * co_per_soot / 1.145 * 1e6
+			row += "%s 층%.1fm CO%d 상%d℃ 하%d℃ | " % [c.display_name().replace("1층 ", ""), c.layer_depth, roundi(cc), roundi(c.t_upper), roundi(c.t_lower)]
+		print(row)
 		sim.step_ticks(roundi(60.0 / SimClock.TICK_DT))
 	quit()

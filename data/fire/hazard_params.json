@@ -1,7 +1,7 @@
 {
   "note": "요구조자 생존(노출량)·인명검색·구조·특수현상 수치. source: 교재 = 소방전술 I, 공학식 = 화재공학 상관식(ISO 13571 등), 추정 = 현장 검수 필요.",
 
-  "co_per_soot": {"value": 1.5, "source": "추정", "note": "연기 속 CO 질량 / 그을음 질량"},
+  "co_per_soot": {"value": 6.0, "source": "실험 (UL FSRI 2018 Fire Attack Part III, UL 2010 Kerber 환기 실험)", "note": "연기 속 CO 질량 / 그을음 질량. 실물 주택 실험의 연기층 CO(불난 방 1% 이상, 문 열린 침실 1m 높이 최대 약 42,000ppm)에 맞춤 — 이 값에서 튜토리얼 연기층 CO는 약 15,500ppm(실험 범위의 아래쪽). 예전 1.5(추정)는 실험의 약 1/8 (2026-11-13 사용자 결정 A안). 그래프를 눈으로 읽은 값이라 현장 검수 필요"},
   "fed_co_divisor": {"value": 35000, "source": "공학식", "note": "비교용 (R9 전 방식): 독성 노출량 증가율 = CO(ppm)^1.036 / 35000 (분당). 지금은 아래 교재 표를 쓴다"},
   "co_death_table": {"value": [[1600, 120], [3200, 30], [6400, 20], [12800, 2]], "source": "교재", "note": "CO 농도(ppm)별 사망 시간(분) — 소방전술 화재2 표 4-11 (기획안 5-5: 6,400ppm 15~30분 → 20분). 사이는 로그 보간, 1,600 아래·12,800 위는 끝 구간 기울기로 늘림. 노출시간/사망시간을 더해 1이면 사망(노출량 fed_death)"},
   "heat_incap_a": {"value": 5.1849, "source": "공학식", "note": "열 노출 무력화 시간(분) = exp(a - b × 온도℃)"},
@@ -14,7 +14,7 @@
   "o2_slow_factor": {"value": 0.5, "source": "추정", "note": "산소 부족 구간의 이동 속도 비율"},
   "lying_breath_height_m": {"value": 0.3, "source": "추정", "note": "쓰러져 있는 요구조자의 호흡 높이"},
   "carried_breath_height_m": {"value": 1.2, "source": "추정", "note": "업혀 있는 요구조자의 호흡 높이"},
-  "lower_layer_exposure_ratio": {"value": 0.1, "source": "추정", "note": "연기층 아래(하부층)의 연기 농도 비율"},
+  "lower_layer_exposure_ratio": {"value": 0.4, "source": "실험 (UL FSRI 2018 Fire Attack Part III)", "note": "연기층 아래(하부층)의 연기 농도 비율. 실험 1에서 바닥 30cm(약 14,000~19,000ppm) / 침대 위 1m(약 42,000ppm) = 0.33~0.45. 예전 0.1(추정) (2026-11-13 사용자 결정 A안)"},
 
   "voice_range_m": {"value": 3, "source": "추정", "note": "의식 있는 요구조자가 부르는 소리를 듣는 거리 (벽 너머 포함)"},
   "entrance_smoke_ratio": {"value": 0.3, "source": "게임 설정값", "note": "입구에 두고 온 구조자가 마시는 연기 = 열린 현관문 안쪽 방 연기층 농도 × 이 비율 (P10-2). 현장 검수 필요"},

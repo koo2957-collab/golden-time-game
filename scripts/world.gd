@@ -157,6 +157,9 @@ func _ready() -> void:
 	hud.add_child(hud.card_ui)
 	hud.card_ui.setup(sim)
 	hud.card_ui.order_issued.connect(sim.issue)
+	# 무전 장면 (2026-11-14): 훈련 방식에서는 장면이 떠 있는 동안 현장 시간이 멈춘다. 실전·악조건은 멈추지 않는다
+	hud.card_ui.pauses = func() -> bool: return not realtime()
+	hud.card_ui.scene_changed.connect(_on_radio_scene)
 	hud.command_ui.end_dialog_opened.connect(hud.hint_ui.on_end_dialog)
 	# 지휘권 선언: 지휘 위치를 지도에서 고르면 클릭으로 선언을 마친다 (P4-4)
 	hud.command_ui.post_pick_requested.connect(func(a: Dictionary) -> void:
@@ -491,6 +494,26 @@ func _on_dialog_changed(open: bool) -> void:
 		sim.clock.paused = true
 	else:
 		sim.clock.paused = _paused_before_dialog
+
+
+## 무전 장면이 뜨거나 닫힘: 훈련 방식이면 그동안 현장 시간을 멈춘다 (지휘 창과 같은 방식). 다른 창이 열려 있으면 그 창이 시간을 맡는다
+var _paused_before_scene := false
+var _scene_paused := false
+
+
+func _on_radio_scene(open: bool) -> void:
+	if sim == null or realtime():
+		return
+	if open:
+		if hud.command_ui.any_dialog_open():
+			return
+		_paused_before_scene = sim.clock.paused
+		_scene_paused = true
+		sim.clock.paused = true
+	elif _scene_paused:
+		_scene_paused = false
+		if not hud.command_ui.any_dialog_open():
+			sim.clock.paused = _paused_before_scene
 
 
 ## 전술상황판에서 팀을 방·세대에 놓음 → 임무 창 (진입 지시 3~4단계, 확정하면 무전으로)

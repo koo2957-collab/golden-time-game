@@ -40,6 +40,9 @@ func _run() -> void:
 	# 실제 마우스 위치가 화면 가장자리면 카메라가 흘러가므로 조작 점검에서는 끈다
 	world.camera.edge_scroll = false
 	world.confine_mouse(false)
+	# 무전 장면(2026-11-14)은 훈련 방식에서 화면 가운데를 막고 시간을 멈춘다 — 조작 점검에서는 끈다 (장면은 ui_radio에서 점검)
+	world.hud.card_ui.pauses = Callable()
+	world.hud.card_ui.visible = false
 	# 앞부분 조작 점검은 직접 지휘 규칙으로 본다. 임무형 내부 지휘(R7)는 뒤에서 따로 점검
 	world.sim.command.interior.enabled = false
 	var sim: SimWorld = world.sim

@@ -126,7 +126,7 @@ func _run() -> void:
 	cui._close(cui._info)
 	# 지휘관 명령 칸 (G3): 조를 안 고르면 명령 카드는 숨고, 지휘관 명령 칸은 늘 보인다. 보고 ▸ 지휘권 선언·보고 → 양식
 	var hud_board: Dictionary = world.hud.board_buttons
-	_check("지휘관 선택 → 명령 카드 숨김 · 지휘관 명령 칸 보임", [world.hud.card.set_name, world.hud._command_panel.visible, world.hud.board_box.is_visible_in_tree()], ["", false, true])
+	_check("지휘관 선택 → 명령 카드 숨김 · 지휘관 명령 칸 보임", [world.hud.card.set_name, world.hud._command_panel.visible, world.hud.board_groups["report"].is_visible_in_tree()], ["", false, true])
 	_key(KEY_Q)
 	_check("고른 조가 없으면 Q 키는 아무 일도 하지 않는다", cui.any_dialog_open(), false)
 	hud_board["declare"].pressed.emit()
@@ -301,7 +301,7 @@ func _run() -> void:
 
 	# 지휘관 명령 칸 지원 ▸ 단위대 지정 → 단위대 창. 조를 고른 채로 눌러도 된다 (칸은 늘 보인다)
 	sel._set_selection([1] as Array[int], [] as Array[int])
-	_check("조를 고르면 명령 카드가 나오고 지휘관 명령 칸도 그대로 보인다", [world.hud._command_panel.visible, world.hud.board_box.is_visible_in_tree()], [true, true])
+	_check("조를 고르면 명령 카드가 나오고 지휘관 명령 칸도 그대로 보인다", [world.hud._command_panel.visible, world.hud.board_groups["support"].is_visible_in_tree()], [true, true])
 	hud_board["org"].pressed.emit()
 	sel._set_selection([] as Array[int], [] as Array[int])
 	_check("지원 ▸ 단위대 지정 → 단위대 창", [cui.org_visible(), sim.clock.paused], [true, true])
@@ -522,42 +522,10 @@ func _run() -> void:
 	await process_frame
 	_check("F12 → 성능 표시", world.hud.perf_visible() and world.hud._perf.text.contains("fps"), true)
 	_key(KEY_F12)
-	# R8 → R16 미니맵: 바깥 배치도는 처음부터, 건물 안 평면도는 도면 뒤. 누르기·끌기로 화면 이동, 화면 범위 표시
-	var mm = world.hud.minimap
-	_check("건물 안 평면도 잠김 (도면 없음)", mm.unlocked(), false)
-	_check("미니맵 화면 범위 (모서리 4개)", mm.view_corners.call().size(), 4)
-	await process_frame
-	root.get_texture().get_image().save_png("user://smoke_minimap_noplan.png")
-	var cam_before: Vector2 = world.camera.position
-	var mc := InputEventMouseButton.new()
-	mc.button_index = MOUSE_BUTTON_LEFT
-	mc.pressed = true
-	mc.position = mm.get_global_rect().position + mm.size * Vector2(0.8, 0.5)
-	root.push_input(mc, true)
-	await process_frame
-	_check("도면 전에도 미니맵 클릭 → 화면 이동", world.camera.position != cam_before, true)
-	var mmove := InputEventMouseMotion.new()
-	mmove.button_mask = MOUSE_BUTTON_MASK_LEFT
-	mmove.position = mm.get_global_rect().position + mm.size * Vector2(0.3, 0.5)
-	var mup: InputEventMouseButton = mc.duplicate()
-	mup.pressed = false
-	mup.position = mmove.position
-	# 누른 채 끌기. 창 위에 실제 마우스가 있으면 그 움직임(버튼 없음)이 끼어들어 누름이 풀릴 수 있어 몇 번 다시 해 본다
-	for attempt in 5:
-		root.push_input(mc, true)
-		await process_frame
-		cam_before = world.camera.position
-		root.push_input(mmove, true)
-		await process_frame
-		root.push_input(mup, true)
-		await process_frame
-		if world.camera.position != cam_before:
-			break
-	_check("미니맵 끌기 → 화면 따라 이동", world.camera.position != cam_before, true)
+	# 미니맵은 없앴다 (2026-11-14 결정) — 도면 확보는 방 단위 임무와 전술상황판으로 드러난다
+	_check("미니맵 없음", world.hud.minimap == null, true)
 	sim.plan.acquire("상황실", sim.clock.tick)
-	_check("도면 → 미니맵 평면도 열림", mm.unlocked(), true)
 	_check("도면 → 방 단위 임무", sim.command.interior.plan_known, true)
-	mm.queue_redraw()
 	world.hud.command_ui.toggle_board()
 	await process_frame
 	await process_frame

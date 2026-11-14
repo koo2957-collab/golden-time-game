@@ -72,15 +72,16 @@ func _run() -> void:
 	_check("고른 층이 화면 영역 안에 다 들어온다", area.grow(4.0).encloses(_on_screen(iso, iso.frame_rect())), true)
 	var focus_zoom: float = world.camera.zoom.x
 	_check("고른 층을 크게 본다 (배율 0.8 이상)", focus_zoom >= 0.8, true)
-	# 화면 배치 (2026-11-14): 지휘관 명령 칸은 오른쪽 끝 세로 기둥, 무전 기록은 그 왼쪽, 아래 띠는 낮게, 층 막대는 위아래 가운데
-	var bp: Rect2 = hud.board_panel.get_global_rect()
-	var rl: Rect2 = hud.radio_log.get_global_rect()
+	# 화면 틀 (2026-11-14): 위 가운데 시계·단계, 아래 바(지휘관 초상 + 네 묶음 + 상황판 + 무전 단추),
+	# 오른쪽은 고른 것의 정보 창만 — 미니맵·오른쪽 명령 기둥은 없고 무전 기록은 평소에 접혀 있다
 	var shown: Rect2 = _on_screen(iso, iso.frame_rect())
-	_check("명령 기둥: 오른쪽 끝 · 위 표시줄 아래 · 아래 띠 위", [bp.end.x > vp.x - 12.0, bp.position.y >= 60.0, bp.end.y <= hud.console.position.y], [true, true, true])
-	_check("무전 기록은 명령 기둥 왼쪽에 (겹치지 않음)", [rl.end.x <= bp.position.x, rl.intersects(bp)], [true, false])
-	_check("아래 띠는 낮다 (160px 이하)", hud.console.size.y <= 160.0, true)
-	_check("층 막대는 위 표시줄과 아래 띠 사이 가운데", absf(hud.floor_bar.get_global_rect().get_center().y - (96.0 + hud.console.position.y - 8.0) * 0.5) < 6.0, true)
-	_check("고른 층이 명령 기둥·무전 기록에 가리지 않는다", [shown.intersects(bp), shown.intersects(rl)], [false, false])
+	var clock: Rect2 = hud.get_node("ClockPanel").get_global_rect()
+	_check("아래 바는 얇다 (90px 이하) · 미니맵 없음", [hud.console.size.y <= 90.0, hud.minimap == null], [true, true])
+	_check("시계는 위 가운데, 단계 표시줄은 그 아래", [absf(clock.get_center().x - vp.x * 0.5) < 4.0, hud.phase_bar.position.y >= clock.end.y], [true, true])
+	_check("아무것도 안 골랐으면 오른쪽 정보 창·무전 기록이 없다", [hud.side_panel.visible, hud.radio_log.visible], [false, false])
+	_check("지휘관 명령 네 묶음이 아래 바에 있고 세부 명령은 접혀 있다", [hud.board_groups.keys(), hud.board_groups["report"].is_visible_in_tree(), hud.board_buttons["declare"].is_visible_in_tree()], [["report", "support", "safety", "zone"], true, false])
+	_check("층 막대는 위아래 가운데", absf(hud.floor_bar.get_global_rect().get_center().y - (hud.LEFT_TOP + hud.console.position.y - 8.0) * 0.5) < 6.0, true)
+	_check("고른 층은 오른쪽 정보 창 자리 밖에 있다", shown.end.x <= vp.x - hud.right_reserved_px() + 4.0, true)
 	var up_rect: Rect2 = _on_screen(iso, iso._floor_rect(top, iso.stack.upper_vec(1)))
 	_check("위층은 위로 잘려 보인다 (일부만 화면에)", [up_rect.intersects(Rect2(Vector2.ZERO, vp)), up_rect.position.y < 0.0], [true, true])
 	_check("대원의 실제 위치는 그대로", _positions(sim), before)
@@ -136,6 +137,8 @@ func _run() -> void:
 		await process_frame
 	_check("2층의 조를 누름 → 2층이 고른 층", world.view_level, top)
 	_check("같은 클릭으로 그 조가 선택된다", sel.selected, [1] as Array[int])
+	_check("조를 고르면 오른쪽 정보 창이 뜬다 (그림 + 명령 카드)", [hud.side_panel.visible, hud._side_portrait.texture != null, hud._command_panel.is_visible_in_tree()], [true, true, true])
+	_check("정보 창은 화면 안, 아래 바 위", [hud.get_rect().encloses(hud.side_panel.get_rect()), hud.side_panel.get_rect().end.y <= hud.console.position.y], [true, true])
 	var after_screen: Vector2 = root.get_canvas_transform() * proj.to_screen(crew_up.leader.pos, 0.9)
 	_check("층이 바뀌어도 화면에서 제자리", up_screen.distance_to(after_screen) < 2.0, true)
 	_check("2층을 고르면 1층이 직하층으로 함께", [iso.layers[0].level, iso.layers[1].visible and iso.layers[1].level == low], [top, true])

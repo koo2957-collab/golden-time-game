@@ -57,7 +57,7 @@ var _vehicle_ids: Array[int] = []
 var _selection_timer := 0.0
 var _victim_label: Label
 ## 명령 카드 (기획안 9-1, P10-2): 6칸 Q W E R / A S. 원형 메뉴와 같은 CommandCard를 그린다.
-## 조·차량을 골랐을 때만 보인다 — 지휘관 명령은 항상 보이는 지휘관 명령 칸(board_box)에 있다
+## 조·차량을 골랐을 때만 오른쪽 정보 창에 보인다 — 지휘관 명령은 아래 바의 네 묶음(board_groups)에 있다
 var card: CommandCard
 var _command_panel: VBoxContainer
 var _card_title: Label
@@ -81,6 +81,8 @@ var radio_log: RadioLogPanel
 var team_strip: TeamStrip
 var board: TacticalBoard
 var _board_button: Button
+## 화면 모드·조작 안내 한 줄 (왼쪽 위)
+var _mode_label: Label
 
 
 func setup(p_sim: SimWorld, on_floor_selected: Callable) -> void:
@@ -106,6 +108,17 @@ func setup(p_sim: SimWorld, on_floor_selected: Callable) -> void:
 	_build_split_controls()
 	$ClockPanel.gui_input.connect(_on_badge_input)
 	$ClockPanel.tooltip_text = "클릭: 지휘권 선언 · 전략 변경"
+	clock_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_mode_label = Label.new()
+	_mode_label.position = Vector2(16, 12)
+	_mode_label.custom_minimum_size = Vector2(420, 0)
+	_mode_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_mode_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_mode_label.add_theme_font_size_override("font_size", 14)
+	_mode_label.add_theme_color_override("font_color", Color("cbd5e1"))
+	_mode_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	_mode_label.add_theme_constant_override("outline_size", 4)
+	add_child(_mode_label)
 	_build_subtitles()
 	_build_emergency()
 	_build_legend()
@@ -131,11 +144,8 @@ func setup(p_sim: SimWorld, on_floor_selected: Callable) -> void:
 	team_strip = TeamStrip.new()
 	add_child(team_strip)
 	team_strip.setup(sim)
-	_board_button = Button.new()
-	_board_button.text = "전술상황판 (Tab·M)"
-	_board_button.focus_mode = Control.FOCUS_NONE
-	_board_button.pressed.connect(board.toggle)
-	add_child(_board_button)
+	radio_log._fold.visible = false
+	_radio_urgent_seen = radio_log.urgent_total
 	# 그리는 순서: 지도 위 패널들 < 전술상황판 < 지휘 창 < (나중에 더하는) 힌트·디브리핑·질문 카드
 	move_child(board, get_child_count() - 1)
 	move_child(command_ui, get_child_count() - 1)
@@ -177,15 +187,16 @@ func _process(delta: float) -> void:
 		text += "   %s" % sim.realism
 	if sim.clock.paused:
 		text += "   일시정지"
-	if mode_text != "":
-		text += "   [%s]" % mode_text
 	clock_label.text = text + "\n" + _badge_line()
+	# 화면 모드·조작 안내는 왼쪽 위에 작게 (위 가운데 시계가 길어지지 않게)
+	_mode_label.text = "[%s]" % mode_text if mode_text != "" else ""
 	_refresh_phase_bar()
 	if _notice_label:
 		# 알림은 오른쪽 상황판이 가리지 않는 지도 영역 가운데에
 		var cx := command_ui.map_center_x()
 		_notice_label.offset_left = cx - size.x * 0.5 - 400.0
 		_notice_label.offset_right = cx - size.x * 0.5 + 400.0
+		_notice_label.offset_top = top_reserved_px() + (56.0 if _emergency_button and _emergency_button.visible else 4.0)
 	_refresh_floor_bar(delta)
 	_layout_console()
 	_refresh_subtitles()
@@ -301,7 +312,12 @@ func _refresh_selection() -> void:
 			cmd.commander.name, cmd.commander.rank, cmd.commander_title, cmd.commander_position_text(),
 			" · 관계인에게 질문 중 (%d개 남음)" % ask.questions.size() if not ask.is_empty() else ""])
 	selection_label.text = "\n".join(lines) if not lines.is_empty() else _squad_summary()
-	# 선택 대상에 따라 명령 카드 세트가 바뀐다. 아무것도 안 고르면 카드는 숨는다 (지휘관 명령 칸은 늘 보인다)
+	# 오른쪽 정보 창은 무언가를 골랐을 때만 (그림은 출동대 종류별)
+	if side_panel:
+		side_panel.visible = not lines.is_empty()
+		if side_panel.visible:
+			_side_portrait.texture = _portrait_texture(_selected_kind())
+	# 선택 대상에 따라 명령 카드 세트가 바뀐다. 아무것도 안 고르면 카드는 숨는다 (지휘관 명령은 아래 바에 늘 있다)
 	card.set_target(card_set())
 	_command_panel.visible = card.set_name != ""
 	_refresh_card()
@@ -510,7 +526,8 @@ func _build_command_panel() -> void:
 		var b := Button.new()
 		b.focus_mode = Control.FOCUS_NONE
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.custom_minimum_size = Vector2(118, 40)
+		b.custom_minimum_size = Vector2(98, 40)
+		b.add_theme_font_size_override("font_size", 14)
 		b.clip_text = true
 		var key := CommandCard.KEYS[i]
 		b.pressed.connect(func() -> void: card_key_pressed.emit(key))
@@ -632,7 +649,9 @@ func _refresh_phase_bar() -> void:
 		else:
 			parts.append("[color=#94a3b8]%s[/color]" % name)
 	phase_bar.text = "[center]%s[/center]" % " → ".join(parts)
-	phase_bar.position = Vector2((size.x - phase_bar.size.x) * 0.5, 6.0)
+	# 위 가운데: 시계(상황 배지) 바로 아래
+	var badge: Control = $ClockPanel
+	phase_bar.position = Vector2((size.x - phase_bar.size.x) * 0.5, badge.position.y + badge.size.y + 2.0)
 
 
 # --- R6a: 상황 배지·층 막대·무전 자막·긴급탈출 ---
@@ -750,7 +769,7 @@ func _build_emergency() -> void:
 func _refresh_emergency() -> void:
 	var on := sim.command.safety.emergency() and not sim.ended()
 	_emergency_button.visible = on
-	_emergency_button.position = Vector2((size.x - _emergency_button.size.x) * 0.5, 40.0)
+	_emergency_button.position = Vector2((size.x - _emergency_button.size.x) * 0.5, top_reserved_px() + 2.0)
 	_vignette.queue_redraw()
 
 
@@ -772,54 +791,190 @@ func _draw_vignette() -> void:
 		_vignette.draw_rect(r.grow(-w + 6.0), c, false, 6.0)
 
 
-# --- R6b: 하단 콘솔 (기획안 9-2) ---
+# --- 아래 바 · 오른쪽 정보 창 (2026-11-14 결정, 프로스트펑크식) ---
+# 아래 바: 지휘관 초상 + 지휘관 명령 네 묶음(누르면 세부 명령이 위에 펼쳐진다) + 전술상황판 + 확인 단추 + 팀 초상 줄 + 무전 기록 단추.
+# 오른쪽: 조·차량·지휘관을 골랐을 때만 정보 창(그림 + 상태 + 명령 카드), 무전 단추를 켜면 그 아래에 무전 기록.
+# 미니맵은 없앴다 — 층 이동은 층 막대, 보고된 평면도는 전술상황판.
 
-const CONSOLE_MIN_H := 150.0
+## 지휘관 초상 단추를 눌렀을 때 (World가 지휘관을 고른다)
+signal commander_pressed
+
+const BAR_H := 80.0
+const BAR_BUTTON := Vector2(66, 64)
+const SIDE_W := 430.0
 var console: PanelContainer
+## 없앤 미니맵 자리 — 늘 null (World가 본다)
 var minimap: MinimapView
-var _minimap_ms := 0
+var commander_button: Button
+var radio_button: Button
+## 무전 기록을 펴 두었는가 (기본은 접힘 — 무전은 자막과 무전 장면으로 본다)
+var radio_open := false
+var _radio_urgent_seen := 0
+var side_panel: PanelContainer
+var _side_portrait: TextureRect
 
 
-## 화면 아래 반투명 띠: 왼쪽 미니맵 · 가운데 선택 정보 · (조·차량을 골랐을 때) 명령 카드.
-## 지휘관 명령 칸은 화면 오른쪽 끝 세로 기둥 (2026-11-14 배치 결정 — 평면도에 모자란 것은 높이라 아래 띠를 낮췄다)
 func _build_console() -> void:
 	console = PanelContainer.new()
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.04, 0.07, 0.12, 0.78)
+	style.bg_color = Color(0.04, 0.07, 0.12, 0.82)
 	style.set_corner_radius_all(8)
 	style.set_content_margin_all(8)
 	console.add_theme_stylebox_override("panel", style)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
+	row.add_theme_constant_override("separation", 6)
 	console.add_child(row)
-	# 미니맵: 바깥 배치도는 처음부터, 건물 안 평면도는 도면을 얻은 뒤 (R8 → R16)
-	minimap = MinimapView.new()
-	minimap.setup(sim)
-	minimap.custom_minimum_size = Vector2(240, 0)
-	minimap.tooltip_text = "누르거나 끌면 그곳으로 화면 이동. 흰 테두리 = 지금 보이는 범위\n건물 안 평면도는 관리사무소·방재실에 조를 보내거나 지휘대가 도착하면 보입니다"
-	row.add_child(minimap)
-	# 선택 정보
-	var info := ScrollContainer.new()
-	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	selection_label.get_parent().remove_child(selection_label)
-	selection_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	selection_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info.add_child(selection_label)
-	row.add_child(info)
-	$SelectionPanel.visible = false
-	# 고른 조·차량의 명령 카드 (선택이 없으면 숨는다)
-	_command_panel.get_parent().remove_child(_command_panel)
-	_command_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	_command_panel.visible = false
-	row.add_child(_command_panel)
+	# 지휘관 초상
+	commander_button = Button.new()
+	commander_button.focus_mode = Control.FOCUS_NONE
+	commander_button.custom_minimum_size = Vector2(64, 64)
+	commander_button.tooltip_text = "현장지휘관 — 누르면 지휘관을 고릅니다 (지휘 위치는 지도에서 우클릭으로 옮깁니다)"
+	commander_button.pressed.connect(func() -> void: commander_pressed.emit())
+	var face := TextureRect.new()
+	face.texture = _portrait_texture("지휘")
+	face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	face.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 3)
+	face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	commander_button.add_child(face)
+	row.add_child(commander_button)
+	# 지휘관 명령 네 묶음
+	_build_board(row)
+	# 전술상황판
+	_board_button = _bar_button("board", "상황판", "전술상황판 (Tab·M) — 무전으로 보고된 것만 그린 평면도와 현황")
+	_board_button.pressed.connect(board.toggle)
+	row.add_child(_board_button)
+	row.add_child(VSeparator.new())
+	# 명령이 아닌 확인 단추와 조작 도움말
+	var tools := GridContainer.new()
+	tools.columns = 2
+	tools.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	for it in CommandCard.load_tools():
+		var t := _make_board_button(it)
+		t.custom_minimum_size = Vector2(118, BOARD_BUTTON.y)
+		tools.add_child(t)
+	var help := Button.new()
+	help.text = "? 조작"
+	help.focus_mode = Control.FOCUS_NONE
+	help.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	help.add_theme_font_size_override("font_size", BOARD_FONT)
+	help.custom_minimum_size = Vector2(118, BOARD_BUTTON.y)
+	help.tooltip_text = $HelpLabel.text
+	tools.add_child(help)
+	row.add_child(tools)
+	# 가운데는 비워 둔다 (팀 초상 줄이 그 위에 놓인다)
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(gap)
+	# 무전 기록 단추
+	radio_button = _bar_button("radio", "무전", "무전 기록을 화면 오른쪽에 펴거나 접습니다.\n숫자는 접어 둔 동안 들어온 긴급 무전 수입니다")
+	radio_button.toggle_mode = true
+	radio_button.toggled.connect(set_radio_open)
+	row.add_child(radio_button)
 	$HelpLabel.visible = false
 	add_child(console)
 	move_child(console, 0)
-	# 지휘관 명령 칸: 화면 오른쪽 끝 세로 기둥 — 무엇을 고르고 있든 항상 보인다
-	_build_board()
-	add_child(board_panel)
-	move_child(board_panel, 1)
+	_build_side_panel()
+
+
+## 아래 바의 네모 단추: 작은 그림 + 아래에 글자
+func _bar_button(kind: String, label: String, tip: String) -> Button:
+	var b := Button.new()
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = BAR_BUTTON
+	b.tooltip_text = tip
+	var box := VBoxContainer.new()
+	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 0)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var icon := BarIcon.new(kind)
+	icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(icon)
+	var text := Label.new()
+	text.name = "Text"
+	text.text = label
+	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	text.add_theme_font_size_override("font_size", 13)
+	text.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(text)
+	b.add_child(box)
+	return b
+
+
+## 출동대 종류별 그림 (data/art.json portraits — 무전 장면과 같은 그림)
+func _portrait_texture(kind: String) -> Texture2D:
+	var portraits: Dictionary = SpriteArt.config().get("portraits", {})
+	var path := str(portraits.get(kind, portraits.get("default", "")))
+	if path == "" or not ResourceLoader.exists(path):
+		return null
+	return load(path) as Texture2D
+
+
+## 오른쪽 정보 창: 고른 조·차량·지휘관의 그림 + 상태 글 + 명령 카드(Q W E R / A S). 아무것도 안 고르면 숨는다
+func _build_side_panel() -> void:
+	side_panel = PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.04, 0.07, 0.12, 0.86)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(10)
+	side_panel.add_theme_stylebox_override("panel", style)
+	side_panel.custom_minimum_size = Vector2(SIDE_W, 0)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	side_panel.add_child(box)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 10)
+	_side_portrait = TextureRect.new()
+	_side_portrait.custom_minimum_size = Vector2(104, 104)
+	_side_portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_side_portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_side_portrait.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	_side_portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	head.add_child(_side_portrait)
+	selection_label.get_parent().remove_child(selection_label)
+	selection_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	selection_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	selection_label.custom_minimum_size = Vector2(SIDE_W - 20.0 - 114.0, 0)
+	selection_label.add_theme_font_size_override("font_size", 16)
+	head.add_child(selection_label)
+	box.add_child(head)
+	$SelectionPanel.visible = false
+	# 고른 조·차량의 명령 카드
+	_command_panel.get_parent().remove_child(_command_panel)
+	_command_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	_command_panel.visible = false
+	box.add_child(_command_panel)
+	side_panel.visible = false
+	add_child(side_panel)
+	move_child(side_panel, 1)
+
+
+## 고른 것의 그림 종류: 지휘관 > 조(출동대 종류) > 차량
+func _selected_kind() -> String:
+	if _commander_selected:
+		return "지휘"
+	if not _crew_ids.is_empty():
+		var squad := sim.units.squad_of_crew(_crew_ids[0])
+		return squad.type if squad else "default"
+	return "차량 운전원"
+
+
+## 무전 기록 펴기·접기 (아래 바 무전 단추)
+func set_radio_open(on: bool) -> void:
+	radio_open = on
+	if radio_button:
+		radio_button.set_pressed_no_signal(on)
+	if radio_log:
+		_radio_urgent_seen = radio_log.urgent_total
+
+
+## 화면 위쪽에서 시계·단계 표시줄이 차지하는 높이 (px) — World가 내부 화면을 맞출 때 뺀다
+func top_reserved_px() -> float:
+	if phase_bar == null:
+		return 84.0
+	return phase_bar.position.y + phase_bar.size.y + 6.0
 
 
 # --- 화면 전환 단추 (2026-11-14: 외부 화면 ↔ 내부 화면) ---
@@ -909,62 +1064,100 @@ func set_span_state(span: int, max_span: int) -> void:
 		span_buttons[i].disabled = i + 1 > max_span
 
 
-# --- 지휘관 명령 칸 (G3, 2026-11-14 결정) ---
+# --- 지휘관 명령 (G3, 2026-11-14 결정) ---
 
 const BOARD_BUTTON := Vector2(146, 27)
 const BOARD_FONT := 14
-var board_panel: PanelContainer
-var board_box: VBoxContainer
-## 명령 id -> Button (지휘관 명령 칸·확인 단추)
+## 묶음 id(report·support·safety·zone) -> 아래 바 단추 / 세부 명령 목록 창
+var board_groups: Dictionary = {}
+var _flyouts: Dictionary = {}
+## 지금 펼쳐진 묶음 ("" = 없음). 한 번에 하나만
+var board_group_open := ""
+## 명령 id -> Button (지휘관 명령·확인 단추)
 var board_buttons: Dictionary = {}
 ## 이미 한 일이라 흐리게 둘 것인가 (명령 id -> bool). World가 넣는다
 var board_done_fn: Callable
 
 
-## 보고·지원·안전·구역 네 묶음을 세로 한 줄로 모두 펼친다 (data/commands.json commander_board) — 화면 오른쪽 끝 기둥.
-## 무엇을 고르고 있든 항상 보이고, 때가 됐다고 나타나거나 빛나지 않는다 — 이미 한 일만 흐려진다.
+## 아래 바에 보고·지원·안전·구역 네 묶음 단추를 놓는다 (data/commands.json commander_board).
+## 묶음을 누르면 그 세부 명령이 단추 위에 펼쳐지고, 명령을 누르거나 다른 곳을 누르면 닫힌다.
+## 무엇을 고르고 있든 늘 같은 자리에 있고, 때가 됐다고 나타나거나 빛나지 않는다 — 이미 한 일만 흐려진다.
 ## 일찍 눌러도 막지 않는다: 그대로 실행·기록되고 평가가 시점·순서를 본다
-func _build_board() -> void:
-	board_panel = PanelContainer.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.04, 0.07, 0.12, 0.78)
-	style.set_corner_radius_all(8)
-	style.set_content_margin_all(8)
-	board_panel.add_theme_stylebox_override("panel", style)
-	board_box = VBoxContainer.new()
-	board_box.add_theme_constant_override("separation", 2)
-	board_panel.add_child(board_box)
+func _build_board(row: HBoxContainer) -> void:
 	for g in CommandCard.load_board():
+		var gid := str(g.id)
+		var b := _bar_button(gid, str(g.label), "%s — 누르면 세부 명령이 위에 펼쳐집니다" % str(g.label))
+		b.toggle_mode = true
+		b.toggled.connect(func(on: bool) -> void: open_board_group(gid if on else ""))
+		board_groups[gid] = b
+		row.add_child(b)
+		var fly := PanelContainer.new()
+		var style := StyleBoxFlat.new()
+		style.bg_color = Color(0.04, 0.07, 0.12, 0.94)
+		style.border_color = Color("fde68a")
+		style.set_border_width_all(1)
+		style.set_corner_radius_all(8)
+		style.set_content_margin_all(8)
+		fly.add_theme_stylebox_override("panel", style)
+		var box := VBoxContainer.new()
+		box.add_theme_constant_override("separation", 3)
 		var head := Label.new()
 		head.text = str(g.label)
 		head.add_theme_font_size_override("font_size", BOARD_FONT)
 		head.add_theme_color_override("font_color", Color("fde68a"))
-		board_box.add_child(head)
+		box.add_child(head)
 		for it: Dictionary in g.get("items", []):
-			board_box.add_child(_make_board_button(it))
-	# 명령이 아닌 확인 단추와 조작 도움말은 묶음 아래에 따로
-	board_box.add_child(HSeparator.new())
-	for it in CommandCard.load_tools():
-		board_box.add_child(_make_board_button(it))
-	var help := Button.new()
-	help.text = "? 조작"
-	help.focus_mode = Control.FOCUS_NONE
-	help.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	help.add_theme_font_size_override("font_size", BOARD_FONT)
-	help.custom_minimum_size = BOARD_BUTTON
-	help.tooltip_text = $HelpLabel.text
-	board_box.add_child(help)
+			var item := _make_board_button(it)
+			item.custom_minimum_size = Vector2(190, 32)
+			item.add_theme_font_size_override("font_size", 15)
+			box.add_child(item)
+		fly.add_child(box)
+		fly.visible = false
+		add_child(fly)
+		_flyouts[gid] = fly
 
 
-## 지도 오른쪽에서 패널이 차지하는 폭 (px): 지휘관 명령 기둥은 늘, 무전 기록은 펼쳐져 있을 때만.
+## 묶음의 세부 명령 목록을 편다 ("" 이면 모두 닫는다)
+func open_board_group(id: String) -> void:
+	board_group_open = id if _flyouts.has(id) else ""
+	for gid: String in _flyouts:
+		(_flyouts[gid] as Control).visible = gid == board_group_open
+		(board_groups[gid] as Button).set_pressed_no_signal(gid == board_group_open)
+	_place_flyout()
+
+
+## 펼쳐진 목록을 그 묶음 단추 바로 위에 놓는다
+func _place_flyout() -> void:
+	if board_group_open == "" or console == null:
+		return
+	var fly: Control = _flyouts[board_group_open]
+	var b: Control = board_groups[board_group_open]
+	fly.size = fly.get_combined_minimum_size()
+	fly.position = Vector2(b.global_position.x - global_position.x, console.position.y - fly.size.y - 6.0)
+
+
+## 펼쳐진 목록 밖을 누르거나 Esc 를 누르면 닫는다 (그 입력은 그대로 흘려보낸다)
+func _input(event: InputEvent) -> void:
+	if board_group_open == "":
+		return
+	if event.is_action_pressed("ui_cancel"):
+		open_board_group("")
+		return
+	var mb := event as InputEventMouseButton
+	if mb == null or not mb.pressed:
+		return
+	if (_flyouts[board_group_open] as Control).get_global_rect().has_point(mb.position):
+		return
+	for gid: String in board_groups:
+		if (board_groups[gid] as Control).get_global_rect().has_point(mb.position):
+			return
+	open_board_group("")
+
+
+## 지도 오른쪽에서 정보 창·무전 기록 자리로 비워 두는 폭 (px). 창이 뜨고 사라져도 평면도가 가려지거나 움직이지 않게 늘 같은 값.
 ## World가 내부 화면을 맞출 때 이만큼 뺀다
 func right_reserved_px() -> float:
-	var w := 16.0
-	if board_panel:
-		w += board_panel.get_combined_minimum_size().x
-	if radio_log and radio_log.visible and not radio_log.folded:
-		w += RadioLogPanel.WIDTH + 8.0
-	return w
+	return 16.0 + SIDE_W + 8.0
 
 
 func _make_board_button(item: Dictionary) -> Button:
@@ -979,7 +1172,9 @@ func _make_board_button(item: Dictionary) -> Button:
 	b.add_theme_font_size_override("font_size", BOARD_FONT)
 	if item.get("danger", false):
 		b.add_theme_color_override("font_color", Color("fca5a5"))
-	b.pressed.connect(func() -> void: board_pressed.emit(id))
+	b.pressed.connect(func() -> void:
+		board_pressed.emit(id)
+		open_board_group(""))
 	board_buttons[id] = b
 	return b
 
@@ -1007,38 +1202,48 @@ func _squad_summary() -> String:
 	return "\n".join(lines)
 
 
-## 왼쪽 열(층 막대)이 올라갈 수 있는 맨 위 (시계·단계 표시줄 아래)
-const LEFT_TOP := 96.0
+## 왼쪽 열(층 막대)이 올라갈 수 있는 맨 위 (시계는 위 가운데로 옮겨 왼쪽 위는 비어 있다)
+const LEFT_TOP := 24.0
 
 
-## 콘솔·오른쪽 열(지휘관 명령 기둥·무전 기록)·왼쪽 열(층 막대·구조대상자·열화상 범례) 자리 잡기
+## 아래 바·위 가운데 시계·오른쪽 자리(정보 창·무전 기록)·왼쪽 열(층 막대·구조대상자·열화상 범례) 자리 잡기
 func _layout_console() -> void:
 	if console == null:
 		return
-	# 아래 띠는 낮게: 미니맵·선택 정보·조 명령 카드만 (지휘관 명령 칸은 오른쪽 기둥에 있다)
-	var h := maxf(CONSOLE_MIN_H, console.get_combined_minimum_size().y)
-	console.position = Vector2(8.0, size.y - h - 8.0)
-	# 오른쪽 끝: 지휘관 명령 기둥, 그 왼쪽에 무전 기록
-	var edge := size.x - 8.0
-	if board_panel:
-		board_panel.size = board_panel.get_combined_minimum_size()
-		board_panel.position = Vector2(size.x - board_panel.size.x - 8.0, 64.0)
-		edge = board_panel.position.x
-	command_ui.right_inset = size.x - edge
+	console.position = Vector2(8.0, size.y - BAR_H - 8.0)
+	console.size = Vector2(size.x - 16.0, BAR_H)
+	# 위 가운데: 시계(상황 배지). 단계 표시줄은 그 아래 (_refresh_phase_bar)
+	var badge: Control = $ClockPanel
+	badge.size = badge.get_combined_minimum_size()
+	badge.position = Vector2((size.x - badge.size.x) * 0.5, 6.0)
+	# 오른쪽 자리: 고른 것의 정보 창, 그 아래 (무전 단추를 켰으면) 무전 기록. 튜토리얼 안내판이 떠 있으면 그 아래부터
+	var rx := size.x - SIDE_W - 8.0
+	var ry := 16.0
+	if tutorial_ui and tutorial_ui.visible and not tutorial_ui.finished:
+		ry = tutorial_ui._panel.position.y + tutorial_ui._panel.size.y + 8.0
+	if side_panel:
+		side_panel.size = side_panel.get_combined_minimum_size()
+		side_panel.position = Vector2(rx, ry)
+		if side_panel.visible:
+			ry += side_panel.size.y + 8.0
 	if radio_log:
-		radio_log.position = Vector2(edge - radio_log.size.x - 8.0, 64.0)
-		radio_log._scroll.custom_minimum_size.y = maxf(160.0, console.position.y - 64.0 - 140.0)
+		radio_log.visible = radio_open and not _debug_panel.visible
+		radio_log._scroll.custom_minimum_size.y = maxf(120.0, console.position.y - ry - 130.0)
+		radio_log.size = radio_log.get_combined_minimum_size()
+		radio_log.position = Vector2(rx, ry)
+		# 접어 둔 동안 들어온 긴급 무전 수를 단추에 보인다
+		if radio_open:
+			_radio_urgent_seen = radio_log.urgent_total
+		var missed := radio_log.urgent_total - _radio_urgent_seen
+		var text: Label = radio_button.find_child("Text", true, false)
+		text.text = "무전 %d" % missed if missed > 0 else "무전"
+		text.add_theme_color_override("font_color", Color("f87171") if missed > 0 else Color("e2e8f0"))
+	# 팀 초상 줄은 아래 바 가운데에
 	if team_strip:
-		team_strip.position = Vector2((size.x - team_strip.custom_minimum_size.x) * 0.5, console.position.y - team_strip.custom_minimum_size.y - 4.0)
+		team_strip.position = Vector2((size.x - team_strip.custom_minimum_size.x) * 0.5, console.position.y + (BAR_H - team_strip.custom_minimum_size.y) * 0.5)
 		team_strip.size = team_strip.custom_minimum_size
-	if _board_button:
-		var badge: Control = $ClockPanel
-		_board_button.position = badge.position + Vector2(badge.size.x + 8.0, 0)
 	command_ui.board_bottom = console.position.y - 8.0
-	if minimap and Time.get_ticks_msec() - _minimap_ms > 250:
-		_minimap_ms = Time.get_ticks_msec()
-		minimap.queue_redraw()
-	console.size = Vector2(size.x - 16.0, h)
+	_place_flyout()
 	# 층 막대는 콘솔 위 공간의 60%까지 (아래에 구조대상자 현황·범례 자리)
 	var bottom := console.position.y - 8.0
 	if floor_bar:

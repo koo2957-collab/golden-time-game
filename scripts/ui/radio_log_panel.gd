@@ -22,6 +22,8 @@ var entries: Array[Dictionary] = []
 var filter := "전체"
 var folded := false
 var unseen := 0
+## 지금까지 들어온 긴급 무전(대원 안전·구조대상자) 수 — 접어 둔 동안 놓친 수를 HUD가 센다
+var urgent_total := 0
 
 var _pinned: VBoxContainer
 var _list: VBoxContainer
@@ -133,6 +135,8 @@ func collect() -> int:
 	for f in fresh:
 		entries.append(f)
 		added += 1
+		if bool(f.urgent):
+			urgent_total += 1
 	while entries.size() > MAX_ROWS:
 		entries.pop_front()
 	return added

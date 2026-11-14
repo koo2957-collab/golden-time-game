@@ -666,7 +666,7 @@ func _build_dispatch() -> void:
 		l.custom_minimum_size = Vector2(DIALOG_WIDTH - 40, 0)
 		box.add_child(l)
 		_dispatch_lines.append(l)
-	box.add_child(_label("도착하면 지휘권을 선언하고 최초 상황보고를 하십시오 (화면 오른쪽 지휘관 명령 칸 '보고'). 건물 안 임무를 받은 조는 입구에서 진입 허가를 무전으로 요청합니다.", 16, DIM_COLOR))
+	box.add_child(_label("도착하면 지휘권을 선언하고 최초 상황보고를 하십시오 (화면 아래 지휘관 명령 '보고'). 건물 안 임무를 받은 조는 입구에서 진입 허가를 무전으로 요청합니다.", 16, DIM_COLOR))
 	var opts := Placement.options(sim)
 	if not opts.is_empty():
 		box.add_child(_label("선착 차량 배치 (SOP 200-3.1.1) — 화염·낙하물 피해, 후착대·특수차 공간, 소화전을 생각해 고르세요", 17, Color("fde68a")))

@@ -35,17 +35,41 @@ func _run() -> void:
 	_check("지휘관 세트는 없다 (명령 칸으로 옮김)", sets.has("commander"), false)
 	world._press_card("Q")
 	_check("선택 없이 Q → 아무 일 없음", [card.parent, cui.any_dialog_open()], ["", false])
-	# 지휘관 명령 칸: 네 묶음이 모두 펼쳐져 있다 (2단 메뉴 없음)
+	# 지휘관 명령: 아래 바에 네 묶음 단추, 누르면 그 세부 명령이 단추 위에 펼쳐진다 (2026-11-14 결정)
 	var groups := CommandCard.load_board()
 	_check("네 묶음", groups.map(func(g): return str(g.label)), ["보고", "지원", "안전", "구역"])
+	_check("네 묶음 단추가 처음부터 아래 바에 보인다 · 세부 명령은 접혀 있다",
+		[groups.all(func(g): return hud.board_groups[str(g.id)].is_visible_in_tree()), hud.board_group_open, board["declare"].is_visible_in_tree()], [true, "", false])
 	var missing: Array = []
-	for id in CommandCard.board_ids():
-		if not board.has(id) or not board[id].is_visible_in_tree():
-			missing.append(id)
-	_check("모든 명령이 처음부터 화면에 보인다", missing, [])
-	_check("완진 선언·지휘권 이양도 처음부터 보이고 눌린다 (때가 돼야 나타나지 않는다)",
+	var off_place: Array = []
+	for g in groups:
+		var gid := str(g.id)
+		hud.board_groups[gid].button_pressed = true
+		await process_frame
+		for it in g.items:
+			if not board[str(it.id)].is_visible_in_tree():
+				missing.append(it.id)
+		var fly: Rect2 = hud._flyouts[gid].get_global_rect()
+		if hud.board_group_open != gid or fly.end.y > hud.console.position.y or not hud.get_rect().encloses(fly):
+			off_place.append(gid)
+	_check("묶음을 누르면 그 세부 명령이 모두 보인다", missing, [])
+	_check("펼친 목록은 아래 바 위, 화면 안 · 한 번에 하나만", [off_place, hud._flyouts["report"].visible], [[], false])
+	root.get_texture().get_image().save_png("user://ui_board_open.png")
+	# 목록 밖(지도)을 누르면 닫힌다
+	var away := InputEventMouseButton.new()
+	away.button_index = MOUSE_BUTTON_LEFT
+	away.pressed = true
+	away.position = Vector2(700, 400)
+	root.push_input(away, true)
+	var away_up: InputEventMouseButton = away.duplicate()
+	away_up.pressed = false
+	root.push_input(away_up, true)
+	await process_frame
+	_check("목록 밖을 누르면 닫힌다", hud.board_group_open, "")
+	sel._set_selection([] as Array[int], [] as Array[int])
+	_check("완진 선언·지휘권 이양도 처음부터 누를 수 있다 (때가 돼야 나타나지 않는다)",
 		[board["all_clear"].disabled, board["transfer"].disabled, board["end"].disabled], [false, false, false])
-	_check("명령 칸(오른쪽 기둥)이 화면 안에 있고 아래 띠와 겹치지 않는다", [hud.get_rect().encloses(hud.board_panel.get_rect()), hud.board_panel.get_rect().end.y <= hud.console.position.y], [true, true])
+	_check("아래 바가 화면 안에 있다", hud.get_rect().encloses(hud.console.get_rect()), true)
 	root.get_texture().get_image().save_png("user://ui_board.png")
 	# 보고: 선언 전에는 보완 보고가 없다(알림), 선언 양식, 선언 뒤에는 선언 단추가 흐려진다
 	board["update_report"].pressed.emit()
@@ -135,8 +159,8 @@ func _run() -> void:
 	var crew_id := 0
 	sel._set_selection([crew_id] as Array[int], [] as Array[int])
 	await process_frame
-	_check("팀 선택 → 팀 세트 · 카드 보임 · 지휘관 명령 칸도 그대로", [card.set_name, hud._command_panel.visible, hud.board_box.is_visible_in_tree()], ["team", true, true])
-	_check("팀 카드와 명령 칸이 함께 화면 안에", [hud.get_rect().encloses(hud.console.get_rect()), hud.get_rect().encloses(hud.board_panel.get_rect())], [true, true])
+	_check("팀 선택 → 팀 세트 · 카드 보임(오른쪽 정보 창) · 지휘관 명령 묶음도 그대로", [card.set_name, hud._command_panel.is_visible_in_tree(), hud.side_panel.visible, hud.board_groups["report"].is_visible_in_tree()], ["team", true, true, true])
+	_check("정보 창과 아래 바가 함께 화면 안에", [hud.get_rect().encloses(hud.console.get_rect()), hud.get_rect().encloses(hud.side_panel.get_rect())], [true, true])
 	root.get_texture().get_image().save_png("user://ui_board_team.png")
 	_check("팀 6칸 (기획안 9-1)", _labels(card), ["Q 인명검색", "W 화점진압", "E 경계", "R 배연", "A 대기", "S 철수"])
 	_check("조를 골라도 메뉴가 뜨지 않는다", world.mission_ui.menu.visible, false)

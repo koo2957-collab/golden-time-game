@@ -149,11 +149,14 @@ func _ready() -> void:
 	selection.team_order = hud.team_strip.crews
 	hud.command_ui.team_selected.connect(_on_team_selected)
 	# 미니맵 누르기·끌기: 그곳으로 화면 이동, 지금 화면 범위 표시 (R8 → R16)
-	hud.minimap.jump.connect(func(cell: Vector2, lv: int) -> void:
-		if lv != view_level:
-			set_view_level(lv)
-		camera.retarget(_view_bounds(), projection().to_screen(cell)))
-	hud.minimap.view_corners = _view_corners
+	if hud.minimap:
+		hud.minimap.jump.connect(func(cell: Vector2, lv: int) -> void:
+			if lv != view_level:
+				set_view_level(lv)
+			camera.retarget(_view_bounds(), projection().to_screen(cell)))
+		hud.minimap.view_corners = _view_corners
+	# 아래 바의 지휘관 초상: 지휘관을 고른다
+	hud.commander_pressed.connect(func() -> void: selection._set_selection([] as Array[int], [] as Array[int], true))
 	var tutorial := str(sim.scenario.get("tutorial", ""))
 	# 튜토리얼은 안내판이 순서를 알려 주므로 멈추는 힌트 카드는 끈다
 	hud.hint_ui.setup(sim, GameManager.mode == "교육" and tutorial == "")
@@ -517,17 +520,17 @@ func set_interior_span(span: int) -> void:
 
 
 ## 내부 화면에서 카메라가 있어야 할 [위치, 배율]: 고른 층(층 수 단추가 2·3이면 이웃 층까지)을
-## 왼쪽 정보창·위쪽 표시줄·아래 콘솔·오른쪽 지휘관 명령 기둥(그리고 펼쳐진 무전 기록)을 뺀 영역의 가운데에.
+## 왼쪽 정보창·위쪽 시계·아래 바·오른쪽 정보 창 자리를 뺀 영역의 가운데에.
 ## fit_zoom 이면 그 영역에 꽉 차는 배율, 아니면 지금 배율 그대로
 func _interior_target(fit_zoom: bool) -> Array:
 	var p := iso_view.params
 	var r := iso_view.frame_rect(interior_span, _pair_lower)
 	var vp := get_viewport().get_visible_rect().size
 	# 위쪽은 시계·단계 표시줄
-	var top := 84.0
+	var top := hud.top_reserved_px()
 	var bottom := (hud.console.size.y if hud.console else 0.0) + 16.0
 	var left := p.split_info_width_px
-	# 오른쪽: 지휘관 명령 기둥은 늘, 무전 기록은 펼쳐져 있을 때만 자리를 뺀다
+	# 오른쪽: 정보 창·무전 기록 자리는 늘 비워 둔다 (창이 떠도 평면도를 가리지 않게)
 	var right := hud.right_reserved_px()
 	var z := camera.zoom.x
 	if fit_zoom:

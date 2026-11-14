@@ -9,6 +9,7 @@
     "엔진: Godot Engine (godotengine.org), MIT",
     "근거 자료: 소방청 「재난현장 표준작전절차」(2025), 소방전술Ⅰ(화재1·화재2)·소방전술Ⅱ(구조)·소방전술Ⅲ(구급) 교재",
     "등장 인물·건물·상호는 모두 가상입니다.",
-    "무전·판단 장면 그림: 말하는 사람 = 사용자 제공 일러스트(현장대원·현장지휘관)를 가공 · 먹물 바탕 = 자체 제작 (tools/prep_radio_art.py)"
+    "무전·판단 장면 그림: 말하는 사람 = 사용자 제공 일러스트(현장대원·현장지휘관)를 가공 · 먹물 바탕 = 자체 제작 (tools/prep_radio_art.py)",
+    "전술상황판 글씨(보드마커 손글씨): Gaegu — The Gaegu Project Authors, SIL Open Font License 1.1 (art/fonts/Gaegu-OFL.txt)"
   ]
 }

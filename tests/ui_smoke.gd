@@ -69,6 +69,21 @@ func _run() -> void:
 	_key(KEY_M)
 	await process_frame
 	_check("M → 전술상황판 열림", world.hud.board.visible, true)
+	# 화이트보드 (2026-11-14): 화면의 85%쯤 · 가로형 16:9 · 도면 60% / 정보 칸 40% · 마커 글씨
+	await process_frame
+	var wb = world.hud.board
+	var wb_style = wb.style
+	var screen := Vector2(root.get_visible_rect().size)
+	var wb_size: Vector2 = wb.frame.size
+	var fits: float = minf(screen.x, screen.y * wb_style.board_aspect) * wb_style.board_screen_ratio
+	_check("상황판은 화면의 85%쯤 (16:9로 맞춤)", absf(wb_size.x - fits) <= 3.0, true)
+	_check("상황판은 가로형 16:9", absf(wb_size.x / wb_size.y - 16.0 / 9.0) < 0.02, true)
+	var map_share: float = wb.map_cell.size.x / (wb.map_cell.size.x + wb.info_cell.size.x)
+	_check("도면 60% · 정보 칸 40%", absf(map_share - 0.6) < 0.03, true)
+	wb.refresh_text()
+	_check("정보 칸: 전략·우선순위·구조대상자·출동 정보", [wb._entry.text.contains("전략"), wb._receo.text.contains("R 구조"),
+		wb._status.text.contains("요구조자"), wb._dispatch.text != ""], [true, true, true, true])
+	_check("판 위 글씨는 마커 글꼴", [wb._entry.get_theme_font("font") == wb_style.marker_font(), wb_style.marker_font() is FontFile], [true, true])
 	_key(KEY_TAB)
 	await process_frame
 	_check("Tab → 전술상황판 닫힘", world.hud.board.visible, false)

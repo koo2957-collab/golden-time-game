@@ -114,6 +114,14 @@ func test_board_style_values_have_source() -> void:
 	assert_eq(st.stale_s, 60.0, "오래된 보고 기준 60초")
 	assert_eq(st.vehicle_label("펌프차"), "펌프", "차량 자석 짧은 이름")
 	assert_eq(st.vehicle_label("없는차"), "없는차", "표에 없으면 차종 그대로")
+	# 판 모양 (사용자 결정): 화면의 85%, 16:9, 도면 60% / 정보 40%, 마커 손글씨
+	assert_eq(st.board_screen_ratio, 0.85, "화면의 85%")
+	assert_true(absf(st.board_aspect - 16.0 / 9.0) < 0.01, "가로형 16:9")
+	assert_eq(st.map_ratio, 0.6, "도면 60%")
+	assert_eq(st.info_rows.size(), 3, "정보 칸 세 줄")
+	assert_true(st.marker_font() is FontFile and st.marker_bold() is FontFile, "마커 글꼴 파일을 읽는다")
+	assert_true(st.marker_font() != ThemeDB.fallback_font, "기본 글꼴이 아니다")
+	assert_true(FileAccess.file_exists("res://art/fonts/Gaegu-OFL.txt"), "글꼴 사용 조건 문서")
 
 
 func test_board_unseen_cells_are_unknown() -> void:

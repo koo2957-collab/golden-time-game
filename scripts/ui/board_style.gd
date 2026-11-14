@@ -6,28 +6,39 @@ const PATH := "res://data/ui/board_style.json"
 
 static var _cached: BoardStyle
 
-var panel_margin_x := 0.03
-var panel_margin_top := 0.085
-var panel_margin_bottom := 0.095
-var column_px := 330.0
-var frame_px := 5.0
-var legend_row_px := 20.0
+var board_screen_ratio := 0.85
+var board_aspect := 1.7778
+var map_ratio := 0.6
+var info_rows: Array = [0.3, 0.34, 0.36]
+var frame_px := 11.0
+var corner_px := 24.0
+var tray_px := 13.0
+var cell_line_px := 2
+var cell_pad_px := 8
+var legend_row_px := 22.0
+var font_path := "res://art/fonts/Gaegu-Regular.ttf"
+var font_bold_path := "res://art/fonts/Gaegu-Bold.ttf"
+var title_font := 28
+var head_font := 20
+var body_font := 17
 var stale_s := 60.0
 var stale_alpha := 0.4
 var wall_ratio := 0.32
 var wall_min_px := 2.0
 var hatch_step_px := 9.0
 var symbol_px := 10.0
-var label_font := 12
-var room_font := 11
-var face_font := 15
-var magnet_font := 12
-var magnet_h_px := 20.0
+var label_font := 15
+var room_font := 15
+var face_font := 19
+var magnet_font := 15
+var magnet_h_px := 22.0
 var hose_px := 2.5
 ## 색 이름 → Color (data의 colors)
 var colors: Dictionary = {}
 ## 차종 → 자석에 쓰는 짧은 이름
 var vehicle_labels: Dictionary = {}
+var _font: Font
+var _font_bold: Font
 
 
 ## 한 번 읽어 같이 쓴다
@@ -46,11 +57,20 @@ static func from_file(path: String) -> BoardStyle:
 
 
 func apply(data: Dictionary) -> void:
-	panel_margin_x = float(_value(data, "panel_margin_x", panel_margin_x))
-	panel_margin_top = float(_value(data, "panel_margin_top", panel_margin_top))
-	panel_margin_bottom = float(_value(data, "panel_margin_bottom", panel_margin_bottom))
-	column_px = float(_value(data, "column_px", column_px))
+	board_screen_ratio = float(_value(data, "board_screen_ratio", board_screen_ratio))
+	board_aspect = float(_value(data, "board_aspect", board_aspect))
+	map_ratio = float(_value(data, "map_ratio", map_ratio))
+	info_rows = _value(data, "info_rows", info_rows)
 	frame_px = float(_value(data, "frame_px", frame_px))
+	corner_px = float(_value(data, "corner_px", corner_px))
+	tray_px = float(_value(data, "tray_px", tray_px))
+	cell_line_px = int(_value(data, "cell_line_px", cell_line_px))
+	cell_pad_px = int(_value(data, "cell_pad_px", cell_pad_px))
+	font_path = str(_value(data, "font", font_path))
+	font_bold_path = str(_value(data, "font_bold", font_bold_path))
+	title_font = int(_value(data, "title_font", title_font))
+	head_font = int(_value(data, "head_font", head_font))
+	body_font = int(_value(data, "body_font", body_font))
 	legend_row_px = float(_value(data, "legend_row_px", legend_row_px))
 	stale_s = float(_value(data, "stale_s", stale_s))
 	stale_alpha = float(_value(data, "stale_alpha", stale_alpha))
@@ -80,6 +100,28 @@ func apply(data: Dictionary) -> void:
 func color(key: String, alpha := 1.0) -> Color:
 	var c: Color = colors.get(key, Color("1f2933"))
 	return Color(c, c.a * alpha)
+
+
+## 판 위 글씨 (보드마커 손글씨). 글꼴 파일이 없으면 기본 글꼴
+func marker_font() -> Font:
+	if _font == null:
+		_font = _load_font(font_path)
+	return _font
+
+
+## 굵은 마커 글씨 (제목·자석)
+func marker_bold() -> Font:
+	if _font_bold == null:
+		_font_bold = _load_font(font_bold_path)
+	return _font_bold
+
+
+static func _load_font(path: String) -> Font:
+	if ResourceLoader.exists(path):
+		var f: Variant = load(path)
+		if f is Font:
+			return f
+	return ThemeDB.fallback_font
 
 
 ## 차량 자석에 쓰는 이름

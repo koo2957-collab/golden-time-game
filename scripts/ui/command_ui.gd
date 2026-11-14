@@ -871,6 +871,25 @@ func _submit_division() -> void:
 ## 대원 안전 + RECEO 상태판 (SOP 106-1.1② 전술적 우선순위, 208-1.1 RECEO). 확인한 정보 기준,
 ## 처리되지 않은 첫 줄을 '현재 우선'으로 강조한다.
 func _receo_text() -> String:
+	var lines: PackedStringArray = ["[color=#94a3b8]우선순위 (대원 안전 → RECEO)[/color]"]
+	var marked := false
+	for it: Array in receo_items():
+		var mark := ""
+		var color := "94a3b8"
+		if it[0] and not marked:
+			mark = "▶ "
+			color = "fde68a"
+			marked = true
+		elif it[0]:
+			color = "e2e8f0"
+		lines.append("[color=#%s]%s%s: %s[/color]" % [color, mark, it[1], it[2]])
+	lines.append("[color=#94a3b8]구역: %s[/color]" % zones_text())
+	return "\n".join(lines)
+
+
+## 우선순위 항목 [[해당하는가, 이름, 내용], …] — 대원 안전, R 구조, E 외부, C 확산, E 진압, O 잔불 순서.
+## 전술상황판(화이트보드)도 이것으로 자기 색(마커)으로 쓴다
+func receo_items() -> Array:
 	var cmd := sim.command
 	var b := sim.building
 	var inside := 0
@@ -934,20 +953,7 @@ func _receo_text() -> String:
 		[rooms.size() > 0, "E 진압", "방수 중 관창 %d" % nozzles],
 		[embers > 0, "O 잔불", "찾은 불씨 %d" % embers],
 	]
-	var lines: PackedStringArray = ["[color=#94a3b8]우선순위 (대원 안전 → RECEO)[/color]"]
-	var marked := false
-	for it: Array in items:
-		var mark := ""
-		var color := "94a3b8"
-		if it[0] and not marked:
-			mark = "▶ "
-			color = "fde68a"
-			marked = true
-		elif it[0]:
-			color = "e2e8f0"
-		lines.append("[color=#%s]%s%s: %s[/color]" % [color, mark, it[1], it[2]])
-	lines.append("[color=#94a3b8]구역: %s[/color]" % zones_text())
-	return "\n".join(lines)
+	return items
 
 
 ## 상황판 외부 구역 한 줄 (P10-2 ⓑ): "안전구역 ✓ · 환자 집결지 – · 진입통제선 – · 분류소 설치 중"
@@ -1378,6 +1384,9 @@ func _button(text: String, on_press: Callable) -> Button:
 
 const TEAM_REPORT_STALE_S := 90.0
 
+## 팀 카드 글자색 바꿔 쓰기 {text, dim, warn, danger} — 전술상황판(흰 판)이 마커 색으로 넣는다. 비어 있으면 어두운 바탕용 색
+var paper_palette: Dictionary = {}
+
 
 ## 현장에 있는 조마다 한 줄. 출동대가 새로 도착하면 카드를 더한다
 func _refresh_team_cards() -> void:
@@ -1399,7 +1408,10 @@ func _refresh_team_cards() -> void:
 		if _team_buttons.has(c.id):
 			var b: Button = _team_buttons[c.id]
 			b.text = team_text(c.id)
-			b.add_theme_color_override("font_color", _team_color(c.id))
+			# 마우스를 올려도 글자색이 바뀌지 않게 (흰 판 위에서 흰 글씨가 되지 않도록)
+			var col := _team_color(c.id)
+			for key in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_hover_pressed_color"]:
+				b.add_theme_color_override(key, col)
 
 
 ## "진압1 1조 · 1층 거실 · 층 진압 (1층 거실) · 공기 72% · 보고 12초 전" (판단 요청 대기 중이면 앞에 ?)
@@ -1433,19 +1445,19 @@ func team_text(crew_id: int) -> String:
 func _team_color(crew_id: int) -> Color:
 	var c := sim.units.get_crew(crew_id)
 	if c.leader.incapacitated:
-		return Color("f87171")
+		return paper_palette.get("danger", Color("f87171"))
 	if not sim.command.interior.crew_inside(crew_id):
-		return DIM_COLOR
+		return paper_palette.get("dim", DIM_COLOR)
 	var air := 1.0
 	for ff in c.members():
 		air = minf(air, ff.air_ratio())
 	if air < 0.3:
-		return Color("f87171")
+		return paper_palette.get("danger", Color("f87171"))
 	var name := "%s %d조" % [sim.units.squads[c.squad_id].name, c.number]
 	var last := int(sim.command.last_report_tick.get(name, -1))
 	if last < 0 or (sim.clock.tick - last) * SimClock.TICK_DT > TEAM_REPORT_STALE_S:
-		return WARN_COLOR
-	return TEXT_COLOR
+		return paper_palette.get("warn", WARN_COLOR)
+	return paper_palette.get("text", TEXT_COLOR)
 
 
 func _on_team_input(event: InputEvent, crew_id: int, b: Button) -> void:

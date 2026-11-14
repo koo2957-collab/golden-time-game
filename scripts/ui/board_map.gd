@@ -34,8 +34,14 @@ func setup(p_sim: SimWorld) -> void:
 	clip_contents = true
 
 
+## 판 위 글씨는 보드마커 손글씨 (2026-11-14 사용자 결정)
 func _font() -> Font:
-	return PlanStyle.font()
+	return style.marker_font()
+
+
+## 굵은 마커 (제목·면 글자·자석)
+func _bold() -> Font:
+	return style.marker_bold()
 
 
 ## 범례 자리 (판 아래 두 줄)
@@ -170,7 +176,7 @@ func _draw() -> void:
 		_draw_faces(lv, font)
 		_draw_outside(lv, font)
 	var title := "외부 배치도" if level < 0 else "%s 평면도" % sim.building.floor_name(lv)
-	draw_string(font, Vector2(10, 22), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 17, style.color("ink"))
+	draw_string(_bold(), Vector2(10, style.head_font + 4.0), title, HORIZONTAL_ALIGNMENT_LEFT, -1, style.head_font, style.color("marker_blue"))
 	_draw_legend(font)
 
 
@@ -293,7 +299,7 @@ func _draw_faces(lv: int, font: Font) -> void:
 		var side: String = sim.building.faces[face]
 		if anchors.has(side):
 			var p: Vector2 = anchors[side]
-			draw_string(font, p - Vector2(30, 0), "%s면" % face, HORIZONTAL_ALIGNMENT_CENTER, 60, f, style.color("ink"))
+			draw_string(_bold(), p - Vector2(30, 0), "%s면" % face, HORIZONTAL_ALIGNMENT_CENTER, 60, f, style.color("ink"))
 
 
 func _draw_inside(lv: int, font: Font) -> void:
@@ -405,7 +411,7 @@ func crew_magnets(lv: int) -> Dictionary:
 		var vehicles := vehicle_magnets()
 		for id: int in vehicles:
 			placed.append(vehicles[id])
-	var font := _font()
+	var font := _bold()
 	for c in sim.units.crews:
 		var at := crew_spot(c.id)
 		if at.z != lv or at.x < -999:
@@ -430,7 +436,7 @@ func _draw_crews(magnets: Dictionary, font: Font) -> void:
 		var inside := sim.command.interior.crew_inside(id)
 		var a := _alpha(int(info.get("tick", sim.clock.tick))) if inside else 1.0
 		var ring := style.color("rit") if sim.command.safety.role_of(id) == SafetySystem.Role.RIT else Color(0, 0, 0, 0)
-		BoardSymbols.magnet(self, rect, crew_label(c), SpriteArt.helmet_color(sim.units.squads[c.squad_id].type), font, style, a, false, ring)
+		BoardSymbols.magnet(self, rect, crew_label(c), SpriteArt.helmet_color(sim.units.squads[c.squad_id].type), _bold(), style, a, false, ring)
 		if inside:
 			draw_string(font, Vector2(rect.position.x, rect.end.y + style.label_font), age_text(int(info.get("tick", -1))),
 				HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, style.label_font - 1, style.color("ink" if a < 1.0 else "ink_soft"))
@@ -487,7 +493,7 @@ func _draw_site(lv: int) -> void:
 ## 차량 자석 자리 (차량 id → 네모)
 func vehicle_magnets() -> Dictionary:
 	var out: Dictionary = {}
-	var font := _font()
+	var font := _bold()
 	for v in sim.units.vehicles:
 		if v.away:
 			continue
@@ -530,16 +536,18 @@ func _draw_outside(lv: int, font: Font) -> void:
 			at = tail + Vector2(0.0, lf * 0.4)
 		elif out_dir.x < -0.5:
 			at = tail + Vector2(-name_w, lf * 0.4)
+		# 이름 뒤를 판 색으로 깔아 구역 점선이 글자를 지나가지 않게
+		draw_rect(Rect2(at + Vector2(-2.0, -lf), Vector2(name_w + 4.0, lf + 5.0)), style.color("board"))
 		draw_string(font, at, e.name, HORIZONTAL_ALIGNMENT_LEFT, -1, lf, style.color("entry"))
 	var vehicles := vehicle_magnets()
 	for id: int in vehicles:
 		var v := sim.units.get_vehicle(id)
-		BoardSymbols.magnet(self, vehicles[id], vehicle_text(v), sim.units.squads[v.squad_id].color, font, style, 1.0, true)
+		BoardSymbols.magnet(self, vehicles[id], vehicle_text(v), sim.units.squads[v.squad_id].color, _bold(), style, 1.0, true)
 	_draw_victims(lv, font, true)
 	# 지휘관 자석 (파란 헬멧)
 	var cmd_text := "지휘관"
-	var sz := BoardSymbols.magnet_size(cmd_text, font, style)
-	BoardSymbols.magnet(self, Rect2(to_px(sim.command.commander.pos) - sz * 0.5, sz), cmd_text, SpriteArt.helmet_color("지휘"), font, style)
+	var sz := BoardSymbols.magnet_size(cmd_text, _bold(), style)
+	BoardSymbols.magnet(self, Rect2(to_px(sim.command.commander.pos) - sz * 0.5, sz), cmd_text, SpriteArt.helmet_color("지휘"), _bold(), style)
 	_draw_crews(crew_magnets(lv), font)
 
 

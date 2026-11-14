@@ -176,15 +176,79 @@ func test_night_windows_and_draw_budget() -> void:
 	assert_eq(night.window_count, count, "같은 창이 켜진다")
 	# 현장 차량이 들어오는 행으로 경로가 맞춰진다
 	if not sim.units.vehicles.is_empty():
-		var v: Vehicle = sim.units.vehicles[0]
+		var v: Vehicle = night.convoy()[0]
+		assert_true(v.is_pump(), "행렬 맨 앞은 선착 펌프차")
 		assert_eq(night.plan.route[night.plan.route.size() - 1].y, v.pos.y, "경로 끝 = 선착 차량이 들어오는 행")
-		assert_eq(night.truck_cell(0.0, 0, v.length_cells), night.plan.route[0], "진행률 0 = 안전센터 앞")
-		# 진행률 1 = 현장 지도 바로 밖, 시뮬레이션 차량이 들어오기 시작하는 자리 (도착하면 그 자리에서 이어 들어온다)
-		var stop := night.truck_cell(1.0, 0, v.length_cells)
-		assert_true(is_equal_approx(stop.x, -(v.length_cells * 0.5 + 1.0)) and stop.y == v.pos.y, "진행률 1 = 지도 서쪽 끝 바로 밖 (%s)" % stop)
-		assert_true(night.truck_cell(0.5, 0, v.length_cells).x < 0.0, "가는 동안은 지도 밖")
-		# 뒤차는 간격을 두고 따라오고, 처음에는 아직 안전센터 안
-		assert_true(night.truck_distance(0.0, 1, v.length_cells) < 0.0, "뒤차는 처음에 출발 전")
-		assert_true(night.truck_distance(1.0, 1, v.length_cells) < night.truck_distance(1.0, 0, v.length_cells) - v.length_cells, "뒤차는 앞차와 겹치지 않는다")
+		assert_eq(night.truck_cell(0.0, 0, v), night.plan.route[0], "진행률 0 = 안전센터 앞")
+		# 진행률 1 = 시뮬레이션 차량이 들어오기 시작하는 자리 (도착하면 그 자리에서 이어 들어온다)
+		var stop := night.truck_cell(1.0, 0, v)
+		var start := sim.command.resources.entry_start(v, v.pos, v.heading)
+		assert_true(stop.is_equal_approx(start) and start.x < 0.0, "진행률 1 = 현장 차량이 출발하는 자리 (%s / %s)" % [stop, start])
+		assert_true(night.truck_cell(0.5, 0, v).x < 0.0, "가는 동안은 지도 밖")
+		assert_true(night.truck_distance(0.0, 1, night.convoy()[1]) < 0.0, "뒤차는 처음에 출발 전")
 	day.free()
 	night.free()
+
+
+## 출동 4단계 (2026-11-15): 도시의 출동 행렬이 현장에 들어오는 차량으로 끊김 없이 이어진다
+func test_convoy_joins_arriving_vehicles() -> void:
+	var sim := SimWorld.from_scenario("res://data/scenarios/sop213_1_apartment_3f.json")
+	var res := sim.command.resources
+	res.arrival_drive = true
+	var view := CityMassView.new()
+	view.setup(sim.building, IsoProjection.new(), 3, sim)
+	var list := view.convoy()
+	assert_eq(list.size(), sim.units.vehicles.size(), "처음 오는 차량이 모두 행렬에 (%d대)" % list.size())
+	assert_true(list[0].is_pump() and list[0].squad_id == 0, "선착 펌프차가 맨 앞")
+	var gap_s := float(sim._phase_params.value("arrival_gap_s"))
+	# 진행률 1: 차마다 자기가 들어올 자리에서 '도착 간격 × 속도'만큼 뒤, 자기 차로에 있다
+	for i in list.size():
+		var v := list[i]
+		var start := res.entry_start(v, v.pos, v.heading)
+		var want := start - v.heading * (i * gap_s * v.speed_cells)
+		assert_true(view.truck_cell(1.0, i, v).is_equal_approx(want), "%s: 도착 순간의 자리 (%s / %s)" % [v.short_name, view.truck_cell(1.0, i, v), want])
+	for i in range(1, list.size()):
+		assert_true(view.truck_cell(1.0, i, list[i]).x < view.truck_cell(1.0, i - 1, list[i - 1]).x - 2.0, "뒤차는 앞차 뒤에")
+	# 들어올 자리에 가까워지면 그림이 실제 크기
+	assert_eq(view.truck_scale(0.0), 1.0, "다 오면 실제 크기")
+	assert_eq(view.truck_scale(1000.0), view.plan.num("truck_scale"), "멀리서는 크게")
+	# 출동 중에 차량 배치를 고르면 그 자리의 차로로 들어간다 (아직 시뮬레이션에 넣기 전)
+	var opts := Placement.options(sim)
+	var far := -1
+	for i in opts.size():
+		if int(opts[i].vehicles[0].spawn[1]) + 0.5 != list[0].pos.y:
+			far = i
+	assert_true(far >= 0, "다른 차로에 세우는 배치 보기")
+	var pick := [-1]
+	view.placement = func() -> int: return pick[0]
+	var before := view.truck_cell(1.0, 0, list[0])
+	pick[0] = far
+	var row := int(opts[far].vehicles[0].spawn[1]) + 0.5
+	assert_eq(view.truck_cell(1.0, 0, list[0]).y, row, "고른 배치의 차로로 (%s → %.1f)" % [before, row])
+	var mid := view.truck_distance(0.3, 0, list[0]) / view.plan.route_length()
+	assert_true(view.truck_cell(0.3, 0, list[0]).is_equal_approx(view.plan.route_point(mid)), "차로는 길 끝에서만 바꾼다 (가는 길은 그대로)")
+	# 배치를 시뮬레이션에 넣고 도착: 뒤차는 들어올 자리로 달려오다가 그 자리에서 시뮬레이션 차량이 이어받는다
+	sim.issue(CommandOrder.make("placement", [], far))
+	sim.step_ticks(1)
+	assert_true(not sim.command.placement.is_empty(), "배치가 적용됐다")
+	# 도착 순간 도시의 차들이 있던 자리 (도착한 뒤에는 차량이 출발 자리로 옮겨지므로 미리 적어 둔다)
+	var last := {}
+	for i in list.size():
+		last[list[i].id] = view.truck_cell(1.0, i, list[i])
+	sim.issue(CommandOrder.make("arrive", [], 0, Vector3i.ZERO, {"gap_s": gap_s}))
+	sim.step_ticks(1)
+	assert_eq(float(res.arriving[0].start.y), row, "현장 차량도 그 차로에서 출발한다")
+	assert_true((res.arriving[0].start as Vector2).is_equal_approx(last[list[0].id]), "맨 앞차: 도시의 차가 멈춘 자리 = 현장 차량이 출발하는 자리")
+	var fol := view.followers()
+	assert_eq(fol.size(), list.size() - 1, "아직 들어오지 않은 뒤차")
+	for f in fol:
+		var v: Vehicle = f.vehicle
+		assert_true((f.pos as Vector2).distance_to(last[v.id]) < v.speed_cells * 0.35, "%s: 도착 직후 자리가 이어진다 (%.1f칸 차이)" % [v.short_name, (f.pos as Vector2).distance_to(last[v.id])])
+	var second: Dictionary = res.arriving[1]
+	sim.step_ticks(int(second.start_tick) - sim.clock.tick - 1)
+	fol = view.followers()
+	assert_true(not fol.is_empty() and (fol[0].pos as Vector2).distance_to(second.start) < list[1].speed_cells * 0.35 and float(fol[0].remain) < 2.0, "들어올 자리에 거의 닿았다")
+	sim.step_ticks(2)
+	assert_true(bool(second.started) and view.followers().size() == list.size() - 2, "닿으면 시뮬레이션 차량이 이어받는다")
+	assert_true(sim.units.get_vehicle(int(second.vehicle)).pos.distance_to(second.start) < 2.0, "같은 자리에서 달려 들어온다")
+	view.free()

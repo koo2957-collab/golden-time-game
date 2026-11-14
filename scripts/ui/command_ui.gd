@@ -397,6 +397,11 @@ func dispatch_progress() -> float:
 	return dispatch.progress()
 
 
+## 출동 중에 정한 선착 차량 배치 (보기 순서, 없으면 -1)
+func dispatch_placement() -> int:
+	return dispatch.placement_pick()
+
+
 ## Enter: 장면의 확인 단추, 결정을 모두 마쳤으면 남은 길을 건너뛰고 도착 (결정은 건너뛸 수 없다)
 func close_dispatch() -> void:
 	dispatch.enter()

@@ -111,3 +111,112 @@ func test_breaker_fetch() -> void:
 			rescue_c = rc
 	if rescue_c:
 		assert_true(rescue_c.has_item("fire_door_breaker"), "구조대는 기본으로 파괴기")
+
+
+# --- 하차 동작 (출동 4단계, 2026-11-15 사용자 결정): 각자 문으로 내려 모이는 자리까지 걸어간다 ---
+
+func test_door_config() -> void:
+	var data: Dictionary = JsonData.load_file(ResourceSystem.DISMOUNT_PATH)
+	for key: String in data:
+		var entry: Variant = data[key]
+		if entry is Dictionary:
+			assert_true((entry as Dictionary).has("source"), "%s에 source" % key)
+	var seats: Array = ResourceSystem.door_specs("펌프차").map(func(d: Dictionary) -> String: return str(d.seat))
+	assert_eq(seats.size(), 4, "펌프차 문 넷")
+	for want in ["운전석", "조수석", "뒷자리 운전석 쪽", "뒷자리 조수석 쪽"]:
+		assert_true(seats.has(want), "문: %s" % want)
+	assert_eq(ResourceSystem.door_specs("없는차").size(), 4, "표에 없는 차종은 기본 문")
+	# 동쪽을 보는 차: 운전석 = 왼쪽(북, y가 작다)·앞쪽, 조수석 = 오른쪽(남)·앞쪽, 뒷자리는 그 뒤. 모두 차체 밖
+	var v := Vehicle.new()
+	v.type = "펌프차"
+	v.pos = Vector2(20.5, 20.5)
+	v.heading = Vector2.RIGHT
+	var at := {}
+	for d: Dictionary in ResourceSystem.door_specs(v.type):
+		at[str(d.seat)] = ResourceSystem.door_point(v, d)
+		assert_true(not v.contains(at[str(d.seat)]) and v.distance_to_body(at[str(d.seat)]) < 1.5, "%s 문 앞은 차체 바로 밖" % d.seat)
+	assert_true(at["운전석"].y < v.pos.y and at["조수석"].y > v.pos.y, "운전석은 왼쪽, 조수석은 오른쪽")
+	assert_true(at["운전석"].x > at["뒷자리 운전석 쪽"].x and at["뒷자리 운전석 쪽"].x > v.pos.x, "앞문이 뒷문보다 앞, 둘 다 차 앞쪽(운전실)")
+	# 차가 돌면 문도 같이 돈다
+	v.heading = Vector2.LEFT
+	var flipped := ResourceSystem.door_point(v, ResourceSystem.door_specs(v.type)[0])
+	assert_true(flipped.y < v.pos.y and flipped.x < v.pos.x, "서쪽을 보면 조수석이 북쪽·서쪽 (%s)" % flipped)
+
+
+func test_crews_alight_from_own_doors_and_walk() -> void:
+	var sim := _sim()
+	var res := sim.command.resources
+	res.arrival_drive = true
+	var spots := {}
+	for c in sim.units.crews:
+		spots[c.id] = c.leader.pos
+	sim.issue(CommandOrder.make("arrive", [], 0, Vector3i.ZERO, {"gap_s": 5.0}))
+	assert_true(_until(sim, func() -> bool: return not res.alighting.is_empty(), 120.0), "차가 서면 내리기 시작한다")
+	var first: Firefighter = sim.units.firefighters[int(res.alighting[0].ff)]
+	var v := sim.units.vehicles_of_squad(first.squad_id)[0]
+	var riders: Array[Firefighter] = []
+	var ticks := {}
+	for a in res.alighting:
+		var ff: Firefighter = sim.units.firefighters[int(a.ff)]
+		if ff.squad_id == v.squad_id:
+			riders.append(ff)
+			ticks[ff.id] = int(a.tick)
+	assert_true(riders.size() >= 2, "그 차에 탄 대원 (%d명)" % riders.size())
+	var cells := {}
+	var sides := {}
+	for ff in riders:
+		assert_true(ff.aboard, "내리기 전에는 탄 채로")
+		assert_true(not v.contains(ff.pos) and v.distance_to_body(ff.pos) <= 2.5, "문 앞 자리 = 차체 바로 옆 (%.1f칸)" % v.distance_to_body(ff.pos))
+		cells[ff.cell3()] = true
+		sides[signf((ff.pos - v.pos).dot(Vector2(-v.heading.y, v.heading.x)))] = true
+	assert_eq(cells.size(), riders.size(), "각자 다른 문")
+	if riders.size() >= 3:
+		assert_true(sides.has(1.0) and sides.has(-1.0), "운전석 쪽·조수석 쪽 문을 모두 쓴다")
+	for c in sim.units.squads[v.squad_id].crews:
+		if c.partner and ticks.has(c.leader.id):
+			assert_eq(ticks[c.leader.id], ticks[c.partner.id], "한 조는 같이 내린다")
+	# 내리면 문 앞에 나타나 모이는 자리까지 걸어간다 (순간 이동이 아니다)
+	var door_pos := riders[0].pos
+	assert_true(_until(sim, func() -> bool: return not riders[0].aboard, 5.0), "곧 내린다")
+	assert_true(riders[0].pos.distance_to(door_pos) < 1.5, "내린 자리는 문 앞")
+	assert_true(_until(sim, func() -> bool: return not res.arriving_now(), 120.0), "모두 내림")
+	assert_true(_until(sim, func() -> bool: return sim.units.firefighters.all(func(f: Firefighter) -> bool: return not f.is_moving()), 60.0), "걸어서 모인다")
+	for c in sim.units.crews:
+		assert_true(c.leader.pos.distance_to(spots[c.id]) < 0.6, "%d조 조장은 모이는 자리에 (%.1f칸)" % [c.number, c.leader.pos.distance_to(spots[c.id])])
+		if c.partner:
+			assert_true(c.partner.pos.distance_to(spots[c.id] + Vector2(1, 0)) < 0.6, "짝은 그 옆에")
+
+
+func test_walks_around_the_vehicle() -> void:
+	var sim := _sim()
+	var res := sim.command.resources
+	var v := sim.units.vehicles[0]
+	var side := Vector2(-v.heading.y, v.heading.x)
+	var from := v.pos - side * (v.width_cells * 0.5 + 1.0)
+	var across := v.pos + side * (v.width_cells * 0.5 + 3.0)
+	var around := res._around(v, 1, from, across)
+	assert_eq(around.size(), 2, "반대쪽으로 갈 때는 차 끝을 돌아간다")
+	for c in around:
+		assert_true(not v.contains(Vector2(c) + Vector2(0.5, 0.5)), "돌아가는 칸은 차체 밖")
+	assert_true(absf((Vector2(around[0]) + Vector2(0.5, 0.5) - v.pos).dot(v.heading)) > v.length_cells * 0.5, "차 길이 밖으로 돈다")
+	assert_true((Vector2(around[0]) - v.pos).dot(side) < 0.0 and (Vector2(around[1]) - v.pos).dot(side) > 0.0, "내린 쪽 → 반대쪽")
+	assert_true(res._around(v, 1, from, from - side * 4.0).is_empty(), "같은 쪽이면 곧장")
+
+
+func test_late_squad_alights_from_doors() -> void:
+	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH)
+	var res := sim.command.resources
+	assert_true(_until(sim, func() -> bool: return not sim.events.of_type("squad_staged").is_empty(), 400.0), "후착대가 대기 장소에 선다")
+	var squad := sim.units.squads[sim.units.squads.size() - 1]
+	assert_true(not squad.crews.is_empty() and not res.alighting.is_empty(), "조가 내리기 시작한다")
+	var v := sim.units.vehicles_of_squad(squad.id)[0]
+	var want := {}
+	for c in squad.crews:
+		assert_true(c.leader.aboard and v.distance_to_body(c.leader.pos) <= 2.5, "내리기 전: 탄 채로 문 앞")
+	for a in res.alighting:
+		want[int(a.ff)] = a.dest
+	assert_true(_until(sim, func() -> bool: return res.alighting.is_empty(), 10.0), "곧 내린다")
+	assert_true(_until(sim, func() -> bool: return squad.crews.all(func(c: Crew) -> bool: return not c.leader.is_moving() and (c.partner == null or not c.partner.is_moving())), 30.0), "차 옆에 모인다")
+	for c in squad.crews:
+		assert_true(not c.leader.aboard and c.leader.pos.distance_to(want[c.leader.id]) < 0.6, "%d조는 모이는 자리에" % c.number)
+		assert_true(not v.contains(c.leader.pos), "차체 밖")

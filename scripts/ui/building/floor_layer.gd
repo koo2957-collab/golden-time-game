@@ -942,7 +942,7 @@ func _draw() -> void:
 	var buckets := {}
 	for ff in sim.units.firefighters:
 		if ff.level == level and not ff.aboard:
-			_bucket(buckets, UnitsView.display_pos(ff, alpha), ff)
+			_bucket_person(buckets, UnitsView.display_pos(ff, alpha), ff, alpha)
 	if level == _first_level:
 		for v in sim.units.vehicles:
 			if not v.away:
@@ -952,7 +952,7 @@ func _draw() -> void:
 			_bucket(buckets, victim.pos, victim)
 	var commander := sim.command.commander
 	if commander.level == level:
-		_bucket(buckets, UnitsView.display_pos(commander, alpha), commander)
+		_bucket_person(buckets, UnitsView.display_pos(commander, alpha), commander, alpha)
 	if level == _first_level:
 		for w in sim.command.survey.witnesses:
 			if w.present(sim.clock.tick):
@@ -1067,6 +1067,53 @@ func _draw_mask() -> PackedByteArray:
 				mask[y * w + x] = 1 if vis else 0
 	_masks[key] = mask
 	return mask
+
+
+## 차량(긴 상자) 옆에 선 사람의 그리기 순서 보정 (2026-11-15, 하차 동작): 차 가운데의 깊이(x + y)만으로 견주면
+## 운전석 문 옆처럼 차 앞쪽·뒤편에 선 사람이 차 위에 그려진다. 차체에서 가장 가까운 점을 기준으로 뒤(북서)·앞(남동)을 가려,
+## 깊이 순서가 그와 어긋나면 [차 가운데 자리, -1(차보다 먼저 그린다) 또는 +1(나중에)]을 돌려준다. 어긋나지 않으면 빈 배열
+func _vehicle_side(p: Vector2, alpha: float) -> Array:
+	if level != _first_level:
+		return []
+	for v in sim.units.vehicles:
+		if v.away:
+			continue
+		var vp := v.prev_pos.lerp(v.pos, alpha)
+		if p.distance_to(vp) > v.length_cells * 0.5 + 2.0:
+			continue
+		var n := p - v.closest_body_point(p, vp)
+		var side := n.x + n.y
+		var ahead := p.x + p.y - (vp.x + vp.y)
+		if side < -0.01 and ahead >= 0.0:
+			return [vp, -1.0]
+		if side > 0.01 and ahead <= 0.0:
+			return [vp, 1.0]
+	return []
+
+
+## 사람의 그리기 깊이 (x + y) — 차량 옆이면 차의 앞·뒤에 맞춘다
+func _person_depth(p: Vector2, alpha: float) -> float:
+	var fix := _vehicle_side(p, alpha)
+	if fix.is_empty():
+		return p.x + p.y
+	var vp: Vector2 = fix[0]
+	return vp.x + vp.y + 0.01 * float(fix[1])
+
+
+## 사람을 깊이 묶음에 넣는다 — 차량 옆이면 그 차와 같은 묶음의 바로 앞·뒤 순서로
+func _bucket_person(buckets: Dictionary, p: Vector2, obj: Object, alpha: float) -> void:
+	var fix := _vehicle_side(p, alpha)
+	if fix.is_empty():
+		_bucket(buckets, p, obj)
+		return
+	if not _mask_now.is_empty() and sim.building.in_bounds(floori(p.x), floori(p.y)) \
+			and _mask_now[floori(p.y) * sim.building.width + floori(p.x)] == 0:
+		return
+	var vp: Vector2 = fix[0]
+	var d := floori(vp.x) + floori(vp.y)
+	if not buckets.has(d):
+		buckets[d] = []
+	buckets[d].append([vp.x + vp.y + 0.01 * float(fix[1]), obj])
 
 
 func _bucket(buckets: Dictionary, p: Vector2, obj: Object) -> void:
@@ -2495,7 +2542,7 @@ func _draw_live_only() -> void:
 	for ff in sim.units.firefighters:
 		if ff.level == level and not ff.aboard:
 			var p := UnitsView.display_pos(ff, alpha)
-			items.append([p.x + p.y, ff])
+			items.append([_person_depth(p, alpha), ff])
 	for v in sim.rescue.victims:
 		if v.discovered and v.level == level:
 			items.append([v.pos.x + v.pos.y, v])
@@ -2998,7 +3045,7 @@ func _draw_outdoor_people() -> void:
 		if ff.level == level and not ff.aboard:
 			var fp := UnitsView.display_pos(ff, alpha)
 			if _outdoor_at(fp):
-				items.append([fp.x + fp.y, ff])
+				items.append([_person_depth(fp, alpha), ff])
 	for victim in sim.rescue.victims:
 		if victim.discovered and victim.level == level and victim.carried_by < 0 and _outdoor_at(victim.pos):
 			items.append([victim.pos.x + victim.pos.y, victim])

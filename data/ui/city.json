@@ -28,7 +28,9 @@
 
   "station_name": {"value": "119안전센터", "source": "화면 설정", "note": "출동 중 안전센터 위에 쓰는 이름"},
   "truck_scale": {"value": 1.5, "source": "화면 설정", "note": "출동 중 도시 위 소방차 그림 배율 (원경에서 너무 작지 않게 조금 키움)"},
-  "truck_gap_cells": {"value": 6, "source": "화면 설정", "note": "뒤따르는 차와의 간격 (3m)"},
+  "truck_shrink_cells": {"value": 30, "source": "화면 설정", "note": "들어올 자리까지 이 거리(칸) 안에서 소방차 그림을 실제 크기로 줄인다 — 현장 차량 그림과 크기가 같아져 끊김 없이 이어진다 (2026-11-15 출동 4단계). 뒤차와의 간격은 도착 간격(phase_params arrival_gap_s) × 차 속도"},
+  "handoff_hold_s": {"value": 1.5, "source": "화면 설정", "note": "도착 직후 현장 차량이 들어오기 시작할 때까지 출동 행렬을 마지막 자리에 그려 두는 가장 긴 시간(실제 초) — 그사이 차가 사라졌다 나타나지 않게. 보통 몇 프레임이면 이어받는다"},
+  "lane_shift_cells": {"value": 40, "source": "화면 설정", "note": "큰길 끝에서 이 거리(칸) 동안 자기가 들어올 차로로 옮겨 탄다 (차량 배치를 고르면 그 차로)"},
   "plume_height_m": {"value": 60, "source": "화면 설정", "note": "대상 건물 연기 기둥 높이 — 원경에서 목적지가 보이게"},
   "plume_radius_m": {"value": 5.0, "source": "화면 설정", "note": "연기 덩이 밑동 반지름"},
   "plume_puffs": {"value": 18, "source": "화면 설정", "note": "연기 덩이 수"},

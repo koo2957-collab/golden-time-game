@@ -61,10 +61,14 @@ func test_no_post_squad_waits_by_vehicle_and_keeps_asking() -> void:
 	var sim := _sim()
 	var squad := _staged(sim, "pump2")
 	assert_true(squad != null, "후착대 도착")
-	var start := squad.crews[0].leader.pos
-	sim.step_ticks(roundi(130.0 / SimClock.TICK_DT))
+	# 2026-11-15: 대원은 각자 문으로 내려 차 옆 모이는 자리까지 걸어간다 — 내린 뒤의 자리를 기준으로 본다
+	sim.step_ticks(roundi(10.0 / SimClock.TICK_DT))
+	var leader := squad.crews[0].leader
+	assert_true(not leader.aboard and not leader.is_moving(), "내려서 모였다")
+	var start := leader.pos
+	sim.step_ticks(roundi(120.0 / SimClock.TICK_DT))
 	assert_true(_asks(sim, squad.name) >= 2, "지휘소가 없으면 차 옆에서 계속 '임무 주십시오' (%d번)" % _asks(sim, squad.name))
-	assert_true(squad.crews[0].leader.pos.distance_to(start) < 1.0, "차 옆에서 기다린다")
+	assert_true(leader.pos.distance_to(start) < 1.0 and sim.units.vehicles_of_squad(squad.id)[0].distance_to_body(leader.pos) < 4.0, "차 옆에서 기다린다")
 	assert_eq(sim.command.post.mode, CommandPost.Mode.MOBILE, "지휘소 전에는 이동지휘")
 
 

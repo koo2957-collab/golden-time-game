@@ -138,6 +138,7 @@ func _ready() -> void:
 	selection.floor_clicked.connect(func(lv: int) -> void: set_view_level(lv, false, true))
 	hud.command_ui.team_drag_started.connect(mission_ui.begin_drag)
 	city.progress = hud.command_ui.dispatch_progress
+	city.placement = hud.command_ui.dispatch_placement
 	# 팀 카드를 끌어 놓은 곳: 전술상황판 평면도 위면 그 칸, 아니면 지도 (P10-1)
 	hud.command_ui.team_dropped.connect(func(id: int, pos: Vector2) -> void:
 		if hud.board.visible and hud.board.map.get_global_rect().has_point(pos):

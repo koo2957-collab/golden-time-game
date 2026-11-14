@@ -17,6 +17,8 @@ var plan: CityPlan
 var night := 0.0
 ## 출동 진행률 (0~1, 출동 중이 아니면 음수) — World가 넣는다 (P9-1 출동 단계)
 var progress: Callable
+## 출동 중에 고른 선착 차량 배치 (보기 순서, 아직 정하지 않았으면 음수) — World가 넣는다
+var placement: Callable
 ## 만든 그림량 (점검용)
 var quad_count := 0
 var window_count := 0
@@ -24,6 +26,9 @@ var lamp_count := 0
 ## 출동 중 화면(소방차·연기 기둥·이름표)을 그리는 겹
 var _icons: Node2D
 var _overlay_drawn := false
+## 도착 직후(출동 장면이 닫히고 차량이 들어오기 시작하기 전 몇 프레임) 행렬을 마지막 자리에 그대로 그려 두기: 마지막 진행률과 남은 시간(실제 초)
+var _hold_f := -1.0
+var _hold_s := 0.0
 var _sim: SimWorld
 ## 그리기 묶음 [{points, colors, indices}]
 var _batches: Array[Dictionary] = []
@@ -230,69 +235,159 @@ func _draw() -> void:
 		RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), b.indices, b.points, b.colors)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if _icons == null or not progress.is_valid():
 		return
-	# 출동 중에만 매 프레임 다시 그린다 (차·연기가 움직인다). 끝나면 한 번 지우고 멈춘다
-	var active := float(progress.call()) >= 0.0
+	var f := float(progress.call())
+	if f >= 0.0:
+		_hold_f = f
+		_hold_s = plan.num("handoff_hold_s", 1.5)
+	elif _hold_f >= 0.0:
+		_hold_s -= delta
+		if _hold_s <= 0.0 or (_sim != null and not _sim.command.resources.arriving.is_empty()):
+			_hold_f = -1.0
+	# 출동 중과 뒤차가 아직 들어오는 동안에만 매 프레임 다시 그린다 (차·연기가 움직인다). 끝나면 한 번 지우고 멈춘다
+	var active := f >= 0.0 or _hold_f >= 0.0 or (_sim != null and _sim.command.resources.arriving.any(func(a: Dictionary) -> bool: return not a.started))
 	if active or _overlay_drawn:
 		_icons.queue_redraw()
 	_overlay_drawn = active
 
 
-## 출동 중인 선착 차량의 자리 (칸): 안전센터에서 길을 따라 큰길로, 현장 지도 서쪽 끝 바로 밖까지.
-## f = 진행률 0~1, index = 몇 번째 차 (뒤차는 간격을 두고 따라온다), length_cells = 차 길이.
+# --- 출동 행렬 (2026-11-15 출동 4단계: 도시의 차가 현장에 들어오는 차량으로 끊김 없이 이어진다) ---
+#   · 행렬 = 처음 현장에 오는 모든 차량, 들어오는 순서대로 (선착 펌프차 먼저 — ResourceSystem.arrival_order)
+#   · 차마다 자기가 들어올 자리(지도 서쪽 끝 밖, 자기 차로)로 간다. 출동 중에 차량 배치를 고르면 그 자리로 맞춘다
+#   · 차 사이 간격 = 현장에 들어올 때의 간격 (arrival_gap_s × 차 속도) — 도착하면 뒤차가 같은 자리에서 이어 달려 들어온다
+#   · 들어올 자리에 가까워지면 그림을 실제 크기로 줄인다 (현장 차량 그림과 크기가 같아지게)
+
+## 출동 행렬의 차량 (들어오는 순서)
+func convoy() -> Array[Vehicle]:
+	var none: Array[Vehicle] = []
+	return _sim.command.resources.arrival_order() if _sim else none
+
+
+## 그 차가 현장 지도에 들어오기 시작하는 자리 {start 차 중심(칸), heading, west 서쪽 끝에서 들어오는가}.
+## 출동 중에 차량 배치를 골랐으면(아직 시뮬레이션에 넣기 전) 그 자리 기준
+func entry_of(v: Vehicle) -> Dictionary:
+	var target := v.pos
+	var heading := v.heading
+	var pick := int(placement.call()) if placement.is_valid() else -1
+	if pick >= 0 and _sim.command.placement.is_empty():
+		var opts := Placement.options(_sim)
+		var j := _sim.units.vehicles_of_squad(Placement.squad_id(_sim)).find(v)
+		var specs: Array = opts[pick].get("vehicles", []) if pick < opts.size() else []
+		if j >= 0 and j < specs.size():
+			var spec: Dictionary = specs[j]
+			var sp: Array = spec.get("spawn", [floori(target.x), floori(target.y)])
+			var h: Array = spec.get("heading", [heading.x, heading.y])
+			target = Vector2(int(sp[0]) + 0.5, int(sp[1]) + 0.5)
+			heading = Vector2(float(h[0]), float(h[1])).normalized()
+	return {"start": _sim.command.resources.entry_start(v, target, heading), "heading": heading, "west": heading.x > 0.7}
+
+
+## 그 차가 길 끝(지도 서쪽 끝, x = 0)에서 멈추는 자리의 x (음수 = 지도 밖). 서쪽에서 들어오지 않는 차는 지도 바로 밖
+func _end_x(v: Vehicle) -> float:
+	var e := entry_of(v)
+	return float((e.start as Vector2).x) if bool(e.west) else -(v.length_cells * 0.5 + 1.0)
+
+
+## 행렬에서 index번째 차가 맨 앞차보다 늦게 들어오는 만큼의 거리 (칸)
+func convoy_lag(index: int, v: Vehicle) -> float:
+	return index * v.speed_cells * float(_sim._phase_params.value("arrival_gap_s"))
+
+
+## 그 차가 경로를 따라 달린 거리 (칸, 음수 = 아직 안전센터를 나서기 전).
+## 진행률 1에서 맨 앞차는 자기가 들어올 자리(시뮬레이션 차량이 출발하는 자리)에 닿고, 뒤차는 도착 간격만큼 뒤에 있다
+func truck_distance(f: float, index: int, v: Vehicle) -> float:
+	var lead_x := _end_x(convoy()[0]) if not convoy().is_empty() else _end_x(v)
+	return clampf(f, 0.0, 1.0) * (plan.route_length() + lead_x) - convoy_lag(index, v) + (_end_x(v) - lead_x)
+
+
+## 출동 중인 차의 자리 (칸): 안전센터에서 길을 따라 큰길로, 끝에서는 자기가 들어올 차로로 옮겨 탄다.
 ## 아직 안전센터를 나서지 않은 뒤차는 x가 아주 작은 값(-100000)
-func truck_cell(f: float, index: int, length_cells: float) -> Vector2:
-	var d := truck_distance(f, index, length_cells)
+func truck_cell(f: float, index: int, v: Vehicle) -> Vector2:
+	var d := truck_distance(f, index, v)
 	if d < 0.0:
 		return Vector2(-100000, 0)
-	return plan.route_point(d / maxf(1.0, plan.route_length()))
+	var total := maxf(1.0, plan.route_length())
+	var at := plan.route_point(d / total)
+	var e := entry_of(v)
+	if bool(e.west):
+		# 마지막 구간에서 자기 차로로 (큰길은 동서로 뻗어 있다). 맨 앞차가 도착하는 순간(진행률 1)의 자기 자리보다 앞서 끝낸다
+		# — 뒤차는 그때 아직 지도에서 떨어져 있고, 거기서부터는 자기 차로를 따라 곧장 들어온다
+		var shift := plan.num("lane_shift_cells", 40)
+		var last := truck_distance(1.0, index, v)
+		at.y += (float((e.start as Vector2).y) - plan.route[plan.route.size() - 1].y) * smoothstep(last - shift, last - shift * 0.4, d)
+	return at
 
 
-## 그 차가 경로를 따라 달린 거리 (칸, 음수 = 아직 출발 전).
-## 맨 앞차는 진행률 1에서 현장 지도 바로 밖(시뮬레이션 차량이 들어오기 시작하는 자리)에 선다
-func truck_distance(f: float, index: int, length_cells: float) -> float:
-	var stop := plan.route_length() - (length_cells * 0.5 + 1.0)
-	return clampf(f, 0.0, 1.0) * stop - index * (length_cells + plan.num("truck_gap_cells", 6))
+## 들어올 자리까지 남은 거리(칸)에 따른 그림 배율: 멀리서는 크게(원경에서 보이게), 다 오면 실제 크기
+func truck_scale(remain: float) -> float:
+	return lerpf(1.0, plan.num("truck_scale", 1.5), smoothstep(0.0, maxf(1.0, plan.num("truck_shrink_cells", 30)), remain))
 
 
-## 출동 중 화면: 대상 건물의 연기 기둥, 길을 따라 달리는 선착 소방차, 안전센터 이름
+## 도착한 뒤 아직 지도에 들어오지 않은 뒤차 [{vehicle, pos 칸, heading, remain 남은 거리}]:
+## 들어올 자리로 달려오는 중 — 그 자리에 닿는 순간 시뮬레이션 차량이 이어받는다 (서쪽에서 들어오는 차만)
+func followers() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	if _sim == null:
+		return out
+	var now := _sim.clock.tick + _sim.clock.alpha()
+	for a in _sim.command.resources.arriving:
+		if bool(a.started):
+			continue
+		var v := _sim.units.get_vehicle(int(a.vehicle))
+		if v == null or v.heading.x <= 0.7:
+			continue
+		var remain := maxf(0.0, (int(a.start_tick) - now) * SimClock.TICK_DT) * v.speed_cells
+		out.append({"vehicle": v, "pos": (a.start as Vector2) - v.heading * remain, "heading": v.heading, "remain": remain})
+	return out
+
+
+## 출동 중 화면: 대상 건물의 연기 기둥, 길을 따라 달리는 출동 행렬, 안전센터 이름. 도착한 뒤에는 아직 들어오지 않은 뒤차만
 func _draw_overlay() -> void:
 	if _sim == null or not progress.is_valid() or plan == null:
 		return
 	var f := float(progress.call())
-	if f < 0.0:
-		return
+	# 도착 직후: 차량이 들어오기 시작할 때까지 행렬을 마지막 자리에 그대로 둔다 (그사이 사라졌다 나타나지 않게)
+	var held := f < 0.0 and _hold_f >= 0.0 and _sim.command.resources.arriving.is_empty()
+	if held:
+		f = _hold_f
 	# 화면 배율과 상관없이 같은 크기로 보이게 하는 배수 (멀리 본 도시에서도 글자·표시가 보이도록)
 	var k := 1.0 / maxf(0.01, _icons.get_global_transform_with_canvas().get_scale().x)
 	var font := PlanStyle.font()
-	_draw_plume()
-	# 안전센터 이름
-	var st: Rect2i = plan.station.rect
-	_label(proj.to_screen(Vector2(st.get_center()), float(plan.station.floors) * plan.num("floor_m", 3.0)) + Vector2(0, -10) * k,
-		str(plan.p.get("station_name", "119안전센터")), k, font, _color("station_top", Color("c0392b")))
+	var trucks: Array[Dictionary] = []
+	if f >= 0.0:
+		_draw_plume()
+		# 안전센터 이름
+		var st: Rect2i = plan.station.rect
+		_label(proj.to_screen(Vector2(st.get_center()), float(plan.station.floors) * plan.num("floor_m", 3.0)) + Vector2(0, -10) * k,
+			str(plan.p.get("station_name", "119안전센터")), k, font, _color("station_top", Color("c0392b")))
+		var list := convoy()
+		var total := maxf(1.0, plan.route_length())
+		var lead_end := total + (_end_x(list[0]) if not list.is_empty() else 0.0)
+		for i in list.size():
+			var v := list[i]
+			var d := truck_distance(f, i, v)
+			if d < 0.0:
+				continue
+			trucks.append({"vehicle": v, "pos": truck_cell(f, i, v), "heading": plan.route_heading(d / total),
+				"remain": (1.0 - clampf(f, 0.0, 1.0)) * lead_end + convoy_lag(i, v), "moving": f < 1.0 and not held})
+	else:
+		trucks = followers()
 	var now := Time.get_ticks_msec() / 1000.0
-	var i := 0
-	for v in _sim.units.vehicles:
-		if v.squad_id != 0:
-			continue
-		var d := truck_distance(f, i, v.length_cells)
-		i += 1
-		if d < 0.0:
-			continue
-		var t := d / maxf(1.0, plan.route_length())
-		var sp := proj.to_screen(plan.route_point(t), 0.0)
+	for i in trucks.size():
+		var t := trucks[i]
+		var v: Vehicle = t.vehicle
+		var sp := proj.to_screen(t.pos, 0.0)
 		# 눈에 띄게: 차 둘레에 번쩍이는 빨간 빛 (화면에서 늘 같은 크기)
 		var pulse := 0.5 + 0.5 * sin(now * 9.0 + i)
 		_icons.draw_circle(sp, (15.0 + 5.0 * pulse) * k, Color(1.0, 0.15, 0.1, 0.16 + 0.14 * pulse))
 		var art := SpriteArt.vehicle_set(v.type)
-		var heading := plan.route_heading(t)
 		var drawn := false
 		if art != null:
-			var anim := "drive" if art.frames("drive") > 0 and f < 1.0 else "idle"
-			drawn = art.draw(_icons, anim, SpriteArt.dir8(heading), SpriteArt.frame_at(anim, art.frames(anim), v.id * 0.5), sp,
-				Color.WHITE, Color(0, 0, 0, 0), plan.num("truck_scale", 1.5))
+			var anim := "drive" if art.frames("drive") > 0 and bool(t.get("moving", true)) else "idle"
+			drawn = art.draw(_icons, anim, SpriteArt.dir8(t.heading), SpriteArt.frame_at(anim, art.frames(anim), v.id * 0.5), sp,
+				Color.WHITE, Color(0, 0, 0, 0), truck_scale(float(t.remain)))
 		if not drawn:
 			_icons.draw_circle(sp, 9.0 * k, Color(v.color, 0.95))
 			_icons.draw_arc(sp, 9.0 * k, 0.0, TAU, 20, Color.WHITE, 2.0 * k)

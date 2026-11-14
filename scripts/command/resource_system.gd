@@ -6,6 +6,8 @@ extends RefCounted
 ##   투입 (2.1.2): 대기 중인 출동대는 투입 명령을 받아야 움직인다 (무전은 CommandSystem이 보낸다)
 ##   지원 요청 (1.2): 추가 출동대 요청·대응 1단계 발령 후 시나리오에 정한 시간 뒤 지원 출동대가 도착한다
 ## 선착대(시나리오 편성 roster)는 처음부터 투입된 상태이다.
+## 하차 (2026-11-15 사용자 결정): 차가 서면 대원은 각자 문(운전석·조수석·뒷자리 양쪽 — data/units/dismount.json)으로 내려
+##   모이는 자리까지 걸어간다. 내리기 전까지는 탄 채(aboard)로 문 앞 자리에 있다
 
 enum State { EN_ROUTE, STAGED, COMMITTED }
 
@@ -36,6 +38,43 @@ var arriving: Array[Dictionary] = []
 ## 차량을 타고 오는 조 {조 id: 내릴 자리 Vector2}
 var _riders: Dictionary = {}
 var _arrive_gap_ticks := 50
+## 내리는 중인 대원 [{ff 대원 id, tick 내리는 틱, dest 모이는 자리 Vector2, around 차를 돌아갈 때 거쳐 갈 칸 Array[Vector2i]}]
+var alighting: Array[Dictionary] = []
+
+const DISMOUNT_PATH := "res://data/units/dismount.json"
+static var _dismount_cfg: Dictionary = {}
+
+
+## 하차 설정 (data/units/dismount.json) — 한 번 읽어 둔다
+static func dismount_config() -> Dictionary:
+	if _dismount_cfg.is_empty():
+		var data: Variant = JsonData.load_file(DISMOUNT_PATH)
+		if data is Dictionary:
+			_dismount_cfg = data
+	return _dismount_cfg
+
+
+static func _dismount_num(key: String, fallback: float) -> float:
+	var entry: Variant = dismount_config().get(key)
+	return float(entry["value"]) if entry is Dictionary and (entry as Dictionary).has("value") else fallback
+
+
+## 그 차종의 문 목록 [{seat, along, side}] (앉히는 순서)
+static func door_specs(type: String) -> Array:
+	var doors: Dictionary = dismount_config().get("doors", {})
+	return doors.get(type, doors.get("default", []))
+
+
+## 문 앞에 내려서는 자리 (칸 좌표). 운전석 쪽 = 차 앞을 볼 때 왼쪽
+static func door_point(v: Vehicle, spec: Dictionary) -> Vector2:
+	var clear := _dismount_num("door_clear_cells", 0.6)
+	var along := float(spec.get("along", 0.0)) * v.length_cells
+	var side := float(spec.get("side", 1.0))
+	var p := v.pos + v.heading * along
+	if side != 0.0:
+		return p + Vector2(-v.heading.y, v.heading.x) * signf(side) * (v.width_cells * 0.5 + clear)
+	# 뒷문(또는 앞): 차 끝에서 조금 더
+	return p + v.heading * (-1.0 if along < 0.0 else 1.0) * clear
 
 
 func _init(p_units: UnitSystem, p_pathfinder: Pathfinder, p_conditions: CrewConditionSystem, p_building: BuildingData, p_events: SimEventLog) -> void:
@@ -183,22 +222,12 @@ func begin_arrival(tick: int, gap_s: float) -> void:
 	if not arrival_drive or not arriving.is_empty():
 		return
 	_arrive_gap_ticks = roundi(gap_s / SimClock.TICK_DT)
-	var order: Array[Vehicle] = []
-	for v in units.vehicles:
-		if v.is_pump() and v.squad_id == 0:
-			order.append(v)
-	for v in units.vehicles:
-		if not v in order:
-			order.append(v)
-	var bounds := Rect2(0, 0, building.width, building.height)
+	var order := arrival_order()
 	for i in order.size():
 		var v := order[i]
 		var target := v.pos
 		# 차가 향한 쪽 뒤로 지도 밖까지 물린 자리에서 출발한다
-		var back := 0.0
-		while bounds.has_point(target - v.heading * back):
-			back += 1.0
-		var start := target - v.heading * (back + v.length_cells * 0.5 + 1.0)
+		var start := _edge_start(target, v.heading, v.length_cells)
 		arriving.append({"vehicle": v.id, "target": target, "start": start, "start_tick": tick + i * _arrive_gap_ticks,
 			"started": false, "arrived": false})
 		v.away = true
@@ -213,9 +242,27 @@ func begin_arrival(tick: int, gap_s: float) -> void:
 			ff.path.clear()
 
 
+## 처음 차량이 들어오는 순서: 선착 펌프차 먼저, 그다음 편성 순서대로 (도시 화면의 출동 행렬도 이 순서)
+func arrival_order() -> Array[Vehicle]:
+	var order: Array[Vehicle] = []
+	for v in units.vehicles:
+		if v.is_pump() and v.squad_id == 0:
+			order.append(v)
+	for v in units.vehicles:
+		if not v in order:
+			order.append(v)
+	return order
+
+
+## 차가 target에 heading 방향으로 설 때 지도 밖에서 출발하는 자리 (화면이 출동 행렬을 이 자리에 이어 붙인다)
+func entry_start(v: Vehicle, target: Vector2, heading: Vector2) -> Vector2:
+	return _edge_start(target, heading, v.length_cells)
+
+
 func _step_arrival(tick: int) -> void:
 	_step_arrivals(tick)
 	_dismount_rest()
+	_step_alighting(tick)
 
 
 func _step_arrivals(tick: int) -> void:
@@ -250,23 +297,154 @@ func _step_arrivals(tick: int) -> void:
 			a.arrived = true
 			events.add(tick, "vehicle_arrived", {"vehicle": v.display_name(units.squads[v.squad_id].name), "driver": v.driver_label(),
 				"squad": units.squads[v.squad_id].name})
-			# 그 출동대의 첫 차가 서면 조가 내린다
+			# 그 출동대의 첫 차가 서면 조가 내린다 — 각자 문으로 내려 모이는 자리까지 걸어간다
 			if units.vehicles_of_squad(v.squad_id)[0] == v:
+				var riding: Array[Crew] = []
+				var spots: Dictionary = {}
 				for c in units.squads[v.squad_id].crews:
 					if not _riders.has(c.id):
 						continue
-					var spot: Vector2 = _riders[c.id]
+					riding.append(c)
+					spots[c.id] = _riders[c.id]
 					_riders.erase(c.id)
-					for i in c.members().size():
-						var ff := c.members()[i]
-						ff.aboard = false
-						ff.pos = spot + Vector2(i, 0)
-						ff.prev_pos = ff.pos
+				_start_dismount(v, riding, spots, tick)
+
+
+## 차 v에 탄 조들을 내린다: 사람마다 문을 정해(문 목록 순서, 한 조는 같이) 문 앞에 탄 채로 두고, 내릴 틱을 잡는다.
+## spots = {조 id: 조장이 모이는 자리} (짝은 그 오른쪽 칸)
+func _start_dismount(v: Vehicle, crews: Array[Crew], spots: Dictionary, tick: int) -> void:
+	var specs := door_specs(v.type)
+	var n := specs.size()
+	var delay := roundi(_dismount_num("door_delay_s", 0.6) / SimClock.TICK_DT)
+	var gap := roundi(_dismount_num("door_gap_s", 1.2) / SimClock.TICK_DT)
+	var taken: Dictionary = {}  # 차례(wave) -> 이미 잡은 칸들
+	var k := 0
+	for c in crews:
+		var members := c.members()
+		var spot: Vector2 = spots[c.id]
+		var wave := 0
+		var picks: Array[int] = []
+		for i in members.size():
+			picks.append(k % n if n > 0 else -1)
+			@warning_ignore("integer_division")
+			wave = maxi(wave, k / n if n > 0 else 0)
+			k += 1
+		if not taken.has(wave):
+			taken[wave] = []
+		for i in members.size():
+			var ff := members[i]
+			var dest := spot + Vector2(i, 0)
+			var around: Array[Vector2i] = []
+			var cell := Pathfinder.NO_CELL
+			if picks[i] >= 0:
+				var spec: Dictionary = specs[picks[i]]
+				var want := door_point(v, spec)
+				cell = _door_cell(ff.level, Vector2i(floori(want.x), floori(want.y)), taken[wave])
+				if cell != Pathfinder.NO_CELL:
+					around = _around(v, ff.level, Vector2(cell) + Vector2(0.5, 0.5), dest)
+			ff.aboard = true
+			ff.path.clear()
+			if cell != Pathfinder.NO_CELL:
+				(taken[wave] as Array).append(cell)
+				ff.pos = Vector2(cell) + Vector2(0.5, 0.5)
+			else:
+				# 문 앞에 설 자리가 없으면 예전처럼 모이는 자리에 바로
+				ff.pos = dest
+			ff.prev_pos = ff.pos
+			alighting.append({"ff": ff.id, "tick": tick + delay + wave * gap, "dest": dest, "around": around})
+
+
+## 문 앞에 설 수 있는 가장 가까운 칸 (걸을 수 있고, 차체 밖이고, 같은 차례의 다른 사람이 잡지 않은 칸). 없으면 NO_CELL
+func _door_cell(level: int, want: Vector2i, taken: Array) -> Vector2i:
+	var reach := int(_dismount_num("door_search_cells", 3))
+	for r in reach + 1:
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				if maxi(absi(dx), absi(dy)) != r:
+					continue
+				var c := want + Vector2i(dx, dy)
+				if not c in taken and _standable(level, c):
+					return c
+	return Pathfinder.NO_CELL
+
+
+## 문에서 내린 자리(from)에서 모이는 자리(dest)로 곧장 가면 차체를 지나게 될 때, 차를 뚫지 않게 가까운 끝(앞·뒤)을 돌아가는 칸 둘.
+## 곧장 가도 되거나 돌아갈 자리가 막혀 있으면 빈 목록 (길찾기는 차량을 장애물로 보지 않는다)
+func _around(v: Vehicle, level: int, from: Vector2, dest: Vector2) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	var fp := v.footprint()
+	var crosses := v.contains(dest)
+	for e in 4:
+		if Geometry2D.segment_intersects_segment(from, dest, fp[e], fp[(e + 1) % 4]) != null:
+			crosses = true
+	if not crosses:
+		return out
+	var side_unit := Vector2(-v.heading.y, v.heading.x)
+	var clear := _dismount_num("door_clear_cells", 0.6) + 0.5
+	var reach := v.width_cells * 0.5 + clear
+	var from_side := signf((from - v.pos).dot(side_unit))
+	var dest_side := signf((dest - v.pos).dot(side_unit))
+	if dest_side == 0.0:
+		dest_side = -from_side
+	var best: Array[Vector2i] = []
+	var best_len := INF
+	for end: float in [1.0, -1.0]:
+		var tip := v.pos + v.heading * end * (v.length_cells * 0.5 + clear)
+		var p1 := tip + side_unit * from_side * reach
+		var p2 := tip + side_unit * dest_side * reach
+		var c1 := Vector2i(floori(p1.x), floori(p1.y))
+		var c2 := Vector2i(floori(p2.x), floori(p2.y))
+		if not _standable(level, c1) or not _standable(level, c2):
+			continue
+		var length := from.distance_to(p1) + p1.distance_to(p2) + p2.distance_to(dest)
+		if length < best_len:
+			best_len = length
+			best = [c1, c2]
+	return best
+
+
+## 내릴 틱이 된 대원을 내린다: 문 앞에 나타나 모이는 자리까지 걸어간다 (그사이 임무를 받았으면 그 길을 간다)
+func _step_alighting(tick: int) -> void:
+	var i := 0
+	while i < alighting.size():
+		var a := alighting[i]
+		if tick < int(a.tick):
+			i += 1
+			continue
+		alighting.remove_at(i)
+		var ff := units.firefighters[int(a.ff)]
+		ff.aboard = false
+		if ff.incapacitated or ff.is_moving():
+			continue
+		var dest: Vector2 = a.dest
+		var goal := Vector3i(floori(dest.x), floori(dest.y), ff.level)
+		if goal == ff.cell3():
+			continue
+		var path: Array[Vector3i] = []
+		var at := ff.cell3()
+		var ok := true
+		var stops: Array[Vector3i] = []
+		for c: Vector2i in a.around:
+			stops.append(Vector3i(c.x, c.y, ff.level))
+		stops.append(goal)
+		for stop in stops:
+			var leg := pathfinder.find_path(at, stop)
+			if leg.is_empty():
+				ok = false
+				break
+			path.append_array(leg if path.is_empty() else leg.slice(1))
+			at = stop
+		if ok and not path.is_empty():
+			ff.set_path(path)
+		else:
+			# 길이 없으면 예전처럼 그 자리에 바로
+			ff.pos = dest
+			ff.prev_pos = dest
 
 
 func _dismount_rest() -> void:
 	# 차가 다 섰는데 아직 탄 조(자기 차가 없는 출동대)는 내린다
-	if not _riders.is_empty() and not arriving.is_empty() and not arriving_now():
+	if not _riders.is_empty() and not arriving.is_empty() and not vehicles_arriving():
 		for id: int in _riders.keys():
 			var c := units.get_crew(id)
 			var spot: Vector2 = _riders[id]
@@ -317,8 +495,13 @@ func _blocked(v: Vehicle, center: Vector2) -> bool:
 	return false
 
 
-## 들어오는 중인가 (차량이 아직 서지 않음)
+## 들어오는 중인가 (차량이 아직 서지 않았거나, 선 차에서 대원이 내리는 중)
 func arriving_now() -> bool:
+	return vehicles_arriving() or not alighting.is_empty()
+
+
+## 처음 차량 가운데 아직 서지 않은 것이 있는가
+func vehicles_arriving() -> bool:
 	return arriving.any(func(a: Dictionary) -> bool: return not a.arrived)
 
 
@@ -452,6 +635,8 @@ func _dismount(squad: Squad, tick: int) -> void:
 	var people := 0
 	var level := building.levels()[0]
 	var crews: Array = data.get("crews", [])
+	var made: Array[Crew] = []
+	var spots: Dictionary = {}
 	for i in crews.size():
 		var spawn := Vector2i(roundi(vehicles[0].pos.x) - 3 + i * 3, 0) if not vehicles.is_empty() else Vector2i.ZERO
 		if not vehicles.is_empty():
@@ -461,6 +646,11 @@ func _dismount(squad: Squad, tick: int) -> void:
 		for ff in crew.members():
 			conditions.init_member(ff)
 			people += 1
+		made.append(crew)
+		spots[crew.id] = crew.leader.pos
+	# 각자 문으로 내려 차 옆(보도 쪽) 모이는 자리까지 걸어간다
+	if not vehicles.is_empty():
+		_start_dismount(vehicles[0], made, spots, tick)
 	_state[squad.id] = State.STAGED
 	var kinds: PackedStringArray = []
 	for v in vehicles:

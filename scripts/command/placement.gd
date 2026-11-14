@@ -58,6 +58,11 @@ static func apply(sim: SimWorld, index: int, tick: int) -> bool:
 	return true
 
 
+## 배치가 적용되는 출동대 (선착대) id — 화면이 출동 행렬의 들어갈 자리를 미리 구할 때 쓴다
+static func squad_id(sim: SimWorld) -> int:
+	return _squad(sim)
+
+
 static func _squad(sim: SimWorld) -> int:
 	var key := str(sim.scenario.get("approach", {}).get("squad", ""))
 	for s in sim.units.squads:

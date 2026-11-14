@@ -381,6 +381,14 @@ func result() -> Dictionary:
 	return out
 
 
+## 출동 중에 정한 선착 차량 배치 (보기 순서, 아직 정하지 않았으면 -1) — 도시의 출동 행렬이 그 자리로 들어가는 길을 탄다
+func placement_pick() -> int:
+	for s: Dictionary in steps:
+		if str(s.kind) == "placement" and bool(s.answered) and not (s.picked as Array).is_empty():
+			return int(s.options[s.picked[0]].value)
+	return -1
+
+
 ## 준비판에 적는 그 결정의 한 줄 요약
 func summary(s: Dictionary) -> String:
 	if not bool(s.answered):

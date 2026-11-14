@@ -1027,8 +1027,8 @@ func _draw_mask() -> PackedByteArray:
 	var key := ""
 	if _outside():
 		key = "ext:%d" % level
-	elif upper_level >= 0 and depth > 0 and depth < ABOVE_DEPTH:
-		# 아래로 보이는 층만: 위층 바닥에 가려지는 칸을 뺀다. 지금 층(depth 0)은 위층이 턱·점선뿐이라 다 그린다
+	elif upper_level >= 0 and depth > 0 and depth < ABOVE_DEPTH and not stack.staggered():
+		# (제자리 쌓기만 — 층 분리에서는 층끼리 가리지 않는다) 아래로 보이는 층만: 위층 바닥에 가려지는 칸을 뺀다. 지금 층(depth 0)은 위층이 턱·점선뿐이라 다 그린다
 		# (지금 층도 계단 디딤판 때문에 upper_level 을 가진다, 2026-11-12)
 		key = "%d:%d" % [level, upper_level]
 	else:
@@ -1095,10 +1095,12 @@ func _draw_ground() -> void:
 ## 정보 안개는 원래 바닥 위에 반투명 마름모를 한 번 더 그리던 것을, 불투명한 바닥 색에 미리 섞어 같은 색을 낸다.
 ## 계단선도 안개에 덮이던 색이 그대로 나오도록 같은 비율로 섞는다.
 func _update_ground_colors() -> void:
-	var key := [sim.clock.tick, level, thermal, sim.perception.enabled, sim.plan.known, lower_level]
+	var key := [sim.clock.tick, level, thermal, sim.perception.enabled, sim.plan.known, lower_level, _outside()]
 	if key == _ground_key:
 		return
 	_ground_key = key
+	# 내부 화면(층 분리): 바깥 땅은 어둡게 — 건물 안에 집중 (2026-11-14). 외부 화면에서는 그대로
+	var outdoor_darken := stack.params.split_outdoor_darken if stack.staggered() and not _outside() else 0.0
 	var b := sim.building
 	var cells: PackedInt32Array = _ground_cells[level]
 	var types: PackedByteArray = _ground_types[level]
@@ -1137,6 +1139,8 @@ func _update_ground_colors() -> void:
 			# 그을린 칸 (탄 칸은 가구 높이가 0이 되므로 _furniture_height 조건은 늘 참)
 			if burnt:
 				color = color.lerp(FireView.CHAR_COLOR, 0.8)
+			if outdoor and outdoor_darken > 0.0:
+				color = color.darkened(outdoor_darken)
 			# 벽 바닥도 모르는 곳이면 덮는다 (외벽은 밖에서 보이므로 그대로)
 			@warning_ignore("integer_division")
 			var hidden_wall := structure and p.enabled and not sim.plan.structure_seen(level, k % b.width, k / b.width)
@@ -3028,7 +3032,7 @@ func _outdoor_at(p: Vector2) -> bool:
 
 ## 이 층(아래로 보이는 층)의 그 자리 사람이 바로 위층 건물(바닥~천장 덩어리)에 화면에서 가려지는가
 func _hidden_by_upper(p: Vector2, h: float) -> bool:
-	if upper_level < 0 or depth <= 0 or depth >= ABOVE_DEPTH:
+	if upper_level < 0 or depth <= 0 or depth >= ABOVE_DEPTH or stack.staggered():
 		return false
 	var fp: Rect2i = sim.building.footprint(upper_level)
 	var shift := stack.offset_vec(depth - 1) - stack.offset_vec(depth)

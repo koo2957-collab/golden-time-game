@@ -2,7 +2,9 @@ class_name IsoView
 extends Node2D
 ## 입체(아이소메트릭) 화면. 층 노드(FloorLayer)를 묶어 건물을 두 모습으로 보여 준다 (R17).
 ##   외부 보기: 지상층 노드 하나가 바깥(도로·차량)과 건물 외관을 그린다.
-##   단면 보기(인형집): 지금 층과 아래 층(FloorStack)을 층 노드마다 쌓아 그린다.
+##   내부 화면(층 분리, 2026-11-14 사용자 결정): 고른 층은 제자리, 직상층은 위로, 직하층은 아래로 떼어
+##     세 층 모두 온전하게(불투명) 그린다. 이웃 층 바탕은 흑백·조금 어둡게, 사람·불·연기는 원래 색 (색 겹).
+##   (예전) 단면 보기(인형집): 지금 층과 아래 층(FloorStack)을 층 노드마다 쌓아 그린다.
 ##     지금 층은 화면 높이 0, 아래 층은 floor_height_px씩 아래로 내려 그리고 한 층 내려갈수록 어둡게 한다.
 ##     위 층·지붕은 그리지 않는다. 보이지 않는 층 노드는 visible = false (시뮬레이션은 계속 돈다).
 ## 전환 연출(transition_s): 안으로·아래로 갈 때는 이전 모습(외벽·위층)이 위로 흐려지며 사라지고,
@@ -43,17 +45,10 @@ var _links: Node2D
 var partner_live: FloorLayer
 ## 지금 층의 움직이는 것(사람·불·연기·수관·구역·차량)을 원래 색으로 그리는 겹 — 바탕은 색을 뺀다 (2026-11-12)
 var current_live: FloorLayer
-var _shadow: Node2D
 var _hole_shader: Shader
 var _proj: IsoProjection
-## 층 분리 보기 (시험 화면, 2026-11-14): 지금 층과 짝 층을 화면 위아래로 떼어 둘 다 온전하게 보인다.
-## 위층을 반투명하게 하거나 뚫지 않는다. 실제 층·칸 좌표는 그대로이고 그리는 위치만 띄운다.
-## 그리기는 예전 비켜 놓기(stagger)를 그대로 쓰되 뒤로 비키지 않고 위로만 띄운다
-var split := false
-## 위층을 띄운 거리 (화면 px)
-var split_lift_px := 0.0
-## 끄면 되돌릴 설정 [stack_mode, stagger_back_ratio, stagger_floor_px]
-var _split_saved: Array = []
+## 직하층의 불·연기·사람 색 겹 (내부 화면에서 이웃 층이 둘일 때)
+var partner_live_low: FloorLayer
 
 
 func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProjection) -> void:
@@ -67,11 +62,6 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 		move_child(layer, 0)
 		layer.setup(sim, p_selection, p_proj, stack)
 		layers.append(layer)
-	# 비켜 놓은 위층이 아래층 바닥에 드리우는 그림자 (아래층 다음, 위층 앞에 그린다)
-	_shadow = Node2D.new()
-	_shadow.name = "UpperShadow"
-	_shadow.draw.connect(_draw_shadow)
-	add_child(_shadow)
 	# 위층 (지금 층 위에 반투명으로, 기획안 9-4)
 	for k in params.visible_floors_above:
 		var up := FloorLayer.new()
@@ -91,7 +81,12 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 	add_child(partner_live)
 	partner_live.setup(sim, p_selection, p_proj, stack)
 	partner_live.visible = false
-	# 비켜 놓은 두 층의 계단을 잇는 점선 (위층 위에 그린다)
+	partner_live_low = FloorLayer.new()
+	partner_live_low.name = "PartnerLiveLow"
+	add_child(partner_live_low)
+	partner_live_low.setup(sim, p_selection, p_proj, stack)
+	partner_live_low.visible = false
+	# 떼어 놓은 층들의 계단을 잇는 점선 (위층 위에 그린다)
 	_links = Node2D.new()
 	_links.name = "StairLinks"
 	_links.z_as_relative = false
@@ -125,38 +120,19 @@ func show_view(p_level: int, p_exterior: bool, animate := true) -> void:
 	ghost.visible = false
 	_apply()
 	var changed := p_level != old_level or p_exterior != old_exterior
-	if changed and animate and params.transition_s > 0.0 and is_inside_tree():
+	# 전환 연출은 예전 제자리 단면에서만 — 내부 화면(층 분리)은 층들이 화면에서 제자리에 있어야 하고
+	# 안팎을 오갈 때는 카메라가 함께 바뀐다 (2026-11-14)
+	if changed and animate and params.transition_s > 0.0 and is_inside_tree() and not stack.staggered():
 		_animate(old_level, old_exterior)
 
 
-## 층 분리 보기를 쓸 수 있는 건물인가 (층 번호가 이어진 층이 둘 이상)
-func split_available() -> bool:
-	if stack == null or sim == null:
-		return false
-	for lv in sim.building.levels():
-		if stack.partner(lv) >= 0:
-			return true
-	return false
-
-
-## 층 분리 보기를 켜고 끈다. lift_px 를 주면 그 간격으로 (0 이하면 기본 간격)
-func set_split(on: bool, lift_px := -1.0) -> void:
+## 내부 화면의 층 간격을 바꾼다 (화면 px). 실제 층·칸 좌표와 무관 — 그리는 위치만
+func set_lift(px: float) -> void:
 	if layers.is_empty():
 		return
-	if on and not split:
-		_split_saved = [params.stack_mode, params.stagger_back_ratio, params.stagger_floor_px]
-	if on:
-		split_lift_px = maxf(params.split_min_px, lift_px) if lift_px > 0.0 else stack.split_default_lift_px()
-		params.stack_mode = "stagger"
-		params.stagger_back_ratio = 0.0
-		params.stagger_floor_px = split_lift_px
-	elif split:
-		params.stack_mode = _split_saved[0]
-		params.stagger_back_ratio = _split_saved[1]
-		params.stagger_floor_px = _split_saved[2]
-	split = on
+	params.split_lift_px = maxf(params.split_min_px, px)
 	stack = FloorStack.new(sim.building, params)
-	for node: FloorLayer in layers + upper_layers + [current_live, partner_live, ghost]:
+	for node: FloorLayer in _all_layers():
 		node.stack = stack
 	if _tween != null:
 		_tween.kill()
@@ -164,29 +140,72 @@ func set_split(on: bool, lift_px := -1.0) -> void:
 	_apply()
 
 
-## 층 분리 보기에서 지금 층과 짝 층이 차지하는 화면 범위 (world 좌표, 벽 높이까지). 카메라 맞춤·이동 범위용.
-## 분리 보기가 아니거나 짝 층이 없으면 지금 층만
-func split_rect() -> Rect2:
-	var specs: Array = [[_level, Vector2.ZERO]]
-	if split and not _exterior:
-		var pa := stack.partner(_level)
-		if pa >= 0:
-			var up: bool = sim.building.floor_number(pa) > sim.building.floor_number(_level)
-			specs.append([pa, stack.upper_vec(1) if up else stack.offset_vec(1)])
-	var r := Rect2()
-	var first := true
-	for spec: Array in specs:
-		var fp := sim.building.footprint(spec[0])
-		var off: Vector2 = spec[1]
-		for c: Vector2 in [Vector2(fp.position), Vector2(fp.end.x, fp.position.y), Vector2(fp.end), Vector2(fp.position.x, fp.end.y)]:
-			for h: float in [0.0, params.inner_wall_m]:
-				var p: Vector2 = _proj.to_screen(c, h) + off
-				if first:
-					r = Rect2(p, Vector2.ZERO)
-					first = false
-				else:
-					r = r.expand(p)
+func lift_px() -> float:
+	return stack.lift_px if stack != null else 0.0
+
+
+func _all_layers() -> Array[FloorLayer]:
+	var out: Array[FloorLayer] = []
+	out.append_array(layers)
+	out.append_array(upper_layers)
+	out.append_array([current_live, partner_live, partner_live_low, ghost])
+	return out
+
+
+## 내부 화면에서 함께 보이는 층과 그 화면 위치 (아래층부터): [[level, Vector2], ...]. 외부 화면이면 지금 층만
+func shown_floors() -> Array:
+	var out: Array = []
+	if _exterior or stack == null or not stack.staggered():
+		return [[_level, Vector2.ZERO]]
+	var vis := stack.visible_levels(_level)
+	if vis.size() > 1:
+		out.append([vis[1], stack.offset_vec(1)])
+	out.append([_level, Vector2.ZERO])
+	var above := stack.above_levels(_level)
+	if not above.is_empty():
+		out.append([above[0], stack.upper_vec(1)])
+	return out
+
+
+## 층 하나가 차지하는 화면 범위 (world 좌표, 바닥부터 벽 높이까지)
+func _floor_rect(lv: int, off: Vector2) -> Rect2:
+	var fp := sim.building.footprint(lv)
+	var r := Rect2(_proj.to_screen(Vector2(fp.position)) + off, Vector2.ZERO)
+	for c: Vector2 in [Vector2(fp.position), Vector2(fp.end.x, fp.position.y), Vector2(fp.end), Vector2(fp.position.x, fp.end.y)]:
+		for h: float in [0.0, params.inner_wall_m]:
+			r = r.expand(_proj.to_screen(c, h) + off)
 	return r
+
+
+## 내부 화면의 화면 맞춤 범위 (2026-11-14 사용자 결정): 고른 층 + 직상층. 직상층이 없으면 고른 층 + 직하층.
+## 직하층은 그 아래에 이어져 있어 화면을 내리거나 축소하면 보인다
+func frame_rect() -> Rect2:
+	var r := _floor_rect(_level, Vector2.ZERO)
+	if _exterior or stack == null or not stack.staggered():
+		return r
+	var above := stack.above_levels(_level)
+	if not above.is_empty():
+		return r.merge(_floor_rect(above[0], stack.upper_vec(1)))
+	var vis := stack.visible_levels(_level)
+	if vis.size() > 1:
+		r = r.merge(_floor_rect(vis[1], stack.offset_vec(1)))
+	return r
+
+
+## 보이는 모든 층의 화면 범위 (카메라 이동 범위용)
+func shown_rect() -> Rect2:
+	var r := _floor_rect(_level, Vector2.ZERO)
+	for spec: Array in shown_floors():
+		r = r.merge(_floor_rect(spec[0], spec[1]))
+	return r
+
+
+## 고른 층을 from 에서 to 로 바꿀 때, 층들이 화면에서 제자리에 있으려면 카메라가 움직여야 하는 거리.
+## (고른 층이 늘 기준 자리에 오므로 위층을 고르면 모든 층이 한 간격 아래로 내려간다)
+func level_shift(from: int, to: int) -> Vector2:
+	if stack == null or not stack.staggered():
+		return Vector2.ZERO
+	return -stack.upper_vec(1) * float(sim.building.floor_number(to) - sim.building.floor_number(from))
 
 
 ## 지금 보이는 층 (깊이 순서)
@@ -293,7 +312,8 @@ func _apply() -> void:
 	_apply_partner()
 
 
-## 비켜 놓기: 짝 층 바탕은 흑백(불·연기·사람 빼고), 그 위 색 겹에 불·연기·사람만 원래 색으로 (2026-11-12 사용자 결정)
+## 바탕은 흑백(불·연기·사람 빼고), 그 위 색 겹에 불·연기·사람만 원래 색으로 (2026-11-12 사용자 결정).
+## 내부 화면(층 분리)에서는 고른 층과 이웃 층(직상층·직하층) 모두 그렇게 그린다
 func _apply_partner() -> void:
 	for node in layers + upper_layers:
 		node.skip_live = false
@@ -301,6 +321,7 @@ func _apply_partner() -> void:
 	if partner_live == null:
 		return
 	partner_live.visible = false
+	partner_live_low.visible = false
 	current_live.visible = false
 	if _exterior or layers.is_empty():
 		return
@@ -317,9 +338,8 @@ func _apply_partner() -> void:
 	current_live.position = layers[0].position
 	current_live.modulate = Color.WHITE
 	current_live.refresh()
-	var pair := _pair()
-	if pair.is_empty():
-		# 제자리 쌓기: 아래층들은 흑백 바탕(연기·불·사람 빼고) + 사람 점선 테두리.
+	if not stack.staggered():
+		# (예전) 제자리 쌓기: 아래층들은 흑백 바탕(연기·불·사람 빼고) + 사람 점선 테두리.
 		# 땅 층이 아래로 보이면 그 위에 차량·바깥 사람만 원래 색으로 (바깥 땅 겹)
 		for d in range(1, layers.size()):
 			var low := layers[d]
@@ -339,17 +359,23 @@ func _apply_partner() -> void:
 				move_child(partner_live, low.get_index() + 1)
 				partner_live.refresh()
 		return
-	var other: FloorLayer = pair[0] if pair[0] != layers[0] else pair[1]
-	other.skip_live = true
-	partner_live.visible = true
-	partner_live.ghost_mode = 4
-	partner_live.depth = ABOVE_DEPTH + 10
-	partner_live.level = other.level
-	partner_live.exterior = false
-	partner_live.thermal = thermal
-	partner_live.position = other.position
-	partner_live.modulate = Color(1, 1, 1, params.partner_live_alpha)
-	partner_live.refresh()
+	var lives: Array[FloorLayer] = [partner_live, partner_live_low]
+	var nb := _neighbors()
+	for i in nb.size():
+		var other := nb[i]
+		var live := lives[i]
+		other.skip_live = true
+		live.visible = true
+		live.ghost_mode = 4
+		live.depth = ABOVE_DEPTH + 10 + i
+		live.level = other.level
+		live.exterior = false
+		live.thermal = thermal
+		live.position = other.position
+		live.modulate = Color(1, 1, 1, params.partner_live_alpha)
+		# 이웃 층 위에 그린다 (맨 뒤로 — 계단 점선·잔상보다는 앞에 오지 않게 _links 앞)
+		move_child(live, _links.get_index())
+		live.refresh()
 
 
 func _configure(layer: FloorLayer, depth: int, shown: Array[int], ext: bool) -> void:
@@ -389,50 +415,46 @@ func _animate(old_level: int, old_exterior: bool) -> void:
 		_tween.tween_property(top, "modulate:a", 1.0, params.transition_s)
 
 
-## 비켜 놓은 두 층: 이어진 계단마다 아래층 계단 → 위층 계단 점선 (2026-11-12)
+## 내부 화면(층 분리): 이웃한 두 층 사이마다 이어진 계단 점선과 건물 모서리 안내선, 층마다 이름표
 func _draw_links() -> void:
 	if _exterior or stack == null or not stack.staggered() or sim == null:
 		return
-	var pa := stack.partner(_level)
-	if pa < 0:
-		return
-	var lower := _level if sim.building.floor_number(pa) > sim.building.floor_number(_level) else pa
-	var upper := pa if lower == _level else _level
-	# 지금 층은 제자리, 짝 층은 offset_vec만큼 비켜 있다
-	var lower_y := Vector2.ZERO if lower == _level else stack.offset_vec(1)
-	var upper_y := -stack.offset_vec(1) if upper != _level else Vector2.ZERO
+	var shown := shown_floors()
 	var st: StairCores = sim.command.stairs
 	var color := Color(1.0, 0.85, 0.3, 0.85)
-	for i in st.cores(lower).size():
-		var land := st.landing(lower, i, upper)
-		if land.x < 0:
-			continue
-		var a := _proj.to_screen(st.center(lower, i), 0.05) + lower_y
-		var b := _proj.to_screen(Vector2(land) + Vector2(0.5, 0.5), 0.05) + upper_y
-		_links.draw_dashed_line(a, b, color, 2.0, 8.0)
-		_links.draw_circle(a, 4.0, color)
-		_links.draw_circle(b, 4.0, color)
-		_links.draw_string(PlanStyle.font(), (a + b) * 0.5 + Vector2(8, 0), "%s 계단" % st.label(lower, i), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, color)
+	var guide := Color(1, 1, 1, params.stagger_guide_alpha)
+	for k in shown.size() - 1:
+		var lower: int = shown[k][0]
+		var lower_y: Vector2 = shown[k][1]
+		var upper: int = shown[k + 1][0]
+		var upper_y: Vector2 = shown[k + 1][1]
+		for i in st.cores(lower).size():
+			var land := st.landing(lower, i, upper)
+			if land.x < 0:
+				continue
+			var a := _proj.to_screen(st.center(lower, i), 0.05) + lower_y
+			var b := _proj.to_screen(Vector2(land) + Vector2(0.5, 0.5), 0.05) + upper_y
+			_links.draw_dashed_line(a, b, color, 2.0, 8.0)
+			_links.draw_circle(a, 4.0, color)
+			_links.draw_circle(b, 4.0, color)
+			_links.draw_string(PlanStyle.font(), (a + b) * 0.5 + Vector2(8, 0), "%s 계단" % st.label(lower, i), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, color)
+		# 분해도 안내선: 아래층 건물 모서리 → 위층 같은 모서리 (떼어 놓은 층이라는 표시)
+		var fp := sim.building.footprint(lower)
+		for c in [Vector2(fp.position), Vector2(fp.end.x, fp.position.y), Vector2(fp.end), Vector2(fp.position.x, fp.end.y)]:
+			_links.draw_dashed_line(_proj.to_screen(c) + lower_y, _proj.to_screen(c) + upper_y, guide, 1.5, 6.0)
 	# 층 이름표: 각 층 앞쪽 왼쪽 모서리에 "N층" (고른 층은 진하게)
-	for spec in [[lower, lower_y], [upper, upper_y]]:
+	for spec: Array in shown:
 		var lv: int = spec[0]
 		var fpl := sim.building.footprint(lv)
 		var at: Vector2 = _proj.to_screen(Vector2(fpl.position.x, fpl.end.y), 0.0) + spec[1] + Vector2(-70, 20)
 		var mine := lv == _level
-		_links.draw_string(PlanStyle.font(), at, sim.building.floor_name(lv) + (" ◀ 지금 층" if mine else ""), HORIZONTAL_ALIGNMENT_LEFT, -1, 22 if mine else 18,
+		_links.draw_string(PlanStyle.font(), at, sim.building.floor_name(lv) + (" ◀ 고른 층" if mine else ""), HORIZONTAL_ALIGNMENT_LEFT, -1, 22 if mine else 18,
 			Color(1, 0.92, 0.55, 1.0) if mine else Color(1, 1, 1, 0.55))
-	# 분해도 안내선: 아래층 건물 모서리 → 위층 같은 모서리 (들어 올린 층이라는 표시)
-	var fp := sim.building.footprint(lower)
-	var guide := Color(1, 1, 1, params.stagger_guide_alpha)
-	for c in [Vector2(fp.position), Vector2(fp.end.x, fp.position.y), Vector2(fp.end), Vector2(fp.position.x, fp.end.y)]:
-		_links.draw_dashed_line(_proj.to_screen(c) + lower_y, _proj.to_screen(c) + upper_y, guide, 1.5, 6.0)
 
 
 func _process(_delta: float) -> void:
 	if _links:
 		_links.queue_redraw()
-	if _shadow:
-		_shadow.queue_redraw()
 	# 지금 층 색 겹은 바탕 층의 전환 연출(위치·투명도)을 그대로 따라간다
 	if current_live and current_live.visible and not layers.is_empty():
 		current_live.position = layers[0].position
@@ -440,31 +462,28 @@ func _process(_delta: float) -> void:
 	_update_holes()
 
 
-## 비켜 놓은 두 층: (위층 노드, 아래층 노드, 아래층 level). 없으면 빈 배열
-func _pair() -> Array:
+## 내부 화면(층 분리)에서 고른 층 말고 함께 보이는 이웃 층 노드 (직상층·직하층)
+func _neighbors() -> Array[FloorLayer]:
+	var out: Array[FloorLayer] = []
 	if _exterior or stack == null or not stack.staggered() or sim == null:
-		return []
-	var pa := stack.partner(_level)
-	if pa < 0:
-		return []
-	if sim.building.floor_number(pa) > sim.building.floor_number(_level):
-		return [upper_layers[0], layers[0], _level] if upper_layers[0].visible else []
-	return [layers[0], layers[1], pa] if layers.size() > 1 and layers[1].visible else []
+		return out
+	if not upper_layers.is_empty() and upper_layers[0].visible:
+		out.append(upper_layers[0])
+	if layers.size() > 1 and layers[1].visible:
+		out.append(layers[1])
+	return out
 
 
-## 아래층의 대원·발견한 요구조자 둘레만 위층을 반투명하게 (셰이더 uniform)
+## 층마다 바탕 흑백 정도를 셰이더에 넣고, 고른 층은 대원·요구조자·불난 방 앞에 선 실내 벽만 옅게 한다.
+## 층 분리에서는 층끼리 가리지 않으므로 위층에 구멍을 내지 않는다 (위층을 투명하게 하지 않는다, 2026-11-14)
 func _update_holes() -> void:
-	var pair := _pair()
-	var partner_node: FloorLayer = null
-	var pr := _pair()
-	if not pr.is_empty():
-		partner_node = pr[0] if pr[0] != layers[0] else pr[1]
+	var nb := _neighbors()
 	for node in layers + upper_layers:
 		var m := node.material as ShaderMaterial
 		if m:
 			m.set_shader_parameter("count", 0)
 			var g := 0.0
-			if node == partner_node or (not stack.staggered() and not _exterior and layers.find(node) > 0):
+			if node in nb or (not stack.staggered() and not _exterior and layers.find(node) > 0):
 				g = params.partner_gray
 			elif node == layers[0] and not _exterior:
 				g = params.current_gray
@@ -473,43 +492,7 @@ func _update_holes() -> void:
 	var wall_holes: Array[Vector4] = []
 	if not _exterior and not layers.is_empty():
 		wall_holes = _wall_fade_holes(layers[0])
-	if pair.is_empty() or pair[0] != layers[0]:
-		_set_holes(layers[0], wall_holes)
-	if pair.is_empty():
-		return
-	var upper: FloorLayer = pair[0]
-	var lower: FloorLayer = pair[1]
-	var lv: int = pair[2]
-	var holes: Array[Vector4] = []
-	var xf := lower.get_global_transform()
-	var r := params.unit_hole_px
-	for ff in sim.units.firefighters:
-		if ff.level == lv and not ff.aboard and holes.size() < 16:
-			var w: Vector2 = xf * _proj.to_screen(ff.pos, 0.9)
-			holes.append(Vector4(w.x, w.y, r, 0.0))
-	for v in sim.rescue.victims:
-		if v.discovered and v.level == lv and v.carried_by < 0 and holes.size() < 16:
-			var w2: Vector2 = xf * _proj.to_screen(v.pos, 0.3)
-			holes.append(Vector4(w2.x, w2.y, r, 0.0))
-	# 불난 방 (타는 칸이 있는 구획): 방 가운데, 방 크기에 맞춘 반지름
-	var rooms := {}
-	var grid := sim.fire.grid
-	for i in grid.burning:
-		var c3 := grid.cell_of(i)
-		if c3.z == lv:
-			var comp := sim.fire.compartment_at(c3.z, c3.x, c3.y)
-			if comp:
-				rooms[comp.index] = comp
-	for comp: Compartment in rooms.values():
-		if holes.size() >= 16:
-			break
-		var wc: Vector2 = xf * _proj.to_screen(Vector2(comp.rect.get_center()), 0.5)
-		var rr := clampf(Vector2(comp.rect.size).length() * IsoProjection.HALF_W * 0.6, r, params.fire_hole_px)
-		holes.append(Vector4(wc.x, wc.y, rr, 0.0))
-	# 지금 층이 위층(맨 위층에서 아래층과 짝)이면 벽 구멍도 같은 그림에
-	if upper == layers[0]:
-		holes.append_array(wall_holes)
-	_set_holes(upper, holes)
+	_set_holes(layers[0], wall_holes)
 
 
 ## 셰이더 구멍 설정 (16개까지)
@@ -556,18 +539,3 @@ func _wall_fade_holes(node: FloorLayer) -> Array[Vector4]:
 	for comp: Compartment in rooms.values():
 		add.call(Vector2(comp.rect.get_center()), 1.0, clampf(Vector2(comp.rect.size).length() * IsoProjection.HALF_W * 0.6, r, params.fire_hole_px))
 	return out
-
-
-## 위층 그림자: 위층 바닥을 아래층 바닥 높이로 내린 자리
-func _draw_shadow() -> void:
-	var pair := _pair()
-	# 층 분리 보기는 위로만 띄워 그림자가 아래층 전체를 덮으므로 그리지 않는다
-	if pair.is_empty() or split:
-		return
-	var upper: FloorLayer = pair[0]
-	var fp := sim.building.footprint(upper.level)
-	var drop := Vector2(0, params.stagger_floor_px)
-	var pts := PackedVector2Array()
-	for c in [Vector2(fp.position), Vector2(fp.end.x, fp.position.y), Vector2(fp.end), Vector2(fp.position.x, fp.end.y)]:
-		pts.append(_proj.to_screen(c) + upper.position + drop)
-	_shadow.draw_colored_polygon(pts, Color(0, 0, 0, params.upper_shadow_alpha))

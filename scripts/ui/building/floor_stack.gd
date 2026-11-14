@@ -1,6 +1,9 @@
 class_name FloorStack
 extends RefCounted
-## 인형집 단면 보기에서 어느 층을 어떻게 쌓아 보일지 정한다 (R17, 화면 계산만 — 시뮬레이션과 무관).
+## 건물 안을 볼 때 어느 층을 어디에 그릴지 정한다 (R17, 화면 계산만 — 시뮬레이션과 무관).
+## 내부 화면 = 층 분리 (stack_mode "stagger", 2026-11-14 사용자 결정): 고른 층은 제자리, 직상층은 lift_px 위,
+##   직하층은 lift_px 아래에 떼어 그린다. 세 층 모두 온전하게(불투명) — 실제 층·칸 좌표는 그대로다.
+## 아래는 예전 제자리 단면(stack_mode "stack") 설명 — 2026-11-14에 없앤 방식 (그리기 코드는 정리 전):
 ## - 지금 층과 그 아래 층(층 번호가 이어진 것만)을 쌓는다. 위층·지붕은 숨긴다.
 ## - 지금 층은 화면 높이 0에 두고 아래 층을 floor_height_px씩 아래로 그린다 (지금 층의 클릭 계산이 그대로다).
 ## - 벽: 바깥이 북·서쪽에 붙은 외벽(뒷벽, 카메라에서 먼 쪽)은 온전하게 세워 건물 모양을 남기고,
@@ -23,6 +26,8 @@ var order: Array[int] = []
 ## 비켜 놓기(stagger): 위층을 건물 뒤쪽(북, 칸 -y)으로 보내는 화면 거리 (가장 깊은 층 깊이 × 비율)
 var _back := Vector2.ZERO
 var _back_cells := 0.0
+## 내부 화면(층 분리)에서 이웃 층을 띄우는 화면 거리 (px)
+var lift_px := 0.0
 
 
 func _init(p_building: BuildingData, p_params: ViewParams = null) -> void:
@@ -36,6 +41,7 @@ func _init(p_building: BuildingData, p_params: ViewParams = null) -> void:
 	# 칸 -y 한 칸 = 화면 (+HALF_W, -HALF_H): 건물 앞면(A면, 남)에서 볼 때 '뒤로'
 	_back = Vector2(IsoProjection.HALF_W, -IsoProjection.HALF_H) * deepest * params.stagger_back_ratio
 	_back_cells = deepest * params.stagger_back_ratio
+	lift_px = maxf(params.split_min_px, params.split_lift_px) if params.split_lift_px > 0.0 else split_default_lift_px()
 
 
 ## 비켜 놓기 모드인가 (2026-11-12 사용자 결정)
@@ -63,13 +69,13 @@ func visible_levels(current: int) -> Array[int]:
 	var result: Array[int] = [current]
 	if not building.has_level(current):
 		return result
-	if staggered():
-		# 비켜 놓기: 짝 층이 아래층일 때만 (맨 위층) 아래로 하나
-		var pb := partner(current)
-		if pb >= 0 and building.floor_number(pb) < building.floor_number(current):
-			result.append(pb)
-		return result
 	var n := building.floor_number(current)
+	if staggered():
+		# 내부 화면: 직하층 하나 (층 번호가 이어지고 땅 위·아래를 섞지 않을 때)
+		var below1 := level_of_number(n - 1)
+		if below1 >= 0 and not (n >= 1 and n - 1 < 1):
+			result.append(below1)
+		return result
 	for depth in range(1, params.visible_floors_below + 1):
 		var below := level_of_number(n - depth)
 		if below < 0 or (n >= 1 and n - depth < 1):
@@ -83,12 +89,13 @@ func above_levels(current: int) -> Array[int]:
 	var result: Array[int] = []
 	if not building.has_level(current):
 		return result
-	if staggered():
-		var pa := partner(current)
-		if pa >= 0 and building.floor_number(pa) > building.floor_number(current):
-			result.append(pa)
-		return result
 	var n := building.floor_number(current)
+	if staggered():
+		# 내부 화면: 직상층 하나
+		var up1 := level_of_number(n + 1)
+		if up1 >= 0 and not (n <= -1 and n + 1 >= 1):
+			result.append(up1)
+		return result
 	for k in range(1, params.visible_floors_above + 1):
 		var up := level_of_number(n + k)
 		if up < 0 or (n <= -1 and n + k >= 1):
@@ -97,7 +104,7 @@ func above_levels(current: int) -> Array[int]:
 	return result
 
 
-## 층 분리 보기: 위층을 위로만 띄울 때 두 층이 화면에서 겹치지 않는 최소 거리 (px).
+## 내부 화면(층 분리): 위층을 위로만 띄울 때 두 층이 화면에서 겹치지 않는 최소 거리 (px).
 ## 건물 바닥(가로 w × 세로 d 칸)은 화면에서 마름모이고 그 세로 두께는 가장 두꺼운 곳이 2 × min(w, d) × HALF_H 이다.
 ## 여기에 아래층 벽 높이와 위층 바닥판 두께를 더한다 (화면 계산만 — 실제 층·칸 좌표와 무관)
 func split_min_lift_px() -> float:
@@ -108,7 +115,7 @@ func split_min_lift_px() -> float:
 	return thick + (params.inner_wall_m + params.slab_m) * IsoProjection.PX_PER_M
 
 
-## 층 분리 보기의 기본 간격 (px): 겹치지 않는 최소 거리 × 비율 + split_gap_px (음수면 아래층 뒷벽 윗부분에 살짝 걸친다)
+## 내부 화면(층 분리)의 기본 간격 (px): 겹치지 않는 최소 거리 × 비율 + split_gap_px (음수면 아래층 뒷벽 윗부분에 살짝 걸친다)
 func split_default_lift_px() -> float:
 	return split_min_lift_px() * params.split_lift_ratio + params.split_gap_px
 
@@ -184,7 +191,7 @@ func offset_px(depth: int) -> float:
 ## 비켜 놓기: 위층은 층 높이만큼 위 + 건물 뒤쪽으로 비켜 있으므로 아래층은 그 반대쪽(앞·아래)
 func offset_vec(depth: int) -> Vector2:
 	if staggered():
-		return -(_back + Vector2(0, -params.stagger_floor_px)) * depth
+		return -(_back + Vector2(0, -lift_px)) * depth
 	return Vector2(0, depth * params.floor_height_px)
 
 
@@ -250,6 +257,9 @@ func pick_level(current: int, world_pos: Vector2, proj: ViewProjection) -> int:
 		var c := Vector2i(proj.to_cell(world_pos - offset_vec(depth)).floor())
 		var kind := building.cell(lv, c.x, c.y)
 		if kind in BuildingData.STRUCTURE:
+			return lv
+		# 내부 화면: 직하층이 땅 층이면 그 바깥 땅(도로·마당)도 보이므로 누를 수 있다 — 차량·바깥 대원·구역
+		if depth > 0 and staggered() and kind in BuildingData.OUTDOOR:
 			return lv
 		# 지금 층의 바깥 땅(지상층 도로·인도)도 지금 층이다
 		if depth == 0 and kind != BuildingData.Cell.VOID:

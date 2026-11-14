@@ -213,6 +213,14 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _handle_button(event: InputEventMouseButton) -> void:
 	var world_pos := _to_world(event.position)
+	# 내부 화면(층 분리): 다른 층(직상층·직하층)을 누르면 그 층이 고른 층이 되고, 같은 클릭을 그 층에서 처리한다 —
+	# 보이는 층 어디든 한 번에 지시 (2026-11-14). 화면은 제자리라 누른 자리는 그대로다
+	if event.pressed and level_picker.is_valid() and not click_override.is_valid() \
+			and (event.is_action_pressed("select") or event.is_action_pressed("command")):
+		var picked: int = level_picker.call(world_pos)
+		if picked != level:
+			floor_clicked.emit(picked)
+			world_pos = _to_world(event.position)
 	if event.is_action_pressed("select") and click_override.is_valid():
 		click_override.call(Vector2i(projection.to_cell(world_pos).floor()))
 		get_viewport().set_input_as_handled()

@@ -5,8 +5,8 @@ extends Control
 
 ## 명령 카드 칸을 눌렀을 때 (Q W E R A S — 단축키와 같은 처리, P10-2)
 signal card_key_pressed(key: String)
-## 층 분리 보기 (시험 화면): 켜고 끄기, 층 간격 넓히기(+1)·좁히기(-1)
-signal split_toggled(on: bool)
+## 내부 보기 단추: 켜면 내부 화면(층 분리), 끄면 외부 화면. 층 간격 넓히기(+1)·좁히기(-1)
+signal interior_toggled(on: bool)
 signal split_gap_step(dir: int)
 ## 지휘관 명령 칸의 단추를 눌렀을 때 (명령 id — data/commands.json commander_board·commander_tools)
 signal board_pressed(id: String)
@@ -818,23 +818,23 @@ func _build_console() -> void:
 	move_child(console, 0)
 
 
-# --- 층 분리 보기 (시험 화면, 2026-11-14) ---
+# --- 화면 전환 단추 (2026-11-14: 외부 화면 ↔ 내부 화면) ---
 
-var split_button: Button
+var interior_button: Button
 var _split_row: HBoxContainer
 var _split_label: Label
 
 
-## 층 막대 아래: '층 분리 보기' 켜고 끄는 단추와 (켰을 때) 층 간격 − +
+## 층 막대 아래: '내부 보기' 켜고 끄는 단추와 (내부 화면일 때) 층 간격 − +
 func _build_split_controls() -> void:
-	split_button = Button.new()
-	split_button.text = "층 분리 보기 (시험)"
-	split_button.toggle_mode = true
-	split_button.focus_mode = Control.FOCUS_NONE
-	split_button.add_theme_font_size_override("font_size", 14)
-	split_button.tooltip_text = "지금 층과 이웃 층을 위아래로 떼어 둘 다 온전하게 봅니다 (위층을 투명하게 하지 않음).\n보이는 위치만 바뀌고 대원·불의 실제 위치는 그대로입니다. 다른 층을 누르면 그 층이 지금 층이 됩니다"
-	split_button.toggled.connect(func(on: bool) -> void: split_toggled.emit(on))
-	floor_tabs.add_child(split_button)
+	interior_button = Button.new()
+	interior_button.text = "내부 보기"
+	interior_button.toggle_mode = true
+	interior_button.focus_mode = Control.FOCUS_NONE
+	interior_button.add_theme_font_size_override("font_size", 14)
+	interior_button.tooltip_text = "켜면 내부 화면: 고른 층과 바로 위·아래층을 떼어 놓고 건물 안을 봅니다 (층 막대의 층을 눌러도 같습니다).\n끄면 외부 화면: 건물 외관과 바깥 — 차량·급수·구역·둘러보기.\n보이는 위치만 바뀌고 대원·불의 실제 위치는 그대로입니다"
+	interior_button.toggled.connect(func(on: bool) -> void: interior_toggled.emit(on))
+	floor_tabs.add_child(interior_button)
 	_split_row = HBoxContainer.new()
 	_split_row.visible = false
 	for spec: Array in [["−", -1], ["+", 1]]:
@@ -855,17 +855,16 @@ func _build_split_controls() -> void:
 	floor_tabs.add_child(_split_row)
 
 
-## 층이 이어진 건물에서만 단추를 보인다
-func set_split_available(on: bool) -> void:
-	split_button.visible = on
-
-
-## 지금 상태를 단추에 반영한다 (World가 부른다)
-func set_split_state(on: bool, lift_px: float) -> void:
-	split_button.set_pressed_no_signal(on)
-	_split_row.visible = on
+## 지금 화면을 단추에 반영한다 (World가 부른다): 내부 화면인가, 층 간격
+func set_view_state(interior: bool, lift_px: float) -> void:
+	if interior_button == null:
+		return
+	interior_button.set_pressed_no_signal(interior)
+	_split_row.visible = interior
 	_split_label.text = "간격 %dpx" % roundi(lift_px)
 	floor_tabs.reset_size()
+	# 간격 줄이 막 보이게 됐을 때 자리 잡기를 다음 프레임까지 미루면 그 사이 층 막대 위에 겹쳐 클릭을 가로챈다 — 바로 정렬
+	floor_tabs.notification(Container.NOTIFICATION_SORT_CHILDREN)
 
 
 # --- 지휘관 명령 칸 (G3, 2026-11-14 결정) ---

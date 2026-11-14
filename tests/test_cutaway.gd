@@ -1,5 +1,6 @@
 extends TestSuite
-## R17 인형집 단면 보기 — 층 쌓기·벽 모양·계단·아래층 클릭 (화면 계산 FloorStack)
+## 건물 안 화면 계산 (FloorStack): 내부 화면 = 층 분리 (2026-11-14 결정), 벽 모양·계단·층 고르기.
+## '_stack()' 을 쓰는 것은 2026-11-14에 없앤 예전 제자리 단면의 계산 — 그리기 코드를 정리할 때 함께 지운다
 
 const APT := "res://data/buildings/apartment_15f.json"
 const SUPERTALL := "res://data/buildings/supertall_52f.json"
@@ -13,20 +14,42 @@ func _stack(path: String) -> FloorStack:
 	return FloorStack.new(BuildingData.from_file(path), p)
 
 
-## 비켜 놓기(stagger, 2026-11-12 결정 B — 같은 날 실루엣 방식으로 기본을 바꿈, 값으로 다시 고를 수 있다):
-## 고른 층 + 바로 위층(맨 위층이면 바로 아래층), 위층은 건물 뒤(북)로 비켜 놓는다
-func test_stagger_shows_floor_and_partner() -> void:
+## 내부 화면 = 층 분리 (2026-11-14 사용자 결정): 고른 층 + 직상층 + 직하층, 위아래로만 떼어 놓는다
+func test_interior_shows_floor_above_and_below() -> void:
 	var p := ViewParams.load_default()
-	assert_eq(p.stack_mode, "stack", "기본은 제자리 쌓기 + 다른 층 실루엣 (2026-11-12)")
-	p.stack_mode = "stagger"
+	assert_eq(p.stack_mode, "stagger", "기본은 층 분리")
 	var s := FloorStack.new(BuildingData.from_file(APT), p)
-	assert_true(s.staggered(), "stagger 로 고르면 비켜 놓기")
-	assert_eq([s.visible_levels(12), s.above_levels(12)], [[12] as Array[int], [13] as Array[int]], "12층: 12층 + 위로 13층")
+	assert_true(s.staggered(), "층 분리")
+	assert_eq([s.visible_levels(12), s.above_levels(12)], [[12, 11] as Array[int], [13] as Array[int]], "12층: 직하층 11층 + 직상층 13층")
 	var top := s.order[-1]
-	assert_eq([s.visible_levels(top), s.above_levels(top)], [[top, top - 1] as Array[int], [] as Array[int]], "맨 위층: 바로 아래층과 함께")
-	var up := -s.offset_vec(1)
-	assert_true(up.x > 0.0 and up.y < 0.0, "위층은 화면 오른쪽 위(건물 뒤 북쪽)로 비켜 있다 %s" % up)
-	assert_true(-up.y > s.params.stagger_floor_px, "층 높이보다 더 위로")
+	assert_eq([s.visible_levels(top), s.above_levels(top)], [[top, top - 1] as Array[int], [] as Array[int]], "맨 위층: 직하층만")
+	assert_eq([s.visible_levels(1), s.above_levels(1)], [[1] as Array[int], [2] as Array[int]], "1층: 직상층만 (땅 밑으로는 잇지 않음)")
+	assert_eq([s.more_above(12), s.more_below(12)], [false, false], "층 분리에서는 잘린 벽을 쓰지 않는다")
+	assert_true(s.lift_px > 0.0 and is_equal_approx(s.lift_px, s.split_default_lift_px()), "간격은 건물 크기로 계산")
+	assert_eq([s.upper_vec(1), s.offset_vec(1)], [Vector2(0, -s.lift_px), Vector2(0, s.lift_px)], "직상층은 간격만큼 위, 직하층은 간격만큼 아래 (옆으로 비키지 않음)")
+	# 층을 건너뛴 건물·지하: 이어진 층만
+	var st := FloorStack.new(BuildingData.from_file(SUPERTALL), ViewParams.load_default())
+	assert_eq(st.visible_levels(2), [2] as Array[int], "28층 아래 생략 층은 붙이지 않음")
+	var bm := FloorStack.new(BuildingData.from_file(BASEMENT), ViewParams.load_default())
+	assert_eq([bm.visible_levels(1), bm.above_levels(2)], [[1] as Array[int], [] as Array[int]], "1층과 지하층은 서로 붙이지 않음")
+	# 간격을 정해 두면 그 값
+	var p2 := ViewParams.load_default()
+	p2.split_lift_px = 500.0
+	assert_eq(FloorStack.new(BuildingData.from_file(APT), p2).lift_px, 500.0, "split_lift_px 를 주면 그 간격")
+
+
+## 내부 화면에서 보이는 층은 어디든 누를 수 있다: 직상층·직하층의 방, 직하층이 땅 층이면 바깥 땅도
+func test_interior_pick_any_shown_floor() -> void:
+	var s := FloorStack.new(BuildingData.from_file(BUILDING_PATH), ViewParams.load_default())
+	var proj := IsoProjection.new()
+	var low: int = s.order[0]
+	var up: int = s.order[1]
+	var room := Vector2(s.building.footprint(up).get_center())
+	assert_eq(s.pick_level(low, proj.to_screen(room) + s.upper_vec(1), proj), up, "1층에서: 위로 뗀 2층의 방 → 2층")
+	assert_eq(s.pick_level(low, proj.to_screen(room), proj), low, "1층에서: 제자리의 1층 방 → 1층")
+	assert_eq(s.pick_level(up, proj.to_screen(room) + s.offset_vec(1), proj), low, "2층에서: 아래로 뗀 1층의 방 → 1층")
+	assert_eq(s.pick_level(up, proj.to_screen(Vector2(5.5, 30.5)) + s.offset_vec(1), proj), low, "2층에서: 아래 1층의 바깥 도로 → 1층 (차량·바깥 대원·구역)")
+	assert_eq(s.pick_level(up, proj.to_screen(room), proj), up, "2층에서: 제자리의 2층 방 → 2층")
 
 
 func test_view_params_loaded() -> void:
@@ -36,7 +59,8 @@ func test_view_params_loaded() -> void:
 	assert_true(p.stub_height_ratio > 0.2 and p.stub_height_ratio <= 1.0, "잘린 벽은 층 높이보다 낮게 (2026-11-12: 0.5 → 0.9로 키움)")
 	assert_eq(p.below_modulate, [0.75, 0.55] as Array[float], "아래 층 밝기")
 	assert_eq(p.front_wall, "open", "앞벽은 없음 — 인형집 (2026-11-12 결정)")
-	assert_eq([p.front_wall_alpha, p.inner_wall_m, p.stack_mode, p.stagger_back_ratio, p.stagger_floor_px], [0.15, 2.4, "stack", 0.3, 260.0], "앞벽 15%, 실내 벽 천장까지(F04), 층은 제자리에 쌓고 다른 층은 실루엣 (비켜 놓기 값은 남겨 둠)")
+	assert_eq([p.front_wall_alpha, p.inner_wall_m, p.stack_mode, p.stagger_back_ratio], [0.15, 2.4, "stagger", 0.0], "앞벽 15%, 실내 벽 천장까지(F04), 건물 안은 층 분리 — 뒤로 비키지 않고 위아래로만 (2026-11-14)")
+	assert_eq([p.zoom_switch, p.split_lift_px, p.split_outdoor_darken > 0.0, p.split_city_dim < 1.0], [false, 0.0, true, true], "줌으로 안팎 전환 없음, 층 간격은 건물 크기로 계산, 내부 화면에서는 바깥을 흐리게")
 	assert_true(p.ghost_line_alpha <= 0.6 and p.ghost_dash_px > 0.0 and is_equal_approx(p.ghost_body_alpha, 0.25), "다른 층은 평면도 선만(실내 벽 점선), 연기에 가려진 사람 몸 25% (2026-11-12)")
 	assert_true(p.ghost_outline_px > 0.0 and p.ghost_outline_px < 3.0, "사람 테두리는 얇게 (2026-11-12)")
 	assert_true(p.ghost_back_wall_alpha > 0.0 and p.ghost_back_wall_alpha < 1.0, "위층 뒷벽·왼쪽 벽은 반투명 면 (2026-11-12)")
@@ -191,19 +215,6 @@ func test_smoke_spills_from_fuller_room_and_outside() -> void:
 		if not bool(s[4]) and int(s[5]) == outer.room_a:
 			out_found = true
 	assert_true(out_found, "바깥 창·문으로 넘친다")
-
-
-func test_upper_floor_set_back_in_stack_mode() -> void:
-	# 2026-11-12 사용자 결정 B: 제자리 쌓기에서도 위층은 층 높이만큼 위 + 건물 뒤(북, 화면 오른쪽 위)로 비킨다. 아래층은 바로 밑
-	var s := _stack(APT)
-	var up := s.upper_vec(1)
-	assert_true(up.x > 0.0 and up.y < -s.params.floor_height_px, "위층: 오른쪽 위로 (층 높이보다 더 위) %s" % up)
-	assert_eq(s.offset_vec(1), Vector2(0, s.params.floor_height_px), "아래층: 바로 아래 220px")
-	assert_true(s.upper_back_cells() > 0.0 and is_equal_approx(up.x, s.upper_back_cells() * IsoProjection.HALF_W), "위층 바닥 턱을 넓힐 거리(칸) = 뒤로 비킨 거리")
-	var proj := IsoProjection.new()
-	# 위층(13층)이 보이는 곳 — 13층 북쪽 벽 칸을 그 위치로 옮긴 자리 — 을 누르면 13층
-	var at := proj.to_screen(Vector2(10.5, 4.5)) + up
-	assert_eq(s.pick_level(12, at, proj), 13, "비켜 놓인 위층을 누르면 위층")
 
 
 func test_mood_follows_scenario_clock() -> void:

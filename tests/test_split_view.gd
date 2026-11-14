@@ -1,6 +1,6 @@
 extends TestSuite
-## 층 분리 보기 (시험 화면, 2026-11-14): 지금 층과 짝 층을 화면 위아래로 떼어 둘 다 온전히 보인다.
-## 화면 계산(FloorStack)만 본다 — 실제 층·칸 좌표는 건드리지 않는다. 화면은 tests/ui_split.gd
+## 내부 화면 = 층 분리 (2026-11-14): 고른 층과 이웃 층을 화면 위아래로 떼어 모두 온전히 보인다.
+## 화면 계산(FloorStack)의 층 간격만 본다 — 실제 층·칸 좌표는 건드리지 않는다. 화면은 tests/ui_split.gd
 
 const HOUSE := "res://data/buildings/house_2f.json"
 
@@ -8,10 +8,8 @@ const HOUSE := "res://data/buildings/house_2f.json"
 func _split_stack(lift_px := -1.0) -> FloorStack:
 	var p := ViewParams.load_default()
 	var b := BuildingData.from_file(HOUSE)
-	var base := FloorStack.new(b, p)
-	p.stack_mode = "stagger"
-	p.stagger_back_ratio = 0.0
-	p.stagger_floor_px = lift_px if lift_px > 0.0 else base.split_default_lift_px()
+	if lift_px > 0.0:
+		p.split_lift_px = lift_px
 	return FloorStack.new(b, p)
 
 
@@ -46,7 +44,7 @@ func test_default_lift_keeps_lower_floor_clear() -> void:
 	var wall_px := wall_m * IsoProjection.PX_PER_M
 	assert_true(worst_floor > 0.0, "위층이 아래층 바닥을 가리지 않는다 (가장 가까운 틈 %.0fpx)" % worst_floor)
 	assert_true(worst > -wall_px * 0.5, "아래층 뒷벽은 높이의 절반 넘게 가리지 않는다 (걸친 높이 %.0fpx / 벽 %.0fpx)" % [-worst, wall_px])
-	assert_true(absf(s.params.stagger_floor_px - 874.0) < 1.0, "2층 주택 기본 간격 874px (결과 %.1f)" % s.params.stagger_floor_px)
+	assert_true(absf(s.lift_px - 874.0) < 1.0, "2층 주택 기본 간격 874px (결과 %.1f)" % s.lift_px)
 
 
 func test_lift_changes_only_screen_offset() -> void:
@@ -60,7 +58,7 @@ func test_lift_changes_only_screen_offset() -> void:
 	assert_eq(b.upper_vec(1), Vector2(0, -900.0), "간격 900 → 위로 900px")
 	# 맨 위층에서 보면 짝 층(아래층)은 같은 거리만큼 아래
 	var top: int = a.order[-1]
-	assert_eq(a.visible_levels(top), [top, lv], "2층에서는 1층이 짝 층")
+	assert_eq(a.visible_levels(top), [top, lv], "2층에서는 1층이 직하층")
 	assert_eq(a.offset_vec(1), Vector2(0, 300.0), "아래층은 아래로 300px")
 
 
@@ -75,8 +73,8 @@ func test_pick_level_on_lifted_floor() -> void:
 	assert_eq(s.pick_level(lv, proj.to_screen(room), proj), lv, "제자리의 1층 방을 누르면 1층")
 
 
-func test_default_settings_untouched() -> void:
-	# 시험 화면은 단추로만 켠다: 기본 설정은 지금 표준(제자리 쌓기) 그대로
+func test_default_is_split_view() -> void:
+	# 2026-11-14: 건물 안 화면은 층 분리 하나뿐이다
 	var p := ViewParams.load_default()
-	assert_eq(p.stack_mode, "stack", "기본은 제자리 쌓기")
-	assert_true(p.split_lift_ratio > 0.0 and p.split_step_px > 0.0 and p.split_zoom_min < RtsCamera.ZOOM_MIN, "층 분리 보기 설정값")
+	assert_eq([p.stack_mode, p.stagger_back_ratio], ["stagger", 0.0], "기본은 층 분리, 뒤로 비키지 않음")
+	assert_true(p.split_lift_ratio > 0.0 and p.split_step_px > 0.0 and p.split_zoom_min < RtsCamera.ZOOM_MIN, "층 분리 설정값")

@@ -42,9 +42,12 @@ var upper_shadow_alpha := 0.2
 var stagger_guide_alpha := 0.45
 var stagger_back_ratio := 0.3
 var stagger_floor_px := 260.0
-## 층 분리 보기 (시험 화면, 2026-11-14)
+## 내부 화면 = 층 분리 (2026-11-14)
 var split_lift_ratio := 1.0
-var split_gap_px := 40.0
+var split_gap_px := -20.0
+var split_lift_px := 0.0
+var split_outdoor_darken := 0.45
+var split_city_dim := 0.5
 var split_step_px := 60.0
 var split_min_px := 120.0
 var split_zoom_min := 0.3
@@ -146,6 +149,9 @@ func apply(data: Dictionary) -> void:
 	stagger_floor_px = float(_value(data, "stagger_floor_px", stagger_floor_px))
 	split_lift_ratio = float(_value(data, "split_lift_ratio", split_lift_ratio))
 	split_gap_px = float(_value(data, "split_gap_px", split_gap_px))
+	split_lift_px = float(_value(data, "split_lift_px", split_lift_px))
+	split_outdoor_darken = float(_value(data, "split_outdoor_darken", split_outdoor_darken))
+	split_city_dim = float(_value(data, "split_city_dim", split_city_dim))
 	split_step_px = float(_value(data, "split_step_px", split_step_px))
 	split_min_px = float(_value(data, "split_min_px", split_min_px))
 	split_zoom_min = float(_value(data, "split_zoom_min", split_zoom_min))

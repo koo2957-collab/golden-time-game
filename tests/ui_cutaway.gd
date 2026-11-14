@@ -1,5 +1,6 @@
 extends SceneTree
-## R17 건물 두 모습 점검 (창이 열린다). 15층 아파트로 외부 보기·인형집 단면·아래층 클릭·줌 전환·전환 연출을 확인하고,
+## 건물 두 화면 점검 (창이 열린다, 2026-11-14 결정): 15층 아파트로 외부 화면과 내부 화면(층 분리 — 고른 층·직상층·직하층),
+## 다른 층 누르기(화면 제자리), '내부 보기' 단추를 확인하고,
 ## 스크린샷 2장(docs/ref/cutaway_exterior.png, cutaway_interior.png)과 화면 프레임 측정 결과를 남긴다.
 ## 사용: godot --path . -s res://tests/ui_cutaway.gd
 
@@ -31,56 +32,60 @@ func _run() -> void:
 	var iso = world.iso_view
 	var b := sim.building
 	var ground: int = b.levels()[0]
-	# 이 점검은 예전 쌓기 방식(위·아래 여러 층) 기준. 비켜 놓기(기본, 2026-11-12)는 맨 끝에서 따로
-	iso.params.stack_mode = "stack"
 
-	# 1) 시작: 외부 보기 — 외관 노드 하나만
-	_check("시작은 외부 보기", world.exterior_view, true)
-	_check("외부 보기: 맨 위 노드가 외관", [iso.layers[0].visible, iso.layers[0].exterior], [true, true])
-	_check("외부 보기: 아래층 노드는 숨김", iso.layers[1].visible, false)
+	# 1) 시작: 외부 화면 — 외관 노드 하나만
+	_check("시작은 외부 화면", [world.exterior_view, world.hud.interior_button.button_pressed], [true, false])
+	_check("외부 화면: 맨 위 노드가 외관", [iso.layers[0].visible, iso.layers[0].exterior], [true, true])
+	_check("외부 화면: 다른 층 노드는 숨김", [iso.layers[1].visible, iso.upper_layers[0].visible], [false, false])
 	_out("== 시작 직후 (불이 작을 때) ==")
-	await _measure("외부 보기, 1배속")
+	await _measure("외부 화면, 1배속")
 
-	# 2) 12층 단면: 아래 11·10층 + 위 13·14층(반투명), 15층 이상은 없음
+	# 2) 12층 내부 화면: 12층은 제자리, 13층은 위로, 11층은 아래로 — 세 층 모두 온전하게
 	world.set_view_level(12)
 	await process_frame
-	_check("12층 → 단면 보기", world.exterior_view, false)
-	_check("12층을 고르면 12·11층만 (2026-11-12: 위·아래 한 층씩)", iso.shown_levels(), [12, 11] as Array[int])
-	var shown_levels: Array = []
-	for layer in iso.layers:
-		if layer.visible:
-			shown_levels.append(layer.level)
-	_check("보이는 층 노드 12·11", shown_levels, [12, 11])
-	_check("더 있는 층은 잘린 벽으로 (13층 위, 11층 아래)", [iso.upper_layers[0].stub_above, iso.layers[1].stub_below, iso.layers[0].stub_below], [true, true, false])
-	# F01 (2026-11-11): 다른 층은 실루엣(벽 선·사람 테두리)만 — 흐리게 하지 않고 ghost로 그린다
-	# 2026-11-12: 아래층은 온전히 그린다 (흑백·어둡게, 연기·불·사람 빼고 + 사람 점선 테두리). 위층만 턱·점선
-	_check("아래층은 220px씩 아래·온전히(흑백)", [iso.layers[0].ghost, iso.layers[1].position.y, iso.layers[1].ghost], [false, 220.0, false])
-	_check("아래층은 연기·불·사람을 빼고 사람은 테두리로", [iso.layers[1].skip_live, iso.layers[1].people_outline, iso.layers[1].self_modulate.r < 1.0, iso.layers[0].self_modulate.r], [true, true, true, 1.0])
-	_check("위층 13층은 220px 위에 (턱·뒷벽)", [iso.upper_layers[0].visible, iso.upper_layers[0].level, iso.upper_layers[0].position, iso.upper_layers[0].ghost], [true, 13, iso.stack.upper_vec(1), true])
-	_check("위층은 층 높이만큼 위 + 건물 뒤(오른쪽 위)로 비켜서 (2026-11-12 B)", [iso.stack.upper_vec(1).y < -220.0, iso.stack.upper_vec(1).x > 0.0], [true, true])
+	var lift: float = iso.lift_px()
+	_check("12층 → 내부 화면", [world.exterior_view, world.hud.interior_button.button_pressed], [false, true])
+	_check("고른 층 12 + 직하층 11 + 직상층 13", [iso.shown_levels(), iso.upper_layers[0].visible, iso.upper_layers[0].level], [[12, 11] as Array[int], true, 13])
+	_check("직상층은 간격만큼 위, 직하층은 간격만큼 아래 (옆으로 비키지 않음)", [iso.upper_layers[0].position, iso.layers[1].position, iso.layers[0].position], [Vector2(0, -lift), Vector2(0, lift), Vector2.ZERO])
+	_check("세 층 모두 온전하게 (실루엣·잘린 벽·투명 없음)", [iso.layers[0].ghost, iso.layers[1].ghost, iso.upper_layers[0].ghost, iso.upper_layers[0].stub_above, iso.layers[1].stub_below, iso.upper_layers[0].modulate.a, iso.layers[1].modulate.a], [false, false, false, false, false, 1.0, 1.0])
+	_check("이웃 층: 바탕은 흑백·조금 어둡게, 사람·불·연기는 색 겹으로", [iso.upper_layers[0].skip_live, iso.layers[1].skip_live, iso.partner_live.visible, iso.partner_live_low.visible, iso.upper_layers[0].modulate.r < 1.0], [true, true, true, true, true])
+	_check("이웃 층 색 겹은 그 층 자리에", [iso.partner_live.level, iso.partner_live.position, iso.partner_live_low.level, iso.partner_live_low.position], [13, Vector2(0, -lift), 11, Vector2(0, lift)])
+	_check("층끼리 가리지 않으므로 가림 표로 칸을 빼지 않는다", [iso.layers[0]._draw_mask().is_empty(), iso.layers[1]._draw_mask().is_empty()], [true, true])
 	_check("12층 남쪽 앞벽은 천장 높이 반투명 (2026-11-11 결정)", iso.layers[0]._wall_height(8, 19), 2.4)
-	# 2026-11-12: 지금 층은 위층(계단 디딤판용 upper_level)이 있어도 가림 표로 칸을 빼지 않는다 — 뒷벽이 사라졌던 결함
-	_check("지금 층은 위층이 있어도 모든 칸을 그린다", [iso.layers[0].upper_level, iso.layers[0]._draw_mask().is_empty()], [13, true])
 	_check("12층 북쪽 뒷벽은 천장까지", iso.layers[0]._wall_height(10, 4), 2.4)
 	_check("계단이 11층에서 12층으로 이어짐 (11층 노드의 계단 디딤판 20칸)", iso.layers[1]._ramp_cells().size(), 20)
 	_check("12층 바닥은 계단실 자리가 뚫림", iso.layers[0].lower_level, 11)
-	_check("층 이동 전환 연출 중", iso.transitioning(), true)
-	await create_timer(0.5).timeout
-	_check("전환 연출은 0.3초 뒤 끝남", iso.transitioning(), false)
+	_check("전환 연출 없음 (층들이 제자리에 있어야 한다)", iso.transitioning(), false)
+	_check("내부 화면에서는 더 축소할 수 있고 주변 건물은 흐리게", [world.camera.zoom_min, world.city.modulate.r < 1.0], [iso.params.split_zoom_min, true])
+	# 화면 맞춤: 고른 층 + 직상층이 화면(표시줄 아래 ~ 콘솔 위)에 들어온다
+	var vp: Vector2 = root.get_visible_rect().size
+	var fr: Rect2 = iso.frame_rect()
+	var xf: Transform2D = iso.get_global_transform_with_canvas()
+	var fa: Vector2 = xf * fr.position
+	var fb: Vector2 = xf * fr.end
+	_check("화면 맞춤: 12층 + 13층이 화면 안에", fa.y >= 0.0 and fb.y <= vp.y - world.hud.console.size.y + 4.0, true)
+	_out("  15층 아파트 내부 화면: 간격 %dpx, 맞춤 배율 %.2f" % [roundi(lift), world.camera.zoom.x])
 
-	# 3) 아래층(11층)이 보이는 곳을 누르면 11층이 지금 층이 된다
+	# 3) 직하층(11층)을 누르면 11층이 고른 층이 되고, 층들은 화면에서 제자리
 	var proj = world.projection()
-	var lower_world: Vector2 = proj.to_screen(Vector2(30.5, 18.5)) + Vector2(0, iso.stack.offset_px(1))
+	var cell := Vector2(30.5, 18.5)
+	var lower_world: Vector2 = proj.to_screen(cell) + iso.stack.offset_vec(1)
 	world.camera.position = lower_world
+	world.camera.force_update_scroll()
 	await process_frame
+	var before_screen: Vector2 = root.get_canvas_transform() * lower_world
+	_press_at(before_screen, MOUSE_BUTTON_LEFT)
 	await process_frame
-	_press_at(root.get_canvas_transform() * lower_world, MOUSE_BUTTON_LEFT)
+	_check("직하층(11층)을 누르면 11층이 고른 층", world.view_level, 11)
+	_check("11층 내부 화면은 11·10층 + 위로 12층", [iso.shown_levels(), iso.upper_layers[0].level], [[11, 10] as Array[int], 12])
+	var after_screen: Vector2 = root.get_canvas_transform() * proj.to_screen(cell)
+	_check("층을 눌러 바꿔도 화면에서 제자리", before_screen.distance_to(after_screen) < 2.0, true)
+	# 층 막대로 바꾸면(멀리 갈 수 있다) 그 층 + 직상층으로 화면을 옮긴다
+	world.set_view_level(5)
 	await process_frame
-	_check("아래층(11층)을 누르면 11층이 지금 층", world.view_level, 11)
-	_check("11층 단면은 11·10층", iso.shown_levels(), [11, 10] as Array[int])
-	_check("내려갈 때는 위층 잔상이 위로 사라짐", iso.ghost.visible, true)
-	await create_timer(0.5).timeout
-	_check("잔상은 연출 뒤 숨김", iso.ghost.visible, false)
+	var fr5: Rect2 = iso.frame_rect()
+	var c5: Vector2 = iso.get_global_transform_with_canvas() * fr5.get_center()
+	_check("층 막대로 5층 → 5층 + 6층이 화면 가운데쯤", c5.y > 0.0 and c5.y < vp.y - world.hud.console.size.y, true)
 
 	# 4) 외부 보기 + 창 상태 표시 (불이 커진 뒤)
 	sim.step_ticks(3400)
@@ -125,7 +130,7 @@ func _run() -> void:
 	victim.level = old_level
 	victim.pos = old_pos
 
-	# 5) 줌 전환: 건물 위로 확대 → 단면, 크게 축소 → 외부
+	# 5) '내부 보기' 단추: 켜면 내부 화면(고른 조가 건물 안에 있으면 그 층), 끄면 외부 화면 — 줌으로는 바뀌지 않는다
 	world.hud.visible = true
 	world.camera.zoom = Vector2(0.75, 0.75)
 	world.camera.position = proj.to_screen(fp.get_center(), iso.shell_top_m() * 0.3)
@@ -136,24 +141,24 @@ func _run() -> void:
 	crew.leader.pos = Vector2(15.5, 15.5)
 	world.selection._set_selection([crew.id] as Array[int])
 	for i in 6:
-		if not world.exterior_view:
-			break
 		world.camera._zoom_at(center, 1.15)
-	_check("건물 위로 확대 → 단면", world.exterior_view, false)
+	_check("건물 위로 확대해도 외부 화면 그대로 (줌 전환 없음)", world.exterior_view, true)
+	var zoom_before: Vector2 = world.camera.zoom
+	world.hud.interior_button.button_pressed = true
+	await process_frame
+	_check("내부 보기 단추 → 내부 화면", world.exterior_view, false)
 	_check("선택한 조가 있는 층(7층)으로 들어감", world.view_level, 7)
-	for i in 10:
-		if world.exterior_view:
-			break
+	for i in 12:
 		world.camera._zoom_at(center, 1.0 / 1.15)
-	_check("크게 축소 → 외부 보기", world.exterior_view, true)
-	_check("외부 보기로 나올 때 배율 0.6 이하", world.camera.zoom.x <= 0.6 + 0.001, true)
+	_check("크게 축소해도 내부 화면 그대로", [world.exterior_view, world.camera.zoom.x >= iso.params.split_zoom_min - 0.001], [false, true])
+	world.hud.interior_button.button_pressed = false
+	await process_frame
+	_check("내부 보기 단추 끔 → 외부 화면, 카메라는 들어가기 전으로", [world.exterior_view, world.camera.zoom == zoom_before, world.camera.zoom_min], [true, true, RtsCamera.ZOOM_MIN])
 
-	# 스크린샷 2: 내부 단면 (발화층 3층 — 2층·1층이 아래로 쌓인다. 구조가 보이게 정보 안개를 잠깐 끈다)
+	# 스크린샷 2: 내부 화면 (발화층 3층 + 위 4층, 아래 2층. 구조가 보이게 정보 안개를 잠깐 끈다)
 	world.set_view_level(3)
 	sim.perception.enabled = false
 	world.hud.visible = false
-	world.camera.zoom = Vector2(0.62, 0.62)
-	world.camera.position = proj.to_screen(Vector2(30, 16)) + Vector2(0, 90)
 	await create_timer(0.6).timeout
 	_save_shot("res://docs/ref/cutaway_interior.png")
 	sim.perception.enabled = true
@@ -169,27 +174,19 @@ func _run() -> void:
 	await _measure("외부 보기, 일시정지(그리기만)")
 	sim.clock.paused = false
 	world.set_view_level(12)
-	world.camera.position = proj.to_screen(Vector2(30, 12)) + Vector2(0, 100)
-	await _measure("단면 보기 (12·11·10층), 1배속")
+	await _measure("내부 화면 (12층 + 13·11층), 1배속")
 	world.set_view_level(3)
-	world.camera.position = proj.to_screen(Vector2(30, 12)) + Vector2(0, 100)
-	await _measure("단면 보기 (발화층 3·2·1층), 1배속")
+	await _measure("내부 화면 (발화층 3층 + 4·2층), 1배속")
 	sim.clock.paused = true
-	await _measure("단면 보기 (3·2·1층), 일시정지(그리기만)")
+	await _measure("내부 화면 (3층 + 4·2층), 일시정지(그리기만)")
 	sim.clock.paused = false
-	# 비켜 놓기 (기본, 2026-11-12): 고른 층 + 바로 위층만, 둘 다 온전하게, 위층은 뒤(오른쪽 위)로
-	iso.params.stack_mode = "stagger"
+	# 정적인 것은 무채색, 움직이는 것만 색 (2026-11-12 사용자 결정)
 	world.set_view_level(12)
 	await process_frame
-	_check("비켜 놓기: 12층 + 위로 13층만", [iso.shown_levels(), iso.upper_layers[0].visible, iso.upper_layers[0].level, iso.upper_layers.size()], [[12] as Array[int], true, 13, 1])
-	_check("비켜 놓기: 두 층 모두 온전하게 (실루엣 아님)", [iso.layers[0].ghost, iso.upper_layers[0].ghost], [false, false])
-	_check("비켜 놓기: 위층은 건물 뒤(오른쪽 위)로", iso.upper_layers[0].position, -iso.stack.offset_vec(1))
-	# 정적인 것은 무채색, 움직이는 것만 색 (2026-11-12 사용자 결정)
 	var hole_mat := iso.layers[0].material as ShaderMaterial
-	_check("지금 층: 바탕은 색을 빼고(사람·불 빼고), 색 겹이 따로", [iso.layers[0].skip_live, iso.current_live.visible, iso.current_live.ghost_mode, iso.current_live.level], [true, true, 4, 12])
-	_check("지금 층 바탕 흑백 정도", hole_mat.get_shader_parameter("gray"), iso.params.current_gray)
-	_check("짝 위층: 불투명, 지금 층보다 어둡게", [iso.upper_layers[0].modulate.a, iso.upper_layers[0].modulate.r < 1.0], [1.0, true])
-	await _measure("비켜 놓기 (12·13층), 1배속")
+	_check("고른 층: 바탕은 색을 빼고(사람·불 빼고), 색 겹이 따로", [iso.layers[0].skip_live, iso.current_live.visible, iso.current_live.ghost_mode, iso.current_live.level], [true, true, 4, 12])
+	_check("고른 층 바탕 흑백 정도", hole_mat.get_shader_parameter("gray"), iso.params.current_gray)
+	_check("위층에 구멍을 내지 않는다 (투명하게 하지 않음)", (iso.upper_layers[0].material as ShaderMaterial).get_shader_parameter("count"), 0)
 	var f := FileAccess.open("user://cutaway_fps.txt", FileAccess.WRITE)
 	if f:
 		f.store_string("\n".join(_lines) + "\n")

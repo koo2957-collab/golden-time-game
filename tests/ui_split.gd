@@ -1,6 +1,7 @@
 extends SceneTree
-## 층 분리 보기 시험 화면 점검 (창이 열린다): 단추로 켜고 끄기, 두 층이 함께 온전하게 보임, 위층이 아래층을 가리지 않음,
-## 간격을 바꿔도 대원의 실제 위치는 그대로, 층을 바꿔도 화면에서 제자리, 끄면 지금 표준 화면으로.
+## 두 화면 점검 — 튜토리얼 2층 주택 (창이 열린다, 2026-11-14 결정):
+## 외부 화면 ↔ 내부 화면(층 분리) 단추, 두 층이 함께 온전하게 보임, 기본 간격 874px, 간격을 바꿔도 대원의 실제 위치는 그대로,
+## 보이는 층 어디든 한 번 눌러 지시 (누른 층이 고른 층이 되고 화면은 제자리), 내부 화면에서는 바깥이 흐려짐.
 ## 사용: godot --path . -s res://tests/ui_split.gd [-- 저장폴더]
 
 var _failed := 0
@@ -27,6 +28,7 @@ func _run() -> void:
 	# 형을 적지 않는다: IsoView 는 오토로드(EventBus)를 쓰는 스크립트에 기대어 -s 스크립트를 읽을 때는 아직 없다
 	var iso = world.iso_view
 	var hud = world.hud
+	var sel = world.selection
 	sim.issue(CommandOrder.make("arrive", [], 0, Vector3i.ZERO, {"gap_s": 1.0}))
 	for i in 30:
 		sim.step_ticks(10)
@@ -43,70 +45,102 @@ func _run() -> void:
 	_place(sim, 0, low)
 	_place(sim, 1, top)
 	var before := _positions(sim)
-	_check("단추가 보인다 (층이 이어진 건물)", hud.split_button.visible, true)
-	_check("처음에는 꺼져 있다 (지금 표준 화면)", [iso.split, iso.stack.staggered()], [false, false])
-	world.set_view_level(low, false)
-	for i in 20:
+
+	# 1) 외부 화면에서 시작
+	_check("시작은 외부 화면 · 단추는 꺼짐", [world.exterior_view, hud.interior_button.button_pressed, hud._split_row.visible], [true, false, false])
+	_check("외부 화면: 주변 건물 그대로", world.city.modulate.r, 1.0)
+	for i in 10:
 		await process_frame
-	root.get_texture().get_image().save_png(out + "split_off.png")
-	# 켜기
-	hud.split_button.button_pressed = true
+	root.get_texture().get_image().save_png(out + "view_exterior.png")
+	var ext_zoom: Vector2 = world.camera.zoom
+
+	# 2) 내부 보기 단추 → 내부 화면 (층 분리)
+	hud.interior_button.button_pressed = true
 	for i in 30:
 		await process_frame
-	_check("켜면 층 분리 보기", [iso.split, hud._split_row.visible], [true, true])
+	_check("내부 보기 → 내부 화면 1층", [world.exterior_view, world.view_level, hud._split_row.visible], [false, low, true])
 	_check("두 층이 함께 보인다", [iso.layers[0].visible and iso.layers[0].level == low, iso.upper_layers[0].visible and iso.upper_layers[0].level == top], [true, true])
-	_check("위층은 위로만 띄운다", [iso.upper_layers[0].position.x, is_equal_approx(iso.upper_layers[0].position.y, -iso.split_lift_px)], [0.0, true])
+	_check("위층은 위로만 띄운다", [iso.upper_layers[0].position.x, is_equal_approx(iso.upper_layers[0].position.y, -iso.lift_px())], [0.0, true])
 	_check("위층은 불투명 (투명하게 하지 않는다)", iso.upper_layers[0].modulate.a, 1.0)
-	_check("기본 간격 874px — 아래층 뒷벽 윗부분에 살짝 걸친다", [roundi(iso.split_lift_px), iso.split_lift_px < iso.stack.split_min_lift_px()], [874, true])
+	_check("기본 간격 874px — 아래층 뒷벽 윗부분에 살짝 걸친다", [roundi(iso.lift_px()), iso.lift_px() < iso.stack.split_min_lift_px()], [874, true])
+	_check("내부 화면: 주변 건물은 흐리게", world.city.modulate.r < 1.0, true)
 	var vp: Vector2 = root.get_visible_rect().size
-	var r: Rect2 = iso.split_rect()
+	var r: Rect2 = iso.frame_rect()
 	var xf: Transform2D = iso.get_global_transform_with_canvas()
 	var a: Vector2 = xf * r.position
 	var b: Vector2 = xf * r.end
 	_check("두 층이 화면 안에 들어온다 (콘솔 위)", a.y >= 0.0 and b.y <= vp.y - hud.console.size.y + 4.0 and a.x >= 0.0 and b.x <= vp.x, true)
 	_check("대원의 실제 위치는 그대로", _positions(sim), before)
 	root.get_texture().get_image().save_png(out + "split_on.png")
-	# 간격 조절
-	var lift0: float = iso.split_lift_px
+
+	# 3) 간격 조절
+	var lift0: float = iso.lift_px()
 	hud.split_gap_step.emit(-1)
 	for i in 10:
 		await process_frame
-	_check("− → 간격 줄어듦", is_equal_approx(iso.split_lift_px, lift0 - iso.params.split_step_px), true)
+	_check("− → 간격 줄어듦", is_equal_approx(iso.lift_px(), lift0 - iso.params.split_step_px), true)
 	hud.split_gap_step.emit(1)
 	hud.split_gap_step.emit(1)
 	for i in 10:
 		await process_frame
-	_check("+ + → 간격 늘어남", is_equal_approx(iso.split_lift_px, lift0 + iso.params.split_step_px), true)
+	_check("+ + → 간격 늘어남", is_equal_approx(iso.lift_px(), lift0 + iso.params.split_step_px), true)
 	_check("간격을 바꿔도 대원의 실제 위치는 그대로", _positions(sim), before)
 	hud.split_gap_step.emit(-1)
 	for i in 10:
 		await process_frame
-	# 층 바꾸기: 2층이 지금 층이 되어도 두 층은 화면에서 제자리
-	var corner: Vector2 = world.projection().to_screen(Vector2(sim.building.footprint(top).position))
-	var top_before: Vector2 = iso.get_global_transform_with_canvas() * (iso.upper_layers[0].position + corner)
-	world.set_view_level(top, false)
-	for i in 30:
+
+	# 4) 보이는 층 어디든 한 번에: 1층을 고른 채 2층에 선 조를 누르면 2층이 고른 층이 되고 그 조가 선택된다
+	var proj = world.projection()
+	var crew_up = sim.units.get_crew(1)
+	var up_world: Vector2 = proj.to_screen(crew_up.leader.pos, 0.9) + iso.stack.upper_vec(1)
+	var up_screen: Vector2 = root.get_canvas_transform() * up_world
+	sel._set_selection([] as Array[int], [] as Array[int])
+	_click(up_screen)
+	for i in 5:
 		await process_frame
-	var top_after: Vector2 = iso.get_global_transform_with_canvas() * (iso.layers[0].position + corner)
-	_check("2층을 고르면 2층이 지금 층, 1층이 짝 층", [iso.layers[0].level, iso.layers[1].visible and iso.layers[1].level == low], [top, true])
-	_check("층을 바꿔도 화면에서 제자리", top_before.distance_to(top_after) < 2.0, true)
+	_check("2층의 조를 누름 → 2층이 고른 층", world.view_level, top)
+	_check("같은 클릭으로 그 조가 선택된다", sel.selected, [1] as Array[int])
+	var after_screen: Vector2 = root.get_canvas_transform() * proj.to_screen(crew_up.leader.pos, 0.9)
+	_check("층이 바뀌어도 화면에서 제자리", up_screen.distance_to(after_screen) < 2.0, true)
+	_check("2층을 고르면 1층이 직하층으로 함께", [iso.layers[0].level, iso.layers[1].visible and iso.layers[1].level == low], [top, true])
 	root.get_texture().get_image().save_png(out + "split_on_f2.png")
-	# 분리 보기에서도 시뮬레이션은 실제 좌표로 돈다 (화면 위치와 무관)
-	world.set_view_level(low, false)
-	for i in 10:
+	# 2층을 고른 채 아래 1층의 조를 누르면 1층으로
+	var crew_low = sim.units.get_crew(0)
+	var low_screen: Vector2 = root.get_canvas_transform() * (proj.to_screen(crew_low.leader.pos, 0.9) + iso.stack.offset_vec(1))
+	_click(low_screen)
+	for i in 5:
 		await process_frame
+	_check("1층의 조를 누름 → 1층이 고른 층 · 그 조 선택", [world.view_level, sel.selected], [low, [0] as Array[int]])
+	# 1층의 조를 고른 채 2층의 방을 누르면 → 2층이 고른 층이 되고 그 방의 임무 고르기가 뜬다 (한 번에 지시)
+	var room: Compartment = null
+	for c in sim.fire.comps:
+		if room == null and c.level == top and c.cells.size() > 8 and not sim.fire.is_exposure_comp(c):
+			room = c
+	@warning_ignore("integer_division")
+	var rc: Vector2i = room.cells[room.cells.size() / 2]
+	var room_screen: Vector2 = root.get_canvas_transform() * (proj.to_screen(Vector2(rc) + Vector2(0.5, 0.5)) + iso.stack.upper_vec(1))
+	_click(room_screen)
+	for i in 5:
+		await process_frame
+	_check("조를 고른 채 2층 방을 누름 → 2층 · 임무 고르기", [world.view_level, world.mission_ui.menu.visible or world.mission_ui.panel.visible], [top, true])
+	world.mission_ui.close_menu()
+	sel.cancel_mode()
+	sel._set_selection([] as Array[int], [] as Array[int])
+
+	# 5) 분리 화면에서도 시뮬레이션은 실제 좌표로 돈다
 	var tick0 := sim.clock.tick
 	for i in 20:
 		sim.step_ticks(10)
 		sim.cards.queue.clear()
 		await process_frame
-	_check("분리 보기에서도 시뮬레이션이 돈다", sim.clock.tick > tick0, true)
-	# 끄기
-	hud.split_button.button_pressed = false
+	_check("내부 화면에서도 시뮬레이션이 돈다", sim.clock.tick > tick0, true)
+
+	# 6) 단추를 끄면 외부 화면, 카메라는 들어가기 전으로
+	hud.interior_button.button_pressed = false
 	for i in 30:
 		await process_frame
-	_check("끄면 지금 표준 화면으로", [iso.split, iso.stack.staggered(), iso.params.stack_mode, world.camera.zoom_min], [false, false, "stack", RtsCamera.ZOOM_MIN])
-	root.get_texture().get_image().save_png(out + "split_off_again.png")
+	_check("끄면 외부 화면", [world.exterior_view, world.camera.zoom == ext_zoom, world.camera.zoom_min, world.city.modulate.r], [true, true, RtsCamera.ZOOM_MIN, 1.0])
+	root.get_texture().get_image().save_png(out + "view_exterior_again.png")
 	print("결과: %s (실패 %d)" % ["통과" if _failed == 0 else "실패", _failed])
 	quit(1 if _failed > 0 else 0)
 
@@ -129,6 +163,17 @@ func _positions(sim: SimWorld) -> Array:
 	for ff in sim.units.firefighters:
 		out.append([ff.level, ff.pos])
 	return out
+
+
+func _click(screen_pos: Vector2) -> void:
+	var e := InputEventMouseButton.new()
+	e.button_index = MOUSE_BUTTON_LEFT
+	e.pressed = true
+	e.position = screen_pos
+	root.push_input(e, true)
+	var r: InputEventMouseButton = e.duplicate()
+	r.pressed = false
+	root.push_input(r, true)
 
 
 func _check(name: String, got: Variant, want: Variant) -> void:

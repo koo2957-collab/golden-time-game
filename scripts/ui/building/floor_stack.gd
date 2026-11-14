@@ -104,6 +104,39 @@ func above_levels(current: int) -> Array[int]:
 	return result
 
 
+## 층 수 단추 '2개 층'에서 고른 층과 함께 화면에 맞출 짝 층 (2026-11-14 사용자 결정):
+## 기본은 직상층, prefer_lower 면 직하층. 그쪽에 이어진 층이 없으면 반대쪽, 둘 다 없으면 -1
+func pair_level(current: int, prefer_lower := false) -> int:
+	var above := above_levels(current)
+	var vis := visible_levels(current)
+	var up: int = above[0] if not above.is_empty() else -1
+	var down: int = vis[1] if vis.size() > 1 else -1
+	if prefer_lower:
+		return down if down >= 0 else up
+	return up if up >= 0 else down
+
+
+## 고른 층을 from 에서 to 로 바꿀 때: +1 = to 가 from 의 직상층, -1 = 직하층, 0 = 이웃이 아님 (건너뜀·같은 층)
+func neighbor_step(from: int, to: int) -> int:
+	var above := above_levels(from)
+	if not above.is_empty() and above[0] == to:
+		return 1
+	var vis := visible_levels(from)
+	if vis.size() > 1 and vis[1] == to:
+		return -1
+	return 0
+
+
+## 한 화면에 함께 맞출 수 있는 층 수의 상한 (층 수 단추를 끌지 정한다):
+## 위·아래 이웃이 다 있는 층이 하나라도 있으면 3, 이웃이 하나라도 있으면 2, 아니면 1
+func max_span() -> int:
+	var best := 1
+	for lv in order:
+		var n := 1 + (0 if above_levels(lv).is_empty() else 1) + (1 if visible_levels(lv).size() > 1 else 0)
+		best = maxi(best, n)
+	return best
+
+
 ## 내부 화면(층 분리): 위층을 위로만 띄울 때 두 층이 화면에서 겹치지 않는 최소 거리 (px).
 ## 건물 바닥(가로 w × 세로 d 칸)은 화면에서 마름모이고 그 세로 두께는 가장 두꺼운 곳이 2 × min(w, d) × HALF_H 이다.
 ## 여기에 아래층 벽 높이와 위층 바닥판 두께를 더한다 (화면 계산만 — 실제 층·칸 좌표와 무관)

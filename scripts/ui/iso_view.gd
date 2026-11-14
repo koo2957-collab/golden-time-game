@@ -177,13 +177,21 @@ func _floor_rect(lv: int, off: Vector2) -> Rect2:
 	return r
 
 
-## 내부 화면의 화면 맞춤 범위 (2026-11-14 사용자 결정):
-##   평소 = 고른 층 하나 — 화면 가운데에 크게, 직상층·직하층은 위아래로 잘려 보인다
-##   전체보기(overview) = 보이는 세 층 모두
-func frame_rect(overview := false) -> Rect2:
-	if overview:
+## 내부 화면의 화면 맞춤 범위 (2026-11-14 사용자 결정, 층 수 단추):
+##   span 1 = 고른 층 하나 — 화면 가운데에 크게, 직상층·직하층은 위아래로 잘려 보인다
+##   span 2 = 고른 층 + 짝 층 (기본 직상층, with_lower 면 직하층 — 그쪽 층이 없으면 반대쪽)
+##   span 3 = 보이는 세 층 모두
+func frame_rect(span := 1, with_lower := false) -> Rect2:
+	var r := _floor_rect(_level, Vector2.ZERO)
+	if span <= 1 or _exterior or stack == null or not stack.staggered():
+		return r
+	if span >= 3:
 		return shown_rect()
-	return _floor_rect(_level, Vector2.ZERO)
+	var pair := stack.pair_level(_level, with_lower)
+	if pair < 0:
+		return r
+	var off := stack.upper_vec(1) if stack.neighbor_step(_level, pair) > 0 else stack.offset_vec(1)
+	return r.merge(_floor_rect(pair, off))
 
 
 ## 보이는 모든 층의 화면 범위 (카메라 이동 범위용)

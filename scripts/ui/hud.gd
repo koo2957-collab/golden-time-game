@@ -7,8 +7,8 @@ extends Control
 signal card_key_pressed(key: String)
 ## 내부 보기 단추: 켜면 내부 화면(층 분리), 끄면 외부 화면. 층 간격 넓히기(+1)·좁히기(-1)
 signal interior_toggled(on: bool)
-## 내부 화면 전체보기 단추: 켜면 세 층이 다 보이게 축소, 끄면 고른 층을 크게
-signal overview_toggled(on: bool)
+## 내부 화면 층 수 단추: 한 화면에 맞춰 넣을 층 수 (1·2·3)
+signal span_selected(span: int)
 signal split_gap_step(dir: int)
 ## 지휘관 명령 칸의 단추를 눌렀을 때 (명령 id — data/commands.json commander_board·commander_tools)
 signal board_pressed(id: String)
@@ -823,12 +823,14 @@ func _build_console() -> void:
 # --- 화면 전환 단추 (2026-11-14: 외부 화면 ↔ 내부 화면) ---
 
 var interior_button: Button
-var overview_button: Button
+## 층 수 단추 세 개 (1개 층 / 2개 층 / 3개 층) — 하나만 눌린 채로 있다
+var span_buttons: Array[Button] = []
+var _span_row: HBoxContainer
 var _split_row: HBoxContainer
 var _split_label: Label
 
 
-## 층 막대 아래: '내부 보기' 켜고 끄는 단추와 (내부 화면일 때) 층 간격 − +
+## 층 막대 아래: '내부 보기' 켜고 끄는 단추와 (내부 화면일 때) 층 수 단추, 층 간격 − +
 func _build_split_controls() -> void:
 	interior_button = Button.new()
 	interior_button.text = "내부 보기"
@@ -838,15 +840,33 @@ func _build_split_controls() -> void:
 	interior_button.tooltip_text = "켜면 내부 화면: 고른 층을 가운데에 크게, 바로 위·아래층은 떼어 놓고 건물 안을 봅니다 (층 막대의 층을 눌러도 같습니다).\n끄면 외부 화면: 건물 외관과 바깥 — 차량·급수·구역·둘러보기.\n보이는 위치만 바뀌고 대원·불의 실제 위치는 그대로입니다"
 	interior_button.toggled.connect(func(on: bool) -> void: interior_toggled.emit(on))
 	floor_tabs.add_child(interior_button)
-	overview_button = Button.new()
-	overview_button.text = "전체보기"
-	overview_button.toggle_mode = true
-	overview_button.visible = false
-	overview_button.focus_mode = Control.FOCUS_NONE
-	overview_button.add_theme_font_size_override("font_size", 14)
-	overview_button.tooltip_text = "켜면 고른 층과 바로 위·아래층이 한 화면에 다 들어오게 축소합니다.\n끄면 고른 층을 가운데에 크게 봅니다 (위·아래층은 잘려 보임)"
-	overview_button.toggled.connect(func(on: bool) -> void: overview_toggled.emit(on))
-	floor_tabs.add_child(overview_button)
+	_span_row = HBoxContainer.new()
+	_span_row.visible = false
+	_span_row.add_theme_constant_override("separation", 2)
+	var tips: Array[String] = [
+		"고른 층만 가운데에 크게 봅니다 (위·아래층은 잘려 보임)",
+		"고른 층과 바로 위층을 함께 봅니다 (맨 위층이면 아래층과).\n보고 있는 두 층 안에서는 어느 층을 눌러도 화면이 그대로이고, 그 밖의 층을 누르면 한 층만 따라갑니다",
+		"고른 층과 바로 위·아래층이 한 화면에 다 들어오게 축소합니다",
+	]
+	for i in tips.size():
+		var span := i + 1
+		var b := Button.new()
+		b.text = "%d개 층" % span
+		b.toggle_mode = true
+		b.button_pressed = span == 1
+		b.focus_mode = Control.FOCUS_NONE
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.add_theme_font_size_override("font_size", 13)
+		b.tooltip_text = tips[i]
+		# 눌린 단추를 다시 눌러도 꺼지지 않는다 (셋 중 하나는 늘 켜져 있다)
+		b.toggled.connect(func(on: bool) -> void:
+			if on:
+				span_selected.emit(span)
+			else:
+				b.set_pressed_no_signal(true))
+		span_buttons.append(b)
+		_span_row.add_child(b)
+	floor_tabs.add_child(_span_row)
 	_split_row = HBoxContainer.new()
 	_split_row.visible = false
 	for spec: Array in [["−", -1], ["+", 1]]:
@@ -872,7 +892,7 @@ func set_view_state(interior: bool, lift_px: float) -> void:
 	if interior_button == null:
 		return
 	interior_button.set_pressed_no_signal(interior)
-	overview_button.visible = interior
+	_span_row.visible = interior
 	_split_row.visible = interior
 	_split_label.text = "간격 %dpx" % roundi(lift_px)
 	floor_tabs.reset_size()
@@ -880,9 +900,11 @@ func set_view_state(interior: bool, lift_px: float) -> void:
 	floor_tabs.notification(Container.NOTIFICATION_SORT_CHILDREN)
 
 
-func set_overview_state(on: bool) -> void:
-	if overview_button:
-		overview_button.set_pressed_no_signal(on)
+## 층 수 단추에 지금 값을 반영한다 (World가 부른다). 이 건물에 그만큼 이어진 층이 없으면 그 단추는 끈다
+func set_span_state(span: int, max_span: int) -> void:
+	for i in span_buttons.size():
+		span_buttons[i].set_pressed_no_signal(i + 1 == span)
+		span_buttons[i].disabled = i + 1 > max_span
 
 
 # --- 지휘관 명령 칸 (G3, 2026-11-14 결정) ---

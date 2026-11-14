@@ -49,6 +49,7 @@ var split_lift_px := 0.0
 var split_outdoor_darken := 0.45
 var split_city_dim := 0.5
 var split_focus_zoom_max := 1.0
+var split_default_span := 1
 var split_info_width_px := 240.0
 var split_glide_s := 0.25
 var split_step_px := 60.0
@@ -156,6 +157,7 @@ func apply(data: Dictionary) -> void:
 	split_outdoor_darken = float(_value(data, "split_outdoor_darken", split_outdoor_darken))
 	split_city_dim = float(_value(data, "split_city_dim", split_city_dim))
 	split_focus_zoom_max = float(_value(data, "split_focus_zoom_max", split_focus_zoom_max))
+	split_default_span = int(_value(data, "split_default_span", split_default_span))
 	split_info_width_px = float(_value(data, "split_info_width_px", split_info_width_px))
 	split_glide_s = float(_value(data, "split_glide_s", split_glide_s))
 	split_step_px = float(_value(data, "split_step_px", split_step_px))

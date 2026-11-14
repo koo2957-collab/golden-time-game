@@ -73,6 +73,22 @@ func test_pick_level_on_lifted_floor() -> void:
 	assert_eq(s.pick_level(lv, proj.to_screen(room), proj), lv, "제자리의 1층 방을 누르면 1층")
 
 
+## 층 수 단추 '2개 층'의 짝: 기본은 직상층, 맨 위층이면 직하층. 이어진 층이 없으면 단추를 끈다
+func test_pair_level_and_max_span() -> void:
+	var s := _split_stack()
+	var lv: int = s.order[0]
+	var top: int = s.order[-1]
+	assert_eq([s.pair_level(lv), s.pair_level(lv, true)], [top, top], "1층의 짝은 2층 (아래층이 없으면 직하층을 바라도 위층)")
+	assert_eq([s.pair_level(top), s.pair_level(top, true)], [lv, lv], "2층(맨 위)의 짝은 1층")
+	assert_eq([s.neighbor_step(lv, top), s.neighbor_step(top, lv), s.neighbor_step(lv, lv)], [1, -1, 0], "한 층 위 = +1, 한 층 아래 = -1")
+	assert_eq(s.max_span(), 2, "2층 주택: 3개 층은 없다")
+	var apt := FloorStack.new(BuildingData.from_file("res://data/buildings/apartment_15f.json"), ViewParams.load_default())
+	assert_eq([apt.pair_level(12), apt.pair_level(12, true)], [13, 11], "12층: 기본 짝은 13층, 직하층을 바라면 11층")
+	assert_eq([apt.neighbor_step(12, 13), apt.neighbor_step(12, 11), apt.neighbor_step(12, 5)], [1, -1, 0], "이웃이 아니면 0")
+	assert_eq(apt.max_span(), 3, "15층 아파트: 3개 층까지")
+	assert_eq(ViewParams.load_default().split_default_span, 1, "들어갈 때는 1개 층 (고른 층을 크게)")
+
+
 func test_default_is_split_view() -> void:
 	# 2026-11-14: 건물 안 화면은 층 분리 하나뿐이다
 	var p := ViewParams.load_default()

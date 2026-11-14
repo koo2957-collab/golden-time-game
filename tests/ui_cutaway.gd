@@ -57,17 +57,22 @@ func _run() -> void:
 	_check("12층 바닥은 계단실 자리가 뚫림", iso.layers[0].lower_level, 11)
 	_check("전환 연출 없음 (층들이 제자리에 있어야 한다)", iso.transitioning(), false)
 	_check("내부 화면에서는 더 축소할 수 있고 주변 건물은 흐리게", [world.camera.zoom_min, world.city.modulate.r < 1.0], [iso.params.split_zoom_min, true])
-	# 화면 맞춤: 고른 층이 화면 영역(왼쪽 정보창 오른쪽, 콘솔 위)에 꽉 차게. 전체보기를 켜면 세 층이 다 들어온다
+	# 화면 맞춤: 고른 층이 화면 영역(왼쪽 정보창 오른쪽, 콘솔 위)에 꽉 차게. 층 수 단추로 2개 층·3개 층까지 넣는다
 	var vp: Vector2 = root.get_visible_rect().size
 	var area := Rect2(iso.params.split_info_width_px, 0.0, vp.x - iso.params.split_info_width_px, vp.y - world.hud.console.size.y)
 	var focus_zoom: float = world.camera.zoom.x
 	_check("화면 맞춤: 12층이 화면 영역 안에 다 들어온다", area.grow(4.0).encloses(_on_screen(iso, iso.frame_rect())), true)
-	world.hud.overview_button.button_pressed = true
+	_check("15층 아파트: 층 수 단추 셋 다 쓸 수 있다", [world.hud.span_buttons[1].disabled, world.hud.span_buttons[2].disabled], [false, false])
+	world.hud.span_buttons[1].button_pressed = true
 	await process_frame
-	_check("전체보기: 11·12·13층이 다 들어온다 (더 축소)", [area.grow(4.0).encloses(_on_screen(iso, iso.shown_rect())), world.camera.zoom.x < focus_zoom], [true, true])
-	_out("  15층 아파트 내부 화면: 간격 %dpx, 고른 층 배율 %.2f, 전체보기 배율 %.2f" % [roundi(lift), focus_zoom, world.camera.zoom.x])
+	var pair_zoom: float = world.camera.zoom.x
+	_check("2개 층: 12·13층이 다 들어온다 (더 축소)", [world.interior_span, area.grow(4.0).encloses(_on_screen(iso, iso.frame_rect(2))), pair_zoom < focus_zoom], [2, true, true])
+	world.hud.span_buttons[2].button_pressed = true
+	await process_frame
+	_check("3개 층: 11·12·13층이 다 들어온다 (더 축소)", [world.interior_span, area.grow(4.0).encloses(_on_screen(iso, iso.shown_rect())), world.camera.zoom.x < pair_zoom], [3, true, true])
+	_out("  15층 아파트 내부 화면: 간격 %dpx, 배율 1개 층 %.2f / 2개 층 %.2f / 3개 층 %.2f" % [roundi(lift), focus_zoom, pair_zoom, world.camera.zoom.x])
 
-	# 3) (전체보기) 직하층(11층)을 누르면 11층이 고른 층이 되고, 층들은 화면에서 제자리
+	# 3) (3개 층) 직하층(11층)을 누르면 11층이 고른 층이 되고, 층들은 화면에서 제자리
 	var proj = world.projection()
 	var cell := Vector2(30.5, 18.5)
 	var lower_world: Vector2 = proj.to_screen(cell) + iso.stack.offset_vec(1)
@@ -81,12 +86,32 @@ func _run() -> void:
 	_check("11층 내부 화면은 11·10층 + 위로 12층", [iso.shown_levels(), iso.upper_layers[0].level], [[11, 10] as Array[int], 12])
 	var after_screen: Vector2 = root.get_canvas_transform() * proj.to_screen(cell)
 	_check("층을 눌러 바꿔도 화면에서 제자리", before_screen.distance_to(after_screen) < 2.0, true)
-	world.hud.overview_button.button_pressed = false
+	world.hud.span_buttons[0].button_pressed = true
 	await process_frame
 	# 층 막대로 바꾸면(멀리 갈 수 있다) 그 층 + 직상층으로 화면을 옮긴다
 	world.set_view_level(5)
 	await process_frame
 	_check("층 막대로 5층 → 5층이 화면 영역 가운데에 다 들어온다", area.grow(4.0).encloses(_on_screen(iso, iso.frame_rect())), true)
+	# 2개 층의 짝: 기본은 직상층. 한 층 위로 가면 떠나온 층과 함께(보던 두 층 그대로), 한 번 더 올라가면 한 층만 따라간다
+	world.set_interior_span(2)
+	await process_frame
+	var pair_center: Vector2 = _on_screen(iso, iso.frame_rect(2, false)).get_center()
+	_check("2개 층: 5층 + 6층", [world._pair_lower, area.grow(4.0).encloses(_on_screen(iso, iso.frame_rect(2, false)))], [false, true])
+	world.set_view_level(6)
+	await process_frame
+	_check("6층으로 → 5·6층 그대로 (화면도 제자리)", [world._pair_lower, _on_screen(iso, iso.frame_rect(2, true)).get_center().distance_to(pair_center) < 2.0], [true, true])
+	world.set_view_level(7)
+	await process_frame
+	_check("7층으로 → 6·7층 (한 층만 따라간다)", [world._pair_lower, area.grow(4.0).encloses(_on_screen(iso, iso.frame_rect(2, true)))], [true, true])
+	world.set_view_level(6)
+	await process_frame
+	_check("다시 6층으로 → 6·7층 그대로", world._pair_lower, false)
+	var roof: int = b.levels()[-1]
+	world.set_view_level(roof)
+	await process_frame
+	_check("맨 위층 → 위층이 없으니 직하층과 함께", [world._pair_lower, area.grow(4.0).encloses(_on_screen(iso, iso.frame_rect(2, true)))], [true, true])
+	world.set_interior_span(1)
+	await process_frame
 
 	# 4) 외부 보기 + 창 상태 표시 (불이 커진 뒤)
 	sim.step_ticks(3400)

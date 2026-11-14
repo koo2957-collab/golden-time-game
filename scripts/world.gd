@@ -96,7 +96,9 @@ func _ready() -> void:
 	hud.card.enabled_fn = _card_item_enabled
 	hud.board_pressed.connect(_press_board)
 	hud.interior_toggled.connect(_set_interior)
-	hud.overview_toggled.connect(set_interior_overview)
+	hud.span_selected.connect(set_interior_span)
+	interior_span = clampi(iso_view.params.split_default_span, 1, _max_span())
+	hud.set_span_state(interior_span, _max_span())
 	hud.split_gap_step.connect(_step_split_gap)
 	hud.board_done_fn = _board_done
 	hud.command_ui.order_issued.connect(sim.issue)
@@ -432,18 +434,23 @@ func _view_bounds() -> Rect2:
 
 ## 외부 화면에 있던 카메라 [위치, 배율] — 내부 화면에서 나올 때 되돌린다
 var _exterior_cam: Array = []
-## 내부 화면 전체보기: 켜면 보이는 세 층이 다 들어오게 축소, 끄면(기본) 고른 층을 가운데에 크게
-var interior_overview := false
+## 내부 화면 층 수 단추 (2026-11-14): 한 화면에 맞춰 넣을 층 수.
+## 1(기본) = 고른 층을 가운데에 크게, 2 = 고른 층 + 짝 층, 3 = 고른 층 + 직상층 + 직하층
+var interior_span := 1
+## '2개 층'에서 고른 층의 짝: false = 직상층, true = 직하층.
+## 한 층 위로 옮겨 왔으면 떠나온 아래층과, 한 층 아래로 옮겨 왔으면 떠나온 위층과 함께 본다 (보던 두 층 안에서는 화면이 그대로)
+var _pair_lower := false
 ## 다른 층을 눌러 바꾼 뒤: 마우스 단추를 떼면 그 층을 가운데로 미끄러뜨린다 (누르는 동안 화면이 움직이면 뗀 자리가 달라진다)
 var _glide_pending := false
 var _glide: Tween
 
 
 ## 화면이 바뀔 때의 카메라:
-##   외부 → 내부: 고른 층이 가운데에 크게 들어오게 맞춘다 (전체보기면 세 층 모두). 외부 화면의 카메라는 기억해 둔다
-##   내부에서 층 바꿈(층 막대·PgUp): 그 층을 가운데로 옮기되 배율은 그대로
+##   외부 → 내부: 층 수 단추(1·2·3개 층)만큼 화면에 들어오게 맞춘다. 외부 화면의 카메라는 기억해 둔다
+##   내부에서 층 바꿈(층 막대·PgUp): 그 층(과 짝 층)을 가운데로 옮기되 배율은 그대로
 ##   지도에서 다른 층을 눌러 바꿈(keep_screen): 클릭은 제자리에서 처리하고, 단추를 떼면 그 층이 가운데로 미끄러져 온다
-##     (전체보기에서는 세 층이 다 보이므로 제자리에 둔다)
+##     2개 층: 보고 있던 두 층 안에서 눌렀으면 제자리, 밖의 층을 눌렀으면 한 층만 따라간다
+##     3개 층: 세 층이 다 보이므로 제자리에 둔다
 ##   내부 → 외부: 기억해 둔 카메라로
 func _fit_view_change(was_exterior: bool, old_level: int, keep_screen: bool) -> void:
 	if view_mode != ViewMode.ISO:
@@ -457,12 +464,19 @@ func _fit_view_change(was_exterior: bool, old_level: int, keep_screen: bool) -> 
 			_exterior_cam = []
 		return
 	camera.zoom_min = iso_view.params.split_zoom_min
+	# 2개 층의 짝: 보고 있던 두 층 안에서 옮겼는가, 그리고 새 짝은 어느 쪽인가
+	var stack := iso_view.stack
+	var step := stack.neighbor_step(old_level, view_level) if not was_exterior else 0
+	var in_pair := step != 0 and stack.pair_level(old_level, _pair_lower) == view_level
+	if was_exterior or old_level != view_level:
+		_pair_lower = step > 0
+	_pair_lower = stack.neighbor_step(view_level, stack.pair_level(view_level, _pair_lower)) < 0
 	if was_exterior:
 		_exterior_cam = [camera.position, camera.zoom]
 		_frame_interior(true)
 	elif keep_screen:
 		camera.position += iso_view.level_shift(old_level, view_level)
-		_glide_pending = not interior_overview
+		_glide_pending = interior_span <= 1 or (interior_span == 2 and not in_pair)
 	elif old_level != view_level:
 		_frame_interior(false)
 
@@ -482,27 +496,32 @@ func _step_split_gap(dir: int) -> void:
 		return
 	iso_view.set_lift(iso_view.lift_px() + dir * iso_view.params.split_step_px)
 	_stop_glide()
-	_frame_interior(interior_overview)
+	_frame_interior(interior_span > 1)
 	camera.retarget(_view_bounds(), camera.position)
 	hud.set_view_state(true, iso_view.lift_px())
 
 
-## 내부 화면 전체보기 단추: 켜면 세 층이 다 들어오게 축소, 끄면 고른 층을 가운데에 크게
-func set_interior_overview(on: bool) -> void:
-	interior_overview = on
-	hud.set_overview_state(on)
+## 이 건물에서 한 화면에 함께 맞출 수 있는 층 수 (1~3)
+func _max_span() -> int:
+	return iso_view.stack.max_span() if iso_view.stack != null else 1
+
+
+## 내부 화면 층 수 단추: 1 = 고른 층을 가운데에 크게, 2 = 짝 층과 함께, 3 = 위·아래층까지 다 들어오게 축소
+func set_interior_span(span: int) -> void:
+	interior_span = clampi(span, 1, _max_span())
+	hud.set_span_state(interior_span, _max_span())
 	if not exterior_view and view_mode == ViewMode.ISO:
 		_stop_glide()
 		_frame_interior(true)
 		camera.retarget(_view_bounds(), camera.position)
 
 
-## 내부 화면에서 카메라가 있어야 할 [위치, 배율]: 고른 층(전체보기면 세 층)을
+## 내부 화면에서 카메라가 있어야 할 [위치, 배율]: 고른 층(층 수 단추가 2·3이면 이웃 층까지)을
 ## 왼쪽 정보창·위쪽 표시줄·아래 콘솔(그리고 펼쳐진 무전 기록)을 뺀 영역의 가운데에.
 ## fit_zoom 이면 그 영역에 꽉 차는 배율, 아니면 지금 배율 그대로
 func _interior_target(fit_zoom: bool) -> Array:
 	var p := iso_view.params
-	var r := iso_view.frame_rect(interior_overview)
+	var r := iso_view.frame_rect(interior_span, _pair_lower)
 	var vp := get_viewport().get_visible_rect().size
 	# 위쪽은 시계·단계 표시줄
 	var top := 84.0
@@ -515,7 +534,7 @@ func _interior_target(fit_zoom: bool) -> Array:
 	var z := camera.zoom.x
 	if fit_zoom:
 		var avail := Vector2(vp.x - right - left, vp.y - top - bottom)
-		var z_max: float = START_ZOOM[ViewMode.ISO] if interior_overview else p.split_focus_zoom_max
+		var z_max: float = START_ZOOM[ViewMode.ISO] if interior_span > 1 else p.split_focus_zoom_max
 		z = clampf(minf(avail.x / r.size.x, avail.y / r.size.y), camera.zoom_min, z_max)
 	return [r.get_center() + Vector2((right - left) * 0.5, (bottom - top) * 0.5) / z, z]
 

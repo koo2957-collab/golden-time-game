@@ -102,6 +102,13 @@ func _run() -> void:
 			dsp.confirm()
 	await process_frame
 	_check("결정을 모두 마치면 '현장 도착'이 켜진다", [dsp._go.disabled, dsp.done(), cui.dispatch_visible()], [false, true, true])
+	# 마무리 안내 장면 (2026-11-15): 차가 닿을 때까지 쳐다보지 않게 건너뛰기를 알려 준다
+	for i in 90:
+		if dsp.closing_shown():
+			break
+		await process_frame
+	await process_frame
+	_check("마무리 안내 장면: '건너뛰고 현장 도착' 단추 하나", [dsp.closing_shown(), dsp._scene.visible, dsp._buttons.size(), dsp._buttons[0].text.contains("건너뛰고")], [true, true, 1, true])
 	_key(KEY_ENTER)
 	_check("Enter → 남은 길을 건너뛴다 (차는 계속 보인다)", [dsp.skipping, cui.dispatch_progress() >= 0.0], [true, true])
 	for i in 600:

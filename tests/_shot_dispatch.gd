@@ -54,8 +54,9 @@ func _run() -> void:
 			d.choose(0)
 		else:
 			d.confirm()
-	# 결정을 모두 마친 뒤: 준비판만 남고 '현장 도착' 단추가 켜진다
+	# 결정을 모두 마친 뒤: 오른쪽에 마무리 안내 장면('건너뛰고 현장 도착'), 준비판의 '현장 도착' 단추가 켜진다
 	d.real_s = d.real_total() * 0.7
+	d._gap = 0.0
 	await _shot(out, "shot_dispatch%s_done" % tail)
 	# 도시만 (장면·준비판 숨김): 막 출발 · 큰길로 꺾은 뒤 · 현장 앞
 	d.modulate.a = 0.0

@@ -10,6 +10,7 @@ extends Control
 ##   훈련: 차가 현장 앞에 닿아도 결정을 마칠 때까지 기다린다
 ##   실전·악조건: 시간이 다 되면 그대로 도착한다 — 정하지 않은 것은 준비하지 않은 것 (장비 없음, 임무 없음, 카드는 '정하지 않음')
 ##   결정을 모두 마치면 '현장 도착(Enter)'으로 남은 길을 건너뛴다 (결정은 건너뛸 수 없다)
+##   마지막 결정 뒤에는 오른쪽에 마무리 안내 장면("건너뛰고 현장 도착")이 뜬다 (2026-11-15 — 차가 닿을 때까지 쳐다보지 않게)
 ## 결정은 여기서 바로 시뮬레이션에 넣지 않는다 — 도착할 때 CommandUi가 result()를 명령(기록·다시 하기 대상)으로 내린다
 
 ## 현장 도착 (차가 닿았거나 건너뜀). CommandUi가 결정을 명령으로 내리고 장면을 닫는다
@@ -23,6 +24,8 @@ const HEAD_COLOR := Color("fde68a")
 const DONE_COLOR := Color("86efac")
 const TITLE_COLOR := Color("fca5a5")
 const ACCENT := Color("e2e8f0")
+## _shown 에 쓰는 값: 마무리 안내 장면이 떠 있다
+const CLOSING := -3
 
 var sim: SimWorld
 ## 설정값 (data/ui/dispatch.json 의 value) · 장면 글
@@ -228,6 +231,21 @@ func current() -> Dictionary:
 	return steps[index]
 
 
+## 마무리 안내 장면이 떠 있는가: 결정을 모두 마쳤고, 차가 아직 달리는 중이고, 건너뛰기 전 (2026-11-15)
+func closing_shown() -> bool:
+	return active and done() and not skipping and _gap <= 0.0 and frac() < 1.0
+
+
+## 마무리 안내 장면 (결정이 아니다 — steps 에 넣지 않는다). 단추 하나 = 남은 길 건너뛰기
+func _closing_step() -> Dictionary:
+	return _step("done", "pick", t("done_title"), t("done_tag"), t("done_who"), _portrait_path(str(p.get("portrait_key", "출동"))),
+		t("done_title"), _closing_text(), [{"text": t("done_ok"), "value": 0}], {})
+
+
+func _closing_text() -> String:
+	return t("done_text").format({"left": ceili(real_total() - real_s)})
+
+
 func real_total() -> float:
 	return maxf(1.0, float(sim._phase_params.value("dispatch_real_s")))
 
@@ -250,7 +268,12 @@ func realtime() -> bool:
 ## 보기를 누른다: pick = 그 답으로 정함 / multi = 켜고 끔(정한 개수까지) / select = 고름(확인은 따로)
 func choose(i: int) -> void:
 	var s := current()
-	if s.is_empty() or i < 0 or i >= (s.options as Array).size():
+	if s.is_empty():
+		# 마무리 안내 장면의 단추(숫자키 1) = 남은 길 건너뛰기
+		if i == 0 and closing_shown():
+			skip()
+		return
+	if i < 0 or i >= (s.options as Array).size():
 		return
 	var picked: Array = s.picked
 	match str(s.mode):
@@ -602,13 +625,19 @@ func _refresh() -> void:
 	if _scene == null:
 		return
 	var s := current()
-	_scene.visible = active and not s.is_empty()
+	var closing := closing_shown()
+	_scene.visible = active and (not s.is_empty() or closing)
 	_prep.visible = active
-	var at := index if not s.is_empty() else -1
+	var at := index if not s.is_empty() else (CLOSING if closing else -1)
 	if at != _shown:
 		_shown = at
 		if not s.is_empty():
 			_fill(s)
+		elif closing:
+			_fill(_closing_step())
+	if closing:
+		# 남은 시간은 계속 줄어든다
+		_text.text = _closing_text()
 	# 준비판: 시각·받은 무전·결정 목록
 	var total := int(sim.dispatch_s)
 	var now := roundi(sim.dispatch_s * frac())
@@ -647,7 +676,8 @@ func _fill(s: Dictionary) -> void:
 	_who.text = str(s.who)
 	_head.text = str(s.title)
 	_text.text = CardUi.spoken(str(s.text)) if str(s.kind) == "card" else str(s.text)
-	_count.text = "%d / %d" % [index + 1, steps.size()]
+	var closing := str(s.kind) == "done"
+	_count.text = "" if closing else "%d / %d" % [index + 1, steps.size()]
 	_ornament.queue_redraw()
 	for b in _buttons:
 		_grid.remove_child(b)
@@ -664,6 +694,9 @@ func _fill(s: Dictionary) -> void:
 		# 꺼진 단추(정한 개수를 다 채움)는 흐리게
 		b.add_theme_stylebox_override("disabled", b.get_theme_stylebox("normal"))
 		b.add_theme_color_override("font_disabled_color", Color(0.55, 0.6, 0.66, 0.6))
+		if closing:
+			# 건너뛰기 단추는 눈에 띄게
+			b.add_theme_color_override("font_color", HEAD_COLOR)
 		b.pressed.connect(choose.bind(i))
 		_grid.add_child(b)
 		_buttons.append(b)

@@ -43,9 +43,9 @@ func test_params_have_source() -> void:
 			assert_true((entry as Dictionary).has("source"), "%s에 source" % key)
 	var p := DispatchUi.load_params()
 	assert_true(p.has("order") and p.has("texts") and p.has("preassign"), "설정을 읽는다")
-	# 출동 단계는 실제 180초 (2026-11-14 사용자 결정: 90초는 너무 빠르다)
+	# 출동 단계는 실제 90초 (2026-11-15 사용자 결정: 180초에서 되돌림 — 대신 마치면 건너뛰기를 안내)
 	var phase: Dictionary = JsonData.load_file("res://data/command/phase_params.json")
-	assert_eq(float(phase.dispatch_real_s.value), 180.0, "출동 단계 실제 시간")
+	assert_eq(float(phase.dispatch_real_s.value), 90.0, "출동 단계 실제 시간")
 	assert_true(str(SpriteArt.config().get("portraits", {}).get(str(p.portrait_key), "")) != "", "차량 안 무전 그림 자리")
 
 
@@ -195,6 +195,35 @@ func test_training_waits_and_realtime_arrives() -> void:
 	ui3.advance(ui3.num("skip_s") * 0.5 + 0.1)
 	assert_true(not ui3.active and arrived3[0] == 1, "정한 시간 안에 도착")
 	ui3.free()
+
+
+## 결정을 모두 마치면 마무리 안내 장면이 뜨고, 그 단추(숫자키 1·Enter)로 남은 길을 건너뛴다 (2026-11-15)
+func test_closing_scene_guides_skip() -> void:
+	var sim := SimWorld.from_scenario(HOUSE)
+	var ui := _ui(sim)
+	ui.advance(1.0)
+	assert_true(not ui.closing_shown(), "결정이 남아 있으면 안내 장면이 없다")
+	var count := ui.steps.size()
+	ui.answer_rest()
+	assert_true(ui.done() and ui.closing_shown(), "결정을 모두 마치면 안내 장면")
+	assert_true(ui.current().is_empty() and ui.steps.size() == count, "안내 장면은 결정이 아니다 (목록에 넣지 않는다)")
+	var step: Dictionary = ui._closing_step()
+	assert_true(str(step.options[0].text).contains("건너뛰고") and str(step.text).contains("초"), "건너뛰기 단추·남은 시간 (%s)" % step.text)
+	ui._refresh()
+	assert_true(ui._scene.visible and ui._buttons.size() == 1, "오른쪽 장면 자리에 단추 하나")
+	ui.choose(1)
+	assert_true(not ui.skipping, "없는 보기는 눌러도 그대로")
+	ui.choose(0)
+	assert_true(ui.skipping and not ui.closing_shown(), "단추 = 남은 길 건너뛰기, 안내는 닫힌다")
+	ui.free()
+	# 차가 이미 현장 앞에 닿아 있으면(훈련에서 늦게 마침) 안내 없이 바로 도착
+	var sim2 := SimWorld.from_scenario(HOUSE)
+	sim2.apply_realism("훈련")
+	var ui2 := _ui(sim2)
+	ui2.advance(ui2.real_total() + 1.0)
+	ui2.answer_rest()
+	assert_true(not ui2.closing_shown(), "현장 앞에서는 안내 장면 없음")
+	ui2.free()
 
 
 func _option_index(sim: SimWorld, card_id: String, effect: String) -> int:

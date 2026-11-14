@@ -96,6 +96,7 @@ func _ready() -> void:
 	hud.card.enabled_fn = _card_item_enabled
 	hud.board_pressed.connect(_press_board)
 	hud.interior_toggled.connect(_set_interior)
+	hud.overview_toggled.connect(set_interior_overview)
 	hud.split_gap_step.connect(_step_split_gap)
 	hud.board_done_fn = _board_done
 	hud.command_ui.order_issued.connect(sim.issue)
@@ -244,6 +245,7 @@ func _run_replay(path: String) -> SimWorld:
 
 
 func _process(delta: float) -> void:
+	_step_glide()
 	var t0 := Time.get_ticks_usec()
 	_process_sim(delta)
 	if hud.perf_visible():
@@ -430,15 +432,23 @@ func _view_bounds() -> Rect2:
 
 ## 외부 화면에 있던 카메라 [위치, 배율] — 내부 화면에서 나올 때 되돌린다
 var _exterior_cam: Array = []
+## 내부 화면 전체보기: 켜면 보이는 세 층이 다 들어오게 축소, 끄면(기본) 고른 층을 가운데에 크게
+var interior_overview := false
+## 다른 층을 눌러 바꾼 뒤: 마우스 단추를 떼면 그 층을 가운데로 미끄러뜨린다 (누르는 동안 화면이 움직이면 뗀 자리가 달라진다)
+var _glide_pending := false
+var _glide: Tween
 
 
 ## 화면이 바뀔 때의 카메라:
-##   외부 → 내부: '고른 층 + 직상층'이 다 들어오게 맞춘다 (외부 화면의 카메라는 기억해 둔다)
-##   내부에서 층 바꿈: 그 두 층으로 옮기되 배율은 그대로. 지도에서 층을 눌러 바꿨으면(keep_screen) 화면은 제자리
+##   외부 → 내부: 고른 층이 가운데에 크게 들어오게 맞춘다 (전체보기면 세 층 모두). 외부 화면의 카메라는 기억해 둔다
+##   내부에서 층 바꿈(층 막대·PgUp): 그 층을 가운데로 옮기되 배율은 그대로
+##   지도에서 다른 층을 눌러 바꿈(keep_screen): 클릭은 제자리에서 처리하고, 단추를 떼면 그 층이 가운데로 미끄러져 온다
+##     (전체보기에서는 세 층이 다 보이므로 제자리에 둔다)
 ##   내부 → 외부: 기억해 둔 카메라로
 func _fit_view_change(was_exterior: bool, old_level: int, keep_screen: bool) -> void:
 	if view_mode != ViewMode.ISO:
 		return
+	_stop_glide()
 	if exterior_view:
 		camera.zoom_min = RtsCamera.ZOOM_MIN
 		if not was_exterior and _exterior_cam.size() == 2:
@@ -452,6 +462,7 @@ func _fit_view_change(was_exterior: bool, old_level: int, keep_screen: bool) -> 
 		_frame_interior(true)
 	elif keep_screen:
 		camera.position += iso_view.level_shift(old_level, view_level)
+		_glide_pending = not interior_overview
 	elif old_level != view_level:
 		_frame_interior(false)
 
@@ -470,31 +481,78 @@ func _step_split_gap(dir: int) -> void:
 	if exterior_view:
 		return
 	iso_view.set_lift(iso_view.lift_px() + dir * iso_view.params.split_step_px)
-	_frame_interior(false)
+	_stop_glide()
+	_frame_interior(interior_overview)
 	camera.retarget(_view_bounds(), camera.position)
 	hud.set_view_state(true, iso_view.lift_px())
 
 
-## 내부 화면 맞춤: '고른 층 + 직상층'(없으면 직하층)을 위쪽 표시줄과 아래 콘솔 사이 가운데에.
-## fit_zoom 이면 두 층이 다 들어오는 배율로 (평소 시작 배율보다 크게 하지는 않는다)
-func _frame_interior(fit_zoom: bool) -> void:
-	var r := iso_view.frame_rect()
+## 내부 화면 전체보기 단추: 켜면 세 층이 다 들어오게 축소, 끄면 고른 층을 가운데에 크게
+func set_interior_overview(on: bool) -> void:
+	interior_overview = on
+	hud.set_overview_state(on)
+	if not exterior_view and view_mode == ViewMode.ISO:
+		_stop_glide()
+		_frame_interior(true)
+		camera.retarget(_view_bounds(), camera.position)
+
+
+## 내부 화면에서 카메라가 있어야 할 [위치, 배율]: 고른 층(전체보기면 세 층)을
+## 왼쪽 정보창·위쪽 표시줄·아래 콘솔(그리고 펼쳐진 무전 기록)을 뺀 영역의 가운데에.
+## fit_zoom 이면 그 영역에 꽉 차는 배율, 아니면 지금 배율 그대로
+func _interior_target(fit_zoom: bool) -> Array:
+	var p := iso_view.params
+	var r := iso_view.frame_rect(interior_overview)
 	var vp := get_viewport().get_visible_rect().size
-	# 위쪽은 시계·단계 표시줄과 알림 줄 자리
-	var top := 130.0
-	var bottom := (hud.console.size.y if hud.console else 0.0) + 24.0
-	# 오른쪽은 무전 기록 패널, 왼쪽은 층 막대가 가린다
-	var right := RadioLogPanel.WIDTH + 24.0
-	var left := 180.0
+	# 위쪽은 시계·단계 표시줄
+	var top := 84.0
+	var bottom := (hud.console.size.y if hud.console else 0.0) + 16.0
+	var left := p.split_info_width_px
+	# 오른쪽 무전 기록은 펼쳐져 있을 때만 자리를 뺀다
+	var right := 16.0
+	if hud.radio_log and hud.radio_log.visible and not hud.radio_log.folded:
+		right += RadioLogPanel.WIDTH
+	var z := camera.zoom.x
 	if fit_zoom:
 		var avail := Vector2(vp.x - right - left, vp.y - top - bottom)
-		var z := clampf(minf(avail.x / r.size.x, avail.y / r.size.y), camera.zoom_min, START_ZOOM[ViewMode.ISO])
-		camera.zoom = Vector2(z, z)
+		var z_max: float = START_ZOOM[ViewMode.ISO] if interior_overview else p.split_focus_zoom_max
+		z = clampf(minf(avail.x / r.size.x, avail.y / r.size.y), camera.zoom_min, z_max)
+	return [r.get_center() + Vector2((right - left) * 0.5, (bottom - top) * 0.5) / z, z]
+
+
+## 내부 화면 맞춤 (바로)
+func _frame_interior(fit_zoom: bool) -> void:
+	var t := _interior_target(fit_zoom)
+	camera.zoom = Vector2(t[1], t[1])
 	camera.bounds = _view_bounds()
-	camera.position = r.get_center() + Vector2((right - left) * 0.5, (bottom - top) * 0.5) / camera.zoom.x
+	camera.position = t[0]
 
 
-## 그 위치(셀)가 건물 밖인가 — 화면 이동 때 외부 보기로 갈지 정한다
+func _stop_glide() -> void:
+	_glide_pending = false
+	if _glide != null:
+		_glide.kill()
+		_glide = null
+
+
+## 다른 층을 눌러 바꾼 뒤 마우스 단추를 뗐으면 그 층을 가운데로 미끄러뜨린다 (배율은 그대로)
+func _step_glide() -> void:
+	if not _glide_pending:
+		return
+	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
+		return
+	_glide_pending = false
+	if exterior_view or view_mode != ViewMode.ISO:
+		return
+	var target: Vector2 = _interior_target(false)[0]
+	var t := iso_view.params.split_glide_s
+	if t <= 0.0:
+		camera.position = target
+		return
+	_glide = create_tween()
+	_glide.tween_property(camera, "position", target, t).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+
+
 ## 내부 화면으로 들어갈 층:## 줌으로 들어갈 층: 선택한 조 중 건물 안에 있는 조의 층, 없으면 지상층
 func _entry_level(ground: int) -> int:
 	for crew_id in selection.selected:

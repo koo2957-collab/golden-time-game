@@ -177,19 +177,13 @@ func _floor_rect(lv: int, off: Vector2) -> Rect2:
 	return r
 
 
-## 내부 화면의 화면 맞춤 범위 (2026-11-14 사용자 결정): 고른 층 + 직상층. 직상층이 없으면 고른 층 + 직하층.
-## 직하층은 그 아래에 이어져 있어 화면을 내리거나 축소하면 보인다
-func frame_rect() -> Rect2:
-	var r := _floor_rect(_level, Vector2.ZERO)
-	if _exterior or stack == null or not stack.staggered():
-		return r
-	var above := stack.above_levels(_level)
-	if not above.is_empty():
-		return r.merge(_floor_rect(above[0], stack.upper_vec(1)))
-	var vis := stack.visible_levels(_level)
-	if vis.size() > 1:
-		r = r.merge(_floor_rect(vis[1], stack.offset_vec(1)))
-	return r
+## 내부 화면의 화면 맞춤 범위 (2026-11-14 사용자 결정):
+##   평소 = 고른 층 하나 — 화면 가운데에 크게, 직상층·직하층은 위아래로 잘려 보인다
+##   전체보기(overview) = 보이는 세 층 모두
+func frame_rect(overview := false) -> Rect2:
+	if overview:
+		return shown_rect()
+	return _floor_rect(_level, Vector2.ZERO)
 
 
 ## 보이는 모든 층의 화면 범위 (카메라 이동 범위용)

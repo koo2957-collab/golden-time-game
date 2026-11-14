@@ -7,6 +7,8 @@ extends Control
 signal card_key_pressed(key: String)
 ## 내부 보기 단추: 켜면 내부 화면(층 분리), 끄면 외부 화면. 층 간격 넓히기(+1)·좁히기(-1)
 signal interior_toggled(on: bool)
+## 내부 화면 전체보기 단추: 켜면 세 층이 다 보이게 축소, 끄면 고른 층을 크게
+signal overview_toggled(on: bool)
 signal split_gap_step(dir: int)
 ## 지휘관 명령 칸의 단추를 눌렀을 때 (명령 id — data/commands.json commander_board·commander_tools)
 signal board_pressed(id: String)
@@ -821,6 +823,7 @@ func _build_console() -> void:
 # --- 화면 전환 단추 (2026-11-14: 외부 화면 ↔ 내부 화면) ---
 
 var interior_button: Button
+var overview_button: Button
 var _split_row: HBoxContainer
 var _split_label: Label
 
@@ -832,9 +835,18 @@ func _build_split_controls() -> void:
 	interior_button.toggle_mode = true
 	interior_button.focus_mode = Control.FOCUS_NONE
 	interior_button.add_theme_font_size_override("font_size", 14)
-	interior_button.tooltip_text = "켜면 내부 화면: 고른 층과 바로 위·아래층을 떼어 놓고 건물 안을 봅니다 (층 막대의 층을 눌러도 같습니다).\n끄면 외부 화면: 건물 외관과 바깥 — 차량·급수·구역·둘러보기.\n보이는 위치만 바뀌고 대원·불의 실제 위치는 그대로입니다"
+	interior_button.tooltip_text = "켜면 내부 화면: 고른 층을 가운데에 크게, 바로 위·아래층은 떼어 놓고 건물 안을 봅니다 (층 막대의 층을 눌러도 같습니다).\n끄면 외부 화면: 건물 외관과 바깥 — 차량·급수·구역·둘러보기.\n보이는 위치만 바뀌고 대원·불의 실제 위치는 그대로입니다"
 	interior_button.toggled.connect(func(on: bool) -> void: interior_toggled.emit(on))
 	floor_tabs.add_child(interior_button)
+	overview_button = Button.new()
+	overview_button.text = "전체보기"
+	overview_button.toggle_mode = true
+	overview_button.visible = false
+	overview_button.focus_mode = Control.FOCUS_NONE
+	overview_button.add_theme_font_size_override("font_size", 14)
+	overview_button.tooltip_text = "켜면 고른 층과 바로 위·아래층이 한 화면에 다 들어오게 축소합니다.\n끄면 고른 층을 가운데에 크게 봅니다 (위·아래층은 잘려 보임)"
+	overview_button.toggled.connect(func(on: bool) -> void: overview_toggled.emit(on))
+	floor_tabs.add_child(overview_button)
 	_split_row = HBoxContainer.new()
 	_split_row.visible = false
 	for spec: Array in [["−", -1], ["+", 1]]:
@@ -860,11 +872,17 @@ func set_view_state(interior: bool, lift_px: float) -> void:
 	if interior_button == null:
 		return
 	interior_button.set_pressed_no_signal(interior)
+	overview_button.visible = interior
 	_split_row.visible = interior
 	_split_label.text = "간격 %dpx" % roundi(lift_px)
 	floor_tabs.reset_size()
 	# 간격 줄이 막 보이게 됐을 때 자리 잡기를 다음 프레임까지 미루면 그 사이 층 막대 위에 겹쳐 클릭을 가로챈다 — 바로 정렬
 	floor_tabs.notification(Container.NOTIFICATION_SORT_CHILDREN)
+
+
+func set_overview_state(on: bool) -> void:
+	if overview_button:
+		overview_button.set_pressed_no_signal(on)
 
 
 # --- 지휘관 명령 칸 (G3, 2026-11-14 결정) ---

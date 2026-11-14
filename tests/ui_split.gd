@@ -1,7 +1,8 @@
 extends SceneTree
 ## 두 화면 점검 — 튜토리얼 2층 주택 (창이 열린다, 2026-11-14 결정):
-## 외부 화면 ↔ 내부 화면(층 분리) 단추, 두 층이 함께 온전하게 보임, 기본 간격 874px, 간격을 바꿔도 대원의 실제 위치는 그대로,
-## 보이는 층 어디든 한 번 눌러 지시 (누른 층이 고른 층이 되고 화면은 제자리), 내부 화면에서는 바깥이 흐려짐.
+## 외부 화면 ↔ 내부 화면(층 분리) 단추, 고른 층이 가운데에 크게(위·아래층은 잘려 보임), 전체보기 단추(세 층이 다 들어옴),
+## 기본 간격 874px, 간격을 바꿔도 대원의 실제 위치는 그대로, 보이는 층 어디든 한 번 눌러 지시
+## (전체보기에서는 화면이 제자리, 평소에는 누른 층이 가운데로 미끄러져 온다), 내부 화면에서는 바깥이 흐려짐.
 ## 사용: godot --path . -s res://tests/ui_split.gd [-- 저장폴더]
 
 var _failed := 0
@@ -64,13 +65,34 @@ func _run() -> void:
 	_check("위층은 불투명 (투명하게 하지 않는다)", iso.upper_layers[0].modulate.a, 1.0)
 	_check("기본 간격 874px — 아래층 뒷벽 윗부분에 살짝 걸친다", [roundi(iso.lift_px()), iso.lift_px() < iso.stack.split_min_lift_px()], [874, true])
 	_check("내부 화면: 주변 건물은 흐리게", world.city.modulate.r < 1.0, true)
+	# 평소: 고른 층이 왼쪽 정보창·위 표시줄·아래 콘솔을 뺀 영역에 꽉 차게, 위층은 위로 잘려 보인다
 	var vp: Vector2 = root.get_visible_rect().size
-	var r: Rect2 = iso.frame_rect()
-	var xf: Transform2D = iso.get_global_transform_with_canvas()
-	var a: Vector2 = xf * r.position
-	var b: Vector2 = xf * r.end
-	_check("두 층이 화면 안에 들어온다 (콘솔 위)", a.y >= 0.0 and b.y <= vp.y - hud.console.size.y + 4.0 and a.x >= 0.0 and b.x <= vp.x, true)
+	var area := Rect2(iso.params.split_info_width_px, 0.0, vp.x - iso.params.split_info_width_px, vp.y - hud.console.size.y)
+	_check("처음은 전체보기가 아님 · 단추가 보인다", [world.interior_overview, hud.overview_button.visible, hud.overview_button.button_pressed], [false, true, false])
+	_check("고른 층이 화면 영역 안에 다 들어온다", area.grow(4.0).encloses(_on_screen(iso, iso.frame_rect())), true)
+	var focus_zoom: float = world.camera.zoom.x
+	_check("고른 층을 크게 본다 (배율 0.6 이상)", focus_zoom >= 0.6, true)
+	var up_rect: Rect2 = _on_screen(iso, iso._floor_rect(top, iso.stack.upper_vec(1)))
+	_check("위층은 위로 잘려 보인다 (일부만 화면에)", [up_rect.intersects(Rect2(Vector2.ZERO, vp)), up_rect.position.y < 0.0], [true, true])
 	_check("대원의 실제 위치는 그대로", _positions(sim), before)
+	print("  2층 주택 내부 화면: 간격 %dpx, 고른 층 배율 %.2f" % [roundi(iso.lift_px()), focus_zoom])
+	root.get_texture().get_image().save_png(out + "split_focus.png")
+	# 평소 상태에서 잘려 보이는 위층을 누르면: 그 층이 고른 층이 되고 가운데로 미끄러져 온다
+	var peek_cell := Vector2(sim.building.footprint(top).end) - Vector2(2.5, 2.5)
+	var peek_screen: Vector2 = root.get_canvas_transform() * (world.projection().to_screen(peek_cell) + iso.stack.upper_vec(1))
+	_check("위층의 보이는 부분이 화면 안에 있다", Rect2(Vector2.ZERO, vp).has_point(peek_screen), true)
+	_click(peek_screen)
+	await create_timer(0.6).timeout
+	_check("잘려 보이는 위층을 누름 → 2층이 고른 층", world.view_level, top)
+	_check("누른 층이 가운데로 온다 (화면 영역 안에 다 들어옴) · 배율 그대로", [area.grow(4.0).encloses(_on_screen(iso, iso.frame_rect())), is_equal_approx(world.camera.zoom.x, focus_zoom)], [true, true])
+	world.set_view_level(low, false)
+	for i in 5:
+		await process_frame
+	# 전체보기: 두 층(이 건물은 2층)이 다 들어오게 축소
+	hud.overview_button.button_pressed = true
+	for i in 10:
+		await process_frame
+	_check("전체보기 → 보이는 층이 모두 화면 영역 안에", [world.interior_overview, area.grow(4.0).encloses(_on_screen(iso, iso.shown_rect())), world.camera.zoom.x < focus_zoom], [true, true, true])
 	root.get_texture().get_image().save_png(out + "split_on.png")
 
 	# 3) 간격 조절
@@ -89,7 +111,7 @@ func _run() -> void:
 	for i in 10:
 		await process_frame
 
-	# 4) 보이는 층 어디든 한 번에: 1층을 고른 채 2층에 선 조를 누르면 2층이 고른 층이 되고 그 조가 선택된다
+	# 4) 보이는 층 어디든 한 번에 (전체보기 — 화면은 제자리): 1층을 고른 채 2층에 선 조를 누르면 2층이 고른 층이 되고 그 조가 선택된다
 	var proj = world.projection()
 	var crew_up = sim.units.get_crew(1)
 	var up_world: Vector2 = proj.to_screen(crew_up.leader.pos, 0.9) + iso.stack.upper_vec(1)
@@ -135,11 +157,17 @@ func _run() -> void:
 		await process_frame
 	_check("내부 화면에서도 시뮬레이션이 돈다", sim.clock.tick > tick0, true)
 
+	# 전체보기를 끄면 다시 고른 층을 크게
+	hud.overview_button.button_pressed = false
+	for i in 10:
+		await process_frame
+	_check("전체보기 끔 → 고른 층을 크게", [world.interior_overview, is_equal_approx(world.camera.zoom.x, focus_zoom)], [false, true])
+
 	# 6) 단추를 끄면 외부 화면, 카메라는 들어가기 전으로
 	hud.interior_button.button_pressed = false
 	for i in 30:
 		await process_frame
-	_check("끄면 외부 화면", [world.exterior_view, world.camera.zoom == ext_zoom, world.camera.zoom_min, world.city.modulate.r], [true, true, RtsCamera.ZOOM_MIN, 1.0])
+	_check("끄면 외부 화면 · 전체보기 단추 숨김", [world.exterior_view, world.camera.zoom == ext_zoom, world.camera.zoom_min, world.city.modulate.r, hud.overview_button.visible], [true, true, RtsCamera.ZOOM_MIN, 1.0, false])
 	root.get_texture().get_image().save_png(out + "view_exterior_again.png")
 	print("결과: %s (실패 %d)" % ["통과" if _failed == 0 else "실패", _failed])
 	quit(1 if _failed > 0 else 0)
@@ -156,6 +184,12 @@ func _place(sim: SimWorld, crew_id: int, lv: int) -> void:
 		ff.prev_level = lv
 		ff.pos = Vector2(cell) + Vector2(0.5, 0.5) + Vector2(0.7 * (ff.id % 2), 0.0)
 		ff.prev_pos = ff.pos
+
+
+## world 좌표 범위 → 화면 좌표 범위
+func _on_screen(iso, r: Rect2) -> Rect2:
+	var xf: Transform2D = iso.get_global_transform_with_canvas()
+	return Rect2(xf * r.position, Vector2.ZERO).expand(xf * r.end)
 
 
 func _positions(sim: SimWorld) -> Array:

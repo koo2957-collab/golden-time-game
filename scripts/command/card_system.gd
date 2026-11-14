@@ -6,7 +6,8 @@ extends RefCounted
 ##   제한시간: 긴급도별 초(card_params.json), 훈련 난이도는 배율. 미응답이면 카드는 사라지고 대원은 '지시 대기'로 멈춘 채
 ##   선택: CommandOrder "card_answer"로 기록(다시 하기). 선택지의 effect를 행동으로 실행한다 — 등급은 화면에 보이지 않는다
 ##   선제지시: 카드의 skip_if_preordered 키가 켜져 있으면 카드 없이 '최선' 선택을 바로 실행하고 선제지시로 기록
-##   기록(log): 묻고 답한 시각, 선택, 등급, 결과(answered·timeout·preordered·overflow) → 디브리핑
+##   기록(log): 묻고 답한 시각, 선택, 등급, 결과(answered·timeout·preordered·overflow·unprepared) → 디브리핑
+##   출동 단계 카드: 출동 중 장면에서 미리 답하면(dispatch_answers) 도착했을 때 묻지 않고 그 답을 적용한다. 정하지 않았으면 unprepared
 
 const URGENCY_ORDER := {"긴급": 0, "중요": 1, "일반": 2}
 const GRADE_SCORE := {"최선": 1.0, "허용": 0.5, "오답": 0.0, "치명": 0.0}
@@ -54,6 +55,9 @@ var queue: Array[Card] = []
 var crew_judgment := true
 ## 켜 둔 선제지시 키
 var preorders: Dictionary = {}
+## 출동 중에 차 안에서 답한 카드 (2026-11-14 사용자 결정: 출동 단계 카드는 출동 중 질문 장면으로 묻는다).
+## {카드 id: 고른 선택지 (카드 파일에 적힌 순서, -1 = 도착할 때까지 정하지 않음)}. 여기 있는 카드는 도착한 뒤에 다시 묻지 않는다
+var dispatch_answers: Dictionary = {}
 ## 결정 기록 [{uid, id, title, asked_tick, answered_tick, option, grade, result, sop}]
 var log: Array[Dictionary] = []
 ## 훈련 난이도 제한시간 배율
@@ -97,6 +101,24 @@ func _init(p_units: UnitSystem, p_tactical: TacticalSystem, p_doors: DoorSystem,
 
 func active() -> Card:
 	return queue[0] if not queue.is_empty() else null
+
+
+## 출동 단계에 묻는 카드 (phase '출동' · trigger 'arrival')의 원본 목록 — 출동 중 장면이 이 목록으로 묻는다
+func dispatch_specs() -> Array:
+	var out: Array = []
+	for spec: Dictionary in cards:
+		if str(spec.get("phase", "")) != "출동" or str(spec.get("trigger", "")) != "arrival":
+			continue
+		if spec.has("stages") and not (sim and str(sim.scenario.get("meta", {}).get("stage", "")) in spec.stages):
+			continue
+		out.append(spec)
+	return out
+
+
+## 출동 중에 답한 카드를 받는다 (CommandOrder "dispatch_answers"). 답은 도착했을 때(카드가 원래 나오는 때) 적용한다
+func set_dispatch_answers(answers: Dictionary) -> void:
+	for id in answers:
+		dispatch_answers[str(id)] = int(answers[id])
 
 
 func set_preorder(key: String, on: bool, tick: int) -> void:
@@ -285,6 +307,18 @@ func _raise(spec: Dictionary, e: Dictionary, tick: int) -> void:
 	c.monologue = str(spec.get("monologue", "")).format(c.ctx)
 	c.options = _shuffled(opts, c.uid)
 	c.asked_tick = tick
+	# 출동 중에 이미 답한 카드: 묻지 않고 그 답대로. 정하지 않고 도착했으면 준비하지 않은 것으로 남긴다 (등급 없음)
+	if dispatch_answers.has(c.id):
+		var chosen := int(dispatch_answers[c.id])
+		if chosen >= 0 and chosen < opts.size():
+			var picked: Dictionary = opts[chosen]
+			_log(c, tick, picked, "answered")
+			events.add(tick, "card_answered", {"crew": "선착대장", "title": str(spec.get("title", c.id)), "option": str(picked.get("text", ""))})
+			_apply(str(picked.get("effect", "")), c, tick)
+		else:
+			_log(c, tick, null, "unprepared")
+			events.add(tick, "dispatch_unprepared", {"crew": "선착대장", "title": str(spec.get("title", c.id))})
+		return
 	# 지휘권 이양 뒤 단위대에 묶인 출동대: 단위지휘관이 대신 처리한다 (기획안 3-3, R13)
 	var by := sim.transfer.delegates(c.crew_id) if sim and sim.transfer else ""
 	if by != "":

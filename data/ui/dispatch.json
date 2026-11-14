@@ -1,0 +1,73 @@
+{
+  "note": "출동 중 장면 (기획안 4-4, 2026-11-14 사용자 결정: 차가 달리는 동안 질문 장면이 하나씩 나온다 · 먹물 바탕 + 차량 안에서 무전하는 소방관 그림 · 장비는 체크 목록 · 임무는 조마다 한 장면). 화면에만 쓰는 값. source: 화면 설정 = 보기 좋게 정한 값, 사용자 결정 = 날짜와 함께.",
+
+  "order": {"value": ["brief", "cards", "brief_more", "loadout", "preassign", "placement"], "source": "화면 설정", "note": "장면 순서: 지령 → 상황실 요청(카드) → 추가 무전 → 장비 → 조별 임무 → 차량 배치(현장이 가까워질 때). 정보가 결정보다 먼저 오게"},
+  "brief_first_lines": {"value": 2, "source": "화면 설정", "note": "첫 지령 장면에 넣는 지령 줄 수 (대상·신고 내용). 나머지는 '상황실 추가 무전' 장면으로"},
+  "next_delay_s": {"value": 0.6, "source": "화면 설정", "note": "답한 뒤 다음 장면이 뜨기까지 (실제 초) — 숨 돌릴 틈"},
+  "skip_s": {"value": 2.5, "source": "화면 설정", "note": "결정을 모두 마치고 '현장 도착'을 누르면 남은 길을 이 시간(실제 초)에 달려 도착한다 — 차가 사라졌다 다시 나오지 않게"},
+  "feedback_s": {"value": 4.0, "source": "화면 설정", "note": "훈련 방식: 고른 직후 등급·근거 한 줄이 떠 있는 시간 (무전 장면과 같다)"},
+
+  "scene_w": {"value": 950, "source": "화면 설정", "note": "장면(먹물 바탕) 폭 — 화면 오른쪽에 붙인다. 왼쪽 준비판과 가운데(출동 경로·현장)를 가리지 않는 폭"},
+  "scene_h": {"value": 660, "source": "화면 설정", "note": "장면 높이"},
+  "scene_right_px": {"value": 0, "source": "화면 설정", "note": "장면과 화면 오른쪽 끝 사이"},
+  "portrait_rect": {"value": [56, 120, 290, 410], "source": "화면 설정", "note": "말하는 사람 그림 자리 [x, y, 폭, 높이] (장면 안 좌표)"},
+  "text_x": {"value": 366, "source": "화면 설정", "note": "글·단추 열의 왼쪽 (장면 안 좌표)"},
+  "text_y": {"value": 78, "source": "화면 설정", "note": "글·단추 열의 위쪽"},
+  "text_w": {"value": 480, "source": "화면 설정", "note": "글·단추 열 폭"},
+  "button_w": {"value": 456, "source": "화면 설정", "note": "선택 단추 폭"},
+  "prep_w": {"value": 450, "source": "화면 설정", "note": "왼쪽 출동 준비판 폭"},
+  "prep_top_px": {"value": 76, "source": "화면 설정", "note": "준비판 위쪽 (위 표시줄 아래)"},
+  "prep_bottom_px": {"value": 104, "source": "화면 설정", "note": "준비판 아래 여백 (아래 바 위)"},
+
+  "portrait_key": {"value": "출동", "source": "2026-11-14 사용자 결정", "note": "data/art.json portraits 의 그림 이름 — 차량 안에서 무전하는 소방관 그림. 지금은 지휘관 그림을 임시로 쓰고, 그림을 받으면 art.json 경로만 바꾼다"},
+
+  "texts": {
+    "source": "화면 설정",
+    "note": "장면 글. {crew} {cap} {n} 은 그때 값으로 바뀐다",
+    "brief_tag": "상황실 무전",
+    "brief_who": "119종합상황실",
+    "brief_title": "출동 지령",
+    "brief_ok": "수신 — 출동합니다",
+    "brief_more_title": "상황실 추가 무전",
+    "brief_more_ok": "수신",
+    "card_tag": "출동 중 무전",
+    "card_who": "선착대 · 차량 안",
+    "loadout_tag": "출동 준비",
+    "loadout_who": "선착대 · 차량 안",
+    "loadout_title": "장비 챙기기",
+    "loadout_text": "기본 장비 외에 {cap}개까지 더 챙깁니다. 들은 정보로 현장을 그려 보고 고르세요. 챙기지 않은 장비는 도착한 뒤 차량까지 가서 가져와야 합니다.",
+    "loadout_ok": "이대로 챙긴다 ({n}/{cap})",
+    "loadout_none": "챙기지 않음",
+    "preassign_tag": "출동 중 무전",
+    "preassign_title": "도착 후 임무",
+    "preassign_text": "{crew}입니다. 도착하면 저희 조는 무엇을 할까요? (건물 안 임무는 발화층으로 가고, 진입 허가는 입구에서 다시 묻습니다)",
+    "placement_tag": "출동 중 무전",
+    "placement_who": "선착 펌프차 운전원",
+    "placement_title": "선착 차량 배치",
+    "placement_text": "현장이 가까워집니다. 차량을 어디에 세울까요? 화염·낙하물 피해 범위, 후착대·특수차 공간, 소화전을 생각해 고르세요. (SOP 200-3.1.1)",
+    "placement_ok": "이 자리에 세운다",
+    "prep_title": "출동 준비판",
+    "prep_clock": "출동 중 — 신고 후 {now} (선착 도착 {eta})",
+    "prep_clock_wait": "현장 앞 — 남은 결정을 마치면 도착합니다",
+    "prep_clock_arrived": "선착대 현장 도착 — 신고 후 {eta}",
+    "prep_lines": "상황실 무전",
+    "prep_lines_none": "(아직 받은 무전 없음)",
+    "prep_steps": "출동 중 결정 ({done} / {all})",
+    "prep_go": "현장 도착 (Enter) — 남은 길 건너뛰기",
+    "prep_left": "결정 {n}개 남음",
+    "prep_skipping": "현장으로 이동 중…",
+    "unanswered": "정하지 않음"
+  },
+
+  "preassign": {
+    "source": "기획안 4-4 '도착 후 임무 미리 정하기' (P9-1)",
+    "note": "조마다 고르는 도착 후 임무 [임무 키, 단추 글]. 키는 SimWorld.set_preassign 이 아는 값. office 는 방재실이 있는 건물에서만 보인다",
+    "options": [
+      ["attack", "화점진압 (관창)"],
+      ["search", "인명검색"],
+      ["office", "방재실·관리사무소 연락 (도면·수신반)"],
+      ["officer", "현장안전담당"],
+      ["", "도착 후 지시를 기다려라"]
+    ]
+  }
+}

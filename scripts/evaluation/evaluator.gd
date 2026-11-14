@@ -296,7 +296,7 @@ func _check_cards() -> Dictionary:
 	var cond := 0
 	var counts := {}
 	for e in lg:
-		var key: String = e.grade if e.result in ["answered", "preordered", "condition"] else ("미응답" if e.result == "timeout" else "대기 밀림")
+		var key: String = e.grade if e.result in ["answered", "preordered", "condition"] else ("미응답" if e.result in ["timeout", "unprepared"] else "대기 밀림")
 		if e.result == "preordered":
 			key = "선제지시"
 		elif e.result == "delegated":
@@ -1051,7 +1051,7 @@ func _card_lines() -> Array:
 	var out: Array = []
 	for e in sim.cards.log:
 		var result := str(e.get("result", ""))
-		var what := "미응답 (지시 대기)" if result == "timeout" else ("대기 중 밀림" if result == "overflow" else str(e.get("option", "")))
+		var what := "미응답 (지시 대기)" if result == "timeout" else "출동 중 정하지 않음" if result == "unprepared" else ("대기 중 밀림" if result == "overflow" else str(e.get("option", "")))
 		var grade := "선제지시" if result == "preordered" else (str(e.get("grade", "")) if str(e.get("grade", "")) != "" else "—")
 		if result == "condition":
 			grade += "·임무 조건"

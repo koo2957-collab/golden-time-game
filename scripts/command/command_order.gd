@@ -23,6 +23,7 @@ extends RefCounted
 ##   floor:          층으로 가기 (squad_ids = 조 id, value = 층, answers.entry = 밖의 조가 쓸 진입구 index 또는 -1)
 ##   stair:          계단 고르기 답 (squad_ids = 조 id, value = 그 층 계단 index)
 ##   entry_all:      동시 진입 허가 — 진입 허가를 묻는 출동대 모두 (P4-5)
+##   dispatch_answers: 출동 중 장면에서 답한 출동 단계 카드 (answers.cards = {카드 id: 선택지 순서, -1 = 정하지 않음})
 
 ## 진입 허가 요청 카드 (data/cards: ENTRY-01)
 const ENTRY_CARD := "ENTRY-01"
@@ -94,6 +95,8 @@ func execute(sim: SimWorld) -> void:
 			cmd.order_zone(str(answers.get("kind", "")), answers, tick)
 		"preassign":
 			sim.set_preassign(answers.get("tasks", {}), tick)
+		"dispatch_answers":
+			sim.cards.set_dispatch_answers(answers.get("cards", {}))
 		"arrive":
 			cmd.resources.begin_arrival(tick, float(answers.get("gap_s", 5.0)))
 		"par":

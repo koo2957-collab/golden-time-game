@@ -208,7 +208,7 @@ func _ready() -> void:
 	else:
 		hud.command_ui.show_dispatch()
 		# 출동 단계: 도시를 멀리서 본다 → 도착하면 확대 (기획안 4-4).
-		# 출동 지령 창을 띄운 뒤에 확인한다 (예전에는 띄우기 전에 확인해 원경이 적용되지 않았다)
+		# 출동 중 장면을 띄운 뒤에 확인한다 (예전에는 띄우기 전에 확인해 원경이 적용되지 않았다)
 		if not sim.view_only and hud.command_ui.dispatch_visible():
 			_arrival_pending = true
 			_arrival_zoom_to = camera.zoom
@@ -629,7 +629,7 @@ func realtime() -> bool:
 	return sim != null and not sim.view_only and sim.realism in ["실전", "악조건"]
 
 
-## 도착 연출 (기획안 4-4): 출동 단계에는 도시 전체를 멀리서 보고, 선착대가 도착하면(출동 지령 창을 닫으면) 화재 건물로 확대.
+## 도착 연출 (기획안 4-4): 출동 단계에는 도시 전체를 멀리서 보고, 선착대가 도착하면(출동 중 장면이 끝나면) 화재 건물로 확대.
 ## 배율 차이가 커서(약 15배) 배율의 지수로 바꿔 간다 — 처음부터 끝까지 같은 빠르기로 다가가는 느낌
 func _arrival_zoom() -> void:
 	if not _arrival_pending:
@@ -653,7 +653,7 @@ func _arrival_zoom() -> void:
 func _on_dialog_changed(open: bool) -> void:
 	if not open and _arrival_pending and not hud.command_ui.dispatch_visible():
 		_arrival_zoom()
-	# 실전·악조건에서는 출동 지령(도착 전)만 멈춘다
+	# 실전·악조건에서는 출동 단계(도착 전)에만 현장 시계가 멈춰 있다 — 출동 시간은 실제 시간으로 따로 흐른다 (DispatchUi)
 	if realtime() and not hud.command_ui.dispatch_visible():
 		if not open and _paused_before_dialog == false:
 			sim.clock.paused = false

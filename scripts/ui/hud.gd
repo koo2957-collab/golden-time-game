@@ -133,6 +133,9 @@ func setup(p_sim: SimWorld, on_floor_selected: Callable) -> void:
 	command_ui = CommandUi.new()
 	add_child(command_ui)
 	command_ui.setup(sim)
+	# 출동 중 장면은 튜토리얼 안내판 아래에서 시작한다
+	command_ui.dispatch.top_inset = func() -> float:
+		return tutorial_ui._panel.position.y + tutorial_ui._panel.size.y + 8.0 if tutorial_ui and tutorial_ui.visible and not tutorial_ui.finished else 0.0
 	_build_console()
 	board.setup(sim, command_ui)
 	# 예전 오른쪽 상황판(무전+요약)은 숨기고 무전 기록 전용 패널로

@@ -437,6 +437,8 @@ static func describe_text(e: Dictionary) -> String:
 			text = "지시 — %s: %s" % [e.title, e.option]
 		"card_timeout":
 			text = "응답 없음 — %s (지시 대기)" % e.title
+		"dispatch_unprepared":
+			text = "출동 중 정하지 않음 — %s" % e.title
 		"card_overflow":
 			text = "판단 요청 대기 중 — %s" % e.title
 		"card_info_check":

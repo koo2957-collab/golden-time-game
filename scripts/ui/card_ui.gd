@@ -167,11 +167,11 @@ func setup(p_sim: SimWorld) -> void:
 	gap.custom_minimum_size = Vector2(0, 10)
 	box.add_child(gap)
 	for i in 4:
-		var b := _pill()
+		var b := pill()
 		b.pressed.connect(choose.bind(i))
 		box.add_child(b)
 		_buttons.append(b)
-	_all = _pill()
+	_all = pill()
 	_all.add_theme_color_override("font_color", Color("fde68a"))
 	_all.pressed.connect(approve_all)
 	_all.visible = false
@@ -200,13 +200,13 @@ func setup(p_sim: SimWorld) -> void:
 	add_child(_feedback_box)
 
 
-## 둥근 선택 단추 (가운데 정렬, 얇은 밝은 테두리)
-func _pill() -> Button:
+## 둥근 선택 단추 (가운데 정렬, 얇은 밝은 테두리). 출동 중 장면(DispatchUi)도 같은 단추를 쓴다
+static func pill(width := BUTTON_W) -> Button:
 	var b := Button.new()
 	b.focus_mode = Control.FOCUS_NONE
 	b.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	b.custom_minimum_size = Vector2(BUTTON_W, 46)
+	b.custom_minimum_size = Vector2(width, 46)
 	b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	b.add_theme_font_size_override("font_size", 17)
 	b.add_theme_color_override("font_color", Color(0.92, 0.95, 0.97))
@@ -227,15 +227,20 @@ func _pill() -> Button:
 
 ## 제목 위의 꾸밈 줄: 가운데 마름모와 양쪽으로 가늘어지는 선
 func _draw_ornament() -> void:
-	var w := _ornament.size.x
+	draw_ornament(_ornament, _accent)
+
+
+## 꾸밈 줄을 그 칸에 그린다 (출동 중 장면도 같은 줄을 쓴다)
+static func draw_ornament(ci: Control, accent: Color) -> void:
+	var w := ci.size.x
 	var y := 7.0
-	var c := Color(_accent, 0.9)
+	var c := Color(accent, 0.9)
 	var mid := w * 0.5
-	_ornament.draw_colored_polygon(PackedVector2Array([Vector2(mid, y - 5), Vector2(mid + 5, y), Vector2(mid, y + 5), Vector2(mid - 5, y)]), c)
+	ci.draw_colored_polygon(PackedVector2Array([Vector2(mid, y - 5), Vector2(mid + 5, y), Vector2(mid, y + 5), Vector2(mid - 5, y)]), c)
 	for side: float in [-1.0, 1.0]:
-		_ornament.draw_line(Vector2(mid + side * 12, y), Vector2(mid + side * 70, y), c, 1.5)
-		_ornament.draw_line(Vector2(mid + side * 70, y), Vector2(mid + side * 130, y), Color(c, 0.25), 1.0)
-		_ornament.draw_circle(Vector2(mid + side * 76, y), 2.0, c)
+		ci.draw_line(Vector2(mid + side * 12, y), Vector2(mid + side * 70, y), c, 1.5)
+		ci.draw_line(Vector2(mid + side * 70, y), Vector2(mid + side * 130, y), Color(c, 0.25), 1.0)
+		ci.draw_circle(Vector2(mid + side * 76, y), 2.0, c)
 
 
 ## 이 방식에서는 장면이 뜨면 시간이 멈추는가 (훈련)

@@ -1,6 +1,6 @@
 class_name Placement
 extends RefCounted
-## 선착대 차량 배치 (SOP 200-3.1.1). 시나리오 approach.options 중 하나를 출동 지령 창에서 고르면
+## 선착대 차량 배치 (SOP 200-3.1.1). 시나리오 approach.options 중 하나를 출동 중 장면(DispatchUi)에서 고르면
 ## 선착 출동대 차량이 그 자리에 선다. 배치마다 장단점(낙하물·화염, 후착대·특수차 공간, 소화전 거리)이 있고
 ## 평가 규칙 fire.placement가 고른 배치의 score로 판정한다.
 ##   approach: {note, squad(편성 id, 기본은 첫 출동대), default(기본 선택 index), options: [{id, name, text, score, feedback, vehicles: [{spawn, heading}]}]}

@@ -52,9 +52,9 @@ func _run() -> void:
 	var u := sim.units
 	var cui = world.hud.command_ui
 
-	# 출동 지령 창 → Enter로 현장 도착
-	_check("출동 지령 창 표시", cui.dispatch_visible(), true)
-	_check("지령 창이 떠 있는 동안 일시정지", sim.clock.paused, true)
+	# 출동 중 장면 (2026-11-14): 차가 달리는 동안 결정을 하나씩 → 모두 마치면 Enter로 현장 도착
+	_check("출동 중 장면 표시", cui.dispatch_visible(), true)
+	_check("출동 중에는 현장 시계가 멈춰 있다", sim.clock.paused, true)
 	# 출동 단계 원경 (2026-11-14): 도시 전체가 한 화면에 꽉 차고, 도착할 때까지 카메라는 고정
 	var city_plan = world.city.plan
 	var view_size := Vector2(root.get_visible_rect().size)
@@ -69,9 +69,52 @@ func _run() -> void:
 	_check("화면 네 귀퉁이까지 도시가 깔려 있다", corners_in, true)
 	_check("안전센터가 화면 안에 있다", Rect2(Vector2.ZERO, view_size).has_point(
 		(world.projections[world.ViewMode.ISO].to_screen(Vector2(city_plan.station.rect.get_center())) - world.camera.position) * world.camera.zoom.x + view_size * 0.5), true)
+	var dsp = cui.dispatch
+	for i in 90:
+		if not dsp.current().is_empty():
+			break
+		await process_frame
+	await process_frame
+	var site_x: float = (world.projections[world.ViewMode.ISO].to_screen(city_plan.site_center).x - world.camera.position.x) * world.camera.zoom.x + view_size.x * 0.5
+	_check("장면은 오른쪽, 준비판은 왼쪽 — 가운데의 현장·출동 경로를 가리지 않는다",
+		[dsp._scene.visible, dsp._scene.position.x + 100.0 > site_x, dsp._prep.visible, dsp._prep.position.x + dsp._prep.size.x < site_x - 200.0], [true, true, true, true])
+	_check("첫 장면 = 출동 지령 (한 번에 한 장면)", [str(dsp.current().kind), dsp._buttons.size(), dsp._count.text], ["brief", 1, "1 / %d" % dsp.steps.size()])
 	_key(KEY_ENTER)
-	_check("Enter → 현장 도착", cui.dispatch_visible(), false)
-	_check("지령 창을 닫으면 시간 진행", sim.clock.paused, false)
+	_check("Enter = 지령 수신 (도착이 아니다)", [dsp.index, cui.dispatch_visible()], [1, true])
+	for i in 90:
+		if not dsp.current().is_empty():
+			break
+		await process_frame
+	await process_frame
+	_check("다음 장면 = 상황실 요청 카드", [str(dsp.current().kind), dsp._buttons.size()], ["card", 3])
+	# 뒤 점검에 영향이 없게: 카드는 효과 없는 답, 장비는 챙기지 않음, 조별 임무는 '지시를 기다려라'
+	_key(KEY_1 + _quiet_option(dsp.current()))
+	_check("숫자키로 고른다 · 준비판에 고른 것이 남는다", [dsp.index, dsp._step_rows[1].text.begins_with("✓")], [2, true])
+	_check("결정이 남아 있으면 '현장 도착'이 꺼져 있다", [dsp._go.disabled, dsp.done()], [true, false])
+	while not dsp.done():
+		dsp._gap = 0.0
+		var step: Dictionary = dsp.current()
+		if str(step.mode) == "pick":
+			dsp.choose(_quiet_option(step))
+		else:
+			if str(step.mode) == "select":
+				dsp.choose(0)
+			dsp.confirm()
+	await process_frame
+	_check("결정을 모두 마치면 '현장 도착'이 켜진다", [dsp._go.disabled, dsp.done(), cui.dispatch_visible()], [false, true, true])
+	_key(KEY_ENTER)
+	_check("Enter → 남은 길을 건너뛴다 (차는 계속 보인다)", [dsp.skipping, cui.dispatch_progress() >= 0.0], [true, true])
+	for i in 600:
+		if not cui.dispatch_visible():
+			break
+		await process_frame
+	_check("현장 도착", cui.dispatch_visible(), false)
+	_check("도착하면 현장 시계가 흐른다", sim.clock.paused, false)
+	for i in 30:
+		if not sim.cards.dispatch_answers.is_empty():
+			break
+		await process_frame
+	_check("출동 중 결정이 명령으로 내려간다 (장비·카드·임무 없음)", [sim.events.of_type("loadout").size(), sim.cards.dispatch_answers.size(), sim.preassign.size()], [1, 2, 0])
 	# 도착 확대가 끝날 때까지 기다린다 (그동안 카메라는 고정)
 	for i in 400:
 		if not world.camera.locked:
@@ -750,6 +793,17 @@ func _until(cond: Callable, max_ticks: int) -> void:
 		if cond.call():
 			return
 		_world.sim.step_ticks(1)
+
+
+## 출동 중 장면에서 현장에 영향을 주지 않는 보기: 카드는 효과가 note 인 것, 조별 임무는 '지시를 기다려라'(임무 키 없음), 그 밖에는 첫 보기
+func _quiet_option(step: Dictionary) -> int:
+	var opts: Array = step.options
+	for i in opts.size():
+		if str(step.kind) == "card" and str(step.spec.options[int(opts[i].value)].get("effect", "")) == "note":
+			return i
+		if str(step.kind) == "preassign" and str(opts[i].value) == "":
+			return i
+	return 0
 
 
 func _key(keycode: Key, ctrl := false) -> void:

@@ -1,7 +1,7 @@
 class_name CommandUi
 extends Control
 ## 지휘 화면 요소:
-##   출동 지령 창 (시작 시), 지휘권 선언·최초 상황보고 양식 (SOP 101-2.1), 전략 변경 창 (106-2),
+##   출동 중 장면 (시작 시, DispatchUi), 지휘권 선언·최초 상황보고 양식 (SOP 101-2.1), 전략 변경 창 (106-2),
 ##   방어 전략 중 진입 명령 확인 창, 무전 기록 (107), 진입 현황 (201-3.7),
 ##   조직·지원 창: 지원 요청 (103-1.2), 단위대 지정·해제 (105-3.1), 통솔범위 표시 (105)
 ##   진술 창 (관계인 클릭, 202-1.2), 현장 정보 창 (F, 101-2.2), 상황 보완 보고 창 (101-2.2①),
@@ -44,16 +44,9 @@ var _team_dragging := false
 signal team_selected(crew_id: int, focus: bool)
 signal team_drag_started(crew_id: int)
 signal team_dropped(crew_id: int, screen_pos: Vector2)
-var _dispatch: PanelContainer
-## 출동 단계 (기획안 4-4): 신고 후 0~4분을 실제 약 90초로 보여 준다. 출동 지령 줄은 시간에 맞춰 차례로 나온다
-var _dispatch_real := 0.0
-var _dispatch_clock: Label
-var _dispatch_bar: ProgressBar
-var _dispatch_lines: Array[Label] = []
-## 출동 지령 창의 선착 차량 배치 보기 (시나리오 approach가 있을 때)
-var _placement: OptionButton
-## 출동 준비: 적재 장비 체크 (R10)
-var _loadout_checks: Dictionary = {}  # key -> CheckBox
+## 출동 중 장면 (기획안 4-4, 2026-11-14): 차가 달리는 동안 지령·상황실 요청·장비·조별 임무·차량 배치를 하나씩 묻는다.
+## 도착하면 고른 것을 여기서 명령으로 내린다 (_arrive)
+var dispatch: DispatchUi
 var _report: PanelContainer
 var _strategy: PanelContainer
 var _confirm: PanelContainer
@@ -122,7 +115,10 @@ func setup(p_sim: SimWorld) -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	arrive_gap_s = float(sim._phase_params.value("arrival_gap_s"))
 	_build_radio_panel()
-	_build_dispatch()
+	dispatch = DispatchUi.new()
+	add_child(dispatch)
+	dispatch.setup(sim)
+	dispatch.finished.connect(_arrive)
 	_build_report()
 	_build_strategy()
 	_build_confirm()
@@ -138,7 +134,6 @@ func setup(p_sim: SimWorld) -> void:
 func _process(delta: float) -> void:
 	if sim == null:
 		return
-	_tick_dispatch(delta)
 	_refresh -= delta
 	if _refresh <= 0.0:
 		_refresh = REFRESH_S
@@ -210,7 +205,7 @@ func todo_items() -> Array[String]:
 
 
 func any_dialog_open() -> bool:
-	return _dispatch.visible or _report.visible or _strategy.visible or _confirm.visible or _org.visible \
+	return dispatch.active or _report.visible or _strategy.visible or _confirm.visible or _org.visible \
 		or _witness.visible or _info.visible or _update.visible or _end.visible or _all_clear.visible or _role.visible
 
 
@@ -347,7 +342,12 @@ func info_visible() -> bool:
 
 ## 열린 창을 모두 닫는다 (디브리핑으로 넘어갈 때)
 func close_all() -> void:
-	for p in [_dispatch, _report, _strategy, _confirm, _org, _witness, _info, _update, _end, _all_clear, _role, _transfer]:
+	# 출동 중이면 도착 명령 없이 닫는다
+	if dispatch.active:
+		dispatch.cancel()
+		if not any_dialog_open():
+			dialog_changed.emit(false)
+	for p in [_report, _strategy, _confirm, _org, _witness, _info, _update, _end, _all_clear, _role, _transfer]:
 		if p:
 			_close(p)
 	_radio_panel.visible = false
@@ -380,40 +380,26 @@ func assign_role(crew_id: int, role: int) -> void:
 	order_issued.emit(CommandOrder.make("role", [crew_id], role))
 
 
+## 출동 단계를 시작한다: 출동 중 장면과 준비판을 띄운다 (현장 시계는 도착할 때까지 멈춘다)
 func show_dispatch() -> void:
 	if sim.command.dispatch.is_empty():
 		return
-	_open(_dispatch)
-
-
-## 출동 단계 시계 (실제 시간으로 진행, 시뮬레이션과 따로 — 불은 이미 계산되어 있다)
-func _tick_dispatch(delta: float) -> void:
-	if _dispatch_clock == null or not _dispatch.visible or sim.dispatch_s <= 0.0:
-		return
-	var real_total := maxf(1.0, float(sim._phase_params.value("dispatch_real_s")))
-	_dispatch_real = minf(real_total, _dispatch_real + delta)
-	var frac := _dispatch_real / real_total
-	var call_s := roundi(sim.dispatch_s * frac)
-	_dispatch_bar.value = frac
-	_dispatch_clock.text = ("선착대 현장 도착 — 신고 후 %02d:%02d. 차량 배치·장비를 확인하고 현장 도착을 누르세요" if frac >= 1.0 else "출동 중 — 신고 후 %02d:%02d (선착 도착 %02d:%02d, 화재는 계속 진행 중)") % ([call_s / 60, call_s % 60] if frac >= 1.0 else [call_s / 60, call_s % 60, int(sim.dispatch_s) / 60, int(sim.dispatch_s) % 60])
-	# 상황실 무전: 지령 줄이 시간에 맞춰 차례로 (첫 줄은 바로)
-	for k in _dispatch_lines.size():
-		_dispatch_lines[k].visible = k == 0 or frac >= float(k) / float(_dispatch_lines.size())
+	dispatch.open()
+	dialog_changed.emit(true)
 
 
 func dispatch_visible() -> bool:
-	return _dispatch.visible
+	return dispatch.active
 
 
-## 출동 진행률 (0~1). 출동 지령 창이 닫혔으면 -1 (도시 지도 차량 아이콘, P9-1)
+## 출동 진행률 (0~1). 출동 중이 아니면 -1 (도시 위 소방차, P9-1)
 func dispatch_progress() -> float:
-	if _dispatch == null or not _dispatch.visible or sim.dispatch_s <= 0.0:
-		return -1.0
-	return clampf(_dispatch_real / maxf(1.0, float(sim._phase_params.value("dispatch_real_s"))), 0.0, 1.0)
+	return dispatch.progress()
 
 
+## Enter: 장면의 확인 단추, 결정을 모두 마쳤으면 남은 길을 건너뛰고 도착 (결정은 건너뛸 수 없다)
 func close_dispatch() -> void:
-	_arrive()
+	dispatch.enter()
 
 
 ## 방어 전략 중 진입 명령: 병행으로 바꾸고 진입할지 묻는다
@@ -647,60 +633,26 @@ func _build_radio_panel() -> void:
 	add_child(_radio_panel)
 
 
-func _build_dispatch() -> void:
-	_dispatch = _dialog()
-	var box: VBoxContainer = _dispatch.get_child(0)
-	var d := sim.command.dispatch
-	box.add_child(_label(str(d.get("title", "출동 지령")), 24, Color("fca5a5")))
-	_dispatch_clock = _label("출동 중 — 신고 후 00:00", 18, Color("fde68a"))
-	box.add_child(_dispatch_clock)
-	_dispatch_bar = ProgressBar.new()
-	_dispatch_bar.show_percentage = false
-	_dispatch_bar.custom_minimum_size = Vector2(DIALOG_WIDTH - 40, 8)
-	_dispatch_bar.max_value = 1.0
-	box.add_child(_dispatch_bar)
-	_dispatch_lines.clear()
-	for line in d.get("lines", []):
-		var l := _label("상황실: " + str(line), 18, TEXT_COLOR)
-		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		l.custom_minimum_size = Vector2(DIALOG_WIDTH - 40, 0)
-		box.add_child(l)
-		_dispatch_lines.append(l)
-	box.add_child(_label("도착하면 지휘권을 선언하고 최초 상황보고를 하십시오 (화면 아래 지휘관 명령 '보고'). 건물 안 임무를 받은 조는 입구에서 진입 허가를 무전으로 요청합니다.", 16, DIM_COLOR))
-	var opts := Placement.options(sim)
-	if not opts.is_empty():
-		box.add_child(_label("선착 차량 배치 (SOP 200-3.1.1) — 화염·낙하물 피해, 후착대·특수차 공간, 소화전을 생각해 고르세요", 17, Color("fde68a")))
-		_placement = OptionButton.new()
-		_placement.focus_mode = Control.FOCUS_NONE
-		for o: Dictionary in opts:
-			_placement.add_item(str(o.get("name", "")))
-		_placement.select(Placement.default_index(sim))
-		box.add_child(_placement)
-		var desc := _label("", 15, DIM_COLOR)
-		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		desc.custom_minimum_size = Vector2(DIALOG_WIDTH - 40, 0)
-		desc.text = str(opts[_placement.selected].get("text", ""))
-		_placement.item_selected.connect(func(i: int) -> void: desc.text = str(opts[i].get("text", "")))
-		box.add_child(desc)
-	_build_loadout(box)
-	_build_preassign(box)
-	var go := _button("현장 도착 (Enter)", _arrive)
-	box.add_child(go)
-
-
-## 현장 도착: 고른 배치를 명령으로 내린다 (기록·다시 하기 대상)
+## 현장 도착 (차가 현장 앞에 닿았거나 건너뜀): 출동 중에 고른 것을 명령으로 내린다 (기록·다시 하기 대상).
+## 정하지 않은 것은 내리지 않는다 — 준비하지 않은 것 (2026-11-14 사용자 결정)
 func _arrive() -> void:
-	if not _loadout_checks.is_empty() and sim.loadout.is_empty() and sim.clock.tick <= Placement.MAX_TICK:
-		order_issued.emit(CommandOrder.make("loadout", [], 0, Vector3i.ZERO, {"items": loadout_selection()}))
-	if _placement and sim.command.placement.is_empty() and sim.clock.tick <= Placement.MAX_TICK:
-		order_issued.emit(CommandOrder.make("placement", [], _placement.selected))
+	var r := dispatch.result()
+	var early := sim.clock.tick <= Placement.MAX_TICK
+	if bool(r.has_loadout) and sim.loadout.is_empty() and early:
+		order_issued.emit(CommandOrder.make("loadout", [], 0, Vector3i.ZERO, {"items": r.loadout}))
+	if int(r.placement) >= 0 and sim.command.placement.is_empty() and early:
+		order_issued.emit(CommandOrder.make("placement", [], int(r.placement)))
 	# 도착 후 임무 미리 정하기 (P9-1): 정한 조는 차에서 내리자마자 움직인다
-	var pre := preassign_selection()
-	if not pre.is_empty():
-		order_issued.emit(CommandOrder.make("preassign", [], 0, Vector3i.ZERO, {"tasks": pre}))
+	if not (r.preassign as Dictionary).is_empty():
+		order_issued.emit(CommandOrder.make("preassign", [], 0, Vector3i.ZERO, {"tasks": r.preassign}))
+	# 출동 단계 카드(예비 소방용수·관계자 조치 요청): 도착한 뒤에 다시 묻지 않는다
+	if not (r.cards as Dictionary).is_empty():
+		order_issued.emit(CommandOrder.make("dispatch_answers", [], 0, Vector3i.ZERO, {"cards": r.cards}))
 	# 차량이 지도 가장자리에서 한 대씩 들어온다 (펌프차 먼저, 기획안 6-1·P4-1)
 	order_issued.emit(CommandOrder.make("arrive", [], 0, Vector3i.ZERO, {"gap_s": arrive_gap_s}))
-	_close(_dispatch)
+	dispatch.cancel()
+	if not any_dialog_open():
+		dialog_changed.emit(false)
 
 
 func _build_report() -> void:
@@ -1480,81 +1432,6 @@ func _on_team_input(event: InputEvent, crew_id: int, b: Button) -> void:
 		if event.global_position.distance_to(_team_press_pos) > 10.0:
 			_team_dragging = true
 			team_drag_started.emit(crew_id)
-
-
-# --- 출동 준비: 적재 장비 선택 (기획안 P9, R10) ---
-
-func _build_loadout(box: VBoxContainer) -> void:
-	var data: Variant = JsonData.load_file("res://data/units/equipment.json")
-	if not data is Dictionary:
-		return
-	var cap := int(data.get("capacity", 3))
-	box.add_child(_label("출동 준비 — 기본 장비 외에 %d개까지 더 싣는다 (현장 상황을 생각해 고르세요)" % cap, 17, Color("fde68a")))
-	var grid := GridContainer.new()
-	grid.columns = 2
-	for it: Dictionary in data.get("items", []):
-		var cb := CheckBox.new()
-		cb.text = str(it.get("label", ""))
-		cb.tooltip_text = "%s (SOP %s)" % [it.get("note", ""), it.get("sop", "")]
-		cb.focus_mode = Control.FOCUS_NONE
-		cb.add_theme_font_size_override("font_size", 15)
-		cb.toggled.connect(func(_on: bool) -> void: _limit_loadout(cap))
-		grid.add_child(cb)
-		_loadout_checks[str(it.key)] = cb
-	box.add_child(grid)
-
-
-## 도착 후 임무 미리 정하기 (기획안 4-4 '도착 후 임무 미리 정하기', P9-1): 처음 현장에 오는 조마다
-const PREASSIGN_KINDS := [["", "도착 후 지시 기다림"], ["attack", "화점진압 (관창)"], ["search", "인명검색"], ["office", "방재실·관리사무소 연락 (도면·수신반)"], ["officer", "현장안전담당"]]
-var _preassign: Dictionary = {}  # 조 id → OptionButton
-
-
-func _build_preassign(box: VBoxContainer) -> void:
-	var crews: Array = sim.units.crews.filter(func(c: Crew) -> bool: return sim.command.resources.on_scene(c.squad_id) and not sim.ems.is_ems_crew(c.id))
-	if crews.is_empty():
-		return
-	box.add_child(_label("도착 후 임무 미리 정하기 — 정한 조는 차에서 내리자마자 움직입니다 (건물 안 임무는 발화층 층 단위, 진입 허가는 입구에서)", 17, Color("fde68a")))
-	var grid := GridContainer.new()
-	grid.columns = 2
-	for c: Crew in crews:
-		grid.add_child(_label("%s %d조" % [sim.units.squads[c.squad_id].name, c.number], 15, TEXT_COLOR))
-		var ob := OptionButton.new()
-		ob.focus_mode = Control.FOCUS_NONE
-		for k: Array in PREASSIGN_KINDS:
-			if k[0] == "office" and sim.plan.office.is_empty():
-				continue
-			ob.add_item(str(k[1]))
-			ob.set_item_metadata(ob.item_count - 1, str(k[0]))
-		grid.add_child(ob)
-		_preassign[c.id] = ob
-	box.add_child(grid)
-
-
-## {조 id(문자열): 임무 키} — 정하지 않은 조는 빠진다
-func preassign_selection() -> Dictionary:
-	var out := {}
-	for id: int in _preassign:
-		var ob: OptionButton = _preassign[id]
-		var k := str(ob.get_item_metadata(ob.selected)) if ob.selected >= 0 else ""
-		if k != "":
-			out[str(id)] = k
-	return out
-
-
-## 정한 개수를 넘으면 나머지 체크를 막는다
-func _limit_loadout(cap: int) -> void:
-	var n := loadout_selection().size()
-	for k: String in _loadout_checks:
-		var cb: CheckBox = _loadout_checks[k]
-		cb.disabled = n >= cap and not cb.button_pressed
-
-
-func loadout_selection() -> Array:
-	var out: Array = []
-	for k: String in _loadout_checks:
-		if (_loadout_checks[k] as CheckBox).button_pressed:
-			out.append(k)
-	return out
 
 
 # --- 지휘권 이양 (SOP 112, R13) ---

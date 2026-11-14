@@ -27,3 +27,23 @@
 GODOT --headless --path . -s res://tests/run_tests.gd -- test_time_axis.gd,test_cutaway.gd
 GODOT --path . -s res://tests/ui_cutaway.gd      # 위층 13·14층 반투명 확인 포함
 ```
+
+## 출동 단계의 도시 (2026-11-14, 1단계)
+
+자동 점검:
+
+```
+godot --headless --path . -s res://tests/run_tests.gd -- test_city.gd
+godot --path . -s res://tests/ui_smoke.gd
+godot --path . -s res://tests/_shot_dispatch.gd -- (저장 폴더) [시나리오 파일] [그림 이름 꼬리]   # 원경·근경 캡처
+godot --path . -s res://tests/_perf_city.gd -- [시나리오 파일]                                   # 도시를 켰을 때·껐을 때 프레임 시간
+```
+
+직접 보기:
+
+- 시나리오를 시작하면 출동 단계입니다. 도시 전체가 화면을 꽉 채우고(가로 약 400m), 가운데 대상 건물만 색이 있습니다. 이때는 화면을 움직이거나 확대할 수 없습니다.
+- 흰 덩어리 건물 사이로 격자 도로와 교차로·횡단보도가 보입니다. 왼쪽 위의 빨간 지붕이 안전센터이고, 차량 아이콘이 그 앞에서 길을 따라 대상 건물 앞으로 옵니다.
+- 대상 건물과 차가 달리는 길 앞쪽(화면 아래쪽) 건물은 낮습니다. 높은 건물이 현장이나 차를 가리지 않게 한 것입니다.
+- 밤 시나리오(예: sop214_2_night_upstairs)에서는 건물 창 일부에 불이 켜지고 길가에 가로등 점이 보입니다. 저사양 모드에서는 창문 불빛·가로등·옥탑을 그리지 않습니다.
+- "현장 도착"을 누르면 1.6초 동안 대상 건물로 확대되고, 그 뒤 화면을 움직일 수 있습니다.
+- 견본 그림: docs/ref/city_overview_day.png · city_overview_night.png · city_near_day.png · city_near_night.png

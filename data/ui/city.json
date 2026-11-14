@@ -1,0 +1,56 @@
+{
+  "note": "출동 단계에 보는 도시 배경 (기획안 4-4, 2026-11-14 사용자 결정: 화면을 꽉 채우는 도시 · 도시 전체가 한 화면에 · 밤에는 창문 불빛). 화면에만 쓰고 시뮬레이션과는 상관없다. 칸 = 0.5m. source: 화면 설정 = 보기 좋게 정한 값, 공학식 = 투영 계산.",
+
+  "overview_width_m": {"value": 400, "source": "화면 설정", "note": "출동 단계 원경: 한 화면 가로에 들어오는 땅 길이(m). 배율 = 화면 폭 ÷ (이 값 × 79.2px/m)"},
+  "aspect_max": {"value": 0.75, "source": "화면 설정", "note": "도시를 만들 때 가정하는 가장 세로로 긴 화면(세로÷가로, 4:3). 이보다 넓은 화면은 모두 꽉 찬다"},
+  "bottom_margin_m": {"value": 48, "source": "공학식", "note": "화면 아래 밖에 선 건물의 윗부분이 화면 안으로 올라오므로, 가장 높은 건물 높이만큼 아래로 더 만든다"},
+  "arrival_zoom_s": {"value": 1.6, "source": "화면 설정", "note": "도착했을 때 원경에서 현장으로 확대하는 시간(실제 초). 배율 차이가 커서(약 15배) 배율의 지수로 부드럽게"},
+
+  "block_cells": {"value": 60, "source": "화면 설정", "note": "블록 한 변 (30m)"},
+  "street_cells": {"value": 12, "source": "화면 설정", "note": "길 폭 (6m) — 현장 앞 도로(12칸)와 같다"},
+  "sidewalk_cells": {"value": 2, "source": "화면 설정", "note": "블록 가장자리 보도 (1m)"},
+  "lot_cells": {"value": 28, "source": "화면 설정", "note": "필지 한 변쯤 (14m) — 현장 건물과 비슷한 크기"},
+  "lot_gap_cells": {"value": 2, "source": "화면 설정", "note": "필지 사이 틈 (1m)"},
+  "empty_lot_ratio": {"value": 0.1, "source": "화면 설정", "note": "빈터·주차장 비율"},
+  "merge_block_ratio": {"value": 0.1, "source": "화면 설정", "note": "블록 하나를 통째로 쓰는 큰 건물 비율"},
+  "merge_pair_ratio": {"value": 0.25, "source": "화면 설정", "note": "옆 필지와 합친 긴 건물 비율"},
+  "floors": {"value": [[1, 4, 0.6], [5, 9, 0.3], [10, 15, 0.1]], "source": "화면 설정", "note": "건물 층수 [최소, 최대, 비율] — 낮은 건물이 많고 높은 건물은 드물게"},
+  "floor_m": {"value": 3.0, "source": "화면 설정", "note": "한 층 높이"},
+  "roof_ratio": {"value": 0.5, "source": "화면 설정", "note": "3층 이상 건물 가운데 옥탑(작은 상자)이 있는 비율"},
+  "roof_m": {"value": 2.5, "source": "화면 설정", "note": "옥탑 높이"},
+
+  "site_cover_cells": {"value": 2, "source": "화면 설정", "note": "현장(활동 공간) 앞쪽 건물이 현장을 가려도 되는 깊이(칸). 이보다 더 가리게 되는 건물은 층수를 낮춘다"},
+  "route_cover_cells": {"value": 6, "source": "화면 설정", "note": "출동 경로 앞쪽 건물이 길을 가려도 되는 깊이(칸) — 길 폭의 절반. 달리는 소방차가 보이게"},
+  "station_blocks_west": {"value": 4, "source": "화면 설정", "note": "안전센터 위치: 현장에서 서쪽으로 몇 블록 (선착 차량은 현장 지도 서쪽 끝에서 들어온다)"},
+  "station_blocks_north": {"value": 1, "source": "화면 설정", "note": "안전센터 위치: 현장에서 북쪽으로 몇 블록"},
+  "station_floors": {"value": 2, "source": "화면 설정", "note": "안전센터 층수"},
+
+  "window_lit_ratio": {"value": 0.3, "source": "화면 설정", "note": "한밤에 불 켜진 창 비율 (새벽·저녁에는 밤 정도만큼 줄어든다)"},
+  "window_bay_m": {"value": 3.0, "source": "화면 설정", "note": "창 한 칸 간격"},
+  "window_w_m": {"value": 1.3, "source": "화면 설정", "note": "창 폭"},
+  "window_h_m": {"value": 1.4, "source": "화면 설정", "note": "창 높이"},
+  "window_sill_m": {"value": 0.9, "source": "화면 설정", "note": "창 아래 높이"},
+  "window_max_cols": {"value": 10, "source": "화면 설정", "note": "한 면의 창 칸 수 상한 (큰 건물이 그림량을 늘리지 않게)"},
+  "lamp_spacing_cells": {"value": 40, "source": "화면 설정", "note": "가로등 간격 (20m). 밤에만 따뜻한 점으로"},
+  "lamp_m": {"value": 0.8, "source": "화면 설정", "note": "가로등 점 크기"},
+  "quads_per_batch": {"value": 2400, "source": "화면 설정", "note": "도시를 한 번에 그리는 사각형 묶음 크기 (묶음 하나 = 그리기 한 번)"},
+
+  "colors": {
+    "source": "화면 설정",
+    "note": "대상 건물만 색이 있고 나머지는 흰 덩어리 (기획안 4-4, 사용자 제공 참고 그림 '도시풍경'). 길 색은 현장 앞 도로(PlanStyle ROAD)와 같게 해서 이어지게 한다",
+    "road": "#313a45",
+    "lane": "#d9cf9c",
+    "crosswalk": "#c9ced3",
+    "pad": "#d4d6d1",
+    "yard": "#c3c6c1",
+    "top": "#f5f5f2",
+    "south": "#dbdee0",
+    "east": "#c2c5c9",
+    "station_top": "#c0392b",
+    "station_south": "#e7d9d6",
+    "station_east": "#cdbcb9",
+    "window": "#ffd873",
+    "lamp": "#ffcf70",
+    "lamp_glow": "#ffcf7040"
+  }
+}

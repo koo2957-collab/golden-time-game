@@ -55,9 +55,29 @@ func _run() -> void:
 	# 출동 지령 창 → Enter로 현장 도착
 	_check("출동 지령 창 표시", cui.dispatch_visible(), true)
 	_check("지령 창이 떠 있는 동안 일시정지", sim.clock.paused, true)
+	# 출동 단계 원경 (2026-11-14): 도시 전체가 한 화면에 꽉 차고, 도착할 때까지 카메라는 고정
+	var city_plan = world.city.plan
+	var view_size := Vector2(root.get_visible_rect().size)
+	var far: float = city_plan.overview_zoom(view_size.x)
+	_check("출동 단계: 도시 전체가 한 화면에 들어오는 원경 · 카메라 고정", [absf(world.camera.zoom.x - far) < 0.0005, world.camera.locked], [true, true])
+	var corners_in := true
+	for corner: Vector2 in [Vector2.ZERO, Vector2(view_size.x, 0), Vector2(0, view_size.y), view_size]:
+		var at: Vector2 = world.camera.position + (corner - view_size * 0.5) / world.camera.zoom.x
+		var cell: Vector2 = world.projections[world.ViewMode.ISO].to_cell(at)
+		if not Rect2(city_plan.bounds).has_point(cell):
+			corners_in = false
+	_check("화면 네 귀퉁이까지 도시가 깔려 있다", corners_in, true)
+	_check("안전센터가 화면 안에 있다", Rect2(Vector2.ZERO, view_size).has_point(
+		(world.projections[world.ViewMode.ISO].to_screen(Vector2(city_plan.station.rect.get_center())) - world.camera.position) * world.camera.zoom.x + view_size * 0.5), true)
 	_key(KEY_ENTER)
 	_check("Enter → 현장 도착", cui.dispatch_visible(), false)
 	_check("지령 창을 닫으면 시간 진행", sim.clock.paused, false)
+	# 도착 확대가 끝날 때까지 기다린다 (그동안 카메라는 고정)
+	for i in 400:
+		if not world.camera.locked:
+			break
+		await process_frame
+	_check("도착하면 현장으로 확대되고 카메라가 풀린다", [world.camera.locked, absf(world.camera.zoom.x - world.START_ZOOM[world.ViewMode.ISO]) < 0.001], [false, true])
 	# 처음 차량은 한 대씩 들어오고 조는 차가 서면 내린다 (P4-1)
 	sim.step_ticks(1)
 	_check("차량이 지도 가장자리에서 들어온다", sim.command.resources.arriving.size() > 0, true)

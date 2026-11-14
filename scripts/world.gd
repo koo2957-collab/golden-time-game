@@ -85,6 +85,8 @@ func _ready() -> void:
 	city = CityMassView.new()
 	$Iso.add_child(city)
 	$Iso.move_child(city, 0)
+	# 밤이면 창문 불빛·가로등 (시나리오 시각에 따라, 화면 분위기와 같은 기준)
+	city.night = ViewParams.load_default().night_factor(ViewParams.clock_hour(str(sim.scenario.get("clock", ""))))
 	city.setup(sim.building, projections[ViewMode.ISO], sim.rng_seed, sim)
 	fire_view.setup(sim)
 	_setup_mood()
@@ -194,11 +196,6 @@ func _ready() -> void:
 		GameManager.scenario_path = next_path
 		GameManager.restart())
 	_build_game_menu()
-	# 출동 단계: 도시를 멀리서 본다 → 도착하면 확대 (기획안 4-4)
-	if not sim.view_only and hud.command_ui.dispatch_visible():
-		_arrival_pending = true
-		_arrival_zoom_to = camera.zoom
-		camera.zoom = camera.zoom * 0.35
 	if replay_tick >= 0:
 		sim.clock.paused = true
 		var t := int(replay_tick * SimClock.TICK_DT)
@@ -209,6 +206,15 @@ func _ready() -> void:
 			hud.show_notice("다시 하기: %02d:%02d 시점입니다. Space로 다시 진행하세요." % [t / 60, t % 60])
 	else:
 		hud.command_ui.show_dispatch()
+		# 출동 단계: 도시를 멀리서 본다 → 도착하면 확대 (기획안 4-4).
+		# 출동 지령 창을 띄운 뒤에 확인한다 (예전에는 띄우기 전에 확인해 원경이 적용되지 않았다)
+		if not sim.view_only and hud.command_ui.dispatch_visible():
+			_arrival_pending = true
+			_arrival_zoom_to = camera.zoom
+			# 원경: 도시 전체가 한 화면에 (data/ui/city.json overview_width_m). 도착할 때까지 카메라는 고정
+			var far := city.plan.overview_zoom(get_viewport_rect().size.x)
+			camera.zoom = Vector2(far, far)
+			camera.locked = true
 
 
 ## 자동화 수준: 시작 화면에서 고른 난이도, 없으면 시나리오 난이도 (개발용은 입문)
@@ -620,15 +626,20 @@ func realtime() -> bool:
 	return sim != null and not sim.view_only and sim.realism in ["실전", "악조건"]
 
 
-## 도착 연출 (기획안 4-4): 출동 단계에는 도시를 멀리서 보고, 선착대가 도착하면(출동 지령 창을 닫으면) 0.8초 동안 화재 건물로 확대
+## 도착 연출 (기획안 4-4): 출동 단계에는 도시 전체를 멀리서 보고, 선착대가 도착하면(출동 지령 창을 닫으면) 화재 건물로 확대.
+## 배율 차이가 커서(약 15배) 배율의 지수로 바꿔 간다 — 처음부터 끝까지 같은 빠르기로 다가가는 느낌
 func _arrival_zoom() -> void:
 	if not _arrival_pending:
 		return
 	_arrival_pending = false
-	var target := _arrival_zoom_to
+	var from := camera.zoom.x
+	var to := _arrival_zoom_to.x
 	var tw := create_tween()
 	tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	tw.tween_property(camera, "zoom", target, 0.8)
+	tw.tween_method(func(k: float) -> void:
+		var z := from * pow(to / from, k)
+		camera.zoom = Vector2(z, z), 0.0, 1.0, city.plan.num("arrival_zoom_s", 1.6))
+	tw.tween_callback(func() -> void: camera.locked = false)
 
 
 func _on_dialog_changed(open: bool) -> void:

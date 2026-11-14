@@ -15,6 +15,8 @@ var zoom_min := ZOOM_MIN
 var bounds := Rect2()
 ## 화면 가장자리 자동 스크롤 (기획안 9-3). 마우스가 가장자리 EDGE_PX 안에 있으면 그쪽으로 흐른다
 var edge_scroll := true
+## 고정: 이동·확대를 받지 않는다 (출동 단계의 원경, 도착 확대 중)
+var locked := false
 const EDGE_PX := 20.0
 var _dragging := false
 
@@ -33,6 +35,8 @@ func retarget(p_bounds: Rect2, center: Vector2) -> void:
 
 
 func _process(delta: float) -> void:
+	if locked:
+		return
 	var dir := Input.get_vector("camera_left", "camera_right", "camera_up", "camera_down")
 	if edge_scroll and dir == Vector2.ZERO and DisplayServer.window_is_focused() and Input.mouse_mode == Input.MOUSE_MODE_CONFINED:
 		var m := get_viewport().get_mouse_position()
@@ -45,6 +49,9 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if locked:
+		_dragging = false
+		return
 	if event is InputEventMouseMotion and _dragging:
 		position -= event.relative / zoom.x
 		_clamp()

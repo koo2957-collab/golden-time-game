@@ -13,6 +13,10 @@ func _run() -> void:
 		out = args[0] + "/"
 	var gm = root.get_node_or_null("GameManager")
 	gm.scenario_path = "res://data/scenarios/sop214_1_day_living.json"
+	# 둘째 인자 = 시나리오 파일 이름 (밤 시나리오로 창문 불빛을 볼 때), 셋째 인자 = 그림 이름 꼬리
+	if args.size() >= 2:
+		gm.scenario_path = "res://data/scenarios/" + args[1]
+	var tail: String = args[2] if args.size() >= 3 else ""
 	gm.skip_menu = true
 	root.add_child(load("res://scenes/main/main.tscn").instantiate())
 	for i in 10:
@@ -23,11 +27,18 @@ func _run() -> void:
 	world.hud.command_ui._dispatch_real = 40.0
 	world.hud.command_ui._dispatch.visible = true
 	world.hud.command_ui._dispatch.modulate.a = 0.0
-	if world.camera.zoom.x > 0.5:
-		world.camera.zoom = world.camera.zoom * 0.35
+	var far: float = world.city.plan.overview_zoom(root.get_visible_rect().size.x)
+	world.camera.zoom = Vector2(far, far)
 	for i in 5:
 		await process_frame
-	root.get_texture().get_image().save_png(out + "shot_dispatch.png")
+	root.get_texture().get_image().save_png(out + "shot_dispatch%s.png" % tail)
+	# 도착 뒤 현장에서 본 도시 (가장 멀리 본 외부 화면)
+	world.hud.command_ui._dispatch.visible = false
+	world.camera.zoom = Vector2(0.5, 0.5)
+	for i in 5:
+		await process_frame
+	root.get_texture().get_image().save_png(out + "shot_dispatch_near%s.png" % tail)
+	print("quads ", world.city.quad_count, " windows ", world.city.window_count, " lamps ", world.city.lamp_count, " lots ", world.city.plan.lots.size(), " fps ", Engine.get_frames_per_second())
 	var city = world.city
 	print("icons ", city._icons != null, " vis ", city._icons.visible, " z ", city.z_index, " zoom ", world.camera.zoom)
 	for v in world.sim.units.vehicles:

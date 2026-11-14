@@ -45,7 +45,7 @@ func _run() -> void:
 	_check("모든 명령이 처음부터 화면에 보인다", missing, [])
 	_check("완진 선언·지휘권 이양도 처음부터 보이고 눌린다 (때가 돼야 나타나지 않는다)",
 		[board["all_clear"].disabled, board["transfer"].disabled, board["end"].disabled], [false, false, false])
-	_check("명령 칸이 화면 안에 있다", hud.get_rect().encloses(hud.console.get_rect()), true)
+	_check("명령 칸(오른쪽 기둥)이 화면 안에 있고 아래 띠와 겹치지 않는다", [hud.get_rect().encloses(hud.board_panel.get_rect()), hud.board_panel.get_rect().end.y <= hud.console.position.y], [true, true])
 	root.get_texture().get_image().save_png("user://ui_board.png")
 	# 보고: 선언 전에는 보완 보고가 없다(알림), 선언 양식, 선언 뒤에는 선언 단추가 흐려진다
 	board["update_report"].pressed.emit()
@@ -136,7 +136,7 @@ func _run() -> void:
 	sel._set_selection([crew_id] as Array[int], [] as Array[int])
 	await process_frame
 	_check("팀 선택 → 팀 세트 · 카드 보임 · 지휘관 명령 칸도 그대로", [card.set_name, hud._command_panel.visible, hud.board_box.is_visible_in_tree()], ["team", true, true])
-	_check("팀 카드와 명령 칸이 함께 화면 안에", hud.get_rect().encloses(hud.console.get_rect()), true)
+	_check("팀 카드와 명령 칸이 함께 화면 안에", [hud.get_rect().encloses(hud.console.get_rect()), hud.get_rect().encloses(hud.board_panel.get_rect())], [true, true])
 	root.get_texture().get_image().save_png("user://ui_board_team.png")
 	_check("팀 6칸 (기획안 9-1)", _labels(card), ["Q 인명검색", "W 화점진압", "E 경계", "R 배연", "A 대기", "S 철수"])
 	_check("조를 골라도 메뉴가 뜨지 않는다", world.mission_ui.menu.visible, false)

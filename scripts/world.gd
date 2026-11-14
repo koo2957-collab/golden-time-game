@@ -517,7 +517,7 @@ func set_interior_span(span: int) -> void:
 
 
 ## 내부 화면에서 카메라가 있어야 할 [위치, 배율]: 고른 층(층 수 단추가 2·3이면 이웃 층까지)을
-## 왼쪽 정보창·위쪽 표시줄·아래 콘솔(그리고 펼쳐진 무전 기록)을 뺀 영역의 가운데에.
+## 왼쪽 정보창·위쪽 표시줄·아래 콘솔·오른쪽 지휘관 명령 기둥(그리고 펼쳐진 무전 기록)을 뺀 영역의 가운데에.
 ## fit_zoom 이면 그 영역에 꽉 차는 배율, 아니면 지금 배율 그대로
 func _interior_target(fit_zoom: bool) -> Array:
 	var p := iso_view.params
@@ -527,10 +527,8 @@ func _interior_target(fit_zoom: bool) -> Array:
 	var top := 84.0
 	var bottom := (hud.console.size.y if hud.console else 0.0) + 16.0
 	var left := p.split_info_width_px
-	# 오른쪽 무전 기록은 펼쳐져 있을 때만 자리를 뺀다
-	var right := 16.0
-	if hud.radio_log and hud.radio_log.visible and not hud.radio_log.folded:
-		right += RadioLogPanel.WIDTH
+	# 오른쪽: 지휘관 명령 기둥은 늘, 무전 기록은 펼쳐져 있을 때만 자리를 뺀다
+	var right := hud.right_reserved_px()
 	var z := camera.zoom.x
 	if fit_zoom:
 		var avail := Vector2(vp.x - right - left, vp.y - top - bottom)

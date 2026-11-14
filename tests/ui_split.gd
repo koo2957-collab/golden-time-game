@@ -71,7 +71,16 @@ func _run() -> void:
 	_check("처음은 1개 층 · 층 수 단추가 보인다 · 2층 건물이라 3개 층 단추는 꺼짐", [world.interior_span, hud._span_row.visible, hud.span_buttons[0].button_pressed, hud.span_buttons[1].disabled, hud.span_buttons[2].disabled], [1, true, true, false, true])
 	_check("고른 층이 화면 영역 안에 다 들어온다", area.grow(4.0).encloses(_on_screen(iso, iso.frame_rect())), true)
 	var focus_zoom: float = world.camera.zoom.x
-	_check("고른 층을 크게 본다 (배율 0.6 이상)", focus_zoom >= 0.6, true)
+	_check("고른 층을 크게 본다 (배율 0.8 이상)", focus_zoom >= 0.8, true)
+	# 화면 배치 (2026-11-14): 지휘관 명령 칸은 오른쪽 끝 세로 기둥, 무전 기록은 그 왼쪽, 아래 띠는 낮게, 층 막대는 위아래 가운데
+	var bp: Rect2 = hud.board_panel.get_global_rect()
+	var rl: Rect2 = hud.radio_log.get_global_rect()
+	var shown: Rect2 = _on_screen(iso, iso.frame_rect())
+	_check("명령 기둥: 오른쪽 끝 · 위 표시줄 아래 · 아래 띠 위", [bp.end.x > vp.x - 12.0, bp.position.y >= 60.0, bp.end.y <= hud.console.position.y], [true, true, true])
+	_check("무전 기록은 명령 기둥 왼쪽에 (겹치지 않음)", [rl.end.x <= bp.position.x, rl.intersects(bp)], [true, false])
+	_check("아래 띠는 낮다 (160px 이하)", hud.console.size.y <= 160.0, true)
+	_check("층 막대는 위 표시줄과 아래 띠 사이 가운데", absf(hud.floor_bar.get_global_rect().get_center().y - (96.0 + hud.console.position.y - 8.0) * 0.5) < 6.0, true)
+	_check("고른 층이 명령 기둥·무전 기록에 가리지 않는다", [shown.intersects(bp), shown.intersects(rl)], [false, false])
 	var up_rect: Rect2 = _on_screen(iso, iso._floor_rect(top, iso.stack.upper_vec(1)))
 	_check("위층은 위로 잘려 보인다 (일부만 화면에)", [up_rect.intersects(Rect2(Vector2.ZERO, vp)), up_rect.position.y < 0.0], [true, true])
 	_check("대원의 실제 위치는 그대로", _positions(sim), before)

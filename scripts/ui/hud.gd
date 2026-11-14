@@ -780,7 +780,8 @@ var minimap: MinimapView
 var _minimap_ms := 0
 
 
-## 화면 아래 반투명 띠: 왼쪽 미니맵 · 가운데 선택 정보 · (조·차량을 골랐을 때) 명령 카드 · 오른쪽 지휘관 명령 칸
+## 화면 아래 반투명 띠: 왼쪽 미니맵 · 가운데 선택 정보 · (조·차량을 골랐을 때) 명령 카드.
+## 지휘관 명령 칸은 화면 오른쪽 끝 세로 기둥 (2026-11-14 배치 결정 — 평면도에 모자란 것은 높이라 아래 띠를 낮췄다)
 func _build_console() -> void:
 	console = PanelContainer.new()
 	var style := StyleBoxFlat.new()
@@ -812,12 +813,13 @@ func _build_console() -> void:
 	_command_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	_command_panel.visible = false
 	row.add_child(_command_panel)
-	# 지휘관 명령 칸: 무엇을 고르고 있든 항상 보인다
-	row.add_child(VSeparator.new())
-	row.add_child(_build_board())
 	$HelpLabel.visible = false
 	add_child(console)
 	move_child(console, 0)
+	# 지휘관 명령 칸: 화면 오른쪽 끝 세로 기둥 — 무엇을 고르고 있든 항상 보인다
+	_build_board()
+	add_child(board_panel)
+	move_child(board_panel, 1)
 
 
 # --- 화면 전환 단추 (2026-11-14: 외부 화면 ↔ 내부 화면) ---
@@ -911,45 +913,58 @@ func set_span_state(span: int, max_span: int) -> void:
 
 const BOARD_BUTTON := Vector2(146, 27)
 const BOARD_FONT := 14
-var board_box: HBoxContainer
+var board_panel: PanelContainer
+var board_box: VBoxContainer
 ## 명령 id -> Button (지휘관 명령 칸·확인 단추)
 var board_buttons: Dictionary = {}
 ## 이미 한 일이라 흐리게 둘 것인가 (명령 id -> bool). World가 넣는다
 var board_done_fn: Callable
 
 
-## 보고·지원·안전·구역 네 묶음을 기둥으로 모두 펼친다 (data/commands.json commander_board).
+## 보고·지원·안전·구역 네 묶음을 세로 한 줄로 모두 펼친다 (data/commands.json commander_board) — 화면 오른쪽 끝 기둥.
 ## 무엇을 고르고 있든 항상 보이고, 때가 됐다고 나타나거나 빛나지 않는다 — 이미 한 일만 흐려진다.
 ## 일찍 눌러도 막지 않는다: 그대로 실행·기록되고 평가가 시점·순서를 본다
-func _build_board() -> HBoxContainer:
-	board_box = HBoxContainer.new()
-	board_box.add_theme_constant_override("separation", 8)
+func _build_board() -> void:
+	board_panel = PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.04, 0.07, 0.12, 0.78)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(8)
+	board_panel.add_theme_stylebox_override("panel", style)
+	board_box = VBoxContainer.new()
+	board_box.add_theme_constant_override("separation", 2)
+	board_panel.add_child(board_box)
 	for g in CommandCard.load_board():
-		var col := VBoxContainer.new()
-		col.add_theme_constant_override("separation", 2)
 		var head := Label.new()
 		head.text = str(g.label)
 		head.add_theme_font_size_override("font_size", BOARD_FONT)
 		head.add_theme_color_override("font_color", Color("fde68a"))
-		col.add_child(head)
+		board_box.add_child(head)
 		for it: Dictionary in g.get("items", []):
-			col.add_child(_make_board_button(it))
-		board_box.add_child(col)
-	# 명령이 아닌 확인 단추와 조작 도움말은 묶음 밖 오른쪽 아래에
-	var tools := VBoxContainer.new()
-	tools.add_theme_constant_override("separation", 2)
-	tools.alignment = BoxContainer.ALIGNMENT_END
+			board_box.add_child(_make_board_button(it))
+	# 명령이 아닌 확인 단추와 조작 도움말은 묶음 아래에 따로
+	board_box.add_child(HSeparator.new())
 	for it in CommandCard.load_tools():
-		tools.add_child(_make_board_button(it))
+		board_box.add_child(_make_board_button(it))
 	var help := Button.new()
 	help.text = "? 조작"
 	help.focus_mode = Control.FOCUS_NONE
+	help.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	help.add_theme_font_size_override("font_size", BOARD_FONT)
-	help.custom_minimum_size = Vector2(0, BOARD_BUTTON.y)
+	help.custom_minimum_size = BOARD_BUTTON
 	help.tooltip_text = $HelpLabel.text
-	tools.add_child(help)
-	board_box.add_child(tools)
-	return board_box
+	board_box.add_child(help)
+
+
+## 지도 오른쪽에서 패널이 차지하는 폭 (px): 지휘관 명령 기둥은 늘, 무전 기록은 펼쳐져 있을 때만.
+## World가 내부 화면을 맞출 때 이만큼 뺀다
+func right_reserved_px() -> float:
+	var w := 16.0
+	if board_panel:
+		w += board_panel.get_combined_minimum_size().x
+	if radio_log and radio_log.visible and not radio_log.folded:
+		w += RadioLogPanel.WIDTH + 8.0
+	return w
 
 
 func _make_board_button(item: Dictionary) -> Button:
@@ -992,15 +1007,26 @@ func _squad_summary() -> String:
 	return "\n".join(lines)
 
 
-## 콘솔·왼쪽 열(층 막대·구조대상자·열화상 범례) 자리 잡기
+## 왼쪽 열(층 막대)이 올라갈 수 있는 맨 위 (시계·단계 표시줄 아래)
+const LEFT_TOP := 96.0
+
+
+## 콘솔·오른쪽 열(지휘관 명령 기둥·무전 기록)·왼쪽 열(층 막대·구조대상자·열화상 범례) 자리 잡기
 func _layout_console() -> void:
 	if console == null:
 		return
-	# 지휘관 명령 칸(가장 긴 묶음 6줄)이 다 들어가는 높이까지
-	var h := maxf(maxf(CONSOLE_MIN_H, size.y * 0.18), console.get_combined_minimum_size().y)
+	# 아래 띠는 낮게: 미니맵·선택 정보·조 명령 카드만 (지휘관 명령 칸은 오른쪽 기둥에 있다)
+	var h := maxf(CONSOLE_MIN_H, console.get_combined_minimum_size().y)
 	console.position = Vector2(8.0, size.y - h - 8.0)
+	# 오른쪽 끝: 지휘관 명령 기둥, 그 왼쪽에 무전 기록
+	var edge := size.x - 8.0
+	if board_panel:
+		board_panel.size = board_panel.get_combined_minimum_size()
+		board_panel.position = Vector2(size.x - board_panel.size.x - 8.0, 64.0)
+		edge = board_panel.position.x
+	command_ui.right_inset = size.x - edge
 	if radio_log:
-		radio_log.position = Vector2(size.x - radio_log.size.x - 16.0, 64.0)
+		radio_log.position = Vector2(edge - radio_log.size.x - 8.0, 64.0)
 		radio_log._scroll.custom_minimum_size.y = maxf(160.0, console.position.y - 64.0 - 140.0)
 	if team_strip:
 		team_strip.position = Vector2((size.x - team_strip.custom_minimum_size.x) * 0.5, console.position.y - team_strip.custom_minimum_size.y - 4.0)
@@ -1014,13 +1040,25 @@ func _layout_console() -> void:
 		minimap.queue_redraw()
 	console.size = Vector2(size.x - 16.0, h)
 	# 층 막대는 콘솔 위 공간의 60%까지 (아래에 구조대상자 현황·범례 자리)
+	var bottom := console.position.y - 8.0
 	if floor_bar:
-		var max_h := (console.position.y - floor_tabs.position.y) * 0.6
+		var max_h := (bottom - LEFT_TOP) * 0.6
 		if absf(max_h - _floor_bar_fit_h) > 4.0:
 			_floor_bar_fit_h = max_h
 			floor_bar.fit(max_h)
 			floor_tabs.reset_size()
-	var y := floor_tabs.position.y + floor_tabs.size.y + 8.0
+	# 층 막대는 위 표시줄과 아래 띠 사이의 위아래 가운데에 (2026-11-14 사용자 결정) — 가운데의 평면도와 눈높이를 맞춘다.
+	# 막대 자체를 가운데에 두므로 그 아래 단추 줄이 나타나도 막대는 움직이지 않는다.
+	# 아래에 단추·구조대상자 현황·범례가 들어갈 자리가 모자랄 때만 그만큼 위로 올린다
+	var below := 0.0
+	if _victim_panel and _victim_panel.visible:
+		below += _victim_panel.size.y + 8.0
+	if _legend and _legend.visible:
+		below += _legend.size.y + 8.0
+	var bar_h := floor_bar.size.y if floor_bar else floor_tabs.size.y
+	var y0 := clampf((LEFT_TOP + bottom - bar_h) * 0.5, LEFT_TOP, maxf(LEFT_TOP, bottom - floor_tabs.size.y - below))
+	floor_tabs.position.y = y0
+	var y := y0 + floor_tabs.size.y + 8.0
 	if _victim_panel:
 		_victim_panel.position = Vector2(16.0, y)
 		if _victim_panel.visible:

@@ -81,6 +81,8 @@ var board_folded := false
 var arrive_gap_s := 5.0
 ## 오른쪽 무전 기록 패널 (P10-1, Hud가 넣는다) — 알림·카드를 그 왼쪽 가운데에
 var right_panel: Control
+## 무전 기록 패널 오른쪽에 있는 것(지휘관 명령 기둥)이 차지하는 폭 — HUD가 넣는다
+var right_inset := 0.0
 var _org: PanelContainer
 var _org_name: OptionButton
 var _org_supervisor: OptionButton
@@ -161,7 +163,7 @@ func toggle_board() -> void:
 func map_center_x() -> float:
 	# 무전 기록 패널 자리는 접거나 숨겨도 비워 둔다 (카드·알림 자리가 왔다 갔다 하지 않게)
 	if right_panel:
-		return (size.x - RadioLogPanel.WIDTH - 16.0) * 0.5
+		return (size.x - RadioLogPanel.WIDTH - 16.0 - right_inset) * 0.5
 	if _radio_panel == null or not _radio_panel.visible:
 		return size.x * 0.5
 	return (size.x - _radio_panel.size.x - 16.0) * 0.5
@@ -664,7 +666,7 @@ func _build_dispatch() -> void:
 		l.custom_minimum_size = Vector2(DIALOG_WIDTH - 40, 0)
 		box.add_child(l)
 		_dispatch_lines.append(l)
-	box.add_child(_label("도착하면 지휘권을 선언하고 최초 상황보고를 하십시오 (화면 아래 지휘관 명령 칸 '보고'). 건물 안 임무를 받은 조는 입구에서 진입 허가를 무전으로 요청합니다.", 16, DIM_COLOR))
+	box.add_child(_label("도착하면 지휘권을 선언하고 최초 상황보고를 하십시오 (화면 오른쪽 지휘관 명령 칸 '보고'). 건물 안 임무를 받은 조는 입구에서 진입 허가를 무전으로 요청합니다.", 16, DIM_COLOR))
 	var opts := Placement.options(sim)
 	if not opts.is_empty():
 		box.add_child(_label("선착 차량 배치 (SOP 200-3.1.1) — 화염·낙하물 피해, 후착대·특수차 공간, 소화전을 생각해 고르세요", 17, Color("fde68a")))

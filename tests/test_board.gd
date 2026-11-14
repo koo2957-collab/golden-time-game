@@ -98,3 +98,129 @@ func test_board_draws_only_reported_fire() -> void:
 	assert_eq(map.fire_rooms(1), [living.index] as Array[int], "무전으로 보고되면 그린다")
 	assert_true(sim.knowledge.crews.has(0), "보고한 조의 마지막 위치")
 	map.free()
+
+
+# --- 화이트보드 (2026-11-14): 모양·기호는 data/ui/board_style.json ---
+
+func test_board_style_values_have_source() -> void:
+	var data: Dictionary = JsonData.load_file(BoardStyle.PATH)
+	for key: String in data:
+		var entry: Variant = data[key]
+		if entry is Dictionary:
+			assert_true((entry as Dictionary).has("source"), "%s에 source" % key)
+	var st := BoardStyle.from_file(BoardStyle.PATH)
+	assert_true(st.color("board").get_luminance() > 0.9, "판은 흰색 (화이트보드)")
+	assert_true(st.color("ink").get_luminance() < 0.2, "선은 먹색")
+	assert_eq(st.stale_s, 60.0, "오래된 보고 기준 60초")
+	assert_eq(st.vehicle_label("펌프차"), "펌프", "차량 자석 짧은 이름")
+	assert_eq(st.vehicle_label("없는차"), "없는차", "표에 없으면 차종 그대로")
+
+
+func test_board_unseen_cells_are_unknown() -> void:
+	var sim := _sim()
+	var map := BoardMap.new()
+	map.setup(sim)
+	sim.perception.enabled = true
+	sim.plan.known = false
+	var idx := sim.fire.grid.index(1, 13, 15)
+	sim.perception.seen_tick[idx] = -1
+	assert_eq(map.known_cell(1, 13, 15), -1, "대원이 안 본 칸은 모른다")
+	assert_eq(map.known_cell(1, -1, 0), -1, "지도 밖")
+	sim.perception.seen_tick[idx] = 0
+	assert_eq(map.known_cell(1, 13, 15), sim.building.cell(1, 13, 15), "본 칸은 실제 구조")
+	sim.perception.seen_tick[idx] = -1
+	sim.plan.known = true
+	assert_eq(map.known_cell(1, 13, 15), sim.plan.plan_cell(1, 13, 15), "도면을 얻으면 도면")
+	map.free()
+
+
+func test_board_search_marks() -> void:
+	var sim := _sim()
+	var map := BoardMap.new()
+	map.setup(sim)
+	sim.perception.enabled = false
+	assert_true(map.search_ordered_rooms(1).is_empty(), "검색 지시 전에는 사선 없음")
+	var living := sim.fire.compartment_at(1, 13, 15)
+	var one := TacticalSystem.Task.new()
+	one.crew_id = 0
+	one.action = "search"
+	one.room = living.index
+	sim.tactical.tasks.append(one)
+	assert_eq(map.search_ordered_rooms(1), [living.index] as Array[int], "방 하나 검색 지시 → 그 방에 사선")
+	assert_true(map.search_ordered_rooms(2).is_empty(), "다른 층에는 없음")
+	sim.knowledge.searched[living.index] = sim.clock.tick
+	assert_true(map.search_ordered_rooms(1).is_empty(), "검색 완료 보고가 오면 사선 대신 ✕")
+	# 층 검색: 그 층에서 구조를 아는 방 모두 (완료 보고된 방은 뺀다)
+	sim.tactical.tasks.clear()
+	var floor_task := TacticalSystem.Task.new()
+	floor_task.crew_id = 0
+	floor_task.action = "search"
+	floor_task.floor = 1
+	floor_task.floor_action = "search_floor"
+	sim.tactical.tasks.append(floor_task)
+	var rooms := map.search_ordered_rooms(1)
+	assert_true(rooms.size() >= 2, "층 검색 → 여러 방 (%d)" % rooms.size())
+	assert_true(not rooms.has(living.index), "완료 보고된 방은 빠진다")
+	assert_true(rooms.all(func(i: int) -> bool: return sim.fire.comps[i].level == 1), "그 층 방만")
+	map.free()
+
+
+func test_board_crew_magnets() -> void:
+	var sim := _sim()
+	var map := BoardMap.new()
+	map.setup(sim)
+	map.size = Vector2(800, 600)
+	map.level = -1
+	# 차량 자석이 조 자석을 밀어내지 않게 치워 두고 본다 (차량은 아래에서 따로)
+	for v in sim.units.vehicles:
+		v.away = true
+	var a := sim.units.get_crew(0)
+	var b := sim.units.get_crew(1)
+	for c: Crew in [a, b]:
+		for ff in c.members():
+			ff.aboard = false
+			ff.level = 1
+			ff.pos = Vector2(6.5, 30.5)
+	assert_eq(map.crew_label(a), "%s-%d" % [sim.units.squads[a.squad_id].name, a.number], "자석 이름은 출동대-조 번호")
+	var magnets := map.crew_magnets(map.draw_level())
+	assert_true(magnets.has(a.id) and magnets.has(b.id), "밖에 있는 조는 자석이 있다")
+	var ra: Rect2 = magnets[a.id]
+	var rb: Rect2 = magnets[b.id]
+	assert_true(ra.has_point(map.to_px(Vector2(6.5, 30.5))), "자석은 조 자리에")
+	assert_true(not ra.intersects(rb), "같은 자리의 자석은 겹치지 않게 비킨다")
+	assert_eq(map.crew_at(ra.get_center()), a.id, "자석을 누르면 그 조")
+	assert_eq(map.crew_at(rb.get_center()), b.id, "비켜 놓인 자석도")
+	assert_eq(map.crew_at(Vector2(790, 10)), -1, "빈 곳")
+	sim.command.safety.roles[a.id] = SafetySystem.Role.RIT
+	assert_true(map.crew_label(a).ends_with(" RIT"), "RIT는 이름 뒤에 표시")
+	# 건물 안인데 보고가 없으면 자석이 없다 (보고된 것만)
+	for ff in a.members():
+		ff.pos = Vector2(13.5, 15.5)
+	if sim.command.interior.crew_inside(a.id):
+		sim.knowledge.crews.erase(a.id)
+		assert_true(not map.crew_magnets(1).has(a.id), "안에 있고 보고가 없으면 판에 없다")
+	if not sim.units.vehicles.is_empty():
+		var v: Vehicle = sim.units.vehicles[0]
+		v.away = false
+		assert_true(map.vehicle_magnets().has(v.id), "현장에 있는 차량은 자석")
+		assert_eq(map.vehicle_text(v), "%s %s" % [sim.units.squads[v.squad_id].name, map.style.vehicle_label(v.type)], "차량 자석 글")
+		v.away = true
+		assert_true(not map.vehicle_magnets().has(v.id), "떠난 차량은 없음")
+	map.free()
+
+
+func test_board_legend_matches_view() -> void:
+	var sim := _sim()
+	var map := BoardMap.new()
+	map.setup(sim)
+	map.level = -1
+	var outside := map.legend_items()
+	assert_true(outside.has("vehicle") and outside.has("hydrant") and not outside.has("fire"), "외부 판 범례")
+	map.level = 1
+	var inside := map.legend_items()
+	assert_true(inside.has("fire") and inside.has("searched") and inside.has("search_ordered") and not inside.has("vehicle"), "내부 층 범례")
+	for id in outside + inside:
+		assert_true(BoardMap.LEGEND.has(id), "범례 글: %s" % id)
+	assert_eq(map.age_text(sim.clock.tick), "0초 전", "방금 보고")
+	assert_eq(map.age_text(-1), "", "보고 없음")
+	map.free()

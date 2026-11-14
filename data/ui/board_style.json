@@ -1,0 +1,62 @@
+{
+  "note": "전술상황판(화이트보드) 모양과 기호 (2026-11-14 사용자 결정). 화면에만 쓰고 시뮬레이션과는 상관없다. source: 화면 설정 = 보기 좋게 정한 값, 게임 설정값 = 게임 규칙으로 정한 값. 기호는 교재·SOP에 정해진 범례가 없어 게임에서 정했다.",
+
+  "panel_margin_x": {"value": 0.03, "source": "화면 설정", "note": "상황판 창의 왼쪽·오른쪽 여백 (화면 폭 비율). 평면도가 넓어지게 예전 0.1에서 줄임"},
+  "panel_margin_top": {"value": 0.085, "source": "화면 설정", "note": "위 여백 (화면 높이 비율) — 위 가운데 시계·단계 표시 아래"},
+  "panel_margin_bottom": {"value": 0.095, "source": "화면 설정", "note": "아래 여백 (화면 높이 비율) — 아래 바 위"},
+  "column_px": {"value": 330, "source": "화면 설정", "note": "왼쪽·오른쪽 글 열의 폭"},
+  "frame_px": {"value": 5, "source": "화면 설정", "note": "흰 판 둘레 틀 두께"},
+  "legend_row_px": {"value": 20, "source": "화면 설정", "note": "범례 한 줄 높이 (판 아래 두 줄)"},
+
+  "stale_s": {"value": 60, "source": "게임 설정값", "note": "보고가 이 시간(현장 시간, 초)보다 오래되면 흐리게 (P10-1부터 같은 값)"},
+  "stale_alpha": {"value": 0.5, "source": "화면 설정", "note": "오래된 보고의 불투명도"},
+
+  "wall_ratio": {"value": 0.32, "source": "화면 설정", "note": "벽 선 굵기 = 칸 크기 × 이 값 (마커 선 느낌)"},
+  "wall_min_px": {"value": 2.0, "source": "화면 설정", "note": "벽 선 최소 굵기"},
+  "hatch_step_px": {"value": 9, "source": "화면 설정", "note": "화점 빗금 간격"},
+  "symbol_px": {"value": 10, "source": "화면 설정", "note": "기호 기준 크기 (반지름쯤)"},
+  "label_font": {"value": 12, "source": "화면 설정", "note": "기호 옆 글자 크기"},
+  "room_font": {"value": 11, "source": "화면 설정", "note": "방 이름 글자 크기"},
+  "face_font": {"value": 15, "source": "화면 설정", "note": "건물 면(A·B·C·D) 글자 크기"},
+  "magnet_font": {"value": 12, "source": "화면 설정", "note": "자석 명패 글자 크기"},
+  "magnet_h_px": {"value": 20, "source": "화면 설정", "note": "자석 명패 높이"},
+  "hose_px": {"value": 2.5, "source": "화면 설정", "note": "수관 선 굵기"},
+
+  "colors": {
+    "source": "화면 설정",
+    "note": "흰 판 위 마커 색. 무채색 바탕에 보고된 것만 색으로",
+    "backdrop": "#0d1117",
+    "board": "#f5f6f1",
+    "frame": "#a7b0ba",
+    "ink": "#1f2933",
+    "ink_soft": "#7b8591",
+    "unseen": "#e2e4df",
+    "road": "#dcdfda",
+    "sidewalk": "#eaece7",
+    "building": "#d3d7d2",
+    "window": "#3b82c4",
+    "door": "#a16207",
+    "fire": "#dc2626",
+    "smoke": "#6b7280",
+    "victim": "#f59e0b",
+    "rescued": "#16a34a",
+    "search": "#15803d",
+    "hazard": "#facc15",
+    "hose": "#2563eb",
+    "hydrant": "#2563eb",
+    "entry": "#15803d",
+    "post": "#1d4ed8",
+    "estimate": "#7c3aed",
+    "rit": "#dc2626",
+    "safe_zone": "#16a34a",
+    "control_line": "#ea580c",
+    "casualty": "#dc2626",
+    "triage": "#0284c7"
+  },
+
+  "vehicle_labels": {
+    "source": "화면 설정",
+    "note": "차량 자석에 쓰는 짧은 이름. 여기 없는 차종은 차종 이름 그대로",
+    "펌프차": "펌프", "물탱크차": "탱크", "구조공작차": "구조", "구급차": "구급", "굴절차": "굴절", "지휘차": "지휘"
+  }
+}

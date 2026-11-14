@@ -936,9 +936,21 @@ func _survey_text() -> String:
 	return text
 
 
+## 출동 정보 (P9-1): 상황실 지령 줄 + 출동 중 요청 결과
+func dispatch_info_text() -> String:
+	var lines: PackedStringArray = ["출동 정보"]
+	for l in sim.command.dispatch.get("lines", []):
+		lines.append("· " + str(l))
+	for e in sim.events.entries:
+		if e.type in ["dispatch_request", "relay_fire_location"] or (e.type == "gas_shutoff" and str(e.get("crew", "")).contains("관계자")):
+			lines.append("· " + SimEventLog.describe_text(e))
+	return "\n".join(lines)
+
+
 func _info_text() -> String:
 	var survey := sim.command.survey
-	var lines: PackedStringArray = [_survey_text(), ""]
+	# 출동 정보(지령 원문·출동 중 요청 결과)는 전술상황판에서 이 창으로 옮겼다 (2026-11-15: 상황판에는 중요한 것만)
+	var lines: PackedStringArray = [dispatch_info_text(), "", _survey_text(), ""]
 	if survey.log.is_empty():
 		lines.append("아직 확인한 정보가 없습니다.")
 	for entry in survey.log:
@@ -1338,6 +1350,8 @@ const TEAM_REPORT_STALE_S := 90.0
 
 ## 팀 카드 글자색 바꿔 쓰기 {text, dim, warn, danger} — 전술상황판(흰 판)이 마커 색으로 넣는다. 비어 있으면 어두운 바탕용 색
 var paper_palette: Dictionary = {}
+## 팀 카드를 두 줄로 쓴다: 첫 줄 = 누가·어디·무엇, 둘째 줄(건물 안일 때만) = 잔압·보고 — 글자가 큰 전술상황판용 (2026-11-15)
+var team_compact := false
 
 
 ## 현장에 있는 조마다 한 줄. 출동대가 새로 도착하면 카드를 더한다
@@ -1390,7 +1404,10 @@ func team_text(crew_id: int) -> String:
 		parts.append("보고 %d초 전" % roundi((sim.clock.tick - last) * SimClock.TICK_DT) if last >= 0 else "보고 없음")
 	var cond := sim.tactical.condition_text(crew_id)
 	var waiting := sim.cards.queue.any(func(q: CardSystem.Card) -> bool: return q.crew_id == crew_id)
-	return ("? " if waiting else "") + " · ".join(parts) + ("\n    조건: " + cond if cond != "" else "")
+	var tail := "\n    조건: " + cond if cond != "" else ""
+	if team_compact and parts.size() > 3:
+		return ("? " if waiting else "") + " · ".join(parts.slice(0, 3)) + "\n    " + " · ".join(parts.slice(3)) + tail
+	return ("? " if waiting else "") + " · ".join(parts) + tail
 
 
 ## 쓰러짐·공기 부족 = 빨강, 보고가 오래됨 = 노랑 (기획안 9-2)

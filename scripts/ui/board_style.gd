@@ -21,6 +21,10 @@ var font_bold_path := "res://art/fonts/Gaegu-Bold.ttf"
 var title_font := 28
 var head_font := 20
 var body_font := 17
+## 우선순위 칸에 쓰는 '확인 필요' 최대 건수 (나머지는 "… N건 더")
+var todo_max := 3
+## 범례 글자 크기
+var legend_font := 15
 var stale_s := 60.0
 var stale_alpha := 0.4
 var wall_ratio := 0.32
@@ -71,6 +75,8 @@ func apply(data: Dictionary) -> void:
 	title_font = int(_value(data, "title_font", title_font))
 	head_font = int(_value(data, "head_font", head_font))
 	body_font = int(_value(data, "body_font", body_font))
+	todo_max = int(_value(data, "todo_max", todo_max))
+	legend_font = int(_value(data, "legend_font", legend_font))
 	legend_row_px = float(_value(data, "legend_row_px", legend_row_px))
 	stale_s = float(_value(data, "stale_s", stale_s))
 	stale_alpha = float(_value(data, "stale_alpha", stale_alpha))

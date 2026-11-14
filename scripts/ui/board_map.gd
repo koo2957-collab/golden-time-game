@@ -247,8 +247,9 @@ func _draw_plan(lv: int, font: Font) -> void:
 		var rect_px := Rect2(to_px(Vector2(room.rect.position)), Vector2(room.rect.size) * s)
 		if rect_px.size.x < 44.0:
 			continue
-		draw_string(font, rect_px.position + Vector2(0.0, style.room_font + s * 0.6 + 2.0), room.name,
-			HORIZONTAL_ALIGNMENT_CENTER, rect_px.size.x, style.room_font, soft)
+		# 방 이름은 굵은 먹색으로 (2026-11-15: 흐린 회색은 빗금·물결선 아래에서 읽히지 않았다)
+		draw_string(_bold(), rect_px.position + Vector2(0.0, style.room_font + s * 0.6 + 2.0), room.name,
+			HORIZONTAL_ALIGNMENT_CENTER, rect_px.size.x, style.room_font, style.color("ink"))
 
 
 ## 직하층 확인으로 얻은 추정 구조: [{rect(위 세대), level(아래 세대 층), offset(아래 − 위), from(아래 세대 이름)}]
@@ -618,7 +619,7 @@ func _draw_legend(font: Font) -> void:
 	var row := style.legend_row_px
 	var top := size.y - legend_height()
 	draw_line(Vector2(8, top), Vector2(size.x - 8, top), style.color("ink_soft", 0.6), 1.0)
-	var fs := style.label_font
+	var fs := style.legend_font
 	var x := 10.0
 	var y := top + 4.0 + row * 0.5
 	for id in legend_items():

@@ -5,10 +5,11 @@ extends Control
 ## 판 위의 글은 모두 보드마커 손글씨. 모양·비율·글꼴은 data/ui/board_style.json.
 ##   맨 위 줄: "전술상황판" + 층 탭(외부 / 1층 / …) + 닫기
 ##   왼쪽 60%: 도면 (BoardMap — 무전 보고만)
-##   오른쪽 40%: 선으로 나눈 정보 칸
-##     ① 전략 · 출동대          | ② 우선순위 (대원 안전 → RECEO)
-##     ③ 임무 부여 · 진입대원 통제 (팀 카드 — 끌어다 도면에 놓으면 임무 창) + 통솔범위
-##     ④ 확인 필요 · 구조대상자 · 물 | ⑤ 출동 정보 · 둘러보기
+##   오른쪽 40%: 선으로 나눈 정보 칸 세 줄 — 2026-11-15 사용자 결정: 글자를 키우고 중요한 것만 (칸마다 판 폭을 다 쓴다)
+##     ① 전략 · 우선순위: 전략 한 줄 + 지금 해당하는 우선순위(대원 안전 → RECEO, 가장 급한 것은 빨강) + 확인 필요 몇 건
+##     ② 임무 부여 · 진입대원 통제 (팀 카드 — 끌어다 도면에 놓으면 임무 창), 통솔범위는 넘었을 때만
+##     ③ 구조대상자 · 물 · 출동대(오는 중·대기 중인 출동대만)
+##   뺀 것: 출동 지령 원문·둘러보기(→ 현장 정보 창), 해당 없는 우선순위 줄, 구역 한 줄(외부 도면에 그려진다), 출동대별 진입 상태
 ## 열려 있을 때만 2Hz로 다시 그린다 (사무용 PC). 질문 카드는 이보다 위에 뜬다.
 
 signal crew_dropped(crew_id: int, target: Vector3i, screen_pos: Vector2)
@@ -75,7 +76,6 @@ var _entry: Label
 var _receo: RichTextLabel
 var _span: Label
 var _status: RichTextLabel
-var _dispatch: Label
 var _refresh := 0.0
 
 
@@ -147,15 +147,15 @@ func setup(p_sim: SimWorld, ui: CommandUi) -> void:
 	var rows := VBoxContainer.new()
 	rows.add_theme_constant_override("separation", 0)
 	info_cell.add_child(rows)
-	var row1 := _row(rows, 0)
-	_entry = _text(_cell(row1, "전략 · 출동대"))
-	_receo = _rich(_cell(row1, "우선순위 (안전 → RECEO)"))
+	var top := _cell(_row(rows, 0), "전략 · 우선순위")
+	_entry = _text(top)
+	_entry.add_theme_font_override("font", style.marker_bold())
+	_receo = _rich(top)
 	var teams := _cell(_row(rows, 1), "임무 부여 · 진입대원 통제")
+	ui.team_compact = true
 	_move_teams(teams)
-	_span = _text(teams, "ink_soft")
-	var row3 := _row(rows, 2)
-	_status = _rich(_cell(row3, "확인 필요 · 구조대상자 · 물"))
-	_dispatch = _text(_cell(row3, "출동 정보"))
+	_span = _text(teams, "marker_red")
+	_status = _rich(_cell(_row(rows, 2), "구조대상자 · 물 · 출동대"))
 	_build_tabs()
 
 
@@ -170,7 +170,7 @@ func _build_head(outer: VBoxContainer) -> void:
 	title.add_theme_color_override("font_color", style.color("ink"))
 	head.add_child(title)
 	var note := Label.new()
-	note.text = "무전으로 보고된 것만 · Tab·M으로 닫기 · 게임은 계속 진행"
+	note.text = "무전으로 보고된 것만"
 	note.add_theme_font_override("font", style.marker_font())
 	note.add_theme_font_size_override("font_size", style.body_font)
 	note.add_theme_color_override("font_color", style.color("ink_soft"))
@@ -387,69 +387,82 @@ func _process(delta: float) -> void:
 ## 정보 칸 글을 다시 쓴다
 func refresh_text() -> void:
 	_style_team_cards()
-	_entry.text = _ui._entry_text()
+	_entry.text = strategy_text()
 	_receo.text = receo_bbcode()
-	_span.text = _ui._span_label.text if _ui._span_label else ""
-	var over := sim.command.direct_count() > sim.command.org.span_ideal
-	_span.add_theme_color_override("font_color", style.color("marker_red" if over else "ink_soft"))
+	_span.text = span_text()
+	_span.visible = _span.text != ""
 	_status.text = status_bbcode()
-	_dispatch.text = _body(dispatch_text()) + "\n" + _ui._survey_text()
-
-
-## 첫 줄(제목)을 뺀 나머지 — 칸 제목과 겹치지 않게
-static func _body(text: String) -> String:
-	var at := text.find("\n")
-	return text.substr(at + 1) if at >= 0 else ""
 
 
 func _hex(key: String) -> String:
 	return style.color(key).to_html(false)
 
 
-## 우선순위 칸: 지금 가장 급한 항목은 빨간 마커 + ▶, 해당하는 항목은 검정, 나머지는 흐리게
+## 전략 한 줄 (지휘권을 선언하지 않았으면 그것도)
+func strategy_text() -> String:
+	var cmd := sim.command
+	return "전략: %s%s" % [CommandSystem.STRATEGY_NAMES[cmd.strategy], "" if cmd.declared() else " (지휘권 미선언)"]
+
+
+## 우선순위 칸에 쓸 줄을 고른다 (중요한 것만): 해당하는 우선순위 항목만 순서대로, 확인 필요는 정한 개수까지.
+##   items = CommandUi.receo_items() [[해당하는가, 이름, 내용], …] · todo = 확인 필요 글
+##   → {priority [["이름", "내용"], …] (첫 줄이 가장 급한 것), todo [글, …], more 남은 확인 필요 건수}
+static func urgent_lines(items: Array, todo: Array, todo_max: int) -> Dictionary:
+	var priority: Array = []
+	for it: Array in items:
+		if bool(it[0]):
+			priority.append([str(it[1]), str(it[2])])
+	var shown: Array = todo.slice(0, maxi(0, todo_max))
+	return {"priority": priority, "todo": shown, "more": todo.size() - shown.size()}
+
+
+## 우선순위 칸: 지금 가장 급한 항목은 빨간 마커 + ▶, 그 밖의 해당 항목은 검정, 확인 필요는 빨간 점. 해당 없는 항목은 쓰지 않는다
 func receo_bbcode() -> String:
+	var u := urgent_lines(_ui.receo_items(), _ui.todo_items(), style.todo_max)
 	var lines: PackedStringArray = []
-	var marked := false
-	for it: Array in _ui.receo_items():
-		if it[0] and not marked:
-			marked = true
-			lines.append("[color=#%s][b]▶ %s: %s[/b][/color]" % [_hex("marker_red"), it[1], it[2]])
-		elif it[0]:
-			lines.append("%s: %s" % [it[1], it[2]])
+	var priority: Array = u.priority
+	for i in priority.size():
+		if i == 0:
+			lines.append("[color=#%s][b]▶ %s: %s[/b][/color]" % [_hex("marker_red"), priority[i][0], priority[i][1]])
 		else:
-			lines.append("[color=#%s]%s: %s[/color]" % [_hex("ink_soft"), it[1], it[2]])
-	lines.append("[color=#%s]구역: %s[/color]" % [_hex("ink_soft"), _ui.zones_text()])
-	return "\n".join(lines)
-
-
-## 확인 필요(빨간 마커) + 구조대상자 집계 + 물 현황 — 작은 제목은 파란 마커
-func status_bbcode() -> String:
-	var lines: PackedStringArray = []
-	for t in _ui.todo_items():
+			lines.append("%s: %s" % [priority[i][0], priority[i][1]])
+	if priority.is_empty():
+		lines.append("[color=#%s]지금 급한 항목 없음[/color]" % _hex("ink_soft"))
+	for t: String in u.todo:
 		lines.append("[color=#%s]• %s[/color]" % [_hex("marker_red"), t])
-	for text: String in [victims_text(), water_text()]:
-		var at := text.find("\n")
-		var head := text.substr(0, at) if at >= 0 else text
-		lines.append("[color=#%s][b]%s[/b][/color]" % [_hex("marker_blue"), head])
-		if at >= 0:
-			lines.append(text.substr(at + 1))
+	if int(u.more) > 0:
+		lines.append("[color=#%s]… 확인 필요 %d건 더[/color]" % [_hex("ink_soft"), int(u.more)])
 	return "\n".join(lines)
 
 
-## 출동 정보 요약 (P9-1): 상황실 지령 줄 + 출동 중 요청 결과
-func dispatch_text() -> String:
-	var lines: PackedStringArray = ["출동 정보"]
-	for l in sim.command.dispatch.get("lines", []):
-		lines.append("· " + str(l))
-	for e in sim.events.entries:
-		if e.type in ["dispatch_request", "relay_fire_location"] or (e.type == "gas_shutoff" and str(e.get("crew", "")).contains("관계자")):
-			lines.append("· " + SimEventLog.describe_text(e))
+## 통솔범위: 넘었을 때와 실행 대기 명령이 있을 때만 쓴다 (평소에는 빈 글)
+func span_text() -> String:
+	var cmd := sim.command
+	var parts: PackedStringArray = []
+	var n := cmd.direct_count()
+	if n > cmd.org.span_ideal:
+		parts.append("직접 지휘 %d (적정 %d) — 명령 %.0f초 지연, 단위대를 지정하세요" % [n, cmd.org.span_ideal, cmd.span_delay_s()])
+	if cmd.held_count() > 0:
+		parts.append("실행 대기 명령 %d건" % cmd.held_count())
+	return " · ".join(parts)
+
+
+## 구조대상자 집계 + 물 현황 + 오는 중인 출동대 — 작은 제목은 파란 마커
+func status_bbcode() -> String:
+	var lines: PackedStringArray = ["[color=#%s][b]구조대상자[/b][/color]  %s" % [_hex("marker_blue"), victims_text()]]
+	for group: Array in [["물", water_lines()], ["출동대", arrival_lines()]]:
+		var rows: PackedStringArray = group[1]
+		if rows.is_empty():
+			continue
+		# 작은 제목은 첫 줄 앞에 붙인다 (줄 수를 아낀다)
+		lines.append("[color=#%s][b]%s[/b][/color]  %s" % [_hex("marker_blue"), group[0], rows[0]])
+		lines.append_array(rows.slice(1))
 	return "\n".join(lines)
 
 
-## 물 현황: 펌프차 물탱크 잔량·급수원·예상 고갈
-func water_text() -> String:
-	var lines: PackedStringArray = ["물 현황"]
+## 물 현황: 펌프차마다 한 줄 — 물탱크 잔량·급수원·예상 고갈
+func water_lines() -> PackedStringArray:
+	var lines: PackedStringArray = []
 	for v in sim.units.vehicles:
 		if not v.is_pump() or v.away:
 			continue
@@ -466,10 +479,26 @@ func water_text() -> String:
 		if src == "" and use > 0.0:
 			eta = " · 약 %d분 뒤 고갈" % roundi(v.tank_l / use)
 		lines.append("%s %s · %s%s" % [v.display_name(sim.units.squads[v.squad_id].name), left, src if src != "" else "급수원 없음", eta])
-	return "\n".join(lines)
+	return lines
 
 
-## 요구조자 집계 (무전 보고 기준): 보고 · 구조 · 대피 · 미확인
+## 아직 현장에 투입되지 않은 출동대: 접근 중 · 대기1단계 · 출동 중(도착 예정). 현장에서 활동 중인 조는 팀 카드에 있다
+func arrival_lines() -> PackedStringArray:
+	var lines: PackedStringArray = []
+	var res := sim.command.resources
+	for squad in sim.units.squads:
+		if res.is_en_route(squad.id):
+			lines.append("%s 현장 접근 중" % squad.name)
+		elif res.is_staged(squad.id):
+			lines.append("%s 대기1단계 (명령하면 투입)" % squad.name)
+	for u in res.upcoming(sim.clock.tick):
+		var eta := roundi(u.eta_s)
+		@warning_ignore("integer_division")
+		lines.append("%s %s" % [u.name, "약 %d분 %02d초 뒤 도착" % [eta / 60, eta % 60] if eta > 0 else "대기 장소 자리 기다림"])
+	return lines
+
+
+## 구조대상자 집계 (무전 보고 기준): 보고 · 구조 · 스스로 대피
 func victims_text() -> String:
 	var reported := 0
 	var saved := 0
@@ -479,4 +508,4 @@ func victims_text() -> String:
 		else:
 			reported += 1
 	var evac := sim.events.of_type("victim_self_evac").size()
-	return "요구조자 (보고 기준)\n보고 %d · 구조 %d · 스스로 대피 %d" % [reported, saved, evac]
+	return "보고 %d · 구조 %d · 스스로 대피 %d" % [reported, saved, evac]

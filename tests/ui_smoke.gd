@@ -151,9 +151,12 @@ func _run() -> void:
 	var map_share: float = wb.map_cell.size.x / (wb.map_cell.size.x + wb.info_cell.size.x)
 	_check("도면 60% · 정보 칸 40%", absf(map_share - 0.6) < 0.03, true)
 	wb.refresh_text()
-	_check("정보 칸: 전략·우선순위·구조대상자·출동 정보", [wb._entry.text.contains("전략"), wb._receo.text.contains("R 구조"),
-		wb._status.text.contains("요구조자"), wb._dispatch.text != ""], [true, true, true, true])
-	_check("판 위 글씨는 마커 글꼴", [wb._entry.get_theme_font("font") == wb_style.marker_font(), wb_style.marker_font() is FontFile], [true, true])
+	# 2026-11-15: 글자를 키우고 중요한 것만 — 전략·우선순위 / 팀 카드 / 구조대상자·물·출동대. 출동 지령 원문은 현장 정보 창으로
+	_check("정보 칸: 전략·우선순위·구조대상자·물", [wb._entry.text.contains("전략"), wb._receo.text != "",
+		wb._status.text.contains("구조대상자"), wb._status.text.contains("물")], [true, true, true, true])
+	_check("판 위 글자를 키웠다 · 출동 정보는 현장 정보 창에", [wb_style.body_font >= 24, wb_style.head_font > wb_style.body_font,
+		cui._info_text().contains("출동 정보")], [true, true, true])
+	_check("판 위 글씨는 마커 글꼴", [wb._entry.get_theme_font("font") == wb_style.marker_bold(), wb._receo.get_theme_font("normal_font") == wb_style.marker_font(), wb_style.marker_font() is FontFile], [true, true, true])
 	_key(KEY_TAB)
 	await process_frame
 	_check("Tab → 전술상황판 닫힘", world.hud.board.visible, false)

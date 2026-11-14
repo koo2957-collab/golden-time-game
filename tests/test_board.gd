@@ -124,6 +124,31 @@ func test_board_style_values_have_source() -> void:
 	assert_true(FileAccess.file_exists("res://art/fonts/Gaegu-OFL.txt"), "글꼴 사용 조건 문서")
 
 
+## 2026-11-15 사용자 결정: 판 위 글자를 키우고 중요한 것만 쓴다
+func test_board_big_text_and_important_only() -> void:
+	var st := BoardStyle.from_file(BoardStyle.PATH)
+	assert_true(st.body_font >= 24 and st.head_font > st.body_font and st.title_font > st.head_font, "글자 크기: 내용 %d < 칸 제목 %d < 제목 %d" % [st.body_font, st.head_font, st.title_font])
+	assert_true(st.label_font >= 19 and st.room_font >= 19 and st.magnet_font >= 18 and st.legend_font >= 18, "도면 글자도 키운다")
+	assert_true(st.magnet_h_px >= st.magnet_font + 6.0, "자석 명패가 글자보다 높다")
+	assert_true(st.todo_max >= 1, "확인 필요 최대 건수")
+	# 우선순위 칸: 해당하는 항목만 순서대로, 확인 필요는 정한 개수까지
+	var items: Array = [[false, "안전", "내부 0명"], [true, "R 구조", "미검색 구획 5"], [false, "E 외부", "징후 없음"], [true, "E 진압", "방수 중 관창 1"]]
+	var u := TacticalBoard.urgent_lines(items, ["가", "나", "다", "라", "마"], 3)
+	assert_eq(u.priority, [["R 구조", "미검색 구획 5"], ["E 진압", "방수 중 관창 1"]], "해당 없는 항목은 쓰지 않는다 (첫 줄 = 가장 급한 것)")
+	assert_eq([u.todo, int(u.more)], [["가", "나", "다"], 2], "확인 필요는 3건까지 + 나머지 건수")
+	var none := TacticalBoard.urgent_lines([[false, "안전", ""]], [], 3)
+	assert_eq([(none.priority as Array).size(), (none.todo as Array).size(), int(none.more)], [0, 0, 0], "급한 것이 없으면 빈 목록")
+	# 팀 카드: 판에서는 두 줄 (누가·어디·무엇 / 잔압·보고), 밖에 있는 조는 한 줄
+	var sim := _sim()
+	var ui := CommandUi.new()
+	ui.sim = sim
+	var one := ui.team_text(0)
+	ui.team_compact = true
+	assert_eq(ui.team_text(0), one, "밖에 있는 조는 한 줄 그대로")
+	assert_true(ui.dispatch_info_text().begins_with("출동 정보"), "출동 정보는 현장 정보 창의 글로")
+	ui.free()
+
+
 func test_board_unseen_cells_are_unknown() -> void:
 	var sim := _sim()
 	var map := BoardMap.new()

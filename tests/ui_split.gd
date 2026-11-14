@@ -57,7 +57,7 @@ func _run() -> void:
 	_check("두 층이 함께 보인다", [iso.layers[0].visible and iso.layers[0].level == low, iso.upper_layers[0].visible and iso.upper_layers[0].level == top], [true, true])
 	_check("위층은 위로만 띄운다", [iso.upper_layers[0].position.x, is_equal_approx(iso.upper_layers[0].position.y, -iso.split_lift_px)], [0.0, true])
 	_check("위층은 불투명 (투명하게 하지 않는다)", iso.upper_layers[0].modulate.a, 1.0)
-	_check("위층이 아래층을 가리지 않는 간격", iso.split_lift_px >= iso.stack.split_min_lift_px(), true)
+	_check("기본 간격 874px — 아래층 뒷벽 윗부분에 살짝 걸친다", [roundi(iso.split_lift_px), iso.split_lift_px < iso.stack.split_min_lift_px()], [874, true])
 	var vp: Vector2 = root.get_visible_rect().size
 	var r: Rect2 = iso.split_rect()
 	var xf: Transform2D = iso.get_global_transform_with_canvas()

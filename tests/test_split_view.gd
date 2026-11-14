@@ -15,7 +15,7 @@ func _split_stack(lift_px := -1.0) -> FloorStack:
 	return FloorStack.new(b, p)
 
 
-func test_default_lift_clears_lower_floor() -> void:
+func test_default_lift_keeps_lower_floor_clear() -> void:
 	var s := _split_stack()
 	var b := s.building
 	var lv: int = s.order[0]
@@ -24,12 +24,14 @@ func test_default_lift_clears_lower_floor() -> void:
 	var off := s.upper_vec(1)
 	assert_eq(off.x, 0.0, "위로만 띄운다 (뒤로 비키지 않음)")
 	assert_true(off.y < 0.0, "위층은 화면 위쪽")
-	# 위층 바닥의 모든 칸 모서리가, 같은 화면 x 에서 아래층 벽 꼭대기보다 위에 있어야 한다 (가리지 않는다)
+	# 기본 간격 (2026-11-14 사용자 결정): 위층 앞 모서리가 아래층 뒷벽 윗부분에 살짝 걸친다 — 바닥은 전혀 가리지 않고,
+	# 벽은 높이의 절반 넘게 가리지 않는다. 위층 바닥의 모든 칸 모서리를 같은 화면 x 의 아래층 칸과 견준다
 	var proj := IsoProjection.new()
 	var fp_low := b.footprint(lv)
 	var fp_up := b.footprint(up)
 	var wall_m := s.params.inner_wall_m
 	var worst := INF
+	var worst_floor := INF
 	for ux in range(fp_up.position.x, fp_up.end.x + 1):
 		for uy in range(fp_up.position.y, fp_up.end.y + 1):
 			var pu := proj.to_screen(Vector2(ux, uy)) + off
@@ -40,7 +42,11 @@ func test_default_lift_clears_lower_floor() -> void:
 					continue
 				var pl := proj.to_screen(Vector2(lx, ly), wall_m)
 				worst = minf(worst, pl.y - pu.y)
-	assert_true(worst > 0.0, "위층 바닥이 아래층(벽 꼭대기까지)을 가리지 않는다 (가장 가까운 틈 %.0fpx)" % worst)
+				worst_floor = minf(worst_floor, proj.to_screen(Vector2(lx, ly)).y - pu.y)
+	var wall_px := wall_m * IsoProjection.PX_PER_M
+	assert_true(worst_floor > 0.0, "위층이 아래층 바닥을 가리지 않는다 (가장 가까운 틈 %.0fpx)" % worst_floor)
+	assert_true(worst > -wall_px * 0.5, "아래층 뒷벽은 높이의 절반 넘게 가리지 않는다 (걸친 높이 %.0fpx / 벽 %.0fpx)" % [-worst, wall_px])
+	assert_true(absf(s.params.stagger_floor_px - 874.0) < 1.0, "2층 주택 기본 간격 874px (결과 %.1f)" % s.params.stagger_floor_px)
 
 
 func test_lift_changes_only_screen_offset() -> void:

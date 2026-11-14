@@ -108,7 +108,7 @@ func split_min_lift_px() -> float:
 	return thick + (params.inner_wall_m + params.slab_m) * IsoProjection.PX_PER_M
 
 
-## 층 분리 보기의 기본 간격 (px): 겹치지 않는 최소 거리 × 비율 + 빈 틈
+## 층 분리 보기의 기본 간격 (px): 겹치지 않는 최소 거리 × 비율 + split_gap_px (음수면 아래층 뒷벽 윗부분에 살짝 걸친다)
 func split_default_lift_px() -> float:
 	return split_min_lift_px() * params.split_lift_ratio + params.split_gap_px
 

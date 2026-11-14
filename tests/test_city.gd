@@ -176,8 +176,15 @@ func test_night_windows_and_draw_budget() -> void:
 	assert_eq(night.window_count, count, "같은 창이 켜진다")
 	# 현장 차량이 들어오는 행으로 경로가 맞춰진다
 	if not sim.units.vehicles.is_empty():
-		assert_eq(night.plan.route[night.plan.route.size() - 1].y, sim.units.vehicles[0].pos.y, "경로 끝 = 선착 차량이 들어오는 행")
-		assert_eq(night.approach_cell(1.0, sim.units.vehicles[0].pos), sim.units.vehicles[0].pos, "진행률 1 = 차량이 설 자리")
-		assert_eq(night.approach_cell(0.0, sim.units.vehicles[0].pos), night.plan.route[0], "진행률 0 = 안전센터 앞")
+		var v: Vehicle = sim.units.vehicles[0]
+		assert_eq(night.plan.route[night.plan.route.size() - 1].y, v.pos.y, "경로 끝 = 선착 차량이 들어오는 행")
+		assert_eq(night.truck_cell(0.0, 0, v.length_cells), night.plan.route[0], "진행률 0 = 안전센터 앞")
+		# 진행률 1 = 현장 지도 바로 밖, 시뮬레이션 차량이 들어오기 시작하는 자리 (도착하면 그 자리에서 이어 들어온다)
+		var stop := night.truck_cell(1.0, 0, v.length_cells)
+		assert_true(is_equal_approx(stop.x, -(v.length_cells * 0.5 + 1.0)) and stop.y == v.pos.y, "진행률 1 = 지도 서쪽 끝 바로 밖 (%s)" % stop)
+		assert_true(night.truck_cell(0.5, 0, v.length_cells).x < 0.0, "가는 동안은 지도 밖")
+		# 뒤차는 간격을 두고 따라오고, 처음에는 아직 안전센터 안
+		assert_true(night.truck_distance(0.0, 1, v.length_cells) < 0.0, "뒤차는 처음에 출발 전")
+		assert_true(night.truck_distance(1.0, 1, v.length_cells) < night.truck_distance(1.0, 0, v.length_cells) - v.length_cells, "뒤차는 앞차와 겹치지 않는다")
 	day.free()
 	night.free()

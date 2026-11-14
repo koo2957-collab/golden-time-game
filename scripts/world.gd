@@ -38,6 +38,7 @@ var _estimates_drawn := 0
 var city: CityMassView
 var _arrival_pending := false
 var _arrival_zoom_to := Vector2.ONE
+var _arrival_pos_to := Vector2.ZERO
 ## 성능 표시 (F12, R15): 프레임마다 시뮬레이션에 쓴 시간(ms, 이동 평균)
 var _sim_ms := 0.0
 ## 창(출동 지령·상황보고 등)을 열기 전의 일시정지 상태
@@ -214,6 +215,8 @@ func _ready() -> void:
 			# 원경: 도시 전체가 한 화면에 (data/ui/city.json overview_width_m). 도착할 때까지 카메라는 고정
 			var far := city.plan.overview_zoom(get_viewport_rect().size.x)
 			camera.zoom = Vector2(far, far)
+			_arrival_pos_to = camera.position
+			camera.position = projections[ViewMode.ISO].to_screen(city.plan.center)
 			camera.locked = true
 
 
@@ -634,11 +637,16 @@ func _arrival_zoom() -> void:
 	_arrival_pending = false
 	var from := camera.zoom.x
 	var to := _arrival_zoom_to.x
+	var pos_from := camera.position
+	var pos_to := _arrival_pos_to
 	var tw := create_tween()
 	tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	tw.tween_method(func(k: float) -> void:
 		var z := from * pow(to / from, k)
-		camera.zoom = Vector2(z, z), 0.0, 1.0, city.plan.num("arrival_zoom_s", 1.6))
+		camera.zoom = Vector2(z, z)
+		# 화면 가운데도 원경의 중심에서 현장으로 — 화면에서 같은 빠르기로 미끄러지게 배율에 맞춰
+		var slide := (1.0 / from - 1.0 / z) / (1.0 / from - 1.0 / to) if not is_equal_approx(from, to) else k
+		camera.position = pos_from.lerp(pos_to, slide), 0.0, 1.0, city.plan.num("arrival_zoom_s", 1.6))
 	tw.tween_callback(func() -> void: camera.locked = false)
 
 

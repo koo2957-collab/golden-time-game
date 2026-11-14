@@ -15,8 +15,10 @@ const SHIFT_PER_M := IsoProjection.PX_PER_M / (2.0 * IsoProjection.HALF_H)
 ## 설정값 (키 → 값)
 var p: Dictionary = {}
 var map_rect := Rect2i()
-## 화면 가운데에 오는 칸 (현장 지도 가운데)
+## 원경에서 화면 가운데에 오는 칸 (현장 지도 가운데에서 서북쪽으로 조금 — 안전센터와 출동 경로가 화면 안쪽에 오게)
 var center := Vector2.ZERO
+## 현장 지도 가운데 칸
+var site_center := Vector2.ZERO
 ## 원경에서 화면에 들어오는 범위 (가운데 기준, x − y 방향 절반 · x + y 방향 위·아래)
 var half_u := 0.0
 var half_v := 0.0
@@ -64,7 +66,9 @@ func num(key: String, fallback := 0.0) -> float:
 func generate(map_size: Vector2i, road_rows: Vector2i, p_seed: int, lane_y := -1.0, params: Dictionary = {}) -> void:
 	p = params if not params.is_empty() else load_params()
 	map_rect = Rect2i(Vector2i.ZERO, map_size)
-	center = Vector2(map_size) * 0.5
+	site_center = Vector2(map_size) * 0.5
+	var shift: Array = p.get("overview_offset_cells", [0, 0])
+	center = site_center + Vector2(float(shift[0]), float(shift[1]))
 	var s := int(num("street_cells", 12))
 	var b := int(num("block_cells", 60))
 	avenue = Vector2i(road_rows.x, road_rows.y + 1) if road_rows.x >= 0 else Vector2i(map_size.y - s, map_size.y)

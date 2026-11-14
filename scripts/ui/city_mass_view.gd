@@ -4,6 +4,7 @@ extends Node2D
 ## 나머지 건물은 흰색 매스 모형(아이소 박스, 윗면 밝게·옆면 조금 어둡게)으로만 그린다.
 ## 2026-11-14 (사용자 결정): 화면을 꽉 채우는 도시 — 배치는 CityPlan(격자 도로망·필지·안전센터·출동 경로)이 만들고
 ## 여기서는 그리기만 한다. 길·블록 바닥·중앙선·횡단보도·건물·옥탑, 밤에는 창문 불빛과 가로등 점.
+## 출동 중에는 그 위에 선착 소방차(구운 그림)가 안전센터에서 길을 따라 달리고, 대상 건물에서 연기 기둥이 오른다.
 ## 텍스처·그림자 없이 색만. 도시 전체를 사각형 묶음 몇 개로 한 번 만들어 두고 다시 만들지 않는다 (사무용 PC, 기획안 9-5).
 ## 수치·색은 data/ui/city.json.
 
@@ -14,13 +15,15 @@ var proj: IsoProjection
 var plan: CityPlan
 ## 밤 정도 (0 = 낮 … 1 = 밤). setup 전에 넣는다
 var night := 0.0
-## 출동 진행률 (0~1, 출동 중이 아니면 음수) — World가 넣는다 (P9-1 출동 단계 차량 아이콘)
+## 출동 진행률 (0~1, 출동 중이 아니면 음수) — World가 넣는다 (P9-1 출동 단계)
 var progress: Callable
 ## 만든 그림량 (점검용)
 var quad_count := 0
 var window_count := 0
 var lamp_count := 0
+## 출동 중 화면(소방차·연기 기둥·이름표)을 그리는 겹
 var _icons: Node2D
+var _overlay_drawn := false
 var _sim: SimWorld
 ## 그리기 묶음 [{points, colors, indices}]
 var _batches: Array[Dictionary] = []
@@ -35,7 +38,9 @@ func setup(building: BuildingData, p_proj: IsoProjection, p_seed: int, p_sim: Si
 	_sim = p_sim
 	if _icons == null:
 		_icons = Node2D.new()
-		_icons.draw.connect(_draw_icons)
+		# 현장 그림(건물·바닥)보다 위에 그린다 — 소방차가 현장 지도 가장자리에 닿아도 가려지지 않게
+		_icons.z_index = 20
+		_icons.draw.connect(_draw_overlay)
 		add_child(_icons)
 	var rows := Vector2i(-1, -1)
 	for lv in building.levels():
@@ -113,7 +118,7 @@ func _crosswalks() -> void:
 	for r in plan.row_streets:
 		for c in plan.col_streets:
 			var mid := Vector2((c.x + c.y) * 0.5, (r.x + r.y) * 0.5)
-			if mid.distance_to(plan.center) > CROSSWALK_REACH:
+			if mid.distance_to(plan.site_center) > CROSSWALK_REACH:
 				continue
 			# 교차로의 동·서쪽 (남북으로 놓인 줄), 남·북쪽 (동서로 놓인 줄)
 			for x0: float in [c.x - 5.0, c.y + 1.0]:
@@ -226,41 +231,110 @@ func _draw() -> void:
 
 
 func _process(_delta: float) -> void:
-	if _icons and progress.is_valid() and float(progress.call()) >= 0.0:
+	if _icons == null or not progress.is_valid():
+		return
+	# 출동 중에만 매 프레임 다시 그린다 (차·연기가 움직인다). 끝나면 한 번 지우고 멈춘다
+	var active := float(progress.call()) >= 0.0
+	if active or _overlay_drawn:
 		_icons.queue_redraw()
-	elif _icons and _icons.visible:
-		_icons.queue_redraw()
+	_overlay_drawn = active
 
 
-## 출동 중인 선착 차량의 자리 (칸): 안전센터에서 길을 따라 큰길로, 현장 지도에 들어와 설 자리까지. f = 진행률 0~1
-func approach_cell(f: float, target: Vector2) -> Vector2:
-	var along := plan.route_length()
-	var tail := plan.route[plan.route.size() - 1].distance_to(target) if not plan.route.is_empty() else 0.0
-	var d := clampf(f, 0.0, 1.0) * (along + tail)
-	if d <= along or tail <= 0.0:
-		return plan.route_point(d / maxf(1.0, along))
-	return plan.route[plan.route.size() - 1].lerp(target, (d - along) / tail)
+## 출동 중인 선착 차량의 자리 (칸): 안전센터에서 길을 따라 큰길로, 현장 지도 서쪽 끝 바로 밖까지.
+## f = 진행률 0~1, index = 몇 번째 차 (뒤차는 간격을 두고 따라온다), length_cells = 차 길이.
+## 아직 안전센터를 나서지 않은 뒤차는 x가 아주 작은 값(-100000)
+func truck_cell(f: float, index: int, length_cells: float) -> Vector2:
+	var d := truck_distance(f, index, length_cells)
+	if d < 0.0:
+		return Vector2(-100000, 0)
+	return plan.route_point(d / maxf(1.0, plan.route_length()))
 
 
-## 출동 중: 안전센터에서 도로를 따라 화재 건물 앞으로 다가오는 선착 차량 아이콘
-func _draw_icons() -> void:
+## 그 차가 경로를 따라 달린 거리 (칸, 음수 = 아직 출발 전).
+## 맨 앞차는 진행률 1에서 현장 지도 바로 밖(시뮬레이션 차량이 들어오기 시작하는 자리)에 선다
+func truck_distance(f: float, index: int, length_cells: float) -> float:
+	var stop := plan.route_length() - (length_cells * 0.5 + 1.0)
+	return clampf(f, 0.0, 1.0) * stop - index * (length_cells + plan.num("truck_gap_cells", 6))
+
+
+## 출동 중 화면: 대상 건물의 연기 기둥, 길을 따라 달리는 선착 소방차, 안전센터 이름
+func _draw_overlay() -> void:
 	if _sim == null or not progress.is_valid() or plan == null:
 		return
 	var f := float(progress.call())
 	if f < 0.0:
 		return
-	var font := PlanStyle.font()
-	# 화면 배율과 상관없이 같은 크기로 보이게 (멀리 본 도시에서도 아이콘이 보이도록)
+	# 화면 배율과 상관없이 같은 크기로 보이게 하는 배수 (멀리 본 도시에서도 글자·표시가 보이도록)
 	var k := 1.0 / maxf(0.01, _icons.get_global_transform_with_canvas().get_scale().x)
+	var font := PlanStyle.font()
+	_draw_plume()
+	# 안전센터 이름
+	var st: Rect2i = plan.station.rect
+	_label(proj.to_screen(Vector2(st.get_center()), float(plan.station.floors) * plan.num("floor_m", 3.0)) + Vector2(0, -10) * k,
+		str(plan.p.get("station_name", "119안전센터")), k, font, _color("station_top", Color("c0392b")))
+	var now := Time.get_ticks_msec() / 1000.0
 	var i := 0
 	for v in _sim.units.vehicles:
 		if v.squad_id != 0:
 			continue
-		# 뒤차는 조금 떨어져 따라온다
-		var sp := proj.to_screen(approach_cell(f - i * 0.04, v.pos), 0.5)
-		_icons.draw_circle(sp, 12.0 * k, Color(v.color, 0.95))
-		_icons.draw_arc(sp, 12.0 * k, 0.0, TAU, 20, Color.WHITE, 2.0 * k)
-		_icons.draw_set_transform(sp, 0.0, Vector2(k, k))
-		_icons.draw_string(font, Vector2(-40, -18), v.short_name, HORIZONTAL_ALIGNMENT_CENTER, 80, 14, Color.BLACK)
-		_icons.draw_set_transform(Vector2.ZERO)
+		var d := truck_distance(f, i, v.length_cells)
 		i += 1
+		if d < 0.0:
+			continue
+		var t := d / maxf(1.0, plan.route_length())
+		var sp := proj.to_screen(plan.route_point(t), 0.0)
+		# 눈에 띄게: 차 둘레에 번쩍이는 빨간 빛 (화면에서 늘 같은 크기)
+		var pulse := 0.5 + 0.5 * sin(now * 9.0 + i)
+		_icons.draw_circle(sp, (15.0 + 5.0 * pulse) * k, Color(1.0, 0.15, 0.1, 0.16 + 0.14 * pulse))
+		var art := SpriteArt.vehicle_set(v.type)
+		var heading := plan.route_heading(t)
+		var drawn := false
+		if art != null:
+			var anim := "drive" if art.frames("drive") > 0 and f < 1.0 else "idle"
+			drawn = art.draw(_icons, anim, SpriteArt.dir8(heading), SpriteArt.frame_at(anim, art.frames(anim), v.id * 0.5), sp,
+				Color.WHITE, Color(0, 0, 0, 0), plan.num("truck_scale", 1.5))
+		if not drawn:
+			_icons.draw_circle(sp, 9.0 * k, Color(v.color, 0.95))
+			_icons.draw_arc(sp, 9.0 * k, 0.0, TAU, 20, Color.WHITE, 2.0 * k)
+		_label(sp + Vector2(0, -26) * k, v.short_name, k, font, _color("label_box", Color("1f2933")))
+
+
+## 화면에서 늘 같은 크기의 이름표: 짙은 바탕(box)에 흰 글자 — 밤 화면 분위기(어둡게·무채색)에서도 읽히게
+func _label(at: Vector2, text: String, k: float, font: Font, box: Color) -> void:
+	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
+	_icons.draw_set_transform(at, 0.0, Vector2(k, k))
+	_icons.draw_rect(Rect2(-w * 0.5 - 6.0, -16.0, w + 12.0, 22.0), Color(box, 0.92))
+	_icons.draw_string(font, Vector2(-w * 0.5, 0.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, _color("label_text", Color.WHITE))
+	_icons.draw_set_transform(Vector2.ZERO)
+
+
+## 대상 건물에서 오르는 연기 기둥 (기획안 4-4): 멀리서도 어디로 가는지 보인다. 바람이 부는 쪽으로 기운다.
+## 밤에는 밑동에 불빛. 연기 덩이가 천천히 올라가며 커지고 옅어진다
+func _draw_plume() -> void:
+	var b := _sim.building
+	var fp := b.footprint(b.levels()[0])
+	var floors := 0
+	for lv in b.levels():
+		if b.floor_number(lv) >= 1:
+			floors += 1
+	var floor_m := plan.num("floor_m", 3.0)
+	var base_h := maxf(1, floors) * floor_m
+	var height := plan.num("plume_height_m", 45)
+	var puffs := maxi(4, int(plan.num("plume_puffs", 12)))
+	var r0 := plan.num("plume_radius_m", 4.0) * IsoProjection.PX_PER_M
+	# 바람이 불어 가는 쪽 (칸 좌표): 불어 오는 쪽의 반대
+	var rad := deg_to_rad(_sim.exposure.wind_from_deg)
+	var lean := -Vector2(sin(rad), -cos(rad)) * plan.num("plume_lean_cells", 30)
+	var center := Vector2(fp.get_center())
+	var now := Time.get_ticks_msec() / 1000.0 * plan.num("plume_speed", 0.08)
+	var col := _color("plume", Color("2b2d31"))
+	if night > 0.3:
+		var glow := _color("plume_glow", Color("ff7a1a"))
+		_icons.draw_circle(proj.to_screen(center, base_h), r0 * 1.6, Color(glow, 0.35 * night))
+		_icons.draw_circle(proj.to_screen(center, base_h), r0 * 0.8, Color(glow, 0.5 * night))
+	for i in puffs:
+		var u := fposmod(float(i) / puffs + now, 1.0)
+		# 덩이마다 조금씩 옆으로 비켜 뭉게뭉게 (한 줄로 겹친 동심원이 되지 않게)
+		var sway := Vector2(sin(i * 2.4) * r0 * 0.5 * (0.3 + u), cos(i * 1.7) * r0 * 0.25)
+		var at := proj.to_screen(center + lean * u * u, base_h + height * u) + sway
+		_icons.draw_circle(at, r0 * (0.8 + 2.4 * u), Color(col, col.a * (1.0 - pow(u, 1.5)) * 0.5))

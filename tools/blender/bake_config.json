@@ -103,7 +103,9 @@
     "walk",
     "crouch_walk",
     "down_up"
-   ]
+   ],
+   "head_scale": 0.62,
+   "_head_note": "2026-11-15 사용자 요청: 민간인 머리가 너무 크다 — Kenney 그림의 머리를 62%로"
   },
   {
    "name": "civilian_f",
@@ -123,7 +125,9 @@
     "walk",
     "crouch_walk",
     "down_up"
-   ]
+   ],
+   "head_scale": 0.62,
+   "_head_note": "2026-11-15 사용자 요청: 민간인 머리가 너무 크다 — Kenney 그림의 머리를 62%로"
   }
  ],
  "anims": {
@@ -645,6 +649,69 @@
     96
    ],
    "_blend_note": "사용자가 확인한 그때의 장면 사본 (작업 파일 art_source/models/motion_review.blend는 깃에 넣지 않는다)"
+  },
+  {
+   "blend": "tools/blender/scenes/carry_lift.blend",
+   "target": "firefighter_v2",
+   "pivot_object": "FF_A",
+   "frames": 16,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "carry_lift",
+   "note": "A2 2인 운반(사지운반법): 앞사람(조장)은 구조대상자 다리 사이에 서서 무릎 아래를 잡고, 뒷사람(짝)은 등 뒤에서 겨드랑이 아래로 팔을 넣어 든다. 둘이 엇갈린 걸음으로 걷는다 — 2026-11-15 사용자가 블렌더에서 확인 (구조 교재 제4편 제2장 2인 운반)",
+   "actors": {
+    "lift_f": "FF_A",
+    "lift_b": "FF_B",
+    "lift_v": {
+     "rig": "VIC_rig",
+     "target": "civilian_m"
+    }
+   }
+  },
+  {
+   "blend": "tools/blender/scenes/carry_lift.blend",
+   "target": "firefighter_v2",
+   "pivot_object": "FF_A",
+   "frames": 16,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "carry_lift_f",
+   "note": "A2 2인 운반 — 들려 가는 구조대상자(여성 그림)",
+   "actors": {
+    "lift_v": {
+     "rig": "VIC_rig",
+     "target": "civilian_f",
+     "images": {
+      "humanMaleA.png": "humanFemaleA.png"
+     }
+    }
+   }
   }
  ]
 }

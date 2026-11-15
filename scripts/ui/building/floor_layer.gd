@@ -1587,9 +1587,15 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 	elif ff.crouched:
 		anim = "crouch_walk"
 	var frame := 0
+	# 여럿이 한 장면으로 구운 동작(문 개방·2인 운반)은 조장 기준 같은 박자로 — 구울 때 맞춘 엇갈림이 그대로 보이게
+	var phase := (crew.leader.id if anim in PAIRED_ANIMS else ff.id) * 0.37
 	if moving or anim in ["idle", "spray", "search", "force_a", "force_b"]:
-		frame = SpriteArt.frame_at(anim, art.frames(anim), ff.id * 0.37)
+		frame = SpriteArt.frame_at(anim, art.frames(anim), phase)
 	return [anim, dir if dir >= 0 else int(_facing.get(ff.id, 1)), frame]
+
+
+## 여럿이 한 장면으로 구운 동작 (프레임을 조장 기준으로 맞춘다)
+const PAIRED_ANIMS := ["force_a", "force_b", "lift_f", "lift_b"]
 
 
 ## 잠긴 문을 부수는 중인가 (그 문 가까이에서, 사람이 모자라 기다리는 중이 아닐 때)
@@ -1673,7 +1679,19 @@ func _carry_layout(crew: Crew, alpha: float) -> Dictionary:
 	var lead := UnitsView.display_pos(crew.leader, alpha)
 	var mode := carry_mode(crew)
 	var out := carry_spots(mode, lead, dir, SpriteArt.config().get("carry_layout", {}))
-	out.merge({"mode": mode, "k": k, "dir": dir, "lead": lead, "kind": task.kind, "target": task.target_id})
+	out.merge({"mode": mode, "k": k, "dir": dir, "lead": lead, "kind": task.kind, "target": task.target_id, "victim_anim": ""})
+	# 2인 운반 (A2, 2026-11-15 사용자가 블렌더에서 확인): 구울 때 적은 자리 — 기준점 = 앞사람(조장), 뒷사람·구조대상자는 그 뒤
+	if mode == "lift":
+		var crew_art := SpriteArt.get_set(str(SpriteArt.config().get("crew", "")))
+		var cell_m := sim.units.cell_size_m
+		if crew_art != null and not crew_art.stand("lift_b").is_empty():
+			out.partner = stand_spot(lead, dir, crew_art.stand("lift_b"), cell_m)
+		if task.kind == "victim":
+			var vart := SpriteArt.victim_set(sim.rescue.victims[task.target_id].label())
+			if vart != null and vart.frames("lift_v") > 0:
+				out.victim = stand_spot(lead, dir, vart.stand("lift_v"), cell_m)
+				out.victim_h = 0.0
+				out.victim_anim = "lift_v"
 	return out
 
 
@@ -2465,6 +2483,13 @@ func _draw_victim(v: Victim) -> void:
 		# 끌기는 끄는 사람 뒤 바닥에(머리가 끄는 사람 쪽). 누운 그림은 발이 그림 방향을 향한다
 		var lay := _carry_layout(sim.units.get_crew(v.carried_by), sim.clock.alpha())
 		var held_art := SpriteArt.victim_set(v.label()) if not thermal and not lay.is_empty() else null
+		if held_art != null and str(lay.get("victim_anim", "")) == "lift_v":
+			# 2인 운반: 두 사람 사이에 들린 그림 (구울 때 높이까지 들어 있다). 박자는 조장과 같게
+			var c := sim.units.get_crew(v.carried_by)
+			var walking := c.leader.level == c.leader.prev_level and (c.leader.pos - c.leader.prev_pos).length_squared() > 0.000001
+			var fr := SpriteArt.frame_at("lift_v", held_art.frames("lift_v"), c.leader.id * 0.37) if walking else 0
+			held_art.draw(self, "lift_v", int(lay.k), fr, proj.to_screen(lay.victim, 0.0))
+			return
 		if held_art != null and held_art.frames("down_up") > 0:
 			var spot: Vector2 = lay.victim
 			draw_colored_polygon(_ellipse(proj.to_screen(spot, 0.0), 14, 5), Color(0, 0, 0, 0.25))

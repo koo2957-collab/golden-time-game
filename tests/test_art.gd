@@ -253,3 +253,20 @@ func test_door_force_two_sides() -> void:
 	var one := Opening.new()
 	one.cells = [Vector2i(5, 5)] as Array[Vector2i]
 	assert_eq(FloorLayer.force_frame(one, Vector2(2.5, 5.8)).facing, Vector2(1, 0), "왼쪽에서 오른쪽 문을 본다")
+
+
+## A2 2인 운반 (2026-11-15 사용자가 블렌더에서 확인): 앞사람(조장)·뒷사람(짝)·구조대상자를 한 장면으로 구웠다
+func test_two_person_carry_baked_together() -> void:
+	var crew := SpriteArt.get_set(str(SpriteArt.config().crew))
+	assert_true(crew.frames("lift_f") >= 16 and crew.frames("lift_f") == crew.frames("lift_b"), "앞·뒷사람 같은 장 수 (부드럽게 16장)")
+	var b := crew.stand("lift_b")
+	assert_true(not b.is_empty() and float(b.fwd_m) < -0.5 and absf(float(b.right_m)) < 0.05, "뒷사람은 앞사람 바로 뒤 (%.2fm)" % float(b.get("fwd_m", 0.0)))
+	for key in ["male", "female"]:
+		var v := SpriteArt.get_set(str(SpriteArt.config().victims[key]))
+		assert_eq(v.frames("lift_v"), crew.frames("lift_f"), "구조대상자(%s) 들린 그림 — 같은 장 수" % key)
+		var s := v.stand("lift_v")
+		assert_true(float(s.fwd_m) < 0.0 and float(s.fwd_m) > float(b.fwd_m), "구조대상자(%s)는 두 사람 사이" % key)
+	for anim in ["lift_f", "lift_b", "lift_v"]:
+		assert_true(float(SpriteArt.config().fps.get(anim, 0.0)) >= 8.0, "%s: 부드럽게 (초당 장 수)" % anim)
+	assert_true(FloorLayer.PAIRED_ANIMS.has("lift_f") and FloorLayer.PAIRED_ANIMS.has("lift_b"), "두 사람은 같은 박자로")
+

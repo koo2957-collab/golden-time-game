@@ -611,6 +611,11 @@ def bake_character(spec):
             apply_pose(arm, sample_pose(act, src))
             upd()
             pose_mod(arm, pose_name, i, n)
+            if spec.get("head_scale"):
+                # 머리 크기 (2026-11-15 사용자 요청: 민간인 머리가 너무 크다 — Kenney 그림은 머리가 큰 2등신)
+                hs = float(spec["head_scale"])
+                arm.pose.bones["Head"].scale = (hs, hs, hs)
+                upd()
             for k in ([0, 2, 5] if QUICK else ([ONLY_DIR] if ONLY_ANIMS else range(NDIR))):
                 # 쓰러짐: 엎드림(down)·반듯이(down_up). 몸 가운데가 원점에 오게 눕힌다
                 lie = pose_name in ("down", "down_up")
@@ -992,10 +997,12 @@ def bake_furniture(spec, scale):
 
 def bake_scene(spec):
     """사용자가 블렌더에서 확인한 장면을 그대로 굽는다. 사람(actors)마다 따로, 8방향 × 프레임.
-    spec: name, blend(장면 파일), target(넣을 그림 묶음 = characters/<target>), pivot(기준점 = 문틈 아래 바닥 [x, y, z]),
-          actors {동작 이름: 아마추어 이름}, frames(1부터), hide(굽지 않을 물체 이름 앞부분), scale·frame·anchor(그 묶음과 같게)
+    spec: name, blend(장면 파일), target(기본 그림 묶음 = characters/<target>),
+          pivot [x, y, z] 또는 pivot_object(그 물체의 바닥 자리) = 기준점 (문틈 아래 바닥, 운반은 앞사람),
+          actors {동작 이름: 아마추어 이름 또는 {rig, target(그 사람의 그림 묶음), images {원래 그림 파일: 바꿀 그림 파일}}},
+          frames, frame_start, hide(굽지 않을 물체 이름 앞부분), scale·frame·anchor(그 묶음과 같게)
     장면에서 사람들은 Blender -Y(모델 앞쪽)를 보고 서 있어야 한다. 기준점을 중심으로 장면 전체를 돌려 방향 k를 만들고,
-    굽는 사람이 원점에 오게 옮긴다. 기준점에서 그 사람까지의 거리는 meta.json stand 에 적는다 (게임이 그 자리에 세운다)"""
+    굽는 사람이 원점(바닥 높이는 그대로)에 오게 옮긴다. 기준점에서 그 사람까지의 거리는 그 묶음의 meta.json stand 에 적는다"""
     bpy.ops.wm.open_mainfile(filepath=os.path.join(PROJECT, spec["blend"]))
     sc = bpy.context.scene
     for o in list(bpy.data.objects):
@@ -1003,7 +1010,13 @@ def bake_scene(spec):
             bpy.data.objects.remove(o, do_unlink=True)
     render_setup(sc)
     setup_camera(sc, spec["frame"], spec["anchor"], spec["scale"], 0.9)
-    P = mathutils.Vector(spec["pivot"])
+    sc.frame_set(int(spec.get("frame_start", 1)))
+    bpy.context.view_layer.update()
+    if spec.get("pivot_object"):
+        P = bpy.data.objects[spec["pivot_object"]].matrix_world.translation.copy()
+        P.z = 0.0
+    else:
+        P = mathutils.Vector(spec["pivot"])
     pivot = bpy.data.objects.new("bake_pivot", None)
     sc.collection.objects.link(pivot)
     pivot.location = P
@@ -1015,8 +1028,6 @@ def bake_scene(spec):
             o.parent = pivot
             o.matrix_parent_inverse = inv
     hide = tuple(spec.get("hide", []))
-    actors = spec["actors"]
-    rigs = {anim: bpy.data.objects[name] for anim, name in actors.items()}
     def parts(rig):
         return [o for o in bpy.data.objects if o.parent == rig]
     def base(name):
@@ -1024,27 +1035,40 @@ def bake_scene(spec):
     for o in bpy.data.objects:
         if o.type == "MESH" and o.name.startswith(hide):
             o.hide_render = True
-    folder = os.path.join(OUT, "characters", spec["target"])
-    meta_path = os.path.join(folder, "meta.json")
-    meta = json.load(open(meta_path, encoding="utf-8"))
     frames = int(spec["frames"])
-    sc.frame_set(1)
-    for anim, rig in rigs.items():
+    metas = {}
+    for anim, actor in spec["actors"].items():
         if ONLY_ANIMS and anim not in ONLY_ANIMS:
             continue
+        if isinstance(actor, str):
+            actor = {"rig": actor}
+        rig = bpy.data.objects[actor["rig"]]
+        target = actor.get("target", spec["target"])
+        folder = os.path.join(OUT, "characters", target)
+        if target not in metas:
+            metas[target] = json.load(open(os.path.join(folder, "meta.json"), encoding="utf-8"))
+        meta = metas[target]
+        # 옷 그림 바꾸기 (같은 구조대상자를 여성 그림으로)
+        for old, new in actor.get("images", {}).items():
+            for img in bpy.data.images:
+                if os.path.basename(img.filepath) == old or img.name == old:
+                    img.filepath = os.path.join(CHAR_DIR, "Skins", new)
+                    img.reload()
         # 기준점에서 이 사람까지 (모델 앞 = -Y 기준): 앞으로 몇 m, 오른쪽(-X)으로 몇 m — 기준점을 처음 자리로 되돌려 잰다
         pivot.matrix_world = mathutils.Matrix.Translation(P)
+        sc.frame_set(int(spec.get("frame_start", 1)))
         upd()
         a = rig.matrix_world.translation - P
+        a.z = 0.0  # 높이는 그대로 굽는다 (들린 사람은 그림 안에서 떠 있다)
         meta.setdefault("stand", {})[anim] = {"fwd_m": round(-a.y, 3), "right_m": round(-a.x, 3), "scene": spec["name"]}
         meta["anims"][anim] = {"frames": frames, "note": spec.get("note", "")}
         mine = parts(rig)
         tint = [o for o in mine if base(o.name) in TINT_PARTS]
-        tint_mats = {s.material for o in tint for s in o.material_slots if s.material}
+        tint_mats = {sl.material for o in tint for sl in o.material_slots if sl.material}
         for o in bpy.data.objects:
             if o.type == "MESH" and not o.name.startswith(hide):
                 if o in mine:
-                    o.hide_render = base(o.name).startswith(("nozzle", "hose"))
+                    o.hide_render = base(o.name).startswith(("nozzle", "hose", "tool_"))
                 else:
                     o.hide_render = True
         for k in ([ONLY_DIR] if ONLY_ANIMS else range(NDIR)):
@@ -1060,6 +1084,8 @@ def bake_scene(spec):
                 for m in tint_mats:
                     set_helmet(m, HELMET_BASE)
                 render_to(os.path.join(folder, name), spec["frame"])
+                if not tint:
+                    continue
                 for m in tint_mats:
                     set_helmet(m, HELMET_TINT)
                 for o in mine:
@@ -1068,8 +1094,9 @@ def bake_scene(spec):
                 render_to(os.path.join(folder, name.replace(".png", "_stripe.png")), spec["frame"])
                 for o in mine:
                     o.is_holdout = False
-        log(spec["name"], anim, "done", meta["stand"][anim])
-    write_meta(folder, meta)
+        log(spec["name"], anim, "->", target, "done", meta["stand"][anim])
+    for target, meta in metas.items():
+        write_meta(os.path.join(OUT, "characters", target), meta)
 
 
 def main():

@@ -1582,6 +1582,12 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		else:
 			# 운반 그림이 없는 묶음(예전 그림): 들고 걷기, 그것도 없으면 걷기
 			anim = "carry" if art.frames("carry") > 0 else "walk"
+	elif _window_breaker(crew, art) == ff.id:
+		# 창 파괴 (B2, 2026-11-15 사용자가 블렌더에서 확인): 창 옆 벽에 붙어 만능도끼 곡괭이 끝으로 창 위쪽을 옆으로 차례로 깬다
+		var wl := _window_layout(crew, art)
+		anim = "window_break"
+		dir = int(wl.k)
+		moving = false
 	elif _door_opener(crew, art) == ff.id:
 		# 문 확인 후 개방 (B1, 2026-11-15 사용자가 블렌더에서 확인): 문 옆 벽(손잡이 쪽)에 붙어 손등으로 문 위·가운데·아래 온도를
 		# 짚고(확인하는 동안), 낮은 자세로 손잡이를 잡고 천천히 연다(여는 동안 — 진행 정도로 장을 고른다)
@@ -1632,7 +1638,7 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 	var frame := 0
 	# 여럿이 한 장면으로 구운 동작(문 개방·2인 운반)은 조장 기준 같은 박자로 — 구울 때 맞춘 엇갈림이 그대로 보이게
 	var phase := (crew.leader.id if anim in PAIRED_ANIMS else ff.id) * 0.37
-	if moving or anim in ["idle", "idle_bag", "spray", "search", "force_a", "force_b", "radio", "radio_low", "door_feel"] or anim in PAIRED_ANIMS:
+	if moving or anim in ["idle", "idle_bag", "spray", "search", "force_a", "force_b", "radio", "radio_low", "door_feel", "window_break"] or anim in PAIRED_ANIMS:
 		frame = SpriteArt.frame_at(anim, art.frames(anim), phase)
 	if fixed_frame >= 0:
 		frame = fixed_frame
@@ -1670,6 +1676,27 @@ func _door_check_layout(crew: Crew, art: SpriteArt.SpriteSet) -> Dictionary:
 	var fr := force_frame(door, opener.pos)
 	return {"k": fr.k, "opener": opener.id, "anim": anim, "frame": frame,
 		"spot": stand_spot(door_center(door), fr.facing, art.stand(anim), sim.units.cell_size_m)}
+
+
+## 창 파괴 배치 (B2): 그 조가 창을 깨는 중이면 {k 창을 보는 방향, breaker 깨는 대원 id(조장), spot 서는 자리}, 아니면 빈 것.
+## 기준점 = 창 가운데. 구울 때 적은 자리(창의 왼쪽 옆)
+func _window_layout(crew: Crew, art: SpriteArt.SpriteSet) -> Dictionary:
+	if crew == null or art == null or art.frames("window_break") <= 0 or sim.doors.tasks.is_empty():
+		return {}
+	var t := sim.doors.task_of_crew(crew.id)
+	if t == null or t.opening == null or t.opening.kind != Opening.Kind.WINDOW or t.opening.cells.is_empty() or t.waiting_people:
+		return {}
+	var ff := crew.leader
+	if ff.incapacitated or ff.level != t.opening.level or ff.is_moving() or ff.pos.distance_to(door_center(t.opening)) > 3.5:
+		return {}
+	var fr := force_frame(t.opening, ff.pos)
+	return {"k": fr.k, "breaker": ff.id, "spot": stand_spot(door_center(t.opening), fr.facing, art.stand("window_break"), sim.units.cell_size_m)}
+
+
+## 창을 깨는 대원 id (없으면 -1)
+func _window_breaker(crew: Crew, art: SpriteArt.SpriteSet) -> int:
+	var wl := _window_layout(crew, art)
+	return int(wl.breaker) if not wl.is_empty() else -1
 
 
 ## 문을 확인·여는 대원 id (없으면 -1)
@@ -1950,6 +1977,9 @@ func _shown_pos(ff: Firefighter, alpha: float) -> Vector2:
 		var dl := _door_check_layout(dc, dart)
 		if not dl.is_empty() and int(dl.opener) == ff.id:
 			return dl.spot
+		var wl := _window_layout(dc, dart)
+		if not wl.is_empty() and int(wl.breaker) == ff.id:
+			return wl.spot
 	if not sim.rescue.searches.is_empty() and not ff.incapacitated:
 		var scr := sim.units.get_crew(ff.crew_id)
 		if scr != null and scr.partner == ff:

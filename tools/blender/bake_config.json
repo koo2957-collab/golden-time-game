@@ -1235,6 +1235,32 @@
    "actors": {
     "door_open": "FF_B"
    }
+  },
+  {
+   "blend": "tools/blender/scenes/window_break.blend",
+   "target": "firefighter_v2",
+   "pivot_object": "win_mid",
+   "frames": 12,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "window_break",
+   "note": "B2 창 파괴: 창의 왼쪽 옆(창이 몸 오른쪽)에서 벽을 따라 비스듬히 서서 왼손 손바닥으로 벽을 짚고, 오른손으로 만능도끼를 망치처럼 쥐어 머리 뒤로 들었다가 팔을 뻗으며 내리친다 — 뾰족한 곡괭이 끝으로 창 위 오른쪽 모서리 → 그 옆 → 또 그 옆 (아래로 내려가지 않고 옆으로, 위 유리가 떨어져 다치지 않게) — 2026-11-15 사용자가 블렌더에서 확인 (화재1 제12절 파괴활동 유리 ⑥⑦: 창의 측면·좌측에서 오른팔로, 윗부분부터 횡으로). 기준점 = 창 가운데 아래 바닥",
+   "actors": {
+    "window_break": "FF_A"
+   }
   }
  ]
 }

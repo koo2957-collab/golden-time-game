@@ -375,3 +375,11 @@ func test_door_check_baked() -> void:
 		var st := s.stand(anim)
 		assert_true(absf(float(st.right_m)) > 0.5, "%s: 문 앞이 아니라 문 옆 벽에 (%.2f)" % [anim, float(st.get("right_m", 0.0))])
 
+
+## B2 창 파괴 (2026-11-15 사용자가 블렌더에서 확인): 창 옆에서 곡괭이 끝으로 위쪽을 옆으로 차례로
+func test_window_break_baked() -> void:
+	var s := SpriteArt.get_set(str(SpriteArt.config().crew))
+	assert_eq(s.frames("window_break"), 12, "창 파괴 12장")
+	var st := s.stand("window_break")
+	assert_true(absf(float(st.right_m)) > 0.4, "창 정면이 아니라 창 옆에 선다 (%.2f)" % float(st.get("right_m", 0.0)))
+

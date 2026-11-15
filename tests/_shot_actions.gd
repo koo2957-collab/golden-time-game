@@ -233,5 +233,33 @@ func _run() -> void:
 		for i in 6:
 			await process_frame
 		root.get_texture().get_image().save_png(out + "shot_actions_door_open.png")
+	# 창 파괴 (B2): 1층 바깥 창 하나를 2조가 깨는 중
+	var win: Opening = null
+	for o in sim.fire.openings:
+		# 앞면(문 가까이)의 창 — 화면 쪽을 보는 벽
+		if o.kind == Opening.Kind.WINDOW and o.level == 1 and o.room_b == Opening.OUTSIDE and not o.cells.is_empty() and not o.broken:
+			if win == null or Vector2(o.cells[0]).distance_to(door_at) < Vector2(win.cells[0]).distance_to(door_at):
+				win = o
+	if win and crews.size() > 1:
+		sim.doors.tasks.clear()
+		var wc := Vector2(win.cells[0]) + Vector2(0.5, 0.5)
+		# 창 바깥쪽 칸에 세운다 (건물 밖 바닥)
+		var outside := wc + Vector2(0, 1.5)
+		for dv: Vector2 in [Vector2(0, 1.5), Vector2(0, -1.5), Vector2(1.5, 0), Vector2(-1.5, 0)]:
+			if layer._outdoor_at(wc + dv):
+				outside = wc + dv
+				break
+		_place(crews[1], outside, Vector2(0.6, 0.6))
+		var wt := DoorSystem.Task.new()
+		wt.opening = win
+		wt.open = true
+		wt.crews = [crews[1].id] as Array[int]
+		wt.required = 5.0
+		wt.progress = 2.0
+		sim.doors.tasks.append(wt)
+		world.camera.position = world.projections[world.ViewMode.ISO].to_screen(outside)
+		for i in 6:
+			await process_frame
+		root.get_texture().get_image().save_png(out + "shot_actions_window.png")
 	print("저장 ", out, " · 조 ", crews.size(), " · 구조대상자 ", sim.rescue.victims.size(), " · 문 ", door != null, " · 층 그림 ", layer != null)
 	quit()

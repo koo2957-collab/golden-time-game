@@ -22,3 +22,6 @@
 /art_source/baked/
 /art_source/models/
 /art_source/vehicle_refs/
+
+# 파이썬 실행 때 저절로 생기는 임시 사본 (블렌더 스크립트)
+__pycache__/

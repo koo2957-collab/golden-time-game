@@ -34,6 +34,8 @@ const JUDGMENT_TAG := Color("fdba74")
 var sim: SimWorld
 ## 장면이 뜨면 시간이 멈추는 방식인가 (World가 준다: 훈련 = true). 없으면 멈추지 않는 것으로 본다
 var pauses := Callable()
+## 고른 직후 등급·근거를 알려 주는 방식인가 (훈련) — World가 넣는다. 없으면 pauses 를 따른다 (2026-11-15: 실전도 멈추지만 등급은 알려 주지 않는다)
+var teaches := Callable()
 var _shade: ColorRect
 var _panel: Control
 var _glow: TextureRect
@@ -388,7 +390,7 @@ func choose(index: int) -> void:
 	var c := current()
 	if c == null or index >= c.options.size():
 		return
-	if pausing():
+	if bool(teaches.call()) if teaches.is_valid() else pausing():
 		_show_feedback(c, index)
 	_answered_uid = c.uid
 	order_issued.emit(CommandOrder.make("card_answer", [], index, Vector3i.ZERO, {"uid": c.uid}))

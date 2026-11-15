@@ -108,7 +108,7 @@ func _ready() -> void:
 	for r in ["난이도: 훈련 (카드 시간 2배·일시정지)", "난이도: 실전 (1배속 고정)", "난이도: 악조건 (강풍·지연·소화전 고장)"]:
 		_realism.add_item(r)
 	_realism.select(maxi(0, ["훈련", "실전", "악조건"].find(GameManager.realism)))
-	_realism.tooltip_text = "실전·악조건은 시간이 멈추지 않습니다 (창·힌트가 떠도 진행, 배속 없음). 출동 중에도 정한 시간(약 3분)이 지나면 결정을 기다리지 않고 도착합니다 — 정하지 않은 것은 준비하지 않은 것으로 남습니다."
+	_realism.tooltip_text = "훈련·실전: 무전에 답하거나 창을 연 동안 현장이 멈춥니다(판단은 지휘관의 시간). 훈련은 답의 등급을 그 자리에서 알려 줍니다. 악조건: 현장이 멈추지 않고 일시정지도 없습니다. 실전·악조건은 출동 중 정한 시간(약 90초)이 지나면 결정을 기다리지 않고 도착합니다 — 정하지 않은 것은 준비하지 않은 것으로 남습니다. 배속(1·2·4배)은 어느 난이도에서나 쓸 수 있습니다."
 	opts.add_child(_realism)
 	_judgment = OptionButton.new()
 	_judgment.focus_mode = Control.FOCUS_NONE

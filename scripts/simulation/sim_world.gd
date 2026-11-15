@@ -91,6 +91,9 @@ var mission_end: MissionEndChecker
 var pause_count := 0
 ## 현장 시계 배속 (기획안 5-8, 난이도별). 화면(world)이 SimClock.speed로 쓴다. 테스트(난이도 없음)는 1
 var field_scale := 1.0
+## 판단 중 정지 (2026-11-15): 무전 장면·지휘 창이 떠 있는 동안 현장 시계를 멈추는 난이도인가 (훈련·실전 = true, 악조건 = false).
+## 시계를 멈추는 것은 화면(World)이 한다 — 시뮬레이션은 값만 들고 있다
+var decision_pause := true
 ## 신고 → 선착대 도착 (출동 단계, 기획안 4-4) / 발화 → 신고 지연(늦은 신고 preburn_s)
 var dispatch_s := 0.0
 var ignition_to_call_s := 0.0
@@ -319,10 +322,12 @@ func apply_realism(name: String) -> void:
 	command.resources.arrival_drive = true
 	command.resources.prepare_arrival()
 	var pp := _phase_params
-	# 현장 시계 배속 (기획안 5-8): 훈련 1.5 · 실전 2 · 악조건 2.5
+	# 현장 시계 기본 배속 (2026-11-15: 모두 1배 — 플레이 중 배속 단추로 올린다)
 	var fts: Dictionary = pp.params.get("field_time_scale", {})
 	field_scale = float(fts.get("by_realism", {}).get(name, fts.get("value", 1.0))) if not fts.is_empty() else 1.0
 	cards.clock_scale = field_scale
+	var dp: Dictionary = pp.params.get("decision_pause", {})
+	decision_pause = float(dp.get("by_realism", {}).get(name, dp.get("value", 1.0))) > 0.0 if not dp.is_empty() else true
 	_begin_dispatch()
 	match name:
 		"훈련":

@@ -229,6 +229,12 @@ func _next_text() -> String:
 		lines.append("  • %s (SOP %s)" % [w.title, w.sop])
 		lines.append("      결과: %s" % w.detail)
 		lines.append("      [color=#%s]→ %s[/color]" % [GOOD, w.advice])
+	var decision: Array = report.get("decision_lines", [])
+	if not decision.is_empty():
+		lines.append("")
+		lines.append("[b]지휘관의 판단 시간 (실제 초)[/b]")
+		for l in decision:
+			lines.append("  " + str(l))
 	var growth: Array = report.get("growth_lines", [])
 	if not growth.is_empty():
 		lines.append("")

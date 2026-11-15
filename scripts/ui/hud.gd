@@ -5,6 +5,9 @@ extends Control
 
 ## 명령 카드 칸을 눌렀을 때 (Q W E R A S — 단축키와 같은 처리, P10-2)
 signal card_key_pressed(key: String)
+## 배속 단추 (1·2·4배) / 정지 단추 — World가 받아 현장 시계를 바꾼다 (2026-11-15)
+signal speed_pressed(step: float)
+signal pause_pressed
 ## 내부 보기 단추: 켜면 내부 화면(층 분리), 끄면 외부 화면. 층 간격 넓히기(+1)·좁히기(-1)
 signal interior_toggled(on: bool)
 ## 내부 화면 층 수 단추: 한 화면에 맞춰 넣을 층 수 (1·2·3)
@@ -109,6 +112,7 @@ func setup(p_sim: SimWorld, on_floor_selected: Callable) -> void:
 	$ClockPanel.gui_input.connect(_on_badge_input)
 	$ClockPanel.tooltip_text = "클릭: 지휘권 선언 · 전략 변경"
 	clock_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_build_speed_box()
 	_mode_label = Label.new()
 	_mode_label.position = Vector2(16, 12)
 	_mode_label.custom_minimum_size = Vector2(420, 0)
@@ -190,6 +194,7 @@ func _process(delta: float) -> void:
 		text += "   %s" % sim.realism
 	if sim.clock.paused:
 		text += "   일시정지"
+	_refresh_speed_box()
 	clock_label.text = text + "\n" + _badge_line()
 	# 화면 모드·조작 안내는 왼쪽 위에 작게 (위 가운데 시계가 길어지지 않게)
 	_mode_label.text = "[%s]" % mode_text if mode_text != "" else ""
@@ -802,6 +807,59 @@ func _draw_vignette() -> void:
 ## 지휘관 초상 단추를 눌렀을 때 (World가 지휘관을 고른다)
 signal commander_pressed
 
+
+# --- 배속 단추 (2026-11-15 사용자 결정: 기본 1배 + 정지·1·2·4배 — 프로스트펑크 방식) ---
+
+## 위 가운데 시계 오른쪽: [정지] [1×] [2×] [4×]
+var speed_box: HBoxContainer
+var pause_button: Button
+var speed_buttons: Array[Button] = []
+var _speed_steps: Array = [1, 2, 4]
+
+
+func _build_speed_box() -> void:
+	var entry: Variant = sim._phase_params.params.get("speed_steps")
+	if entry is Dictionary and (entry as Dictionary).get("value") is Array:
+		_speed_steps = entry["value"]
+	speed_box = HBoxContainer.new()
+	speed_box.add_theme_constant_override("separation", 3)
+	add_child(speed_box)
+	pause_button = _speed_button("정지", "Space — 현장을 멈춘다 (멈춘 채로 고르고 지시할 수 있다)")
+	pause_button.pressed.connect(func() -> void: pause_pressed.emit())
+	var keys := ["F1", "F2", "F3"]
+	for i in _speed_steps.size():
+		var step := float(_speed_steps[i])
+		var b := _speed_button("%d×" % int(step), "%s — 현장 시계 %d배%s" % [keys[i] if i < keys.size() else "", int(step),
+			"" if step > 1.0 else " (보이는 빠르기 = 실제)"])
+		b.pressed.connect(func() -> void: speed_pressed.emit(step))
+		speed_buttons.append(b)
+
+
+func _speed_button(text: String, tip: String) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.tooltip_text = tip
+	b.toggle_mode = true
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(44, 30)
+	b.add_theme_font_size_override("font_size", 15)
+	# 지금 고른 배속(눌린 단추)은 노란 글자로
+	for key in ["font_pressed_color", "font_hover_pressed_color"]:
+		b.add_theme_color_override(key, Color("fde68a"))
+	speed_box.add_child(b)
+	return b
+
+
+## 지금 상태(정지·배속)에 맞춰 단추를 눌린 모양으로. 악조건은 정지 단추가 꺼져 있다
+func _refresh_speed_box() -> void:
+	if speed_box == null:
+		return
+	pause_button.set_pressed_no_signal(sim.clock.paused)
+	pause_button.disabled = not sim.view_only and not sim.decision_pause
+	var base := 1.0 if sim.view_only else maxf(0.01, sim.field_scale)
+	for i in speed_buttons.size():
+		speed_buttons[i].set_pressed_no_signal(not sim.clock.paused and is_equal_approx(sim.clock.speed / base, float(_speed_steps[i])))
+
 const BAR_H := 80.0
 const BAR_BUTTON := Vector2(66, 64)
 const SIDE_W := 430.0
@@ -1219,6 +1277,9 @@ func _layout_console() -> void:
 	var badge: Control = $ClockPanel
 	badge.size = badge.get_combined_minimum_size()
 	badge.position = Vector2((size.x - badge.size.x) * 0.5, 6.0)
+	if speed_box:
+		speed_box.size = speed_box.get_combined_minimum_size()
+		speed_box.position = Vector2(badge.position.x + badge.size.x + 8.0, badge.position.y + 2.0)
 	# 오른쪽 자리: 고른 것의 정보 창, 그 아래 (무전 단추를 켰으면) 무전 기록. 튜토리얼 안내판이 떠 있으면 그 아래부터
 	var rx := size.x - SIDE_W - 8.0
 	var ry := 16.0

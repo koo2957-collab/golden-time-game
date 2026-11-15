@@ -398,12 +398,18 @@ func _run() -> void:
 	sim.step_ticks(200)
 	_check("A면 단위대 지정 (진압1 대장, 구조1)", sim.command.org.division_named("A면").squads if sim.command.org.division_named("A면") else [], [0, 1])
 
-	# 실제 플레이에서는 배속 키를 막고 현장 시계 배속으로 고정 (P9-1)
-	var field_speed: float = sim.clock.speed
+	# 배속 (2026-11-15): 기본 1배, F1·F2·F3·단추로 1·2·4배. 정지 단추·Space로 멈춘다
+	_check("기본은 1배속", [sim.field_scale, sim.clock.speed], [1.0, 1.0])
 	_key(KEY_F2)
-	_check("F2 → 배속 바뀌지 않음 (현장 시계 고정)", sim.clock.speed, field_speed)
+	await process_frame
+	_check("F2 → 2배속 (단추도 눌린 모양)", [sim.clock.speed, world.hud.speed_buttons[1].button_pressed], [2.0, true])
+	world.hud.speed_buttons[2].pressed.emit()
+	_check("4× 단추 → 4배속", sim.clock.speed, 4.0)
+	_key(KEY_F1)
+	_check("F1 → 1배속", sim.clock.speed, 1.0)
 	_key(KEY_SPACE)
-	_check("Space → 일시정지", sim.clock.paused, true)
+	await process_frame
+	_check("Space → 일시정지 (정지 단추가 눌린 모양)", [sim.clock.paused, world.hud.pause_button.button_pressed], [true, true])
 
 	# 입체 화면
 	world.set_view_mode(world.ViewMode.ISO)

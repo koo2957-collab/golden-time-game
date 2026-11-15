@@ -11,8 +11,10 @@ func _initialize() -> void:
 
 
 func _run() -> void:
+	# 2026-11-15: 훈련·실전은 판단 중 정지 (등급을 바로 알려 주는 것은 훈련만), 악조건은 멈추지 않는다
 	await _play("훈련")
 	await _play("실전")
+	await _play("악조건")
 	print("결과: %s (실패 %d)" % ["통과" if _failed == 0 else "실패", _failed])
 	quit(1 if _failed > 0 else 0)
 
@@ -82,15 +84,15 @@ func _play(realism: String) -> void:
 	for k in card.options.size():
 		if str(card.options[k].get("effect", "")) == "entry_grant":
 			pick = k
-	if realism == "훈련":
-		_check("훈련: 장면이 떠 있는 동안 시간이 멈추고 뒤 화면 조작을 막는다", [sim.clock.paused, sim.clock.tick - t0, ui._shade.mouse_filter == Control.MOUSE_FILTER_STOP], [true, 0, true])
+	if realism != "악조건":
+		_check("%s: 장면이 떠 있는 동안 시간이 멈추고 뒤 화면 조작을 막는다" % realism, [sim.clock.paused, sim.clock.tick - t0, ui._shade.mouse_filter == Control.MOUSE_FILTER_STOP], [true, 0, true])
 	else:
-		_check("실전: 멈추지 않고 뒤 화면 조작 가능", [sim.clock.paused, sim.clock.tick > t0, ui._shade.mouse_filter == Control.MOUSE_FILTER_IGNORE], [false, true, true])
+		_check("악조건: 멈추지 않고 뒤 화면 조작 가능", [sim.clock.paused, sim.clock.tick > t0, ui._shade.mouse_filter == Control.MOUSE_FILTER_IGNORE], [false, true, true])
 		# 제한 시간 없음 (2026-11-14): 오래 두어도 장면이 사라지지 않는다
 		sim.step_ticks(roundi(60.0 / SimClock.TICK_DT))
 		for i in 5:
 			await process_frame
-		_check("실전: 1분을 두어도 장면이 남아 있다", [ui.current() != null and ui.current().uid == card.uid, card.deadline_tick < 0], [true, true])
+		_check("악조건: 1분을 두어도 장면이 남아 있다", [ui.current() != null and ui.current().uid == card.uid, card.deadline_tick < 0], [true, true])
 	if ui.current() == null:
 		_check("아직 떠 있다", false, true)
 		main.free()
@@ -100,12 +102,19 @@ func _play(realism: String) -> void:
 	_check("고르면 바로 장면이 닫힌다", ui.current() == null, true)
 	for i in 20:
 		await process_frame
+	if realism == "악조건":
+		# 악조건은 지휘관의 무전 송신이 끝나야 지시가 실행된다 (2026-11-11 결정 ③) — 그만큼 더 기다린다
+		for i in 600:
+			if sim.events.of_type("entry_ordered").size() >= 1:
+				break
+			sim.step_ticks(1)
+		await process_frame
 	_check("답이 실행된다 (진입 명령)", sim.events.of_type("entry_ordered").size() >= 1, true)
 	_check("장면이 닫히고 시간이 다시 흐른다", [ui.scene_open(), sim.clock.paused], [false, false])
 	if realism == "훈련":
 		_check("훈련: 고른 직후 등급 한 줄", [ui._feedback_box.visible, ui._feedback.text == want, want.contains("—")], [true, true, true])
 	else:
-		_check("실전: 등급을 보여 주지 않는다", ui._feedback_box.visible, false)
+		_check("%s: 등급을 보여 주지 않는다" % realism, ui._feedback_box.visible, false)
 	main.free()
 	for i in 5:
 		await process_frame

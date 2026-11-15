@@ -26,6 +26,8 @@ func _run() -> void:
 	world.hud.command_ui.close_all()
 	var sim: SimWorld = world.sim
 	sim.realism = "실전"
+	# 이 점검은 게임 메뉴의 멈춤·계속만 본다 — 무전 장면이 떠서 현장을 멈추지 않게 한다 (2026-11-15: 실전도 판단 중 정지)
+	world.hud.card_ui.pauses = Callable()
 
 	# 1) Esc → 게임 메뉴, 게임이 멈춘다
 	sim.step_ticks(20)

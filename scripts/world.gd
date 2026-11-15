@@ -78,7 +78,7 @@ func _ready() -> void:
 		push_error("시나리오를 불러오지 못했습니다: %s" % path)
 		return
 	sim.play_mode = GameManager.mode
-	# 현장 시계 배속 (기획안 5-8): 난이도에 따라 고정
+	# 현장 시계 기본 배속 (2026-11-15: 1배) — 플레이 중 배속 단추·F1·F2·F3으로 바꾼다
 	sim.clock.speed = sim.field_scale
 	floor_view.setup(sim.building)
 	floor_view.tactical = sim.tactical
@@ -173,8 +173,12 @@ func _ready() -> void:
 	hud.add_child(hud.card_ui)
 	hud.card_ui.setup(sim)
 	hud.card_ui.order_issued.connect(sim.issue)
-	# 무전 장면 (2026-11-14): 훈련 방식에서는 장면이 떠 있는 동안 현장 시간이 멈춘다. 실전·악조건은 멈추지 않는다
+	# 무전 장면: 떠 있는 동안 현장 시간이 멈춘다 (2026-11-15: 훈련·실전 — 판단은 지휘관의 시간). 악조건은 멈추지 않는다.
+	# 고른 직후 등급을 알려 주는 것은 훈련만
 	hud.card_ui.pauses = func() -> bool: return not realtime()
+	hud.card_ui.teaches = func() -> bool: return not _graded_later()
+	hud.speed_pressed.connect(set_speed)
+	hud.pause_pressed.connect(toggle_pause)
 	hud.card_ui.scene_changed.connect(_on_radio_scene)
 	hud.command_ui.end_dialog_opened.connect(hud.hint_ui.on_end_dialog)
 	# 지휘권 선언: 지휘 위치를 지도에서 고르면 클릭으로 선언을 마친다 (P4-4)
@@ -300,6 +304,7 @@ func _show_debrief() -> void:
 	# 대원 성장: 끝까지 한 판만 (리플레이 보기·개발용 기능을 쓴 판·미완료 판 제외, R12·P11-1)
 	if not sim.view_only and sim.replayable and sim.end_type != MissionEndChecker.END_INCOMPLETE:
 		report["growth_lines"] = CrewGrowth.award(sim, report)
+	report["decision_lines"] = decision_lines()
 	_last_report = report
 	hud.debrief.show_report(report, Evaluator.save(report) if not sim.view_only else "")
 
@@ -323,11 +328,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if event.is_action_pressed("time_pause"):
-		# 실전·악조건은 일시정지 없음 (다시 하기로 멈춰 있을 때 다시 진행하는 것만 허용)
-		if realtime() and not sim.clock.paused:
-			hud.show_notice("%s 난이도는 일시정지할 수 없습니다 — 현장은 멈추지 않습니다" % sim.realism)
-		else:
-			sim.clock.paused = not sim.clock.paused
+		toggle_pause()
 	elif event.is_action_pressed("floor_up"):
 		_step_level(1)
 	elif event.is_action_pressed("floor_down"):
@@ -375,11 +376,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	else:
 		for action: String in SPEED_ACTIONS:
 			if event.is_action_pressed(action):
-				if sim.view_only:
-					sim.clock.speed = SPEED_ACTIONS[action]
-				else:
-					# 현장 시계는 플레이 중에 바꿀 수 없다 (기록 비교, 기획안 5-8)
-					hud.show_notice("현장 시계 ×%.1f 고정 — 난이도(훈련 1.5 · 실전 2 · 악조건 2.5)로 정해집니다" % sim.field_scale)
+				set_speed(SPEED_ACTIONS[action])
 
 
 func projection() -> ViewProjection:
@@ -624,10 +621,49 @@ func _on_command_mode_changed(hint: String) -> void:
 	_update_mode_text()
 
 
-## 창이 열려 있는 동안 게임 시간을 멈춘다
-## 실전·악조건: 1배속 고정, 일시정지 없음, 창이 떠도 시간 진행 (기획안 3-3, 8장)
+## 현장이 멈추지 않는 난이도인가 (악조건): 창·무전 장면이 떠도 시간이 흐르고 일시정지도 없다.
+## 2026-11-15 사용자 결정: 훈련·실전은 '판단 중 정지' — 판단은 지휘관의 시간(실제 초), 대원의 행동은 현장 시계 (data/command/phase_params.json decision_pause)
 func realtime() -> bool:
+	return sim != null and not sim.view_only and not sim.decision_pause
+
+
+## 답의 등급을 그 자리에서 알려 주지 않는 난이도인가 (실전·악조건 — 디브리핑에서 본다)
+func _graded_later() -> bool:
 	return sim != null and not sim.view_only and sim.realism in ["실전", "악조건"]
+
+
+## Space·정지 단추: 현장을 멈추거나 다시 흐르게 한다. 멈춘 채로 고르고 지시할 수 있다 (지시는 다시 흐를 때 실행된다)
+func toggle_pause() -> void:
+	# 악조건은 일시정지 없음 (다시 하기로 멈춰 있을 때 다시 진행하는 것만 허용)
+	if realtime() and not sim.clock.paused:
+		hud.show_notice("%s 난이도는 일시정지할 수 없습니다 — 현장은 멈추지 않습니다" % sim.realism)
+	else:
+		sim.clock.paused = not sim.clock.paused
+
+
+## 배속 단추·F1·F2·F3 (2026-11-15: 기본 1배 + 플레이어가 고르는 배속 — 프로스트펑크 방식). 기본 배속(field_scale)의 step배.
+## 평가·기록은 현장 시간이라 배속과 상관없다
+func set_speed(step: float) -> void:
+	sim.clock.speed = step * (1.0 if sim.view_only else sim.field_scale)
+
+
+## 지휘관의 판단 시간 (실제 초): 무전 장면이 떠서 답할 때까지 걸린 시간들 — 디브리핑에 보여 준다 (시뮬레이션·평가 점수와는 무관)
+var decision_times: Array[float] = []
+var _scene_open_ms := -1
+
+
+## 디브리핑에 넣을 판단 시간 줄
+func decision_lines() -> Array:
+	if decision_times.is_empty():
+		return []
+	var total := 0.0
+	var longest := 0.0
+	for t in decision_times:
+		total += t
+		longest = maxf(longest, t)
+	return ["무전 판단 %d건 · 평균 %.1f초 · 가장 길었던 판단 %.1f초 · 모두 %d분 %02d초" % [decision_times.size(), total / decision_times.size(), longest,
+		int(total) / 60, int(total) % 60],
+		"판단하는 동안 현장은 멈춰 있었습니다 (실제 현장에서는 이 시간만큼 불이 더 진행됩니다)." if not realtime() else "판단하는 동안에도 현장은 계속 진행됐습니다."]
 
 
 ## 도착 연출 (기획안 4-4): 출동 단계에는 도시 전체를 멀리서 보고, 선착대가 도착하면(출동 중 장면이 끝나면) 화재 건물로 확대.
@@ -701,6 +737,10 @@ func _on_radio_scene(open: bool) -> void:
 	if sim == null:
 		return
 	if open:
+		_scene_open_ms = Time.get_ticks_msec()
+		# 새 무전이 오면 배속을 풀어 1배로 (빨리 넘기다가 놓치지 않게)
+		if not sim.view_only and sim.clock.speed > sim.field_scale:
+			sim.clock.speed = sim.field_scale
 		if not hud.card_ui.pausing():
 			return
 		if hud.command_ui.any_dialog_open():
@@ -708,7 +748,10 @@ func _on_radio_scene(open: bool) -> void:
 		_paused_before_scene = sim.clock.paused
 		_scene_paused = true
 		sim.clock.paused = true
-	elif _scene_paused:
+	if not open and _scene_open_ms >= 0:
+		decision_times.append((Time.get_ticks_msec() - _scene_open_ms) / 1000.0)
+		_scene_open_ms = -1
+	if not open and _scene_paused:
 		_scene_paused = false
 		if not hud.command_ui.any_dialog_open():
 			sim.clock.paused = _paused_before_scene

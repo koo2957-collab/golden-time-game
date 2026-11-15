@@ -1,7 +1,7 @@
 extends TestSuite
 ## P15: 구운 그림 연결 (data/art.json → res://art/sprites). 묶음·동작·방향이 다 있고, 게임 대상이 빠짐없이 연결되며, 메모리가 저사양 기준 안인지.
 
-const CREW_ANIMS := ["idle", "walk", "crouch_walk", "carry", "spray", "search", "down"]
+const CREW_ANIMS := ["idle", "walk", "crouch_walk", "spray", "search", "down", "force", "lift_f", "lift_b", "drag"]
 ## 저사양 PC 기준 그림 텍스처 상한 (MB, 게임 설정값 — docs/perf.md)
 const TEXTURE_BUDGET_MB := 48.0
 
@@ -176,3 +176,55 @@ func test_nozzle_tip_recorded_for_spray_pose() -> void:
 			seen[dir] = off
 	assert_true(seen[0].x > 20.0 and seen[4].x < -20.0, "옆을 볼 때 관창 끝은 몸 밖, 방향에 따라 반대쪽으로")
 	assert_eq(art.nozzle_offset("idle", 0, 0, Vector2(1, 2)), Vector2(1, 2), "기록이 없는 동작은 기본값")
+
+
+# --- 2026-11-15: 문 개방·운반 동작과 물줄기 굵기 (사용자 참고 그림·구조 교재 제4편 제2장 구출 및 운반) ---
+
+func test_new_actions_baked() -> void:
+	var s := SpriteArt.get_set(str(SpriteArt.config().crew))
+	for anim in ["force", "lift_f", "lift_b", "drag"]:
+		assert_true(s.frames(anim) >= 6, "%s: 움직이는 동작 (%d장)" % [anim, s.frames(anim)])
+		assert_true(float(SpriteArt.config().fps.get(anim, 0.0)) > 0.0, "%s: 프레임 속도 설정" % anim)
+	# 방수: 관창 끝 자리가 방향·프레임마다 기록되어 있다 (물줄기가 거기서 시작한다)
+	for k in s.directions:
+		for i in s.frames("spray"):
+			assert_true(s.nozzle_offset("spray", k, i, Vector2(-999, -999)) != Vector2(-999, -999), "방수 %d방향 %d장: 관창 끝 자리" % [k, i])
+	# 누운 구조대상자 그림 (운반·끌기 때 쓴다)
+	for key in ["male", "female"]:
+		assert_true(SpriteArt.get_set(str(SpriteArt.config().victims[key])).frames("down_up") >= 1, "구조대상자(%s) 누운 그림" % key)
+
+
+func test_carry_layout_spots() -> void:
+	var cfg: Dictionary = SpriteArt.config().carry_layout
+	assert_true(str(cfg.get("_source", "")) != "", "운반 배치 설정에 source")
+	var lead := Vector2(20.5, 30.5)
+	var dir := Vector2.RIGHT
+	# 2인 운반(사지운반법): 조장이 앞, 짝이 뒤(사람 몸길이만큼), 옮겨지는 사람은 그 사이에 들려 있다
+	var lift := FloorLayer.carry_spots("lift", lead, dir, cfg)
+	assert_true((lift.partner as Vector2).x < lead.x - 2.0 and is_equal_approx((lift.partner as Vector2).y, lead.y), "뒷사람은 가는 방향의 뒤")
+	assert_true((lift.victim as Vector2).is_equal_approx(lead.lerp(lift.partner, 0.5)), "옮겨지는 사람은 두 사람 가운데")
+	assert_true(float(lift.victim_h) >= 0.4 and float(lift.victim_h) <= 0.9, "허리 아래 높이로 든다 (%.2fm)" % float(lift.victim_h))
+	# 1인 운반(끌기): 끌려가는 사람은 뒤 바닥에, 짝은 앞에서 길을 살핀다
+	var drag := FloorLayer.carry_spots("drag", lead, dir, cfg)
+	assert_true((drag.victim as Vector2).x < lead.x - 1.0 and float(drag.victim_h) < 0.2, "끌려가는 사람은 뒤 바닥")
+	assert_true((drag.partner as Vector2).x > lead.x + 1.0, "짝은 앞")
+	# 방식: 선 자세·두 사람 = 2인 운반 / 낮은 자세(연기층 아래)·혼자 = 끌기
+	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH)
+	var crew := sim.units.crews[0]
+	crew.leader.crouched = false
+	assert_eq(FloorLayer.carry_mode(crew), "lift", "선 자세로 갈 수 있으면 2인 운반")
+	crew.leader.crouched = true
+	assert_eq(FloorLayer.carry_mode(crew), "drag", "낮은 자세면 끌기")
+	crew.leader.crouched = false
+	crew.partner.incapacitated = true
+	assert_eq(FloorLayer.carry_mode(crew), "drag", "짝이 없으면 혼자 끈다")
+
+
+func test_water_jet_starts_at_nozzle_width() -> void:
+	var cfg: Dictionary = SpriteArt.config().water_jet
+	assert_true(str(cfg.get("_source", "")) != "", "물줄기 굵기 설정에 source")
+	var mouth_px := float(cfg.mouth_m) * IsoProjection.PX_PER_M
+	var end_px := float(cfg.end_m) * IsoProjection.PX_PER_M
+	assert_true(mouth_px >= 3.0 and mouth_px <= 7.0, "관창 입 굵기 = 관창 그림 굵기 (%.1fpx)" % mouth_px)
+	assert_true(end_px > mouth_px * 2.0 and end_px <= 30.0, "맞는 곳에서 퍼지되 지나치게 굵지 않다 (%.1fpx)" % end_px)
+

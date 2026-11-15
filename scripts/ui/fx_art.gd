@@ -153,9 +153,11 @@ static func draw_water(ci: CanvasItem, from: Vector2, to: Vector2, straight: boo
 	var t := Time.get_ticks_msec() / 1000.0 + seed * 0.37
 	var beat := int(floorf(t * 10.0))
 	var ang := d.angle()
+	if straight:
+		_draw_jet(ci, from, d, body, modulate, t, beat)
 	var aspect := float(body.get_height()) / float(body.get_width())
 	# 줄기: 두 겹 — 한 겹은 위아래를 번갈아 뒤집고, 한 겹은 길이가 출렁인다
-	for layer in 2:
+	for layer in (0 if straight else 2):
 		var flip := -1.0 if (beat + layer) % 2 == 0 else 1.0
 		var stretch := 1.0 + (0.06 * sin(t * 9.0 + layer * 1.7) if layer == 1 else 0.0)
 		var len_px := length * (1.12 if straight else 1.05) * stretch
@@ -169,6 +171,46 @@ static func draw_water(ci: CanvasItem, from: Vector2, to: Vector2, straight: boo
 	ci.draw_texture_rect(splash, Rect2(-size * 0.5, -size * 0.5, size, size), false, Color(modulate, modulate.a * (0.9 if straight else 0.7)))
 	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	return true
+
+
+## 직사 물줄기 (2026-11-15 사용자 지적: 관창 입보다 물줄기가 굵게 나왔다 — 그림을 길이에 비례해 통째로 늘렸기 때문).
+## 관창 입 지름(mouth_m)에서 시작해 맞는 곳(end_m)까지 조금씩 퍼지는 띠로 그린다. 굵기는 길이와 무관하다.
+## 물줄기 그림도 왼쪽(관창)은 가늘고 오른쪽은 굵어, 그 굵기 띠(v 범위)만 잘라 띠에 입힌다. 수치는 data/art.json water_jet
+static func _draw_jet(ci: CanvasItem, from: Vector2, d: Vector2, tex: Texture2D, modulate: Color, t: float, beat: int) -> void:
+	var cfg: Dictionary = SpriteArt.config().get("water_jet", {})
+	var mouth := float(cfg.get("mouth_m", 0.09)) * IsoProjection.PX_PER_M * 0.5
+	var tail := float(cfg.get("end_m", 0.45)) * IsoProjection.PX_PER_M * 0.5
+	var v_mid := float(cfg.get("tex_mid_v", 0.485))
+	var v_mouth := float(cfg.get("tex_mouth_half_v", 0.075))
+	var v_tail := float(cfg.get("tex_end_half_v", 0.46))
+	var steps := 6
+	var along := d.normalized()
+	var side := along.orthogonal()
+	for layer in 2:
+		var flip := -1.0 if (beat + layer) % 2 == 0 else 1.0
+		var reach := d.length() * (1.04 + (0.05 * sin(t * 9.0 + 1.7) if layer == 1 else 0.0))
+		var top := PackedVector2Array()
+		var bottom := PackedVector2Array()
+		var uv_top := PackedVector2Array()
+		var uv_bottom := PackedVector2Array()
+		for i in steps + 1:
+			var f := float(i) / steps
+			var half := lerpf(mouth, tail, pow(f, 0.85))
+			var hv := lerpf(v_mouth, v_tail, f)
+			var c := from + along * reach * f
+			top.append(c - side * half)
+			bottom.append(c + side * half)
+			uv_top.append(Vector2(f, v_mid - hv * flip))
+			uv_bottom.append(Vector2(f, v_mid + hv * flip))
+		bottom.reverse()
+		uv_bottom.reverse()
+		top.append_array(bottom)
+		uv_top.append_array(uv_bottom)
+		var col := Color(modulate, modulate.a * (0.95 if layer == 0 else 0.5))
+		var cols := PackedColorArray()
+		cols.resize(top.size())
+		cols.fill(col)
+		ci.draw_polygon(top, cols, uv_top, tex)
 
 
 ## 덩어리 그림을 아무 직사각형에 (납작하게 눌러 그릴 때). 구워져 있지 않으면 false

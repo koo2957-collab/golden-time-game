@@ -549,6 +549,7 @@ func _interior_target(fit_zoom: bool) -> Array:
 
 ## 내부 화면 맞춤 (바로)
 func _frame_interior(fit_zoom: bool) -> void:
+	_stop_arrival_zoom()
 	var t := _interior_target(fit_zoom)
 	camera.zoom = Vector2(t[1], t[1])
 	camera.bounds = _view_bounds()
@@ -677,6 +678,7 @@ func _arrival_zoom() -> void:
 	var pos_from := camera.position
 	var pos_to := _arrival_pos_to
 	var tw := create_tween()
+	_arrival_tween = tw
 	tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	tw.tween_method(func(k: float) -> void:
 		var z := from * pow(to / from, k)
@@ -685,6 +687,17 @@ func _arrival_zoom() -> void:
 		var slide := (1.0 / from - 1.0 / z) / (1.0 / from - 1.0 / to) if not is_equal_approx(from, to) else k
 		camera.position = pos_from.lerp(pos_to, slide), 0.0, 1.0, city.plan.num("arrival_zoom_s", 1.6))
 	tw.tween_callback(func() -> void: camera.locked = false)
+
+
+## 도착 확대가 진행 중이면 멈춘다 (2026-11-15): 확대가 끝나기 전에 내부 화면으로 바꾸면 확대 연출이 화면 맞춤을 덮어썼다
+var _arrival_tween: Tween
+
+
+func _stop_arrival_zoom() -> void:
+	if _arrival_tween != null:
+		_arrival_tween.kill()
+		_arrival_tween = null
+		camera.locked = false
 
 
 func _on_dialog_changed(open: bool) -> void:

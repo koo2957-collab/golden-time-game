@@ -3,6 +3,9 @@
 # - 사람 비율(키 1.75m), 정면 -Y, 위 +Z, 왼쪽 = +X (.L)
 # - 뼈대를 만들고 옷·장비 조각을 뼈에 붙인다(단단한 조각 + 관절 구로 틈을 가림) — 게임 그림이 60~100px라 충분하고 가볍다
 # - 동작(서기·걷기·웅크려 걷기·들고 걷기·방수·검색·쓰러짐)은 뼈 회전으로 프레임마다 만든다
+# - 2026-11-15 (사용자 참고 그림: 방수자세·관창·방화문 개방 장면·만능도끼, 구조 교재 제4편 제2장 구출 및 운반):
+#     방수 = 앞굽이 자세로 관창을 허리 높이에 (수관은 겨드랑이 아래로) / force = 만능도끼로 문틈 벌리기 /
+#     lift_f·lift_b = 2인 운반(사지운반법)의 앞사람(다리 쪽)·뒷사람(머리 쪽) / drag = 1인 운반(구조대상자 끌기)
 # - 헬멧(helmet·brim)은 따로 흰색으로 찍어 게임에서 출동대 종류 색을 입힌다 (bake.py TINT_PARTS)
 # bake.py가 불러 쓴다: build(colors) → Rig, rig.pose(anim, i, n)
 
@@ -14,7 +17,8 @@ import mathutils
 
 V = mathutils.Vector
 # 머리·헬멧을 실제보다 조금 키운다: 위에서 내려다보는 작은 그림에서도 헬멧 색이 읽히게 (RTS 관례)
-HEAD_S = 1.22
+# 2026-11-15: 1.22 → 1.12 (사용자 지적: 참고 그림과 다르게 머리가 둥근 공처럼 보였다 — 헬멧을 납작하게, 챙·면체를 또렷하게)
+HEAD_S = 1.12
 
 
 def _hex(h, a=1.0):
@@ -103,6 +107,8 @@ class Builder:
             "white": _mat("white", "#F2F2F2", 0.6),
             "hose": _mat("hose", "#DCD3AE", 0.75),
             "brass": _mat("brass", "#B08D3C", 0.35, 0.7),
+            "red": _mat("red", "#D0312D", 0.5),
+            "nozzle": _mat("nozzle", "#1B1C1E", 0.45),
         }
         # 헬멧: 몸 그림에서는 회색, 색 층에서는 흰색 (bake.py set_helmet)
         self.helmet_mat = _mat("helmet", (0.35, 0.35, 0.35, 1.0), 0.3)
@@ -237,16 +243,20 @@ def build_parts(bld):
     hs = HEAD_S
     bld.ball("hood", _head((0, 0.005, 1.645)), (0.1 * hs, 0.112 * hs, 0.125 * hs), "hood", "head")
     bld.ball("collar", (0, 0, 1.5), (0.095, 0.095, 0.06), "coat", "neck")
-    bld.ball("mask", _head((0, -0.06, 1.635)), (0.088 * hs, 0.065 * hs, 0.095 * hs), "mask", "head")
+    # 전면형 면체: 참고 그림처럼 얼굴을 다 덮는 검은 유리 — 위에서 봐도 보이게 조금 앞으로·크게
+    bld.ball("mask", _head((0, -0.07, 1.63)), (0.096 * hs, 0.08 * hs, 0.108 * hs), "mask", "head")
     bld.limb("regulator", _head((0, -0.1, 1.575)), _head((0, -0.145, 1.57)), 0.034 * hs, 0.028 * hs, "rubber", "head")
-    bld.ball("helmet", _head((0, 0.012, 1.7)), (0.128 * hs, 0.142 * hs, 0.125 * hs), bld.helmet_mat, "head", seg=24)
+    # 헬멧: 납작한 반구 + 넓은 챙 + 가운데 볏(앞뒤로 난 능선) + 앞 금색 표지
+    bld.ball("helmet", _head((0, 0.012, 1.7)), (0.13 * hs, 0.15 * hs, 0.108 * hs), bld.helmet_mat, "head", seg=24)
     # 헬멧 아래 반쪽은 두건 속으로 (아래쪽 정점을 납작하게)
     hel = bld.parts[-1]
     for v in hel.data.vertices:
         v.co.z = max(v.co.z, -0.12)
-    bld.limb("brim", _head((0, 0.03, 1.682)), _head((0, 0.03, 1.69)), 0.152 * hs, 0.15 * hs, bld.helmet_mat, "head", verts=28)
+    bld.limb("brim", _head((0, 0.03, 1.682)), _head((0, 0.03, 1.692)), 0.15 * hs, 0.147 * hs, bld.helmet_mat, "head", verts=28)
     bld.parts[-1].scale = (1.0, 1.0, 1.0)
     bld.parts[-1].scale.y = 1.2
+    bld.box("helmet_crest", _head((0, 0.012, 1.79)), (0.03 * hs, 0.27 * hs, 0.03 * hs), bld.helmet_mat, "head", bevel=0.01)
+    bld.box("badge", _head((0, -0.142, 1.735)), (0.05 * hs, 0.014, 0.045 * hs), "gold", "head")
     bld.band("helmet_band", _head((0, 0.012, 1.7)), _head((0, 0.012, 1.73)), 0.5, 0.129 * hs, 0.026 * hs, "reflect", "head")
     bld.parts[-1].scale.y = 1.1
     for s, x in (("L", 1), ("R", -1)):
@@ -281,8 +291,9 @@ def build_parts(bld):
         bld.box("sole_" + s, (ft_h[0], -0.045, 0.008), (0.12, 0.28, 0.018), "rubber", "foot." + s)
 
 
-# 관창 길이 (손끝에서 관창 끝까지, m)
-NOZZLE_LEN = 0.36
+# 관창 길이 (손끝에서 관창 끝까지, m). 관창 끝(물이 나오는 입) 지름은 NOZZLE_MOUTH_M — 게임이 물줄기 굵기를 여기에 맞춘다
+NOZZLE_LEN = 0.34
+NOZZLE_MOUTH_M = 0.09
 
 
 class Rig:
@@ -297,16 +308,29 @@ class Rig:
         # 관창 (2026-11-12 사용자 지적: 물이 사람 몸이 아니라 관창 끝에서 나가야 한다 — 크고 또렷하게, 뒤로 수관이 이어진다).
         # 손 뼈 방향(쉬는 자세에서 -Z)으로 NOZZLE_LEN 만큼 앞으로 — 방수 자세에서는 앞을 향한다. 끝점은 nozzle_tip()
         xr = 1.0 if tip.x >= 0 else -1.0
-        nozzle = bld.limb("nozzle", tip + V((0, 0.0, 0.05)), tip + V((0, 0.0, -NOZZLE_LEN + 0.08)), 0.03, 0.036, "rubber", "hand.R")
-        nozzle_tip = bld.limb("nozzle_tip", tip + V((0, 0.0, -NOZZLE_LEN + 0.08)), tip + V((0, 0.0, -NOZZLE_LEN)), 0.04, 0.03, "brass", "hand.R")
-        coupling = bld.limb("nozzle_coupling", tip + V((0, 0.0, 0.05)), tip + V((0, 0.0, 0.1)), 0.036, 0.036, "brass", "hand.R")
-        grip = bld.box("nozzle_grip", tip + V((0, -0.03, -0.03)), (0.03, 0.05, 0.07), "rubber", "hand.R")
-        # 수관: 관창 뒤에서 팔 아래로 (손 뼈에), 허리 옆을 지나 뒤쪽 바닥으로 (골반 뼈에)
-        hose_a = bld.limb("hose_a", tip + V((0, 0.0, 0.1)), tip + V((-0.03 * xr, 0.05, 0.5)), 0.03, 0.03, "hose", "hand.R")
-        hose_b = bld.limb("hose_b", V((0.2 * xr, 0.02, 0.98)), V((0.24 * xr, 0.42, 0.06)), 0.03, 0.03, "hose", "hips")
-        hose_c = bld.limb("hose_c", V((0.24 * xr, 0.42, 0.06)), V((0.12 * xr, 1.0, 0.04)), 0.03, 0.03, "hose", "hips")
-        self.nozzle = [nozzle, nozzle_tip, coupling, grip, hose_a, hose_b, hose_c]
-        self.parts = [p for p in bld.parts if p not in self.nozzle]
+        # 2026-11-15 (사용자 참고 그림 '관창': 피스톨 그립형 — 검은 몸통, 흰 조절 링, 굵은 앞머리, 아래 손잡이, 위 개폐 레버).
+        # 손 뼈 좌표에서 -Z = 관창이 향하는 쪽, +Y = 방수 자세에서 아래, -Y = 위
+        L = NOZZLE_LEN
+        nozzle = bld.limb("nozzle", tip + V((0, 0, 0.0)), tip + V((0, 0, -L + 0.14)), 0.036, 0.036, "nozzle", "hand.R")
+        ring = bld.limb("nozzle_ring", tip + V((0, 0, -L + 0.14)), tip + V((0, 0, -L + 0.1)), 0.043, 0.043, "white", "hand.R")
+        nozzle_tip = bld.limb("nozzle_tip", tip + V((0, 0, -L + 0.1)), tip + V((0, 0, -L)), 0.04, NOZZLE_MOUTH_M * 0.5 + 0.008, "nozzle", "hand.R")
+        coupling = bld.limb("nozzle_coupling", tip + V((0, 0, 0.0)), tip + V((0, 0, 0.07)), 0.04, 0.04, "metal", "hand.R")
+        grip = bld.box("nozzle_grip", tip + V((0, 0.07, -0.06)), (0.032, 0.11, 0.04), "nozzle", "hand.R", bevel=0.008)
+        bale = bld.box("nozzle_bale", tip + V((0, -0.055, -0.1)), (0.1, 0.022, 0.03), "nozzle", "hand.R", bevel=0.006)
+        # 수관: 관창 뒤에서 아래팔을 따라 겨드랑이 아래로 (손 뼈에), 허리 뒤에서 바닥으로 늘어져 뒤로 이어진다 (골반 뼈에)
+        hose_a = bld.limb("hose_a", tip + V((0, 0, 0.07)), tip + V((0.0, 0.03, 0.58)), 0.032, 0.032, "hose", "hand.R")
+        hose_b = bld.limb("hose_b", V((0.21 * xr, 0.2, 0.92)), V((0.22 * xr, 0.6, 0.06)), 0.032, 0.032, "hose", "hips")
+        hose_c = bld.limb("hose_c", V((0.22 * xr, 0.6, 0.06)), V((0.08 * xr, 1.25, 0.04)), 0.032, 0.032, "hose", "hips")
+        self.nozzle = [nozzle, ring, nozzle_tip, coupling, grip, bale, hose_a, hose_b, hose_c]
+        # 만능도끼 (사용자 참고 그림 '만능도끼 — 방화문 개방 기구': 빨간 자루, 한쪽 끝은 도끼날·곡괭이, 다른 끝은 갈라진 지렛대).
+        # 문을 열 때만 보인다 — 지렛대 끝을 문틈에 넣는다 (-Z 쪽)
+        shaft = bld.limb("tool_shaft", tip + V((0, 0, 0.2)), tip + V((0, 0, -0.42)), 0.018, 0.018, "red", "hand.R")
+        fork = bld.limb("tool_fork", tip + V((0, 0, -0.42)), tip + V((0, 0, -0.56)), 0.022, 0.008, "metal", "hand.R", sx=2.2)
+        collar = bld.limb("tool_collar", tip + V((0, 0, 0.2)), tip + V((0, 0, 0.26)), 0.024, 0.024, "metal", "hand.R")
+        blade = bld.box("tool_blade", tip + V((0, -0.07, 0.25)), (0.016, 0.13, 0.12), "metal", "hand.R", bevel=0.004)
+        pick = bld.limb("tool_pick", tip + V((0, 0.02, 0.25)), tip + V((0, 0.13, 0.29)), 0.016, 0.004, "metal", "hand.R")
+        self.tool = [shaft, fork, collar, blade, pick]
+        self.parts = [p for p in bld.parts if p not in self.nozzle and p not in self.tool]
 
     def reset(self):
         for pb in self.arm.pose.bones:
@@ -347,6 +371,8 @@ class Rig:
         self.reset()
         for o in self.nozzle:
             o.hide_render = anim != "spray"
+        for o in self.tool:
+            o.hide_render = anim != "force"
         t = i / max(1, n)
         if anim == "idle":
             self._arms_relaxed()
@@ -380,24 +406,76 @@ class Rig:
                 self.rot("upper_arm." + s, "Z", -12 * x)
                 self.rot("forearm." + s, "X", -55)
         elif anim == "spray":
-            # 방수: 다리를 앞뒤로 벌린 낮은 자세, 두 손으로 관창을 앞으로. 반동으로 조금 흔들린다
+            # 방수 (2026-11-15 사용자 참고 그림 '방수자세'): 앞굽이 자세 — 왼발을 앞에 굽히고 오른발을 뒤로 뻗어 반동을 받는다.
+            # 관창은 허리 높이: 오른손은 몸 옆에서 손잡이를, 왼손은 앞으로 뻗어 관창 몸통을 잡는다. 수관은 오른 겨드랑이 아래로
             sh = math.sin(2 * math.pi * t)
-            self.rot("thigh.L", "X", -32)
-            self.rot("shin.L", "X", 34)
-            self.rot("foot.L", "X", -2)
-            self.rot("thigh.R", "X", 18)
-            self.rot("shin.R", "X", 22)
-            self.rot("foot.R", "X", -40)
-            self.rot("spine", "X", 14)
-            self.rot("chest", "X", 4 + 1.5 * sh)
+            self.rot("thigh.L", "X", -40)
+            self.rot("shin.L", "X", 46)
+            self.rot("foot.L", "X", -6)
+            self.rot("thigh.R", "X", 28)
+            self.rot("shin.R", "X", 10)
+            self.rot("foot.R", "X", -36)
+            self.rot("spine", "X", 15)
+            self.rot("chest", "X", 7 + 1.5 * sh)
+            self.rot("head", "X", -16)
+            self.rot("upper_arm.R", "X", -4 + 1.5 * sh)
+            self.rot("upper_arm.R", "Y", 6)
+            self.rot("forearm.R", "X", -90)
+            self.rot("hand.R", "X", -4)
+            self.rot("upper_arm.L", "X", -44 + 1.5 * sh)
+            self.rot("upper_arm.L", "Z", -32)
+            self.rot("forearm.L", "X", -56)
+        elif anim == "force":
+            # 문 개방 (2026-11-15 사용자 참고 그림 '방화문개방장면'): 만능도끼의 지렛대 끝을 문틈에 넣고 온몸으로 밀고 당겨 벌린다
+            s = math.sin(2 * math.pi * t)
+            self.rot("thigh.L", "X", -30)
+            self.rot("shin.L", "X", 36)
+            self.rot("thigh.R", "X", 20)
+            self.rot("shin.R", "X", 14)
+            self.rot("foot.R", "X", -30)
+            self.rot("spine", "X", 13 + 5 * s)
+            self.rot("chest", "X", 6)
+            self.rot("chest", "Z", 12 * s)
             self.rot("head", "X", -12)
-            self.rot("upper_arm.R", "X", -62 + 2 * sh)
-            self.rot("upper_arm.R", "Z", 14)
-            self.rot("forearm.R", "X", -28)
-            self.rot("hand.R", "X", 10)
-            self.rot("upper_arm.L", "X", -58 + 2 * sh)
-            self.rot("upper_arm.L", "Z", -26)
-            self.rot("forearm.L", "X", -42)
+            self.rot("upper_arm.R", "X", -10 - 8 * s)
+            self.rot("upper_arm.R", "Y", 8)
+            self.rot("forearm.R", "X", -86 + 6 * s)
+            self.rot("upper_arm.L", "X", -46 - 8 * s)
+            self.rot("upper_arm.L", "Z", -32)
+            self.rot("forearm.L", "X", -52)
+        elif anim == "lift_f":
+            # 2인 운반 — 사지운반법의 앞사람 (구조 교재 제4편 제2장 '2인 운반 가. 들어 올리기'): 앞을 보고 걸으며
+            # 두 손을 몸 옆 뒤로 내려 구조대상자의 다리(무릎 아래)를 잡는다
+            self._walk(t, 0.55, arms=False)
+            self.rot("spine", "X", 5)
+            for s, x in (("L", 1), ("R", -1)):
+                self.rot("upper_arm." + s, "X", 16)
+                self.rot("upper_arm." + s, "Y", -10 * x)
+                self.rot("forearm." + s, "X", -30)
+        elif anim == "lift_b":
+            # 2인 운반 — 사지운반법의 뒷사람: 구조대상자의 등 뒤에서 겨드랑이 아래로 두 팔을 넣어 가슴 앞에서 잡고 든다
+            self._walk(t, 0.55, arms=False)
+            self.rot("spine", "X", 12)
+            self.rot("head", "X", -8)
+            for s, x in (("L", 1), ("R", -1)):
+                self.rot("upper_arm." + s, "X", -30)
+                self.rot("upper_arm." + s, "Z", -8 * x)
+                self.rot("forearm." + s, "X", -62)
+        elif anim == "drag":
+            # 1인 운반 — 구조대상자 끌기 ('소방관 끌기', 구조 교재 제4편 제2장 '1인 운반 가. 끌기'): 긴급한 상황에서 의식 없는
+            # 구조대상자를 짧은 거리 옮긴다. 낮은 자세로 어깨 쪽 옷깃을 잡고 뒷걸음질한다 (머리가 바닥에 부딪히지 않게)
+            for s in ("L", "R"):
+                self.rot("thigh." + s, "X", -42)
+                self.rot("shin." + s, "X", 68)
+                self.rot("foot." + s, "X", -20)
+            self._walk(1.0 - t, 0.5, arms=False)
+            self.rot("spine", "X", 30)
+            self.rot("chest", "X", 14)
+            self.rot("head", "X", -22)
+            for s, x in (("L", 1), ("R", -1)):
+                self.rot("upper_arm." + s, "X", -88)
+                self.rot("upper_arm." + s, "Z", -6 * x)
+                self.rot("forearm." + s, "X", -10)
         elif anim == "search":
             # 무릎 꿇고 검색: 오른 무릎을 바닥에, 오른손으로 바닥을 좌우로 더듬는다
             sw = math.sin(2 * math.pi * t)
@@ -440,7 +518,7 @@ class Rig:
         bpy.context.view_layer.update()
         lo = V((1e9, 1e9, 1e9))
         hi = V((-1e9, -1e9, -1e9))
-        for o in self.parts + [p for p in self.nozzle if not p.hide_render]:
+        for o in self.parts + [p for p in self.nozzle + self.tool if not p.hide_render]:
             for c in o.bound_box:
                 w = o.matrix_world @ V(c)
                 lo = V((min(lo.x, w.x), min(lo.y, w.y), min(lo.z, w.z)))

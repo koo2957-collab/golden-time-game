@@ -62,14 +62,17 @@
     "idle",
     "walk",
     "crouch_walk",
-    "carry",
     "spray",
     "search",
-    "down"
+    "down",
+    "force",
+    "lift_f",
+    "lift_b",
+    "drag"
    ],
    "save_blend": "art_source/models/firefighter_v2.blend",
    "source": "3D 모델: 자체 제작 (tools/blender/firefighter_v2.py, 사용자 참고 그림 서울소방 방화복 캐릭터)",
-   "note": "사용자 참고 그림(F:/golden time game/소방관 캐릭터.png)을 따라 Blender 스크립트로 만든 사람 비율 모델. 동작은 뼈 회전으로 생성. 헬멧은 흰색으로 따로 찍어 게임에서 출동대 종류 색",
+   "note": "사용자 참고 그림(F:/golden time game/소방관 캐릭터.png)을 따라 Blender 스크립트로 만든 사람 비율 모델. 동작은 뼈 회전으로 생성. 헬멧은 흰색으로 따로 찍어 게임에서 출동대 종류 색 · 2026-11-15: carry(안고 걷기)는 뺐다 — 운반은 lift_f·lift_b(2인 사지운반)·drag(1인 끌기)로 그린다",
    "colors": {
     "coat": "#B5895A",
     "pants": "#AF8455",
@@ -153,7 +156,7 @@
    "source": "idle",
    "frames": 4,
    "pose": "spray",
-   "note": "방수 — 낮은 자세, 관창을 앞으로 (스크립트 자세)"
+   "note": "방수 — 앞굽이 자세, 관창을 허리 높이에 (2026-11-15 사용자 참고 그림 '방수자세')"
   },
   "search": {
    "source": "idle",
@@ -172,6 +175,30 @@
    "frames": 1,
    "pose": "down_up",
    "note": "누운 요구조자 (반듯이)"
+  },
+  "force": {
+   "source": "idle",
+   "frames": 6,
+   "pose": "force",
+   "note": "문 개방 — 만능도끼 지렛대 끝을 문틈에 넣고 밀고 당긴다 (사용자 참고 그림 '방화문개방장면'·'만능도끼')"
+  },
+  "lift_f": {
+   "source": "run",
+   "frames": 8,
+   "pose": "lift_f",
+   "note": "2인 운반(사지운반법) 앞사람 — 다리 쪽을 잡고 앞을 보고 걷는다 (구조 교재 제4편 제2장 제2절)"
+  },
+  "lift_b": {
+   "source": "run",
+   "frames": 8,
+   "pose": "lift_b",
+   "note": "2인 운반(사지운반법) 뒷사람 — 등 뒤에서 겨드랑이 아래로 팔을 넣어 든다"
+  },
+  "drag": {
+   "source": "run",
+   "frames": 8,
+   "pose": "drag",
+   "note": "1인 운반(구조대상자 끌기) — 낮은 자세로 옷깃을 잡고 뒷걸음질 (구조 교재 제4편 제2장 제2절)"
   }
  },
  "vehicles": {

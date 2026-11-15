@@ -273,7 +273,7 @@ def dress(mesh, skin_png, outfit, colors):
 
 
 ## 헬멧 색 그림(게임에서 역할 색을 입히는 층)에 들어가는 물체
-TINT_PARTS = ("helmet", "brim")
+TINT_PARTS = ("helmet", "brim", "helmet_crest")
 ## 헬멧 재질: 몸 그림에서는 회색(가장자리 번짐이 어느 역할 색에도 튀지 않게), 색 층에서는 흰색(곱하면 역할 색 그대로)
 HELMET_BASE = (0.35, 0.35, 0.35, 1.0)
 HELMET_TINT = (0.9, 0.9, 0.9, 1.0)

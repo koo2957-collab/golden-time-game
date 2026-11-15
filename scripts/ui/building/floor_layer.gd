@@ -942,14 +942,14 @@ func _draw() -> void:
 	var buckets := {}
 	for ff in sim.units.firefighters:
 		if ff.level == level and not ff.aboard:
-			_bucket_person(buckets, UnitsView.display_pos(ff, alpha), ff, alpha)
+			_bucket_person(buckets, _shown_pos(ff, alpha), ff, alpha)
 	if level == _first_level:
 		for v in sim.units.vehicles:
 			if not v.away:
 				_bucket(buckets, v.prev_pos.lerp(v.pos, alpha), v)
 	for victim in sim.rescue.victims:
 		if victim.discovered and victim.level == level:
-			_bucket(buckets, victim.pos, victim)
+			_bucket(buckets, _victim_shown_pos(victim, alpha), victim)
 	var commander := sim.command.commander
 	if commander.level == level:
 		_bucket_person(buckets, UnitsView.display_pos(commander, alpha), commander, alpha)
@@ -1491,11 +1491,15 @@ func _draw_flame(x: int, y: int, base_m: float) -> void:
 
 
 func _draw_unit(ff: Firefighter, alpha: float) -> void:
-	var p := UnitsView.display_pos(ff, alpha)
+	var p := _shown_pos(ff, alpha)
 	var squad := sim.units.squads[ff.squad_id]
 	var crew := sim.units.get_crew(ff.crew_id)
 	var feet := proj.to_screen(p, 0.0)
 	draw_colored_polygon(_ellipse(feet, 10, 5), Color(0, 0, 0, 0.3))
+	# 들려 가는 쓰러진 대원(2인 운반)은 그 높이에 그린다 — 그림자는 바닥에
+	var carried := _ff_carry_layout(ff, alpha)
+	if not carried.is_empty():
+		feet = proj.to_screen(p, float(carried.victim_h))
 	if crew.id in selection.selected:
 		draw_polyline(_ellipse(feet, 13, 6.5, true), PlanStyle.SELECTION, 2.0)
 	# 열 스트레스가 쌓이면 붉게
@@ -1537,12 +1541,36 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 	var anim := "idle"
 	var task := sim.rescue.task_of_crew(crew.id)
 	var hose := sim.water.hose_of_crew(crew.id)
+	var door_task := sim.doors.task_of_crew(crew.id)
 	if moving:
 		_facing[ff.id] = SpriteArt.dir8(delta)
+	# 방향을 따로 정하는 동작 (운반): 0 이상이면 _facing 대신 쓴다
+	var dir := -1
 	if ff.incapacitated:
 		anim = "down"
+		# 들려·끌려 가는 쓰러진 대원: 엎드린 그림은 머리가 그림 방향 — 2인 운반은 머리가 뒷사람 쪽, 끌기는 끄는 사람 쪽
+		var held := _ff_carry_layout(ff, 0.0)
+		if not held.is_empty():
+			dir = posmod(int(held.k) + 4, 8) if str(held.mode) == "lift" else int(held.k)
 	elif task is RescueSystem.CarryTask and task.carrying:
-		anim = "carry"
+		# 운반 (2026-11-15, 구조 교재 제4편 제2장 구출 및 운반): 선 자세로 갈 수 있으면 2인 운반(사지운반법 — 조장이 앞에서 다리,
+		# 짝이 뒤에서 겨드랑이), 연기층 아래 낮은 자세이거나 혼자면 1인 운반(구조대상자 끌기 — 조장이 옷깃을 잡고 뒷걸음, 짝은 앞에서 길을 살핀다)
+		var lay := _carry_layout(crew, 0.0)
+		var k := int(lay.get("k", _facing.get(crew.leader.id, 1)))
+		moving = crew.leader.level == crew.leader.prev_level and (crew.leader.pos - crew.leader.prev_pos).length_squared() > 0.000001
+		if str(lay.get("mode", "")) == "lift" and art.frames("lift_f") > 0:
+			anim = "lift_f" if ff == crew.leader else "lift_b"
+			dir = k
+		elif art.frames("drag") > 0:
+			anim = "drag" if ff == crew.leader else "crouch_walk"
+			dir = posmod(k + 4, 8) if ff == crew.leader else k
+		else:
+			# 운반 그림이 없는 묶음(예전 그림): 들고 걷기, 그것도 없으면 걷기
+			anim = "carry" if art.frames("carry") > 0 else "walk"
+	elif door_task != null and not moving and _forcing(door_task, ff) and art.frames("force") > 0:
+		# 잠긴 문 개방 (2026-11-15): 만능도끼로 문틈을 벌린다 — 문 쪽을 본다
+		anim = "force"
+		_facing[ff.id] = SpriteArt.dir8(Vector2(door_task.opening.cells[0]) + Vector2(0.5, 0.5) - ff.pos)
 	elif hose and hose.flowing and not hose.approaching and not moving and ff == crew.leader:
 		# 관창은 조장(관창수) 한 사람만 든다 — 짝은 뒤에서 서 있는다 (2026-11-12)
 		anim = "spray"
@@ -1556,9 +1584,83 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 	elif ff.crouched:
 		anim = "crouch_walk"
 	var frame := 0
-	if moving or anim in ["idle", "spray", "search"]:
+	if moving or anim in ["idle", "spray", "search", "force"]:
 		frame = SpriteArt.frame_at(anim, art.frames(anim), ff.id * 0.37)
-	return [anim, int(_facing.get(ff.id, 1)), frame]
+	return [anim, dir if dir >= 0 else int(_facing.get(ff.id, 1)), frame]
+
+
+## 잠긴 문을 부수는 중인가 (그 문 가까이에서, 사람이 모자라 기다리는 중이 아닐 때)
+func _forcing(task: DoorSystem.Task, ff: Firefighter) -> bool:
+	if not task.open or task.waiting_people or task.opening == null or not task.opening.locked or task.opening.cells.is_empty():
+		return false
+	return ff.level == task.opening.level and ff.pos.distance_to(Vector2(task.opening.cells[0]) + Vector2(0.5, 0.5)) <= 3.5
+
+
+# --- 운반 배치 (2026-11-15) ---
+
+## 운반 배치의 자리 (칸). mode "lift" = 2인 운반(사지운반법): 앞사람 = 조장, 뒷사람 = 짝, 옮겨지는 사람은 그 사이에 들려 있다 /
+## "drag" = 1인 운반(구조대상자 끌기): 조장이 끌고, 옮겨지는 사람은 뒤에 바닥으로, 짝은 앞에서 길을 살핀다. dir = 가는 방향.
+## → {partner 짝의 자리, victim 옮겨지는 사람의 자리, victim_h 그 높이(m)}. 거리·높이는 data/art.json carry_layout
+static func carry_spots(mode: String, lead: Vector2, dir: Vector2, cfg: Dictionary) -> Dictionary:
+	if mode == "lift":
+		var gap := float(cfg.get("lift_gap_cells", 3.0))
+		return {"partner": lead - dir * gap, "victim": lead - dir * gap * 0.5, "victim_h": float(cfg.get("lift_height_m", 0.55))}
+	return {"partner": lead + dir * float(cfg.get("drag_partner_cells", 1.6)),
+		"victim": lead - dir * float(cfg.get("drag_victim_cells", 1.9)), "victim_h": float(cfg.get("drag_height_m", 0.05))}
+
+
+## 운반 방식: 조장이 낮은 자세(연기층 아래)이거나 짝이 없으면 끌기, 아니면 2인 운반
+static func carry_mode(crew: Crew) -> String:
+	var solo := crew.partner == null or crew.partner.incapacitated
+	return "drag" if (crew.leader.crouched or solo) else "lift"
+
+
+## 그 조가 누군가를 옮기는 중이면 배치 {mode, k 가는 방향(8방향), dir, lead, partner, victim, victim_h, kind, target}, 아니면 빈 것
+func _carry_layout(crew: Crew, alpha: float) -> Dictionary:
+	var task := sim.rescue.task_of_crew(crew.id)
+	if not (task is RescueSystem.CarryTask and task.carrying):
+		return {}
+	var k := int(_facing.get(crew.leader.id, 1))
+	var dir := Vector2.RIGHT.rotated(k * PI / 4.0)
+	var lead := UnitsView.display_pos(crew.leader, alpha)
+	var mode := carry_mode(crew)
+	var out := carry_spots(mode, lead, dir, SpriteArt.config().get("carry_layout", {}))
+	out.merge({"mode": mode, "k": k, "dir": dir, "lead": lead, "kind": task.kind, "target": task.target_id})
+	return out
+
+
+## 그 대원이 옮겨지는 중(쓰러진 대원 구출)이면 그 배치
+func _ff_carry_layout(ff: Firefighter, alpha: float) -> Dictionary:
+	if not ff.incapacitated:
+		return {}
+	for t in sim.rescue.carries:
+		if t.carrying and t.kind == "ff" and t.target_id == ff.id:
+			return _carry_layout(sim.units.get_crew(t.crew_id), alpha)
+	return {}
+
+
+## 대원을 그리는 자리: 보통은 실제 자리, 운반 중인 짝·옮겨지는 대원은 배치 자리
+func _shown_pos(ff: Firefighter, alpha: float) -> Vector2:
+	var p := UnitsView.display_pos(ff, alpha)
+	if sim.rescue.carries.is_empty():
+		return p
+	if ff.incapacitated:
+		var held := _ff_carry_layout(ff, alpha)
+		return held.victim if not held.is_empty() else p
+	var crew := sim.units.get_crew(ff.crew_id)
+	if crew != null and crew.partner == ff:
+		var lay := _carry_layout(crew, alpha)
+		if not lay.is_empty():
+			return lay.partner
+	return p
+
+
+## 구조대상자를 그리는 자리: 옮겨지는 중이면 배치 자리
+func _victim_shown_pos(v: Victim, alpha: float) -> Vector2:
+	if v.carried_by < 0:
+		return v.pos
+	var lay := _carry_layout(sim.units.get_crew(v.carried_by), alpha)
+	return lay.victim if not lay.is_empty() else v.pos
 
 
 ## 요구조자 그림 자세 [동작, 방향, 장, 색] — 실제 그림과 테두리가 같은 것을 쓴다
@@ -2304,6 +2406,16 @@ func _draw_blast_art(at: Vector2, age: float, key: int) -> bool:
 func _draw_victim(v: Victim) -> void:
 	var color: Color = PlanStyle.VICTIM_COLORS[v.state]
 	if v.carried_by >= 0:
+		# 옮겨지는 중 (2026-11-15): 누운 그림을 운반 배치대로 — 2인 운반은 두 사람 사이에 들려서(머리가 뒷사람 쪽),
+		# 끌기는 끄는 사람 뒤 바닥에(머리가 끄는 사람 쪽). 누운 그림은 발이 그림 방향을 향한다
+		var lay := _carry_layout(sim.units.get_crew(v.carried_by), sim.clock.alpha())
+		var held_art := SpriteArt.victim_set(v.label()) if not thermal and not lay.is_empty() else null
+		if held_art != null and held_art.frames("down_up") > 0:
+			var spot: Vector2 = lay.victim
+			draw_colored_polygon(_ellipse(proj.to_screen(spot, 0.0), 14, 5), Color(0, 0, 0, 0.25))
+			var feet_dir := int(lay.k) if str(lay.mode) == "lift" else posmod(int(lay.k) + 4, 8)
+			held_art.draw(self, "down_up", feet_dir, 0, proj.to_screen(spot, float(lay.victim_h)))
+			return
 		var at := proj.to_screen(v.pos, 1.5)
 		draw_colored_polygon(_ellipse(at, 12, 4), color)
 		return
@@ -2541,11 +2653,12 @@ func _draw_live_only() -> void:
 	var items: Array = []
 	for ff in sim.units.firefighters:
 		if ff.level == level and not ff.aboard:
-			var p := UnitsView.display_pos(ff, alpha)
+			var p := _shown_pos(ff, alpha)
 			items.append([_person_depth(p, alpha), ff])
 	for v in sim.rescue.victims:
 		if v.discovered and v.level == level:
-			items.append([v.pos.x + v.pos.y, v])
+			var vp := _victim_shown_pos(v, alpha)
+			items.append([vp.x + vp.y, v])
 	var cmd := sim.command.commander
 	if cmd.level == level:
 		var cp := UnitsView.display_pos(cmd, alpha)
@@ -3043,12 +3156,13 @@ func _draw_outdoor_people() -> void:
 			items.append([vp.x + vp.y, v])
 	for ff in sim.units.firefighters:
 		if ff.level == level and not ff.aboard:
-			var fp := UnitsView.display_pos(ff, alpha)
+			var fp := _shown_pos(ff, alpha)
 			if _outdoor_at(fp):
 				items.append([_person_depth(fp, alpha), ff])
 	for victim in sim.rescue.victims:
-		if victim.discovered and victim.level == level and victim.carried_by < 0 and _outdoor_at(victim.pos):
-			items.append([victim.pos.x + victim.pos.y, victim])
+		if victim.discovered and victim.level == level and _outdoor_at(victim.pos):
+			var vp := _victim_shown_pos(victim, alpha)
+			items.append([vp.x + vp.y, victim])
 	var cmd := sim.command.commander
 	if cmd.level == level:
 		var cp := UnitsView.display_pos(cmd, alpha)

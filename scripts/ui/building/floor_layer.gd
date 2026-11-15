@@ -1587,6 +1587,12 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		_facing[ff.id] = SpriteArt.dir8(hose.aim - ff.pos)
 	elif hose and hose.flowing and not hose.approaching and not moving:
 		_facing[ff.id] = SpriteArt.dir8(hose.aim - ff.pos)
+	elif task is RescueSystem.SearchTask and not _search_layout(crew, art).is_empty():
+		# 인명검색 이동 (A7, 2026-11-15 사용자가 블렌더에서 확인): 둘 다 낮은 자세로, 조장은 만능도끼로 앞바닥을 두드리며
+		# 더듬고, 짝은 조장 공기호흡기 아래를 잡고 뒤따른다. 짝 자리는 구울 때 적은 값
+		var sl := _search_layout(crew, art)
+		anim = str(sl.anims.get(ff.id, "search_a"))
+		dir = int(sl.k)
 	elif task is RescueSystem.SearchTask and not moving:
 		anim = "search"
 	elif moving:
@@ -1603,7 +1609,28 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 
 ## 여럿이 한 장면으로 구운 동작 (프레임을 조장 기준으로 맞춘다)
 const PAIRED_ANIMS := ["force_a", "force_b", "lift_f", "lift_b", "drag", "spray_n", "spray_h", "spray_h1", "spray_h2",
-	"spray_ln", "spray_lh", "spray_lh1", "spray_lh2"]
+	"spray_ln", "spray_lh", "spray_lh1", "spray_lh2", "search_a", "search_b"]
+
+
+## 인명검색 이동 배치 (A7): 검색 중인 조의 조장이 걷고 있으면 {k 방향, anims {대원 id: 동작}, spots {짝 id: 칸 좌표}}, 아니면 빈 것.
+## 조장 = search_a(앞), 짝 = search_b(조장 뒤 — 구울 때 적은 자리). 조장이 멈추면 예전처럼 제자리 검색(search)
+func _search_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dictionary:
+	if art == null or art.frames("search_a") <= 0 or crew == null:
+		return {}
+	var lead := crew.leader
+	var mate := crew.partner
+	if lead.incapacitated or mate == null or mate.incapacitated or mate.level != lead.level:
+		return {}
+	if not sim.rescue.task_of_crew(crew.id) is RescueSystem.SearchTask:
+		return {}
+	var delta := lead.pos - lead.prev_pos
+	if lead.level != lead.prev_level or delta.length_squared() <= 0.000001:
+		return {}
+	var k := SpriteArt.dir8(delta)
+	var facing := Vector2.RIGHT.rotated(k * PI / 4.0)
+	var lp := UnitsView.display_pos(lead, alpha)
+	return {"k": k, "anims": {lead.id: "search_a", mate.id: "search_b"},
+		"spots": {mate.id: stand_spot(lp, facing, art.stand("search_b"), sim.units.cell_size_m)}}
 
 
 ## 방수 배치 (A4): 관창수(조장)가 방수 중이면 {k 방향, anims {대원 id: 동작}, spots {대원 id: 칸 좌표}}, 아니면 빈 것.
@@ -1761,6 +1788,13 @@ func _shown_pos(ff: Firefighter, alpha: float) -> Vector2:
 			var sl := _spray_layout(sc, sart, alpha)
 			if not sl.is_empty():
 				return sl.spots.get(ff.id, p)
+	if not sim.rescue.searches.is_empty() and not ff.incapacitated:
+		var scr := sim.units.get_crew(ff.crew_id)
+		if scr != null and scr.partner == ff:
+			var art0 := SpriteArt.get_set(str(SpriteArt.config().get("crew", ""))) if not thermal else null
+			var srl := _search_layout(scr, art0, alpha)
+			if not srl.is_empty():
+				return srl.spots.get(ff.id, p)
 	if not sim.doors.tasks.is_empty() and not ff.incapacitated:
 		var dt := sim.doors.task_of_crew(ff.crew_id)
 		if dt != null and _forcing(dt, ff):

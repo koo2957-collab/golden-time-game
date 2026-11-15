@@ -317,3 +317,13 @@ func test_spray_low_team_baked() -> void:
 	assert_true(float(s.stand("spray_lh").fwd_m) < -0.5 and float(h1.fwd_m) < -0.5, "관창보조는 관창수 뒤")
 	assert_true(float(h2.fwd_m) < float(h1.fwd_m) - 0.6, "관창보조2는 관창보조1 뒤")
 
+
+## A7 인명검색 이동 (2026-11-15 사용자가 블렌더에서 확인): 조장(검색봉으로 바닥 두드리기) + 짝(공기호흡기 잡고 뒤따름)
+func test_search_pair_baked() -> void:
+	var s := SpriteArt.get_set(str(SpriteArt.config().crew))
+	assert_eq(s.frames("search_a"), 16, "조장 16장")
+	assert_eq(s.frames("search_b"), 16, "짝 16장")
+	var b := s.stand("search_b")
+	assert_true(float(b.fwd_m) < -0.6 and float(b.fwd_m) > -1.1, "짝은 조장 뒤 0.6~1.1m (%.2f)" % float(b.get("fwd_m", 0.0)))
+	assert_true(absf(float(b.right_m)) < 0.2, "짝은 조장 바로 뒤")
+

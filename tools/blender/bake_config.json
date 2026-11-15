@@ -889,6 +889,33 @@
    "actors": {
     "spray_lh": "FF_B"
    }
+  },
+  {
+   "blend": "tools/blender/scenes/search_pair.blend",
+   "target": "firefighter_v2",
+   "pivot_object": "FF_A",
+   "frames": 16,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "search_pair",
+   "note": "A7 인명검색(이동): 두 대원이 무릎을 깊게 굽힌 낮은 자세로 걷는다. 조장(앞)은 오른손 만능도끼(검색봉 대신) 끝으로 앞바닥을 좌우로 쓸며 걸음마다 두드리고 왼손은 앞을 더듬는다. 짝(뒤 85cm)은 왼손으로 조장 공기호흡기 아래를 잡고 오른손은 오른쪽 옆을 더듬는다 — 2026-11-15 사용자가 블렌더에서 확인 (화재1 짙은 연기 내 진입요령 ③⑤·검색요령 ⑧, SOP 202-1.5 낮은 자세). 벽 짚기는 넣지 않음(사용자), 헬멧 후레쉬는 나중에",
+   "actors": {
+    "search_a": "FF_A",
+    "search_b": "FF_B"
+   }
   }
  ]
 }

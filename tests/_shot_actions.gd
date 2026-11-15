@@ -135,5 +135,25 @@ func _run() -> void:
 		await process_frame
 	root.get_texture().get_image().save_png(out + "shot_actions_spray_low.png")
 	crews[0].leader.crouched = false
+	# 인명검색 이동 (A7): 4조가 운반을 멈추고 동쪽으로 검색하며 걸어가는 중
+	if crews.size() > 3:
+		var sc4: Crew = crews[3]
+		for t in sim.rescue.carries.duplicate():
+			if t.crew_id == sc4.id:
+				sim.rescue.carries.erase(t)
+		for v in sim.rescue.victims:
+			if v.carried_by == sc4.id:
+				v.carried_by = -1
+				v.pos = Vector2(30.5, 36.5)
+		_place(sc4, Vector2(40.5, 35.5), Vector2(-0.8, 0))
+		sc4.leader.prev_pos = sc4.leader.pos - Vector2(0.05, 0.0)
+		var st := RescueSystem.SearchTask.new()
+		st.crew_id = sc4.id
+		st.level = 1
+		sim.rescue.searches.append(st)
+		world.camera.position = world.projections[world.ViewMode.ISO].to_screen(Vector2(40.0, 34.5))
+		for i in 6:
+			await process_frame
+		root.get_texture().get_image().save_png(out + "shot_actions_search.png")
 	print("저장 ", out, " · 조 ", crews.size(), " · 구조대상자 ", sim.rescue.victims.size(), " · 문 ", door != null, " · 층 그림 ", layer != null)
 	quit()

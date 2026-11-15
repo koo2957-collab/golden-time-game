@@ -1596,13 +1596,14 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 	var frame := 0
 	# 여럿이 한 장면으로 구운 동작(문 개방·2인 운반)은 조장 기준 같은 박자로 — 구울 때 맞춘 엇갈림이 그대로 보이게
 	var phase := (crew.leader.id if anim in PAIRED_ANIMS else ff.id) * 0.37
-	if moving or anim in ["idle", "spray", "search", "force_a", "force_b", "spray_n", "spray_h", "spray_h1", "spray_h2"]:
+	if moving or anim in ["idle", "spray", "search", "force_a", "force_b"] or anim in PAIRED_ANIMS:
 		frame = SpriteArt.frame_at(anim, art.frames(anim), phase)
 	return [anim, dir if dir >= 0 else int(_facing.get(ff.id, 1)), frame]
 
 
 ## 여럿이 한 장면으로 구운 동작 (프레임을 조장 기준으로 맞춘다)
-const PAIRED_ANIMS := ["force_a", "force_b", "lift_f", "lift_b", "drag", "spray_n", "spray_h", "spray_h1", "spray_h2"]
+const PAIRED_ANIMS := ["force_a", "force_b", "lift_f", "lift_b", "drag", "spray_n", "spray_h", "spray_h1", "spray_h2",
+	"spray_ln", "spray_lh", "spray_lh1", "spray_lh2"]
 
 
 ## 방수 배치 (A4): 관창수(조장)가 방수 중이면 {k 방향, anims {대원 id: 동작}, spots {대원 id: 칸 좌표}}, 아니면 빈 것.
@@ -1618,6 +1619,9 @@ func _spray_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dictio
 	var facing := Vector2.RIGHT.rotated(k * PI / 4.0)
 	var members := crew.members()
 	var names: Array = ["spray_n", "spray_h"] if members.size() <= 2 else ["spray_n", "spray_h1", "spray_h2"]
+	# 낮은 자세 (A5, 2026-11-15 사용자가 블렌더에서 확인): 관창수가 낮은 자세면 모두 무릎을 꿇고 호스를 겨드랑이에 낀다
+	if lead.crouched and art.frames("spray_ln") > 0:
+		names = ["spray_ln", "spray_lh"] if members.size() <= 2 else ["spray_ln", "spray_lh1", "spray_lh2"]
 	var lp := UnitsView.display_pos(lead, alpha)
 	var out := {"k": k, "anims": {}, "spots": {}}
 	for i in members.size():
@@ -1961,6 +1965,8 @@ func _draw_sprays(alpha: float) -> void:
 		if crew_art != null and not h.approaching:
 			var feet := proj.to_screen(UnitsView.display_pos(leader, alpha), 0.0)
 			var nanim := "spray_n" if crew_art.frames("spray_n") > 0 else "spray"
+			if leader.crouched and crew_art.frames("spray_ln") > 0:
+				nanim = "spray_ln"
 			var fr := SpriteArt.frame_at(nanim, crew_art.frames(nanim), leader.id * 0.37)
 			from = feet + crew_art.nozzle_offset(nanim, SpriteArt.dir8(h.aim - leader.pos), fr, from - feet)
 		var to := proj.to_screen(h.impact, IMPACT_M)

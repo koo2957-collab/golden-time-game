@@ -128,5 +128,12 @@ func _run() -> void:
 	for i in 6:
 		await process_frame
 	root.get_texture().get_image().save_png(out + "shot_actions_carry.png")
+	# 낮은 자세 방수 (A5): 1조 조장이 낮은 자세로
+	crews[0].leader.crouched = true
+	world.camera.position = world.projections[world.ViewMode.ISO].to_screen(Vector2(50.5, 33.5))
+	for i in 6:
+		await process_frame
+	root.get_texture().get_image().save_png(out + "shot_actions_spray_low.png")
+	crews[0].leader.crouched = false
 	print("저장 ", out, " · 조 ", crews.size(), " · 구조대상자 ", sim.rescue.victims.size(), " · 문 ", door != null, " · 층 그림 ", layer != null)
 	quit()

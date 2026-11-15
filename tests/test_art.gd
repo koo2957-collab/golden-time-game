@@ -300,3 +300,20 @@ func test_spray_team_baked() -> void:
 	assert_true(float(h2.fwd_m) < float(h1.fwd_m) - 0.6, "관창보조2는 관창보조1 뒤 (%.2f / %.2f)" % [float(h2.fwd_m), float(h1.fwd_m)])
 	assert_true(absf(float(h1.right_m)) < 0.5 and absf(float(h2.right_m)) < 0.5, "옆으로 크게 벗어나지 않는다 (호스가 일직선)")
 
+
+## A5 방수(낮은 자세) (2026-11-15 사용자가 블렌더에서 확인): 모두 무릎을 꿇고 호스를 겨드랑이에 낀다 — 2인 / 분대
+func test_spray_low_team_baked() -> void:
+	var s := SpriteArt.get_set(str(SpriteArt.config().crew))
+	for anim in ["spray_ln", "spray_lh", "spray_lh1", "spray_lh2"]:
+		assert_eq(s.frames(anim), 12, "%s 12장" % anim)
+	for k in s.directions:
+		assert_true(s.nozzle_offset("spray_ln", k, 0, Vector2(-999, -999)) != Vector2(-999, -999), "낮은 자세 관창 끝 %d방향" % k)
+	# 관창 끝이 서서 쏠 때보다 낮다 (화면 위쪽이 음수)
+	var low := s.nozzle_offset("spray_ln", 2, 0, Vector2.ZERO)
+	var high := s.nozzle_offset("spray_n", 2, 0, Vector2.ZERO)
+	assert_true(low.y > high.y, "낮은 자세 관창이 더 낮다 (%.1f / %.1f)" % [low.y, high.y])
+	var h1 := s.stand("spray_lh1")
+	var h2 := s.stand("spray_lh2")
+	assert_true(float(s.stand("spray_lh").fwd_m) < -0.5 and float(h1.fwd_m) < -0.5, "관창보조는 관창수 뒤")
+	assert_true(float(h2.fwd_m) < float(h1.fwd_m) - 0.6, "관창보조2는 관창보조1 뒤")
+

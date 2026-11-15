@@ -831,6 +831,64 @@
    "actors": {
     "spray_h": "FF_B"
    }
+  },
+  {
+   "target": "firefighter_v2",
+   "pivot_object": "FF_A",
+   "frames": 12,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "spray_low_squad",
+   "blend": "tools/blender/scenes/spray_low_squad.blend",
+   "note": "A5 방수(낮은 자세) 분대: 관창수는 오른 무릎을 꿇고 두 손으로 관창을 든다. 관창보조1·2도 뒤에서 오른 무릎을 꿇고 상체를 조금 숙여 호스를 오른 겨드랑이에 끼고, 한 손은 그 앞·다른 손은 더 앞을 잡는다. 호스는 일직선, 맨 뒤 사람 등 뒤에서 바닥으로. 호스를 낀 채 낮은 자세로 이동하는 동작으로 이어진다 — 2026-11-15 사용자가 블렌더에서 확인 (SOP 201 낮은 자세, 실무 4인조법)",
+   "actors": {
+    "spray_ln": {
+     "rig": "FF_A",
+     "nozzle": "nozzle_tip",
+     "nozzle_from": "nozzle_coupling"
+    },
+    "spray_lh1": "FF_B",
+    "spray_lh2": "FF_C"
+   }
+  },
+  {
+   "target": "firefighter_v2",
+   "pivot_object": "FF_A",
+   "frames": 12,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "spray_low_pair",
+   "blend": "tools/blender/scenes/spray_low_pair.blend",
+   "note": "A5 방수(낮은 자세) 2인: 관창수 + 관창보조 1명 (호스는 관창보조 등 뒤에서 바닥으로)",
+   "actors": {
+    "spray_lh": "FF_B"
+   }
   }
  ]
 }

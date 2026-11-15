@@ -1,6 +1,7 @@
 # P15: Kenney 3D 팩을 게임 입체 화면과 같은 카메라로 찍어 2D 프레임으로 굽는다 (기획안 9-4-1).
 # 실행: blender -b --factory-startup -P tools/blender/bake.py -- tools/blender/bake_config.json [종류] [이름]
-#   종류: characters | vehicles | furniture (생략하면 모두), 이름: 그 항목만 (예: firefighter)
+#   종류: characters | vehicles | furniture | scenes (생략하면 모두), 이름: 그 항목만 (예: firefighter)
+#   scenes = 사용자가 블렌더에서 확인한 장면(여러 사람 + 소품, 키프레임)을 그대로 굽는다 (2026-11-15, docs/motions.md)
 # 출력: <out_dir>/<종류>/<이름>/<동작>_<방향0~7>_<프레임>.png (+ 헬멧 띠 _stripe.png), 같은 폴더에 meta.json
 #   방향 k = 게임 칸 좌표에서 각도 k×45° (0 = +x, 화면 오른쪽 아래 / 2 = +y, 왼쪽 아래)
 # 좌표 약속: Blender X = 칸 x, Blender Y = -칸 y (오른손 좌표 유지). 카메라는 칸 (+x, +y) 쪽 위에서 내려다본다.
@@ -59,7 +60,11 @@ def dir_angle(k):
 
 def reset():
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    sc = bpy.context.scene
+    return render_setup(bpy.context.scene)
+
+
+def render_setup(sc):
+    """굽기 공통 렌더 설정: 엔진·투명 배경·색 변환·하늘빛·해 (빈 장면이든 불러온 장면이든 같게)"""
     for eng in ("BLENDER_EEVEE", "BLENDER_EEVEE_NEXT"):
         try:
             sc.render.engine = eng
@@ -983,7 +988,97 @@ def bake_furniture(spec, scale):
     log("furniture", spec["name"], "done")
 
 
+# --- 확인한 장면 굽기 (2026-11-15) ---
+
+def bake_scene(spec):
+    """사용자가 블렌더에서 확인한 장면을 그대로 굽는다. 사람(actors)마다 따로, 8방향 × 프레임.
+    spec: name, blend(장면 파일), target(넣을 그림 묶음 = characters/<target>), pivot(기준점 = 문틈 아래 바닥 [x, y, z]),
+          actors {동작 이름: 아마추어 이름}, frames(1부터), hide(굽지 않을 물체 이름 앞부분), scale·frame·anchor(그 묶음과 같게)
+    장면에서 사람들은 Blender -Y(모델 앞쪽)를 보고 서 있어야 한다. 기준점을 중심으로 장면 전체를 돌려 방향 k를 만들고,
+    굽는 사람이 원점에 오게 옮긴다. 기준점에서 그 사람까지의 거리는 meta.json stand 에 적는다 (게임이 그 자리에 세운다)"""
+    bpy.ops.wm.open_mainfile(filepath=os.path.join(PROJECT, spec["blend"]))
+    sc = bpy.context.scene
+    for o in list(bpy.data.objects):
+        if o.type in ("CAMERA", "LIGHT"):
+            bpy.data.objects.remove(o, do_unlink=True)
+    render_setup(sc)
+    setup_camera(sc, spec["frame"], spec["anchor"], spec["scale"], 0.9)
+    P = mathutils.Vector(spec["pivot"])
+    pivot = bpy.data.objects.new("bake_pivot", None)
+    sc.collection.objects.link(pivot)
+    pivot.location = P
+    bpy.context.view_layer.update()
+    # 사람·손 목표점·문틈 표시처럼 따로 놓인 물체를 기준점에 매단다 (지금 자리 그대로)
+    inv = pivot.matrix_world.inverted()
+    for o in bpy.data.objects:
+        if o.parent is None and o is not pivot and o.type in ("ARMATURE", "EMPTY"):
+            o.parent = pivot
+            o.matrix_parent_inverse = inv
+    hide = tuple(spec.get("hide", []))
+    actors = spec["actors"]
+    rigs = {anim: bpy.data.objects[name] for anim, name in actors.items()}
+    def parts(rig):
+        return [o for o in bpy.data.objects if o.parent == rig]
+    def base(name):
+        return name.split(".")[0]
+    for o in bpy.data.objects:
+        if o.type == "MESH" and o.name.startswith(hide):
+            o.hide_render = True
+    folder = os.path.join(OUT, "characters", spec["target"])
+    meta_path = os.path.join(folder, "meta.json")
+    meta = json.load(open(meta_path, encoding="utf-8"))
+    frames = int(spec["frames"])
+    sc.frame_set(1)
+    for anim, rig in rigs.items():
+        if ONLY_ANIMS and anim not in ONLY_ANIMS:
+            continue
+        # 기준점에서 이 사람까지 (모델 앞 = -Y 기준): 앞으로 몇 m, 오른쪽(-X)으로 몇 m — 기준점을 처음 자리로 되돌려 잰다
+        pivot.matrix_world = mathutils.Matrix.Translation(P)
+        upd()
+        a = rig.matrix_world.translation - P
+        meta.setdefault("stand", {})[anim] = {"fwd_m": round(-a.y, 3), "right_m": round(-a.x, 3), "scene": spec["name"]}
+        meta["anims"][anim] = {"frames": frames, "note": spec.get("note", "")}
+        mine = parts(rig)
+        tint = [o for o in mine if base(o.name) in TINT_PARTS]
+        tint_mats = {s.material for o in tint for s in o.material_slots if s.material}
+        for o in bpy.data.objects:
+            if o.type == "MESH" and not o.name.startswith(hide):
+                if o in mine:
+                    o.hide_render = base(o.name).startswith(("nozzle", "hose"))
+                else:
+                    o.hide_render = True
+        for k in ([ONLY_DIR] if ONLY_ANIMS else range(NDIR)):
+            R = mathutils.Matrix.Rotation(dir_angle(k), 4, "Z")
+            # 회전한 뒤 이 사람이 원점에 오게
+            pivot.matrix_world = mathutils.Matrix.Translation(-(R @ a)) @ R
+            for i in range(1 if QUICK else frames):
+                sc.frame_set(int(spec.get("frame_start", 1)) + i)
+                upd()
+                name = "%s_%d_%d.png" % (anim, k, i)
+                for o in mine:
+                    o.is_holdout = False
+                for m in tint_mats:
+                    set_helmet(m, HELMET_BASE)
+                render_to(os.path.join(folder, name), spec["frame"])
+                for m in tint_mats:
+                    set_helmet(m, HELMET_TINT)
+                for o in mine:
+                    if o.type == "MESH" and o not in tint:
+                        o.is_holdout = True
+                render_to(os.path.join(folder, name.replace(".png", "_stripe.png")), spec["frame"])
+                for o in mine:
+                    o.is_holdout = False
+        log(spec["name"], anim, "done", meta["stand"][anim])
+    write_meta(folder, meta)
+
+
 def main():
+    if ONLY_KIND == "scenes":
+        for spec in CFG.get("scenes", []):
+            if ONLY_NAME in ("", spec["name"]):
+                bake_scene(spec)
+        log("all done")
+        return
     if ONLY_KIND in ("", "characters"):
         for spec in CFG["characters"]:
             if ONLY_NAME in ("", spec["name"]):

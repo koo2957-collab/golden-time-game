@@ -34,6 +34,11 @@ class SpriteSet:
 	func frames(anim: String) -> int:
 		return int(anims[anim].frames) if anims.has(anim) else 0
 
+	## 여러 사람이 한 장면으로 구운 동작(문 개방 등)에서 이 사람이 서는 자리: 기준점(문틈)에서 보는 방향으로 fwd_m, 오른쪽으로 right_m.
+	## 구울 때 적은 값(meta stand) — 없으면 빈 것
+	func stand(anim: String) -> Dictionary:
+		return meta.get("stand", {}).get(anim, {})
+
 	## feet: 그림 기준점(발밑·차체 가운데)이 올 화면 좌표. size: 추가 배율(가구 늘리기 등).
 	## helmet: 대원 헬멧 색 — 흰 헬멧만 따로 구운 층(묶음의 stripe 칸)에 곱해 덧그린다. 알파 0이면 몸 그림의 회색 헬멧 그대로
 	func draw(ci: CanvasItem, anim: String, dir: int, frame: int, feet: Vector2, modulate := Color.WHITE,

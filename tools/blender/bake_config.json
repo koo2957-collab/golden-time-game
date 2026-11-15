@@ -65,7 +65,6 @@
     "spray",
     "search",
     "down",
-    "force",
     "lift_f",
     "lift_b",
     "drag"
@@ -613,5 +612,39 @@
     ]
    }
   ]
- }
+ },
+ "scenes": [
+  {
+   "name": "door_force",
+   "note": "A1 문 개방(파괴): 두 대원이 문틈 양쪽에서 만능도끼(빠루) 끝을 문틈에 넣고 몸은 그대로, 두 손으로 번갈아 젖힌다 — 2026-11-15 사용자가 블렌더에서 확인 (docs/motions.md)",
+   "blend": "tools/blender/scenes/door_force.blend",
+   "target": "firefighter_v2",
+   "pivot": [
+    0.45,
+    -0.9,
+    0.0
+   ],
+   "actors": {
+    "force_a": "FF_A",
+    "force_b": "FF_B"
+   },
+   "frames": 12,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "_blend_note": "사용자가 확인한 그때의 장면 사본 (작업 파일 art_source/models/motion_review.blend는 깃에 넣지 않는다)"
+  }
+ ]
 }

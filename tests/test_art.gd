@@ -1,9 +1,10 @@
 extends TestSuite
 ## P15: 구운 그림 연결 (data/art.json → res://art/sprites). 묶음·동작·방향이 다 있고, 게임 대상이 빠짐없이 연결되며, 메모리가 저사양 기준 안인지.
 
-const CREW_ANIMS := ["idle", "walk", "crouch_walk", "spray", "search", "down", "force", "lift_f", "lift_b", "drag"]
-## 저사양 PC 기준 그림 텍스처 상한 (MB, 게임 설정값 — docs/perf.md)
-const TEXTURE_BUDGET_MB := 48.0
+const CREW_ANIMS := ["idle", "walk", "crouch_walk", "spray", "search", "down", "force_a", "force_b", "lift_f", "lift_b", "drag"]
+## 그림 텍스처 상한 (MB, 게임 설정값). 저사양 목표는 48MB(docs/perf.md)지만, 2026-11-15 사용자 결정: 행동을 모두 먼저 만들고
+## 프레임 수는 나중에 줄인다 (docs/motions.md) — 그때까지 넉넉히 둔다
+const TEXTURE_BUDGET_MB := 128.0
 
 
 func _sets_in_config() -> Array[String]:
@@ -182,7 +183,7 @@ func test_nozzle_tip_recorded_for_spray_pose() -> void:
 
 func test_new_actions_baked() -> void:
 	var s := SpriteArt.get_set(str(SpriteArt.config().crew))
-	for anim in ["force", "lift_f", "lift_b", "drag"]:
+	for anim in ["force_a", "force_b", "lift_f", "lift_b", "drag"]:
 		assert_true(s.frames(anim) >= 6, "%s: 움직이는 동작 (%d장)" % [anim, s.frames(anim)])
 		assert_true(float(SpriteArt.config().fps.get(anim, 0.0)) > 0.0, "%s: 프레임 속도 설정" % anim)
 	# 방수: 관창 끝 자리가 방향·프레임마다 기록되어 있다 (물줄기가 거기서 시작한다)
@@ -228,3 +229,27 @@ func test_water_jet_starts_at_nozzle_width() -> void:
 	assert_true(mouth_px >= 3.0 and mouth_px <= 7.0, "관창 입 굵기 = 관창 그림 굵기 (%.1fpx)" % mouth_px)
 	assert_true(end_px > mouth_px * 2.0 and end_px <= 30.0, "맞는 곳에서 퍼지되 지나치게 굵지 않다 (%.1fpx)" % end_px)
 
+
+## A1 문 개방 (2026-11-15 사용자가 블렌더에서 확인): 두 대원이 문틈 양쪽에 서서 빠루를 문틈에 넣고 번갈아 젖힌다
+func test_door_force_two_sides() -> void:
+	var s := SpriteArt.get_set(str(SpriteArt.config().crew))
+	var a := s.stand("force_a")
+	var b := s.stand("force_b")
+	assert_true(not a.is_empty() and not b.is_empty(), "두 사람의 서는 자리가 구울 때 적혀 있다")
+	assert_true(float(a.right_m) * float(b.right_m) < 0.0, "문틈 양쪽 (오른쪽 %.2f / %.2f)" % [float(a.right_m), float(b.right_m)])
+	assert_true(float(a.fwd_m) < 0.0 and float(b.fwd_m) < 0.0, "문 앞에 선다 (문틈보다 뒤)")
+	assert_eq(s.frames("force_a"), s.frames("force_b"), "두 사람 프레임 수가 같다 (번갈아 젖힌다)")
+	# 배치: 문이 가로(칸 두 개가 x로)면 보는 방향은 y, 대원이 있는 쪽에서 문을 본다
+	var o := Opening.new()
+	o.cells = [Vector2i(10, 20), Vector2i(11, 20)] as Array[Vector2i]
+	var fr := FloorLayer.force_frame(o, Vector2(11.0, 24.0))
+	assert_eq([fr.facing, fr.k], [Vector2(0, -1), 6], "아래(+y)에서 위의 문을 본다")
+	assert_true((fr.seam as Vector2).is_equal_approx(Vector2(11.0, 21.0)), "문틈 = 문 가운데, 대원 쪽 벽면 (%s)" % fr.seam)
+	var pa := FloorLayer.stand_spot(fr.seam, fr.facing, a, 0.5)
+	var pb := FloorLayer.stand_spot(fr.seam, fr.facing, b, 0.5)
+	assert_true(pa.y > 21.0 and pb.y > 21.0, "둘 다 문 앞(대원 쪽)")
+	assert_true((pa.x - 11.0) * (pb.x - 11.0) < 0.0 and absf(pa.x - pb.x) > 1.5, "문틈 양쪽으로 갈라 선다 (%.1f / %.1f)" % [pa.x, pb.x])
+	# 문이 한 칸이면 대원이 있는 쪽에서 축 방향으로
+	var one := Opening.new()
+	one.cells = [Vector2i(5, 5)] as Array[Vector2i]
+	assert_eq(FloorLayer.force_frame(one, Vector2(2.5, 5.8)).facing, Vector2(1, 0), "왼쪽에서 오른쪽 문을 본다")

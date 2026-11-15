@@ -1567,10 +1567,13 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		else:
 			# 운반 그림이 없는 묶음(예전 그림): 들고 걷기, 그것도 없으면 걷기
 			anim = "carry" if art.frames("carry") > 0 else "walk"
-	elif door_task != null and not moving and _forcing(door_task, ff) and art.frames("force") > 0:
-		# 잠긴 문 개방 (2026-11-15): 만능도끼로 문틈을 벌린다 — 문 쪽을 본다
-		anim = "force"
-		_facing[ff.id] = SpriteArt.dir8(Vector2(door_task.opening.cells[0]) + Vector2(0.5, 0.5) - ff.pos)
+	elif door_task != null and _forcing(door_task, ff) and art.frames("force_a") > 0:
+		# 잠긴 문 개방 (A1, 2026-11-15 사용자가 블렌더에서 확인): 두 대원이 문틈 양쪽에 서서 빠루 끝을 문틈에 넣고
+		# 몸은 그대로, 두 손으로 번갈아 젖힌다. 조장 = force_a, 짝 = force_b. 서는 자리는 _force_layout
+		var lay := _force_layout(door_task, crew, art)
+		anim = str(lay.anims.get(ff.id, "force_a"))
+		dir = int(lay.k)
+		moving = false
 	elif hose and hose.flowing and not hose.approaching and not moving and ff == crew.leader:
 		# 관창은 조장(관창수) 한 사람만 든다 — 짝은 뒤에서 서 있는다 (2026-11-12)
 		anim = "spray"
@@ -1584,7 +1587,7 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 	elif ff.crouched:
 		anim = "crouch_walk"
 	var frame := 0
-	if moving or anim in ["idle", "spray", "search", "force"]:
+	if moving or anim in ["idle", "spray", "search", "force_a", "force_b"]:
 		frame = SpriteArt.frame_at(anim, art.frames(anim), ff.id * 0.37)
 	return [anim, dir if dir >= 0 else int(_facing.get(ff.id, 1)), frame]
 
@@ -1593,7 +1596,52 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 func _forcing(task: DoorSystem.Task, ff: Firefighter) -> bool:
 	if not task.open or task.waiting_people or task.opening == null or not task.opening.locked or task.opening.cells.is_empty():
 		return false
-	return ff.level == task.opening.level and ff.pos.distance_to(Vector2(task.opening.cells[0]) + Vector2(0.5, 0.5)) <= 3.5
+	return ff.level == task.opening.level and ff.pos.distance_to(door_center(task.opening)) <= 3.5
+
+
+## 문 칸들의 가운데 (칸 좌표)
+static func door_center(o: Opening) -> Vector2:
+	var c := Vector2.ZERO
+	for cell in o.cells:
+		c += Vector2(cell) + Vector2(0.5, 0.5)
+	return c / maxf(1.0, o.cells.size())
+
+
+## 문 개방 배치 (A1): 대원이 서 있는 쪽에서 문을 보는 방향(축 방향 4개 중 하나)과, 그쪽 벽면의 문틈(문 가운데).
+## 문이 여러 칸이면 벽은 그 칸들이 놓인 방향이고 보는 방향은 그에 수직이다. → {k 방향(8방향), facing, seam 칸 좌표}
+static func force_frame(o: Opening, from: Vector2) -> Dictionary:
+	var center := door_center(o)
+	var v := center - from
+	var facing := Vector2.ZERO
+	if o.cells.size() > 1:
+		var along := Vector2(o.cells[o.cells.size() - 1] - o.cells[0])
+		facing = Vector2(-along.y, along.x).normalized()
+		if facing.dot(v) < 0.0:
+			facing = -facing
+	elif absf(v.x) >= absf(v.y):
+		facing = Vector2(signf(v.x) if v.x != 0.0 else 1.0, 0.0)
+	else:
+		facing = Vector2(0.0, signf(v.y))
+	return {"k": SpriteArt.dir8(facing), "facing": facing, "seam": center - facing * 0.5}
+
+
+## 구울 때 적은 자리(기준점에서 보는 방향으로 fwd_m, 오른쪽으로 right_m)를 칸 좌표로 (cell_m = 칸 한 변 m)
+static func stand_spot(seam: Vector2, facing: Vector2, stand: Dictionary, cell_m: float) -> Vector2:
+	var right := facing.rotated(PI / 2.0)
+	return seam + (facing * float(stand.get("fwd_m", 0.0)) + right * float(stand.get("right_m", 0.0))) / maxf(0.01, cell_m)
+
+
+## 그 조가 이 문을 부수는 배치: {k, seam, spots {대원 id: 칸 좌표}, anims {대원 id: 동작}} — 조장 force_a, 짝 force_b
+func _force_layout(task: DoorSystem.Task, crew: Crew, art: SpriteArt.SpriteSet) -> Dictionary:
+	var fr := force_frame(task.opening, crew.leader.pos)
+	var out := {"k": fr.k, "seam": fr.seam, "spots": {}, "anims": {}}
+	var names := ["force_a", "force_b"]
+	var members := crew.members()
+	for i in members.size():
+		var anim: String = names[mini(i, 1)]
+		out.anims[members[i].id] = anim
+		out.spots[members[i].id] = stand_spot(fr.seam, fr.facing, art.stand(anim), sim.units.cell_size_m)
+	return out
 
 
 # --- 운반 배치 (2026-11-15) ---
@@ -1639,9 +1687,16 @@ func _ff_carry_layout(ff: Firefighter, alpha: float) -> Dictionary:
 	return {}
 
 
-## 대원을 그리는 자리: 보통은 실제 자리, 운반 중인 짝·옮겨지는 대원은 배치 자리
+## 대원을 그리는 자리: 보통은 실제 자리, 운반 중인 짝·옮겨지는 대원·문을 부수는 대원은 배치 자리
 func _shown_pos(ff: Firefighter, alpha: float) -> Vector2:
 	var p := UnitsView.display_pos(ff, alpha)
+	if not sim.doors.tasks.is_empty() and not ff.incapacitated:
+		var dt := sim.doors.task_of_crew(ff.crew_id)
+		if dt != null and _forcing(dt, ff):
+			var art := SpriteArt.get_set(str(SpriteArt.config().get("crew", ""))) if not thermal else null
+			if art != null and art.frames("force_a") > 0:
+				var lay := _force_layout(dt, sim.units.get_crew(ff.crew_id), art)
+				return lay.spots.get(ff.id, p)
 	if sim.rescue.carries.is_empty():
 		return p
 	if ff.incapacitated:

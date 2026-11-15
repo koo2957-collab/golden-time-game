@@ -1524,7 +1524,7 @@ func _draw_unit(ff: Firefighter, alpha: float) -> void:
 func _draw_unit_sprite(ff: Firefighter, crew: Crew, squad: Squad, feet: Vector2) -> bool:
 	if thermal:
 		return false
-	var art := SpriteArt.get_set(str(SpriteArt.config().get("crew", "")))
+	var art := SpriteArt.crew_set(squad.type)
 	if art == null:
 		return false
 	var pose := _unit_pose(ff, crew, art)
@@ -1552,6 +1552,13 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		var held := _ff_carry_layout(ff, 0.0)
 		if not held.is_empty():
 			dir = posmod(int(held.k) + 4, 8) if str(held.mode) == "lift" else int(held.k)
+	elif not _aid_layout(crew, art).is_empty():
+		# 응급처치 (A9, 2026-11-15 사용자가 블렌더에서 확인): 조장은 환자 머리 옆에서 산소마스크·기도, 짝은 팔 옆에서 맥박.
+		# 둘 다 두 무릎을 꿇고 앉아 숙인다. 자리는 구울 때 적은 값 (환자 가운데 기준)
+		var al := _aid_layout(crew, art)
+		anim = str(al.anims.get(ff.id, "aid_a"))
+		dir = int(al.k)
+		moving = false
 	elif task is RescueSystem.CarryTask and task.carrying:
 		# 운반 (2026-11-15, 구조 교재 제4편 제2장 구출 및 운반): 선 자세로 갈 수 있으면 2인 운반(사지운반법 — 조장이 앞에서 다리,
 		# 짝이 뒤에서 겨드랑이), 연기층 아래 낮은 자세이거나 혼자면 1인 운반(구조대상자 끌기 — 조장이 옷깃을 잡고 뒷걸음, 짝은 앞에서 길을 살핀다)
@@ -1603,17 +1610,49 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 	# 무전기를 입 앞에 대고 말한다 — 누가 말하는지 보이게. 방수·문 개방·운반 중에는 그 동작을 그대로 둔다
 	if ff == crew.leader and not moving and anim in ["idle", "crouch_walk", "search"] and art.frames("radio") > 0 and _talking(crew):
 		anim = "radio_low" if ff.crouched and art.frames("radio_low") > 0 else "radio"
+	# 구급가방 (2026-11-15 사용자): 구급대 조의 짝(두 번째 대원)이 오른손에 들고 다닌다
+	if ff == crew.partner and anim in ["idle", "walk"] and art.frames(anim + "_bag") > 0:
+		anim += "_bag"
 	var frame := 0
 	# 여럿이 한 장면으로 구운 동작(문 개방·2인 운반)은 조장 기준 같은 박자로 — 구울 때 맞춘 엇갈림이 그대로 보이게
 	var phase := (crew.leader.id if anim in PAIRED_ANIMS else ff.id) * 0.37
-	if moving or anim in ["idle", "spray", "search", "force_a", "force_b", "radio", "radio_low"] or anim in PAIRED_ANIMS:
+	if moving or anim in ["idle", "idle_bag", "spray", "search", "force_a", "force_b", "radio", "radio_low"] or anim in PAIRED_ANIMS:
 		frame = SpriteArt.frame_at(anim, art.frames(anim), phase)
 	return [anim, dir if dir >= 0 else int(_facing.get(ff.id, 1)), frame]
 
 
 ## 여럿이 한 장면으로 구운 동작 (프레임을 조장 기준으로 맞춘다)
 const PAIRED_ANIMS := ["force_a", "force_b", "lift_f", "lift_b", "drag", "spray_n", "spray_h", "spray_h1", "spray_h2",
-	"spray_ln", "spray_lh", "spray_lh1", "spray_lh2", "search_a", "search_b"]
+	"spray_ln", "spray_lh", "spray_lh1", "spray_lh2", "search_a", "search_b", "aid_a", "aid_b"]
+
+
+## 응급처치 배치 (A9): 구급대 조가 환자 곁에 멈춰 처치 중이면
+## {k 방향, anims {대원 id: 동작}, spots {대원 id: 칸 좌표}, victim 환자 그림 자리, victim_id}, 아니면 빈 것.
+## 기준점 = 환자 자리(몸 가운데). 조장 = aid_a(머리 옆), 짝 = aid_b(팔 옆). 방향은 조장이 다가온 쪽에서 환자를 보는 쪽
+func _aid_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dictionary:
+	if crew == null or art == null or art.frames("aid_a") <= 0 or sim.ems.patients.is_empty():
+		return {}
+	var p := sim.ems.patient_of_crew(crew.id)
+	if p == null or p.stage != EmsSystem.Stage.TREATING or p.treat_start_tick < 0:
+		return {}
+	var lead := crew.leader
+	if lead.incapacitated or lead.is_moving() or p.victim_id < 0 or p.victim_id >= sim.rescue.victims.size():
+		return {}
+	var v: Victim = sim.rescue.victims[p.victim_id]
+	var vart := SpriteArt.victim_set(v.label())
+	if vart == null or vart.frames("aid_v") <= 0:
+		return {}
+	var d := v.pos - lead.pos
+	var k := SpriteArt.dir8(d) if d.length_squared() > 0.0001 else 1
+	var facing := Vector2.RIGHT.rotated(k * PI / 4.0)
+	var cell := sim.units.cell_size_m
+	var out := {"k": k, "anims": {lead.id: "aid_a"}, "spots": {lead.id: stand_spot(v.pos, facing, art.stand("aid_a"), cell)},
+		"victim": stand_spot(v.pos, facing, vart.stand("aid_v"), cell), "victim_id": v.id}
+	var mate := crew.partner
+	if mate != null and not mate.incapacitated and mate.level == lead.level:
+		out.anims[mate.id] = "aid_b"
+		out.spots[mate.id] = stand_spot(v.pos, facing, art.stand("aid_b"), cell)
+	return out
 
 
 ## 이 조가 지금 무전을 보내는 중인가 (지휘망·작전망의 송신 중 무전). 보고 사건에 조 번호가 있으면 그것으로,
@@ -1808,6 +1847,13 @@ func _shown_pos(ff: Firefighter, alpha: float) -> Vector2:
 			var sl := _spray_layout(sc, sart, alpha)
 			if not sl.is_empty():
 				return sl.spots.get(ff.id, p)
+	if not sim.ems.patients.is_empty() and not ff.incapacitated:
+		var ec := sim.units.get_crew(ff.crew_id)
+		if ec != null:
+			var eart := SpriteArt.crew_set(sim.units.squads[ec.squad_id].type) if not thermal else null
+			var al := _aid_layout(ec, eart, alpha)
+			if not al.is_empty():
+				return al.spots.get(ff.id, p)
 	if not sim.rescue.searches.is_empty() and not ff.incapacitated:
 		var scr := sim.units.get_crew(ff.crew_id)
 		if scr != null and scr.partner == ff:
@@ -2617,7 +2663,15 @@ func _draw_victim(v: Victim) -> void:
 			return
 		var tag: Color = sim.ems.shown_color(p)
 		var at := proj.to_screen(v.pos, 0.05)
-		if not _draw_victim_sprite(v, at):
+		# 응급처치 중 (A9): 구급대원 둘 사이에 반듯이 누운 그림 — 구울 때 자리·방향 그대로, 박자는 조장과 같게
+		var ac := sim.units.get_crew(p.crew_id) if p.crew_id >= 0 else null
+		var aart := SpriteArt.crew_set(sim.units.squads[ac.squad_id].type) if ac != null and not thermal else null
+		var al := _aid_layout(ac, aart, sim.clock.alpha()) if aart != null else {}
+		var vart := SpriteArt.victim_set(v.label()) if not al.is_empty() else null
+		if vart != null:
+			var fr := SpriteArt.frame_at("aid_v", vart.frames("aid_v"), ac.leader.id * 0.37)
+			vart.draw(self, "aid_v", int(al.k), fr, proj.to_screen(al.victim, 0.0))
+		elif not _draw_victim_sprite(v, at):
 			draw_colored_polygon(_ellipse(at + Vector2(0, -3), 13, 5), color)
 		draw_circle(at + Vector2(12, -5), 5.0, tag)
 		draw_string(PlanStyle.font(), at + Vector2(-70, -14), "%s · %s · %s" % [v.label(), sim.ems.shown_name(p), EmsSystem.STAGE_NAMES[p.stage]], HORIZONTAL_ALIGNMENT_CENTER, 140, 12, tag.lightened(0.3))
@@ -3598,8 +3652,8 @@ func _draw_smoke_outlines() -> void:
 ## hulls가 비어 있지 않으면 화면에서 그 윤곽(연기 상자) 안에 몸이 든 사람만
 func _draw_outlines(target: CanvasItem, rooms: Dictionary, hulls: Array[PackedVector2Array] = []) -> void:
 	var alpha := sim.clock.alpha()
-	var crew_art := SpriteArt.get_set(str(SpriteArt.config().get("crew", ""))) if not thermal else null
 	for c in sim.units.crews:
+		var crew_art := SpriteArt.crew_set(sim.units.squads[c.squad_id].type) if not thermal else null
 		for ff in c.members():
 			if ff.level != level or ff.aboard:
 				continue

@@ -127,6 +127,45 @@
    ],
    "head_scale": 0.62,
    "_head_note": "2026-11-15 사용자 요청: 민간인 머리가 너무 크다 — Kenney 그림의 머리를 62%로"
+  },
+  {
+   "name": "paramedic",
+   "builder": "paramedic",
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "save_blend": "art_source/models/paramedic.blend",
+   "source": "3D 모델: 자체 제작 (tools/blender/paramedic.py, 사용자 참고 그림 F:/golden time game/구급대원 이미지.jpg)",
+   "note": "구급대원: 주황 긴팔 상의 + 검정 조끼(빨간 파우치 두 개) + 남색 하의 + 검정 신발, 흰 안전모(게임에서 출동대 종류 색), 공기호흡기 없음. 둘 중 한 명은 주황 구급가방(idle_bag·walk_bag) — 2026-11-15 사용자 확인",
+   "colors": {
+    "coat": "#F2741F",
+    "pants": "#22283A",
+    "hood": "#22283A",
+    "reflect": "#D6EC3A",
+    "silver": "#C9CDD0",
+    "glove": "#E0AC84",
+    "boot": "#151515",
+    "mask": "#121417",
+    "harness": "#18191B",
+    "tank": "#A3AA9C",
+    "skin": "#E0AC84",
+    "hair": "#1E1A18",
+    "bag": "#F06A1A"
+   },
+   "anims": [
+    "idle",
+    "walk",
+    "crouch_walk",
+    "down",
+    "idle_bag",
+    "walk_bag"
+   ]
   }
  ],
  "anims": {
@@ -201,6 +240,18 @@
    "frames": 8,
    "pose": "drag",
    "note": "1인 운반(구조대상자 끌기) — 낮은 자세로 옷깃을 잡고 뒷걸음질 (구조 교재 제4편 제2장 제2절)"
+  },
+  "idle_bag": {
+   "source": "idle",
+   "frames": 8,
+   "pose": "arms_down",
+   "note": "서기 — 오른손에 구급가방 (구급대원, 2026-11-15 사용자)"
+  },
+  "walk_bag": {
+   "source": "run",
+   "frames": 8,
+   "pose": "walk",
+   "note": "걷기 — 오른손에 구급가방, 그 팔은 흔들지 않는다 (구급대원, 2026-11-15 사용자)"
   }
  },
  "vehicles": {
@@ -942,6 +993,69 @@
    "actors": {
     "radio": "FF_A",
     "radio_low": "FF_B"
+   }
+  },
+  {
+   "blend": "tools/blender/scenes/first_aid.blend",
+   "target": "paramedic",
+   "pivot_object": "aid_seam",
+   "frames": 12,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "first_aid",
+   "note": "A9 응급처치: 환자는 바닥에 반듯이 누워 있다(머리 = 장면 +Y). 구급대원 1(aid_a)은 환자 오른쪽 머리 옆에 두 무릎을 꿇고 앉아 왼손으로 산소마스크를 코·입에 대고 오른손으로 이마를 짚는다. 구급대원 2(aid_b)는 환자 왼쪽 팔 옆에 무릎을 꿇고 아래팔을 받치고 손목 맥박을 잰다, 연 구급가방은 그 옆 바닥에 — 2026-11-15 사용자가 블렌더에서 확인 (구급 교재 1차 평가: 기도·호흡·순환)",
+   "actors": {
+    "aid_a": "EMS_A",
+    "aid_b": "EMS_B",
+    "aid_v": {
+     "rig": "VIC_rig",
+     "target": "civilian_m"
+    }
+   }
+  },
+  {
+   "blend": "tools/blender/scenes/first_aid.blend",
+   "target": "paramedic",
+   "pivot_object": "aid_seam",
+   "frames": 12,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "first_aid_f",
+   "note": "A9 응급처치 — 누운 환자(여성 그림)",
+   "actors": {
+    "aid_v": {
+     "rig": "VIC_rig",
+     "target": "civilian_f",
+     "images": {
+      "humanMaleA.png": "humanFemaleA.png"
+     }
+    }
    }
   }
  ]

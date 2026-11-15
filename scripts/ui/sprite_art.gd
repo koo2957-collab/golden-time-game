@@ -146,6 +146,12 @@ static func furniture_set(name: String) -> SpriteSet:
 	return null
 
 
+## 대원 그림 묶음: 출동대 종류별 그림(data/art.json crew_by_type — 구급대 = 구급대원 그림)이 있으면 그것, 없으면 crew
+static func crew_set(squad_type: String) -> SpriteSet:
+	var by: Dictionary = config().get("crew_by_type", {})
+	return get_set(str(by.get(squad_type, config().get("crew", ""))))
+
+
 static func victim_set(label: String) -> SpriteSet:
 	var v: Dictionary = config().get("victims", {})
 	for w: String in v.get("female_words", []):

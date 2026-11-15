@@ -335,3 +335,20 @@ func test_radio_baked() -> void:
 	assert_eq(s.frames("radio_low"), 8, "낮은 자세 8장")
 	assert_true(float(SpriteArt.config().fps.get("radio", 0.0)) > 0.0, "빠르기")
 
+
+## A9 응급처치 + 구급대원 그림 (2026-11-15 사용자가 블렌더에서 확인)
+func test_paramedic_and_first_aid_baked() -> void:
+	var ems := SpriteArt.crew_set("구급대")
+	assert_true(ems != null and ems != SpriteArt.get_set(str(SpriteArt.config().crew)), "구급대는 구급대원 그림")
+	assert_true(SpriteArt.crew_set("진압대") == SpriteArt.get_set(str(SpriteArt.config().crew)), "진압대는 대원 그림 그대로")
+	for anim in ["idle", "walk", "idle_bag", "walk_bag"]:
+		assert_true(ems.frames(anim) > 0, "구급대원 %s" % anim)
+	assert_eq(ems.frames("aid_a"), 12, "응급처치(머리 옆) 12장")
+	assert_eq(ems.frames("aid_b"), 12, "응급처치(팔 옆) 12장")
+	var a := ems.stand("aid_a")
+	var b := ems.stand("aid_b")
+	assert_true(float(a.right_m) > 0.2 and float(b.right_m) < -0.2, "두 대원은 환자 양옆 (%.2f / %.2f)" % [float(a.right_m), float(b.right_m)])
+	for key in ["male", "female"]:
+		var v := SpriteArt.get_set(str(SpriteArt.config().victims[key]))
+		assert_eq(v.frames("aid_v"), 12, "누운 환자(%s) 12장" % key)
+

@@ -184,5 +184,33 @@ func _run() -> void:
 			await process_frame
 		root.get_texture().get_image().save_png(out + "shot_actions_radio_low.png")
 		sim.command.radio.current = null
+	# 응급처치 (A9): 3조를 잠시 구급대로 보고(그림만), 구조대상자 한 명을 처치하는 중 / 4조는 구급가방 들고 서 있기
+	if crews.size() > 3 and not sim.rescue.victims.is_empty():
+		var c3: Crew = crews[2]
+		var sq: Squad = sim.units.squads[c3.squad_id]
+		var old_type := sq.type
+		sq.type = "구급대"
+		var vic: Victim = sim.rescue.victims[0]
+		vic.state = Victim.State.RESCUED
+		vic.carried_by = -1
+		vic.level = 1
+		vic.pos = Vector2(36.5, 31.5)
+		_place(c3, Vector2(35.8, 31.5), Vector2(0, 1.0))
+		var pt := EmsSystem.Patient.new()
+		pt.victim_id = vic.id
+		pt.crew_id = c3.id
+		pt.stage = EmsSystem.Stage.TREATING
+		pt.treat_start_tick = 0
+		pt.treat_left = 999.0
+		sim.ems.patients.append(pt)
+		world.camera.position = world.projections[world.ViewMode.ISO].to_screen(Vector2(36.5, 31.5))
+		for i in 6:
+			await process_frame
+		root.get_texture().get_image().save_png(out + "shot_actions_aid.png")
+		sim.ems.patients.erase(pt)
+		for i in 6:
+			await process_frame
+		root.get_texture().get_image().save_png(out + "shot_actions_ems_idle.png")
+		sq.type = old_type
 	print("저장 ", out, " · 조 ", crews.size(), " · 구조대상자 ", sim.rescue.victims.size(), " · 문 ", door != null, " · 층 그림 ", layer != null)
 	quit()

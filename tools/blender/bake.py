@@ -362,7 +362,9 @@ def add_gear(arm, colors, tint):
 
 
 def set_helmet(mat, color):
-    mat.node_tree.nodes.get("Principled BSDF").inputs["Base Color"].default_value = color
+    # 노드 이름은 UI 언어마다 다르다 (한국어 블렌더에서 만든 장면의 재질) — 종류로 찾는다
+    p = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+    p.inputs["Base Color"].default_value = color
 
 
 def assign_action(arm, act):

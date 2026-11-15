@@ -31,7 +31,8 @@ def _hex(h, a=1.0):
 def _mat(name, hexc, rough=0.75, metal=0.0, emit=0.0):
     m = bpy.data.materials.new(name)
     m.use_nodes = True
-    p = m.node_tree.nodes.get("Principled BSDF")
+    # 노드 이름은 UI 언어마다 다르다 (한국어 블렌더에서 열어 볼 때) — 종류로 찾는다
+    p = next(n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
     col = _hex(hexc) if isinstance(hexc, str) else hexc
     p.inputs["Base Color"].default_value = col
     p.inputs["Roughness"].default_value = rough

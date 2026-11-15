@@ -1599,10 +1599,14 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		anim = "crouch_walk" if ff.crouched else "walk"
 	elif ff.crouched:
 		anim = "crouch_walk"
+	# 무전 보고 (A8, 2026-11-15 사용자가 블렌더에서 확인): 이 조가 지금 무전을 보내고 있으면, 손이 비어 멈춰 있는 조장이
+	# 무전기를 입 앞에 대고 말한다 — 누가 말하는지 보이게. 방수·문 개방·운반 중에는 그 동작을 그대로 둔다
+	if ff == crew.leader and not moving and anim in ["idle", "crouch_walk", "search"] and art.frames("radio") > 0 and _talking(crew):
+		anim = "radio_low" if ff.crouched and art.frames("radio_low") > 0 else "radio"
 	var frame := 0
 	# 여럿이 한 장면으로 구운 동작(문 개방·2인 운반)은 조장 기준 같은 박자로 — 구울 때 맞춘 엇갈림이 그대로 보이게
 	var phase := (crew.leader.id if anim in PAIRED_ANIMS else ff.id) * 0.37
-	if moving or anim in ["idle", "spray", "search", "force_a", "force_b"] or anim in PAIRED_ANIMS:
+	if moving or anim in ["idle", "spray", "search", "force_a", "force_b", "radio", "radio_low"] or anim in PAIRED_ANIMS:
 		frame = SpriteArt.frame_at(anim, art.frames(anim), phase)
 	return [anim, dir if dir >= 0 else int(_facing.get(ff.id, 1)), frame]
 
@@ -1610,6 +1614,22 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 ## 여럿이 한 장면으로 구운 동작 (프레임을 조장 기준으로 맞춘다)
 const PAIRED_ANIMS := ["force_a", "force_b", "lift_f", "lift_b", "drag", "spray_n", "spray_h", "spray_h1", "spray_h2",
 	"spray_ln", "spray_lh", "spray_lh1", "spray_lh2", "search_a", "search_b"]
+
+
+## 이 조가 지금 무전을 보내는 중인가 (지휘망·작전망의 송신 중 무전). 보고 사건에 조 번호가 있으면 그것으로,
+## 없으면 보낸 쪽 이름("진압1 1조")으로 찾는다
+func _talking(crew: Crew) -> bool:
+	var radios: Array = [sim.command.radio]
+	for dv in sim.command.org.divisions:
+		radios.append(dv.radio)
+	var call := "%s %d조" % [sim.units.squads[crew.squad_id].name, crew.number]
+	for r in radios:
+		var m: Radio.Message = r.current
+		if m == null:
+			continue
+		if int(m.data.get("crew_id", -1)) == crew.id or m.sender == call:
+			return true
+	return false
 
 
 ## 인명검색 이동 배치 (A7): 검색 중인 조의 조장이 걷고 있으면 {k 방향, anims {대원 id: 동작}, spots {짝 id: 칸 좌표}}, 아니면 빈 것.

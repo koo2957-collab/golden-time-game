@@ -327,3 +327,11 @@ func test_search_pair_baked() -> void:
 	assert_true(float(b.fwd_m) < -0.6 and float(b.fwd_m) > -1.1, "짝은 조장 뒤 0.6~1.1m (%.2f)" % float(b.get("fwd_m", 0.0)))
 	assert_true(absf(float(b.right_m)) < 0.2, "짝은 조장 바로 뒤")
 
+
+## A8 무전 보고 (2026-11-15 사용자가 블렌더에서 확인): 서서 / 낮은 자세, 오른손 무전기를 입 앞에
+func test_radio_baked() -> void:
+	var s := SpriteArt.get_set(str(SpriteArt.config().crew))
+	assert_eq(s.frames("radio"), 8, "서서 8장")
+	assert_eq(s.frames("radio_low"), 8, "낮은 자세 8장")
+	assert_true(float(SpriteArt.config().fps.get("radio", 0.0)) > 0.0, "빠르기")
+

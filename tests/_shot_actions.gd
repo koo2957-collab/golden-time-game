@@ -155,5 +155,34 @@ func _run() -> void:
 		for i in 6:
 			await process_frame
 		root.get_texture().get_image().save_png(out + "shot_actions_search.png")
+	# 무전 보고 (A8): 3조가 멈춰 서서 무전을 보내는 중 (3조 조장 = 서서, 4조 조장을 멈추고 낮은 자세로 같은 무전)
+	if crews.size() > 3:
+		var c3: Crew = crews[2]
+		for t in sim.rescue.carries.duplicate():
+			sim.rescue.carries.erase(t)
+		sim.rescue.searches.clear()
+		for v in sim.rescue.victims:
+			v.carried_by = -1
+		_place(c3, Vector2(36.5, 30.5), Vector2(-1.2, 0))
+		var c4: Crew = crews[3]
+		_place(c4, Vector2(40.5, 33.5), Vector2(-1.2, 0))
+		c4.leader.crouched = true
+		var m := Radio.Message.new()
+		m.sender = "%s %d조" % [sim.units.squads[c3.squad_id].name, c3.number]
+		m.receiver = "현장지휘관"
+		m.body = "보고 시험"
+		sim.command.radio.current = m
+		var m2 := Radio.Message.new()
+		m2.data = {"crew_id": c4.id}
+		# 두 번째 장면: 4조(낮은 자세)의 보고 — 보고 사건의 조 번호로 찾는다
+		world.camera.position = world.projections[world.ViewMode.ISO].to_screen(Vector2(38.0, 32.0))
+		for i in 6:
+			await process_frame
+		root.get_texture().get_image().save_png(out + "shot_actions_radio.png")
+		sim.command.radio.current = m2
+		for i in 6:
+			await process_frame
+		root.get_texture().get_image().save_png(out + "shot_actions_radio_low.png")
+		sim.command.radio.current = null
 	print("저장 ", out, " · 조 ", crews.size(), " · 구조대상자 ", sim.rescue.victims.size(), " · 문 ", door != null, " · 층 그림 ", layer != null)
 	quit()

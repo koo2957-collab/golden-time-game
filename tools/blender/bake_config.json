@@ -1522,6 +1522,32 @@
    "actors": {
     "cpl_mid": "FF_A"
    }
+  },
+  {
+   "name": "scba_swap",
+   "blend": "tools/blender/scenes/scba_swap.blend",
+   "target": "firefighter_v2",
+   "pivot_object": "FF_A",
+   "frames": 16,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "note": "B5 공기호흡기 용기 교체: 혼자 두 무릎을 꿇고 앉아 벗은 등지게를 무릎 앞 바닥에 놓고 밸브를 풀어 빈 공병을 옆에 내려놓고 새 공병을 올려 조인다 (사용자 참고 그림 '등지게'·'공병', 상의는 한 벌). 2026-11-16 사용자가 블렌더에서 확인 (사용자: 2인 1조가 아니라 각자)",
+   "actors": {
+    "scba_swap": "FF_A"
+   }
   }
  ]
 }

@@ -303,5 +303,16 @@ func _run() -> void:
 				await process_frame
 			root.get_texture().get_image().save_png(out + "shot_driver_%02d.png" % roundi(prog * 100))
 		pv.work = {}
+	# 공기호흡기 용기 교체 (B5): 1조 두 사람이 차 옆에서 각자 앉아 교체 중
+	var sv: Vehicle = sim.units.vehicles[0]
+	var spot := sv.closest_body_point(sv.pos + Vector2(0, 4)) + Vector2(0, 1.2)
+	_place(crews[0], spot, Vector2(1.3, 0))
+	for ff in crews[0].members():
+		ff.swap_timer = 10.0
+	world.camera.zoom = Vector2(2.6, 2.6)
+	world.camera.position = world.projections[world.ViewMode.ISO].to_screen(spot + Vector2(0.6, 0))
+	for i in 6:
+		await process_frame
+	root.get_texture().get_image().save_png(out + "shot_actions_scba.png")
 	print("저장 ", out, " · 조 ", crews.size(), " · 구조대상자 ", sim.rescue.victims.size(), " · 문 ", door != null, " · 층 그림 ", layer != null)
 	quit()

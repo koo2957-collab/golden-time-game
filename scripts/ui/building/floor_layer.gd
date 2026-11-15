@@ -1644,6 +1644,9 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		var sl := _search_layout(crew, art)
 		anim = str(sl.anims.get(ff.id, "search_a"))
 		dir = int(sl.k)
+	elif ff.swap_timer > 0.0 and not moving and art.frames("scba_swap") > 0:
+		# 공기호흡기 용기 교체 (B5, 2026-11-16 사용자가 블렌더에서 확인): 각자 앉아 등지게를 바닥에 놓고 공병을 바꾼다
+		anim = "scba_swap"
 	elif task is RescueSystem.SearchTask and not moving:
 		anim = "search"
 	elif moving:
@@ -1660,7 +1663,7 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 	var frame := 0
 	# 여럿이 한 장면으로 구운 동작(문 개방·2인 운반)은 조장 기준 같은 박자로 — 구울 때 맞춘 엇갈림이 그대로 보이게
 	var phase := (crew.leader.id if anim in PAIRED_ANIMS else ff.id) * 0.37
-	if moving or anim in ["idle", "idle_bag", "spray", "search", "force_a", "force_b", "radio", "radio_low", "door_feel", "window_break"] or anim in PAIRED_ANIMS:
+	if moving or anim in ["idle", "idle_bag", "spray", "search", "force_a", "force_b", "radio", "radio_low", "door_feel", "window_break", "scba_swap"] or anim in PAIRED_ANIMS:
 		frame = SpriteArt.frame_at(anim, art.frames(anim), phase)
 	if fixed_frame >= 0:
 		frame = fixed_frame

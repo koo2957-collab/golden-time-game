@@ -1047,7 +1047,16 @@ def bake_scene(spec):
             o.matrix_parent_inverse = inv
     hide = tuple(spec.get("hide", []))
     def parts(rig):
-        return [o for o in bpy.data.objects if o.parent == rig]
+        # 그 사람에 붙은 조각 — 소품을 빈 물체로 묶어 움직이는 경우(공병·등지게)도 있어 자손까지
+        out = []
+        todo = [rig]
+        while todo:
+            cur = todo.pop()
+            for o in bpy.data.objects:
+                if o.parent == cur:
+                    out.append(o)
+                    todo.append(o)
+        return out
     def base(name):
         return name.split(".")[0]
     SHAPES = ("MESH", "CURVE")

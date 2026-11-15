@@ -416,3 +416,9 @@ func test_driver_baked() -> void:
 	# 소화전은 차 쪽 결합(cpl_mid)이 끝난 뒤 마지막에 연다 (사용자)
 	var solo: Array = plans.hydrant_solo.driver
 	assert_eq(str(solo[solo.size() - 1][1]), "open", "마지막은 소화전 개방")
+
+
+## B5 공기호흡기 용기 교체 (2026-11-16 사용자가 블렌더에서 확인): 각자 앉아서
+func test_scba_swap_baked() -> void:
+	var s := SpriteArt.get_set(str(SpriteArt.config().crew))
+	assert_eq(s.frames("scba_swap"), 16, "용기 교체 16장")

@@ -957,6 +957,12 @@ func _draw() -> void:
 		for w in sim.command.survey.witnesses:
 			if w.present(sim.clock.tick):
 				_bucket(buckets, w.pos, w)
+		# 운전원 (소화전 점령·급수 연결 중에만 차에서 내려 있다)
+		for v in sim.units.vehicles:
+			var dl := _driver_layout(v)
+			for who: String in ["driver", "other"]:
+				if dl.has(who):
+					_bucket(buckets, dl[who].pos, {"driver": v.id, "who": who})
 	# 그릴 물체가 있는 칸만 대각선마다 x 오름차순으로 (빈 바닥 칸은 그릴 것이 없다)
 	var objects := _object_cells()
 	var extra := _dynamic_object_cells()
@@ -977,7 +983,10 @@ func _draw() -> void:
 			for item: Array in group:
 				if skip_live and not item[1] is Witness:
 					continue
-				if item[1] == commander:
+				if item[1] is Dictionary:
+					if not skip_live:
+						_draw_driver(item[1])
+				elif item[1] == commander:
 					_draw_commander(alpha)
 				elif item[1] is Firefighter:
 					if not skip_live:
@@ -1116,7 +1125,7 @@ func _bucket_person(buckets: Dictionary, p: Vector2, obj: Object, alpha: float) 
 	buckets[d].append([vp.x + vp.y + 0.01 * float(fix[1]), obj])
 
 
-func _bucket(buckets: Dictionary, p: Vector2, obj: Object) -> void:
+func _bucket(buckets: Dictionary, p: Vector2, obj: Variant) -> void:
 	if not _mask_now.is_empty() and sim.building.in_bounds(floori(p.x), floori(p.y)) \
 			and _mask_now[floori(p.y) * sim.building.width + floori(p.x)] == 0:
 		return
@@ -1554,6 +1563,13 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		var held := _ff_carry_layout(ff, 0.0)
 		if not held.is_empty():
 			dir = posmod(int(held.k) + 4, 8) if str(held.mode) == "lift" else int(held.k)
+	elif not _helper_pose(ff).is_empty():
+		# 소화전 급수를 둘이서 (2026-11-16 사용자): 차 옆에 남은 대원이 굴러온 호스 끝을 차 급수구에 결합한다
+		var hp := _helper_pose(ff)
+		anim = str(hp.anim)
+		dir = int(hp.k)
+		moving = false
+		fixed_frame = int(hp.frame)
 	elif not _ems_carry_layout(crew, art).is_empty():
 		# 들것 이송 (A10, 2026-11-15 사용자가 블렌더에서 확인): 바깥은 주 들것(조장이 머리 쪽에서 밀고 짝은 발 쪽 옆에서 잡음),
 		# 건물 안은 분리형 들것(둘이 앞뒤 끝을 쥐고 듦). 자리는 구울 때 적은 값 (조장 기준)
@@ -1731,6 +1747,155 @@ func _window_breaker(crew: Crew, art: SpriteArt.SpriteSet) -> int:
 func _door_opener(crew: Crew, art: SpriteArt.SpriteSet) -> int:
 	var dl := _door_check_layout(crew, art)
 	return int(dl.opener) if not dl.is_empty() else -1
+
+
+## 운전원 작업 (2026-11-16 사용자 결정, SOP 205): 차가 소화전 점령·급수 연결을 하는 동안만 운전원이 내려 직접 호스를 연결한다.
+## 진행률 구간마다 동작·자리(data/art.json driver_steps). 사람마다 {anim, k, frame, pos, depth}:
+## driver = 이 차 운전원, helper = 둘이서 할 때 차 옆 조의 조장(차 쪽 결합), other = 급수받는 펌프차 운전원.
+## hose_a·hose_b = 굴려 펴는 중·편 뒤의 호스 선. 작업이 없으면 빈 것
+func _driver_layout(v: Vehicle) -> Dictionary:
+	if v == null or v.work.is_empty() or v.away or thermal:
+		return {}
+	var dart := SpriteArt.get_set(str(SpriteArt.config().get("driver", "")))
+	if dart == null:
+		return {}
+	var kind := str(v.work.kind)
+	var helper := int(v.work.get("helper", -1))
+	var key := kind
+	if kind == "hydrant":
+		key = "hydrant_pair" if helper >= 0 else "hydrant_solo"
+	var plan: Dictionary = SpriteArt.config().get("driver_steps", {}).get(key, {})
+	if plan.is_empty():
+		return {}
+	var a := Vector2.ZERO
+	var b := Vector2.ZERO
+	var a_body := v.pos
+	var b_body := Vector2.ZERO
+	var other_v: Vehicle = null
+	if kind == "hydrant":
+		var hi := int(v.work.target)
+		if hi < 0 or hi >= sim.building.hydrants.size():
+			return {}
+		b = Vector2(sim.building.hydrants[hi]) + Vector2(0.5, 0.5)
+		a = v.closest_body_point(b)
+		b_body = b
+	else:
+		other_v = sim.units.get_vehicle(int(v.work.target))
+		if other_v == null:
+			return {}
+		a = v.closest_body_point(other_v.pos)
+		b = other_v.closest_body_point(v.pos)
+		b_body = other_v.pos
+	var prog := sim.water.work_progress(v)
+	var out := {}
+	for who: String in ["driver", "helper", "other"]:
+		if not plan.has(who):
+			continue
+		var art := dart if who != "helper" else SpriteArt.crew_set("진압대")
+		var placed := _driver_step(plan[who], prog, art, a, b, a_body, b_body, kind, v.id)
+		if not placed.is_empty():
+			out[who] = placed
+	if kind == "hydrant" and helper >= 0:
+		out.helper_crew = helper
+	if other_v != null:
+		out.other_vehicle = other_v.id
+	# 호스 선: 굴려 펴는 동안 시작점에서 쭉 늘어나고, 편 뒤에는 끝까지
+	var roll: Array = plan.get("roll", [])
+	if roll.size() == 2 and prog >= float(roll[0]):
+		var start := b if kind == "hydrant" else a
+		var end := a if kind == "hydrant" else b
+		var f := clampf((prog - float(roll[0])) / maxf(0.001, float(roll[1]) - float(roll[0])), 0.0, 1.0)
+		out.hose_a = start
+		out.hose_b = start.lerp(end, f)
+	return out
+
+
+## 한 사람의 지금 구간: 동작·방향·자리. 동작이 ""이면 빈 것 (안 보임)
+func _driver_step(steps: Array, prog: float, art: SpriteArt.SpriteSet, a: Vector2, b: Vector2, a_body: Vector2, b_body: Vector2,
+		kind: String, seed: int) -> Dictionary:
+	if art == null or steps.is_empty():
+		return {}
+	var t0 := 0.0
+	var step: Array = steps[steps.size() - 1]
+	for s: Array in steps:
+		if prog < float(s[0]):
+			step = s
+			break
+		t0 = float(s[0])
+	var anim := str(step[1])
+	var where := str(step[2])
+	if anim == "" or art.frames(anim) <= 0:
+		return {}
+	var f := clampf((prog - t0) / maxf(0.001, float(step[0]) - t0), 0.0, 1.0)
+	var cell := sim.units.cell_size_m
+	var pos := a
+	var k := 0
+	var frame := -1
+	match where:
+		"walk_a_b", "walk_b_a":
+			var p0 := a if where == "walk_a_b" else b
+			var p1 := b if where == "walk_a_b" else a
+			pos = p0.lerp(p1, f)
+			k = SpriteArt.dir8(p1 - p0)
+		"roll_a", "roll_b":
+			# 호스를 굴려 펴기: 시작점에서 상대 쪽을 보고 굴린다. 장은 진행 정도로 (한 번)
+			var p0 := a if where == "roll_a" else b
+			var p1 := b if where == "roll_a" else a
+			# 소화전(차) 바로 옆에서 상대 쪽으로 반 걸음 나와 굴린다 (소화전과 겹치지 않게)
+			pos = p0 + (p1 - p0).normalized() * (0.6 / maxf(0.01, cell))
+			k = SpriteArt.dir8(p1 - p0)
+			frame = clampi(int(f * art.frames(anim)), 0, art.frames(anim) - 1)
+		"at_a", "at_b":
+			var spot := a if where == "at_a" else b
+			var away := spot - (a_body if where == "at_a" else b_body)
+			if where == "at_b" and kind == "hydrant":
+				away = a - b  # 소화전에서는 차 쪽에 선다
+			if away.length_squared() < 0.0001:
+				away = Vector2.DOWN
+			# 서기(idle)는 결합하던 자리 그대로
+			var st := art.stand(anim if anim != "idle" else "cpl_mid")
+			var phi := away.angle() - atan2(float(st.get("right_m", 0.0)), float(st.get("fwd_m", 0.0)))
+			k = posmod(roundi(phi / (PI / 4.0)), 8)
+			pos = stand_spot(spot, Vector2.RIGHT.rotated(k * PI / 4.0), st, cell)
+	if frame < 0:
+		frame = SpriteArt.frame_at(anim, art.frames(anim), seed * 0.37)
+	return {"anim": anim, "k": k, "frame": frame, "pos": pos, "depth": pos.x + pos.y}
+
+
+## 차 옆 조의 조장이 소화전 급수를 도와 차 쪽 결합을 하는 중이면 그 자세 {anim, k, frame, pos}, 아니면 빈 것
+func _helper_pose(ff: Firefighter) -> Dictionary:
+	var c := sim.units.get_crew(ff.crew_id)
+	if c == null or c.leader != ff:
+		return {}
+	for v in sim.units.vehicles:
+		if v.work.is_empty() or int(v.work.get("helper", -1)) != c.id:
+			continue
+		var dl := _driver_layout(v)
+		if dl.has("helper"):
+			return dl.helper
+	return {}
+
+
+func _append_drivers(items: Array) -> void:
+	for v in sim.units.vehicles:
+		var dl := _driver_layout(v)
+		for who: String in ["driver", "other"]:
+			if dl.has(who):
+				items.append([float(dl[who].depth), {"driver": v.id, "who": who}])
+
+
+func _draw_driver(d: Dictionary) -> void:
+	var v := sim.units.get_vehicle(int(d.driver))
+	var dl := _driver_layout(v)
+	var who := str(d.get("who", "driver"))
+	if not dl.has(who):
+		return
+	var p: Dictionary = dl[who]
+	var art := SpriteArt.get_set(str(SpriteArt.config().get("driver", "")))
+	var owner := v if who == "driver" else sim.units.get_vehicle(int(dl.get("other_vehicle", v.id)))
+	var feet := proj.to_screen(p.pos, 0.0)
+	draw_colored_polygon(_ellipse(feet, 10, 5), Color(0, 0, 0, 0.3))
+	art.draw(self, str(p.anim), int(p.k), int(p.frame), feet, Color.WHITE, SpriteArt.helmet_color(sim.units.squads[owner.squad_id].type))
 
 
 ## 구급대 들것 이송 배치 (A10): 처치한 환자를 구급차로 옮기는 중이면
@@ -1989,6 +2154,10 @@ func _shown_pos(ff: Firefighter, alpha: float) -> Vector2:
 			var sl := _spray_layout(sc, sart, alpha)
 			if not sl.is_empty():
 				return sl.spots.get(ff.id, p)
+	if not ff.incapacitated:
+		var hp := _helper_pose(ff)
+		if not hp.is_empty():
+			return hp.pos
 	if not sim.ems.patients.is_empty() and not ff.incapacitated:
 		var ec := sim.units.get_crew(ff.crew_id)
 		if ec != null:
@@ -3055,6 +3224,11 @@ func _draw_route_lines(alpha: float) -> void:
 	if level == _first_level:
 		for line in UnitsView.supply_lines(sim):
 			draw_line(proj.to_screen(line[0], 0.05), proj.to_screen(line[1], 0.05), PlanStyle.SUPPLY_LINE, 4.0)
+		# 운전원이 연결하는 중인 호스: 첫 결합한 곳에서 운전원(또는 연장이 끝났으면 다음 결합 자리)까지
+		for v in sim.units.vehicles:
+			var dl := _driver_layout(v)
+			if not dl.is_empty() and dl.has("hose_a"):
+				draw_line(proj.to_screen(dl.hose_a, 0.05), proj.to_screen(dl.hose_b, 0.05), PlanStyle.SUPPLY_LINE, 4.0)
 
 
 ## 색 겹 (ghost_mode 4, 2026-11-12 사용자 결정 — 정적인 것은 무채색, 움직이는 것만 색):
@@ -3088,10 +3262,13 @@ func _draw_live_only() -> void:
 			if not veh.away:
 				var vp := veh.prev_pos.lerp(veh.pos, alpha)
 				items.append([vp.x + vp.y, veh])
+		_append_drivers(items)
 	items.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
 	for it: Array in items:
 		var o: Variant = it[1]
-		if o == cmd:
+		if o is Dictionary:
+			_draw_driver(o)
+		elif o == cmd:
 			_draw_commander(alpha)
 		elif o is Firefighter:
 			_draw_unit(o, alpha)
@@ -3591,10 +3768,14 @@ func _draw_outdoor_people() -> void:
 	for w in sim.command.survey.witnesses:
 		if w.present(sim.clock.tick):
 			items.append([w.pos.x + w.pos.y, w])
+	if level == _first_level:
+		_append_drivers(items)
 	items.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
 	for it: Array in items:
 		var o: Variant = it[1]
-		if o == cmd:
+		if o is Dictionary:
+			_draw_driver(o)
+		elif o == cmd:
 			_draw_commander(alpha)
 		elif o is Firefighter:
 			_draw_unit(o, alpha)

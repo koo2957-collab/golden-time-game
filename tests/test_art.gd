@@ -392,3 +392,27 @@ func test_overhaul_baked() -> void:
 	var b := s.stand("ovh_b")
 	assert_true(Vector2(float(b.fwd_m), float(b.right_m)).length() > 0.5, "짝은 조장 옆 (%.2f, %.2f)" % [float(b.get("fwd_m", 0.0)), float(b.get("right_m", 0.0))])
 
+
+## 운전원 작업 그림 (2026-11-16 사용자 확인): 공기호흡기 없는 운전원, 호스를 굴려 펴고 결합·소화전 개방
+func test_driver_baked() -> void:
+	var d := SpriteArt.get_set(str(SpriteArt.config().driver))
+	assert_true(d != null, "운전원 그림 묶음")
+	for anim in ["idle", "walk", "carry_roll", "roll_out", "cpl_low", "cpl_mid", "open"]:
+		assert_true(d.frames(anim) > 0, "운전원 %s" % anim)
+	assert_true(SpriteArt.crew_set("진압대").frames("cpl_mid") > 0, "차 옆 대원(공기호흡기 착용)의 차 급수구 결합")
+	var plans: Dictionary = SpriteArt.config().driver_steps
+	for key in ["hydrant_solo", "hydrant_pair", "supply"]:
+		for who in ["driver", "helper", "other"]:
+			if not plans[key].has(who):
+				continue
+			var last := 0.0
+			for st: Array in plans[key][who]:
+				assert_true(float(st[0]) > last, "%s %s 구간이 차례로 커진다" % [key, who])
+				if str(st[1]) != "":
+					var art := d if who != "helper" else SpriteArt.crew_set("진압대")
+					assert_true(art.frames(str(st[1])) > 0, "%s %s %s 그림" % [key, who, st[1]])
+				last = float(st[0])
+			assert_eq(last, 1.0, "%s %s 끝 = 1" % [key, who])
+	# 소화전은 차 쪽 결합(cpl_mid)이 끝난 뒤 마지막에 연다 (사용자)
+	var solo: Array = plans.hydrant_solo.driver
+	assert_eq(str(solo[solo.size() - 1][1]), "open", "마지막은 소화전 개방")

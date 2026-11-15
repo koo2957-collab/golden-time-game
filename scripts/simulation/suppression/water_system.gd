@@ -524,22 +524,28 @@ func _start_work(v: Vehicle, kind: String, target: int, dist_m: float, tick: int
 	var base := float(_tt.get("hose_length_s", 15.0)) * lengths + float(_tt.get("coupling_s", 5.0)) * 2.0
 	if kind == "hydrant":
 		base += float(_tt.get("hydrant_occupy_s", 20.0))
-	var people := 2 if _helper_near(v) else 1
+	var helper := _helper_crew(v)
+	var people := 2 if helper >= 0 else 1
 	var total := base * (2.0 if people == 1 else 1.0)
 	var labels := {"hydrant": "소화전 점령", "supply": "급수 연결", "fdc": "송수구 연결"}
-	v.work = {"kind": kind, "label": labels.get(kind, kind), "target": target, "remain": total, "total": total, "people": people, "lengths": lengths}
+	v.work = {"kind": kind, "label": labels.get(kind, kind), "target": target, "remain": total, "total": total, "people": people, "lengths": lengths, "helper": helper}
 	events.add(tick, "work_start", {"vehicle": _name(v), "work": labels.get(kind, kind), "seconds": roundi(total), "people": people, "lengths": lengths, "driver": v.driver_label()})
 
 
 ## 차량 옆(helper_radius_m)에 쉬고 있는 조가 있으면 2인 작업
 func _helper_near(v: Vehicle) -> bool:
+	return _helper_crew(v) >= 0
+
+
+## 2인 작업을 도울 조 (차량 옆에서 쉬고 있는 조, 없으면 -1). 화면은 그 조의 조장이 차 쪽 결합을 하는 모습으로 그린다
+func _helper_crew(v: Vehicle) -> int:
 	var r := float(_tt.get("helper_radius_m", 4.0)) / _cell_m
 	for c in units.crews:
 		if c.leader.incapacitated or c.leader.aboard or c.leader.is_moving() or hose_of_crew(c.id) != null:
 			continue
 		if c.leader.level == v.level and v.distance_to_body(c.leader.pos) <= r:
-			return true
-	return false
+			return c.id
+	return -1
 
 
 func _step_work(dt: float, tick: int) -> void:

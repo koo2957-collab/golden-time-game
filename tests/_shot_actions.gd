@@ -285,5 +285,23 @@ func _run() -> void:
 		for i in 6:
 			await process_frame
 		root.get_texture().get_image().save_png(out + "shot_actions_overhaul.png")
+	# 운전원 작업 (2026-11-16): 첫 차량이 가장 가까운 소화전을 점령하는 장면을 진행률마다
+	sim.rekindle.tasks.clear()
+	world._set_interior(false)
+	if not sim.building.hydrants.is_empty():
+		var pv: Vehicle = sim.units.vehicles[0]
+		var hi := 0
+		for i in sim.building.hydrants.size():
+			if pv.pos.distance_to(Vector2(sim.building.hydrants[i])) < pv.pos.distance_to(Vector2(sim.building.hydrants[hi])):
+				hi = i
+		var hp := Vector2(sim.building.hydrants[hi]) + Vector2(0.5, 0.5)
+		world.camera.zoom = Vector2(2.6, 2.6)
+		world.camera.position = world.projections[world.ViewMode.ISO].to_screen(hp + Vector2(-2.0, 0.5))
+		for prog: float in [0.08, 0.22, 0.38, 0.68, 0.95]:
+			pv.work = {"kind": "hydrant", "label": "소화전 점령", "target": hi, "remain": 100.0 * (1.0 - prog), "total": 100.0, "people": 1, "helper": -1}
+			for i in 4:
+				await process_frame
+			root.get_texture().get_image().save_png(out + "shot_driver_%02d.png" % roundi(prog * 100))
+		pv.work = {}
 	print("저장 ", out, " · 조 ", crews.size(), " · 구조대상자 ", sim.rescue.victims.size(), " · 문 ", door != null, " · 층 그림 ", layer != null)
 	quit()

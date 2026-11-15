@@ -1288,6 +1288,240 @@
     "ovh_a": "FF_A",
     "ovh_b": "FF_B"
    }
+  },
+  {
+   "target": "driver",
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "driver_idle",
+   "blend": "tools/blender/scenes/driver_idle.blend",
+   "pivot_object": "FF_A",
+   "frames": 8,
+   "note": "운전원 서기. 2026-11-16 사용자가 블렌더에서 확인 (SOP 205 차량 부서: 물탱크차·후착대 운전원이 소화전 점령·급수 연결). 운전원 = 공기호흡기 없음·한 벌 상의·얼굴",
+   "actors": {
+    "idle": "FF_A"
+   }
+  },
+  {
+   "target": "driver",
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "driver_walk",
+   "blend": "tools/blender/scenes/driver_walk.blend",
+   "pivot_object": "FF_A",
+   "frames": 8,
+   "note": "운전원 걷기. 2026-11-16 사용자가 블렌더에서 확인 (SOP 205 차량 부서: 물탱크차·후착대 운전원이 소화전 점령·급수 연결). 운전원 = 공기호흡기 없음·한 벌 상의·얼굴",
+   "actors": {
+    "walk": "FF_A"
+   }
+  },
+  {
+   "target": "driver",
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "driver_carry",
+   "blend": "tools/blender/scenes/driver_carry.blend",
+   "pivot_object": "FF_A",
+   "frames": 8,
+   "note": "접어 감은 호스 한 롤을 오른 어깨에 메고 소화전으로 걷는다. 2026-11-16 사용자가 블렌더에서 확인 (SOP 205 차량 부서: 물탱크차·후착대 운전원이 소화전 점령·급수 연결). 운전원 = 공기호흡기 없음·한 벌 상의·얼굴",
+   "actors": {
+    "carry_roll": "FF_A"
+   }
+  },
+  {
+   "target": "driver",
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "driver_cpl_low",
+   "blend": "tools/blender/scenes/driver_couple_low.blend",
+   "pivot_object": "hyd_mid",
+   "frames": 12,
+   "note": "소화전 방수구 앞에 한쪽 무릎을 꿇고 호스 결합구를 끼워 돌려 잠근다 (호스는 바닥으로 이어짐). 기준점 = 소화전. 2026-11-16 사용자가 블렌더에서 확인 (SOP 205 차량 부서: 물탱크차·후착대 운전원이 소화전 점령·급수 연결). 운전원 = 공기호흡기 없음·한 벌 상의·얼굴",
+   "actors": {
+    "cpl_low": "FF_A"
+   }
+  },
+  {
+   "target": "driver",
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "driver_lay",
+   "blend": "tools/blender/scenes/driver_hose_walk.blend",
+   "pivot_object": "FF_A",
+   "frames": 32,
+   "note": "아코디언으로 위로 쌓아 접은 호스를 어깨에 메고 걸으며 연장 — 8장마다 맨 위 겹이 하나씩 줄어 4겹→1겹, 남은 호스는 맨 위 겹 끝에서 곧게 떨어져 뒤로 깔린다. 게임은 간 거리로 구간(8장씩)을 고른다. 2026-11-16 사용자가 블렌더에서 확인 (SOP 205 차량 부서: 물탱크차·후착대 운전원이 소화전 점령·급수 연결). 운전원 = 공기호흡기 없음·한 벌 상의·얼굴",
+   "actors": {
+    "lay": "FF_A"
+   }
+  },
+  {
+   "target": "driver",
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "driver_cpl_mid",
+   "blend": "tools/blender/scenes/driver_couple_mid.blend",
+   "pivot_object": "vcon_mid",
+   "frames": 12,
+   "note": "차 급수구(높이 약 0.8m) 앞에서 무릎을 굽혀 낮추고 호스 결합구를 끼워 돌려 잠근다 — 호스는 몸 오른쪽 바깥으로 떨어져 뒤로. 기준점 = 급수구 아래 바닥. 2026-11-16 사용자가 블렌더에서 확인 (SOP 205 차량 부서: 물탱크차·후착대 운전원이 소화전 점령·급수 연결). 운전원 = 공기호흡기 없음·한 벌 상의·얼굴",
+   "actors": {
+    "cpl_mid": "FF_A"
+   }
+  },
+  {
+   "target": "driver",
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "driver_open",
+   "blend": "tools/blender/scenes/driver_open.blend",
+   "pivot_object": "hyd_mid",
+   "frames": 12,
+   "note": "소화전 꼭지에 스패너를 끼워 두 손으로 돌려 밸브를 연다 (B4). 기준점 = 소화전. 2026-11-16 사용자가 블렌더에서 확인 (SOP 205 차량 부서: 물탱크차·후착대 운전원이 소화전 점령·급수 연결). 운전원 = 공기호흡기 없음·한 벌 상의·얼굴",
+   "actors": {
+    "open": "FF_A"
+   }
+  },
+  {
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "frames": 12,
+   "name": "driver_roll",
+   "target": "driver",
+   "blend": "tools/blender/scenes/driver_roll.blend",
+   "pivot_object": "FF_A",
+   "note": "호스 굴려 펴기: 한쪽 무릎을 꿇고 왼손은 앞 무릎을 짚고(결합구는 그 옆 바닥), 오른손으로 말아 둔 호스를 밀어 앞으로 굴린다 — 굴러가며 풀려 결합구에서 곧게 깔린다. 2026-11-16 사용자가 블렌더에서 확인 (사용자: 소화전 급수는 호스를 굴려 연장)",
+   "actors": {
+    "roll_out": "FF_A"
+   }
+  },
+  {
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "frames": 12,
+   "name": "crew_cpl_mid",
+   "target": "firefighter_v2",
+   "blend": "tools/blender/scenes/crew_couple_mid.blend",
+   "pivot_object": "vcon_mid",
+   "note": "대원(공기호흡기 착용)이 차 급수구에 호스 결합 — 둘이서 소화전 급수를 할 때 차 옆에 남은 대원 몫 (운전원 cpl_mid와 같은 동작). 2026-11-16",
+   "actors": {
+    "cpl_mid": "FF_A"
+   }
   }
  ]
 }

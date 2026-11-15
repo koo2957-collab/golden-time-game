@@ -1552,6 +1552,12 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		var held := _ff_carry_layout(ff, 0.0)
 		if not held.is_empty():
 			dir = posmod(int(held.k) + 4, 8) if str(held.mode) == "lift" else int(held.k)
+	elif not _ems_carry_layout(crew, art).is_empty():
+		# 들것 이송 (A10, 2026-11-15 사용자가 블렌더에서 확인): 바깥은 주 들것(조장이 머리 쪽에서 밀고 짝은 발 쪽 옆에서 잡음),
+		# 건물 안은 분리형 들것(둘이 앞뒤 끝을 쥐고 듦). 자리는 구울 때 적은 값 (조장 기준)
+		var el := _ems_carry_layout(crew, art)
+		anim = str(el.anims.get(ff.id, "cot_a"))
+		dir = int(el.k)
 	elif not _aid_layout(crew, art).is_empty():
 		# 응급처치 (A9, 2026-11-15 사용자가 블렌더에서 확인): 조장은 환자 머리 옆에서 산소마스크·기도, 짝은 팔 옆에서 맥박.
 		# 둘 다 두 무릎을 꿇고 앉아 숙인다. 자리는 구울 때 적은 값 (환자 가운데 기준)
@@ -1623,7 +1629,43 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 
 ## 여럿이 한 장면으로 구운 동작 (프레임을 조장 기준으로 맞춘다)
 const PAIRED_ANIMS := ["force_a", "force_b", "lift_f", "lift_b", "drag", "spray_n", "spray_h", "spray_h1", "spray_h2",
-	"spray_ln", "spray_lh", "spray_lh1", "spray_lh2", "search_a", "search_b", "aid_a", "aid_b"]
+	"spray_ln", "spray_lh", "spray_lh1", "spray_lh2", "search_a", "search_b", "aid_a", "aid_b",
+	"cot_a", "cot_b", "scoop_a", "scoop_b"]
+
+
+## 구급대 들것 이송 배치 (A10): 처치한 환자를 구급차로 옮기는 중이면
+## {kind 들것 종류, k 방향, anims, spots {짝 id: 칸 좌표}, victim 환자(들것) 그림 자리, victim_anim}, 아니면 빈 것.
+## 바깥(평지)은 주 들것(cot), 건물 안은 분리형 들것(scoop). 기준점 = 조장. 방향 = 조장이 걷는 쪽
+func _ems_carry_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dictionary:
+	if crew == null or art == null or sim.ems.patients.is_empty():
+		return {}
+	var p := sim.ems.patient_of_crew(crew.id)
+	if p == null or p.stage != EmsSystem.Stage.CARRYING or p.victim_id < 0 or p.victim_id >= sim.rescue.victims.size():
+		return {}
+	var lead := crew.leader
+	if lead.incapacitated:
+		return {}
+	var v: Victim = sim.rescue.victims[p.victim_id]
+	var vart := SpriteArt.victim_set(v.label())
+	if vart == null:
+		return {}
+	var kind := "cot" if _outdoor_at(lead.pos) else "scoop"
+	if art.frames(kind + "_a") <= 0 or vart.frames(kind + "_v") <= 0:
+		kind = "cot"
+		if art.frames("cot_a") <= 0 or vart.frames("cot_v") <= 0:
+			return {}
+	var d := lead.pos - lead.prev_pos
+	var k := SpriteArt.dir8(d) if lead.level == lead.prev_level and d.length_squared() > 0.000001 else int(_facing.get(lead.id, 1))
+	var facing := Vector2.RIGHT.rotated(k * PI / 4.0)
+	var cell := sim.units.cell_size_m
+	var lp := UnitsView.display_pos(lead, alpha)
+	var out := {"kind": kind, "k": k, "anims": {lead.id: kind + "_a"}, "spots": {},
+		"victim": stand_spot(lp, facing, vart.stand(kind + "_v"), cell), "victim_anim": kind + "_v"}
+	var mate := crew.partner
+	if mate != null and not mate.incapacitated and mate.level == lead.level:
+		out.anims[mate.id] = kind + "_b"
+		out.spots[mate.id] = stand_spot(lp, facing, art.stand(kind + "_b"), cell)
+	return out
 
 
 ## 응급처치 배치 (A9): 구급대 조가 환자 곁에 멈춰 처치 중이면
@@ -1854,6 +1896,9 @@ func _shown_pos(ff: Firefighter, alpha: float) -> Vector2:
 			var al := _aid_layout(ec, eart, alpha)
 			if not al.is_empty():
 				return al.spots.get(ff.id, p)
+			var el := _ems_carry_layout(ec, eart, alpha)
+			if not el.is_empty():
+				return el.spots.get(ff.id, p)
 	if not sim.rescue.searches.is_empty() and not ff.incapacitated:
 		var scr := sim.units.get_crew(ff.crew_id)
 		if scr != null and scr.partner == ff:
@@ -2634,6 +2679,19 @@ func _draw_blast_art(at: Vector2, age: float, key: int) -> bool:
 ## 요구조자: 누운 모습, 상태별 색, 이름표. 업혀 있으면 대원 어깨 위에 작게
 func _draw_victim(v: Victim) -> void:
 	var color: Color = PlanStyle.VICTIM_COLORS[v.state]
+	if v.carried_by >= 0 and not thermal:
+		# 구급대 들것 이송 (A10): 들것 위에 누운 그림 (들것까지 함께 구웠다). 박자는 조장과 같게, 멈추면 첫 장
+		var ep := sim.ems.patient_of(v.id)
+		if ep != null and ep.stage == EmsSystem.Stage.CARRYING:
+			var ec := sim.units.get_crew(v.carried_by)
+			var el := _ems_carry_layout(ec, SpriteArt.crew_set(sim.units.squads[ec.squad_id].type), sim.clock.alpha()) if ec != null else {}
+			if not el.is_empty():
+				var vart := SpriteArt.victim_set(v.label())
+				var va := str(el.victim_anim)
+				var walking := ec.leader.level == ec.leader.prev_level and (ec.leader.pos - ec.leader.prev_pos).length_squared() > 0.000001
+				var fr := SpriteArt.frame_at(va, vart.frames(va), ec.leader.id * 0.37) if walking else 0
+				vart.draw(self, va, int(el.k), fr, proj.to_screen(el.victim, 0.0))
+				return
 	if v.carried_by >= 0:
 		# 옮겨지는 중 (2026-11-15): 누운 그림을 운반 배치대로 — 2인 운반은 두 사람 사이에 들려서(머리가 뒷사람 쪽),
 		# 끌기는 끄는 사람 뒤 바닥에(머리가 끄는 사람 쪽). 누운 그림은 발이 그림 방향을 향한다

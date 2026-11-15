@@ -211,6 +211,17 @@ func _run() -> void:
 		for i in 6:
 			await process_frame
 		root.get_texture().get_image().save_png(out + "shot_actions_ems_idle.png")
+		# 들것 이송 (A10): 같은 환자를 주 들것으로 구급차 쪽(동쪽)으로 옮기는 중
+		pt.stage = EmsSystem.Stage.CARRYING
+		sim.ems.patients.append(pt)
+		vic.carried_by = c3.id
+		_place(c3, Vector2(36.5, 31.5), Vector2(1.0, 0))
+		c3.leader.prev_pos = c3.leader.pos - Vector2(0.05, 0.0)
+		for i in 6:
+			await process_frame
+		root.get_texture().get_image().save_png(out + "shot_actions_cot.png")
+		sim.ems.patients.erase(pt)
+		vic.carried_by = -1
 		sq.type = old_type
 	print("저장 ", out, " · 조 ", crews.size(), " · 구조대상자 ", sim.rescue.victims.size(), " · 문 ", door != null, " · 층 그림 ", layer != null)
 	quit()

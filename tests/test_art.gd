@@ -352,3 +352,16 @@ func test_paramedic_and_first_aid_baked() -> void:
 		var v := SpriteArt.get_set(str(SpriteArt.config().victims[key]))
 		assert_eq(v.frames("aid_v"), 12, "누운 환자(%s) 12장" % key)
 
+
+## A10 들것 이송 (2026-11-15 사용자가 블렌더에서 확인): 주 들것(바깥) · 분리형 들것(건물 안)
+func test_stretchers_baked() -> void:
+	var ems := SpriteArt.crew_set("구급대")
+	for kind in ["cot", "scoop"]:
+		assert_eq(ems.frames(kind + "_a"), 16, "%s 조장 16장" % kind)
+		assert_eq(ems.frames(kind + "_b"), 16, "%s 짝 16장" % kind)
+		assert_true(float(ems.stand(kind + "_b").fwd_m) > 1.5, "%s 짝은 조장 앞 (%.2f)" % [kind, float(ems.stand(kind + "_b").get("fwd_m", 0.0))])
+		for key in ["male", "female"]:
+			var v := SpriteArt.get_set(str(SpriteArt.config().victims[key]))
+			assert_eq(v.frames(kind + "_v"), 16, "%s 환자(%s) 16장" % [kind, key])
+			assert_true(float(v.stand(kind + "_v").fwd_m) > 0.5, "%s 환자는 조장 앞 들것 위" % kind)
+

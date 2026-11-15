@@ -1057,6 +1057,132 @@
      }
     }
    }
+  },
+  {
+   "blend": "tools/blender/scenes/stretcher_cot.blend",
+   "target": "paramedic",
+   "pivot_object": "EMS_A",
+   "frames": 16,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "stretcher_cot",
+   "note": "A10 들것 이송(주 들것): 사용자 참고 그림 '주들것 이미지'(주황 매트 네 칸, 은색 알루미늄 틀·옆 난간, 검은 옆 손잡이, 노란 버팀대, 바퀴 4개·빨간 브레이크, 검은 고정끈이 환자 위를 지나 틀 난간에 묶임). 환자는 반듯이 누워 발 쪽이 가는 방향. 구급대원 1(cot_a, 조장)은 머리 쪽 뒤에서 두 손으로 손잡이를 밀고, 구급대원 2(cot_b)는 발 쪽 옆에서 나란히 걸으며 왼손으로 들것 가장자리를 잡는다 — 2026-11-15 사용자가 블렌더에서 확인. 접이식 들것은 쓸 곳이 없어 뺐다(사용자)",
+   "actors": {
+    "cot_a": "EMS_A",
+    "cot_b": "EMS_B",
+    "cot_v": {
+     "rig": "VIC_rig",
+     "target": "civilian_m"
+    }
+   }
+  },
+  {
+   "blend": "tools/blender/scenes/stretcher_cot.blend",
+   "target": "paramedic",
+   "pivot_object": "EMS_A",
+   "frames": 16,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "stretcher_cot_f",
+   "note": "A10 주 들것 — 누운 환자(여성 그림)",
+   "actors": {
+    "cot_v": {
+     "rig": "VIC_rig",
+     "target": "civilian_f",
+     "images": {
+      "humanMaleA.png": "humanFemaleA.png"
+     }
+    }
+   }
+  },
+  {
+   "blend": "tools/blender/scenes/stretcher_scoop.blend",
+   "target": "paramedic",
+   "pivot_object": "EMS_A",
+   "frames": 16,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "stretcher_scoop",
+   "note": "A10 들것 이송(분리형 들것): 사용자 참고 그림 '분리형 들것 이미지'(노란 판 두 쪽 + 둘레 노란 관 틀, 홈·손잡이 구멍, 은색 이음쇠, 검은 고정끈 세 줄, 길이 162~234cm·폭 44.5cm). 환자는 반듯이 누워 발 쪽이 가는 방향. 구급대원 1(scoop_a, 조장)은 머리 쪽 뒤, 구급대원 2(scoop_b)는 발 쪽 앞에서 둘 다 앞을 보고 걸으며 팔을 내려 끝 모서리를 쥔다 — 2026-11-15 사용자가 블렌더에서 확인",
+   "actors": {
+    "scoop_a": "EMS_A",
+    "scoop_b": "EMS_B",
+    "scoop_v": {
+     "rig": "VIC_rig",
+     "target": "civilian_m"
+    }
+   }
+  },
+  {
+   "blend": "tools/blender/scenes/stretcher_scoop.blend",
+   "target": "paramedic",
+   "pivot_object": "EMS_A",
+   "frames": 16,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "stretcher_scoop_f",
+   "note": "A10 분리형 들것 — 누운 환자(여성 그림)",
+   "actors": {
+    "scoop_v": {
+     "rig": "VIC_rig",
+     "target": "civilian_f",
+     "images": {
+      "humanMaleA.png": "humanFemaleA.png"
+     }
+    }
+   }
   }
  ]
 }

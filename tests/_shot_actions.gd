@@ -314,5 +314,18 @@ func _run() -> void:
 	for i in 6:
 		await process_frame
 	root.get_texture().get_image().save_png(out + "shot_actions_scba.png")
+	# 가스 차단 (B6): 차 옆 바깥 칸을 가스 밸브(LPG 용기)로 두고 1조가 잠그는 중
+	for ff in crews[0].members():
+		ff.swap_timer = 0.0
+	var gv := Vector2i((spot + Vector2(3.0, 0.0)).floor())
+	sim.gas.valve = gv
+	sim.gas.open = true
+	sim.gas.workers[crews[0].id] = 30.0
+	_place(crews[0], Vector2(gv) + Vector2(0.5, 1.8), Vector2(1.2, 0.4))
+	world.camera.position = world.projections[world.ViewMode.ISO].to_screen(Vector2(gv) + Vector2(0.5, 1.0))
+	for i in 6:
+		await process_frame
+	root.get_texture().get_image().save_png(out + "shot_actions_gas.png")
+	sim.gas.workers.clear()
 	print("저장 ", out, " · 조 ", crews.size(), " · 구조대상자 ", sim.rescue.victims.size(), " · 문 ", door != null, " · 층 그림 ", layer != null)
 	quit()

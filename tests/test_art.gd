@@ -422,3 +422,11 @@ func test_driver_baked() -> void:
 func test_scba_swap_baked() -> void:
 	var s := SpriteArt.get_set(str(SpriteArt.config().crew))
 	assert_eq(s.frames("scba_swap"), 16, "용기 교체 16장")
+
+
+## B6 가스 차단 (2026-11-16 사용자가 블렌더에서 확인): LPG 용기 밸브를 시계 방향으로 돌려 잠근다
+func test_gas_off_baked() -> void:
+	var s := SpriteArt.get_set(str(SpriteArt.config().crew))
+	assert_eq(s.frames("gas_off"), 16, "가스 차단 16장")
+	var st := s.stand("gas_off")
+	assert_true(Vector2(float(st.fwd_m), float(st.right_m)).length() > 0.3, "용기 앞에 선다 (용기와 겹치지 않음)")

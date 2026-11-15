@@ -1548,6 +1548,32 @@
    "actors": {
     "scba_swap": "FF_A"
    }
+  },
+  {
+   "name": "gas_lpg",
+   "blend": "tools/blender/scenes/gas_lpg.blend",
+   "target": "firefighter_v2",
+   "pivot_object": "lpg_mid",
+   "frames": 16,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "note": "B6 가스 차단: 건물 벽 앞 가정용 LPG 용기 두 개 앞에 쪼그려 앉아 왼손으로 보호캡을 잡고 오른손으로 밸브 손잡이 바퀴를 시계 방향(나사 조이듯)으로 돌려 잠근다 — 왼쪽 용기(1~8장), 오른쪽 용기(9~16장). 2026-11-16 사용자가 블렌더에서 확인 (SOP 214-2.2 난방연료 차단. 아파트 도시가스는 관계자에게 차단 요청 — SOP 213-2.1, 카드). 기준점 = 두 용기 가운데 바닥",
+   "actors": {
+    "gas_off": "FF_A"
+   }
   }
  ]
 }

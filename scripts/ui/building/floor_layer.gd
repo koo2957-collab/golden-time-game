@@ -1644,6 +1644,12 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		var sl := _search_layout(crew, art)
 		anim = str(sl.anims.get(ff.id, "search_a"))
 		dir = int(sl.k)
+	elif not _gas_layout(crew, art).is_empty() and ff == crew.leader:
+		# 가스 차단 (B6, 2026-11-16 사용자가 블렌더에서 확인): LPG 용기 앞에 쪼그려 앉아 밸브 손잡이를 시계 방향으로 돌려 잠근다
+		var gl := _gas_layout(crew, art)
+		anim = "gas_off"
+		dir = int(gl.k)
+		moving = false
 	elif ff.swap_timer > 0.0 and not moving and art.frames("scba_swap") > 0:
 		# 공기호흡기 용기 교체 (B5, 2026-11-16 사용자가 블렌더에서 확인): 각자 앉아 등지게를 바닥에 놓고 공병을 바꾼다
 		anim = "scba_swap"
@@ -1663,7 +1669,7 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 	var frame := 0
 	# 여럿이 한 장면으로 구운 동작(문 개방·2인 운반)은 조장 기준 같은 박자로 — 구울 때 맞춘 엇갈림이 그대로 보이게
 	var phase := (crew.leader.id if anim in PAIRED_ANIMS else ff.id) * 0.37
-	if moving or anim in ["idle", "idle_bag", "spray", "search", "force_a", "force_b", "radio", "radio_low", "door_feel", "window_break", "scba_swap"] or anim in PAIRED_ANIMS:
+	if moving or anim in ["idle", "idle_bag", "spray", "search", "force_a", "force_b", "radio", "radio_low", "door_feel", "window_break", "scba_swap", "gas_off"] or anim in PAIRED_ANIMS:
 		frame = SpriteArt.frame_at(anim, art.frames(anim), phase)
 	if fixed_frame >= 0:
 		frame = fixed_frame
@@ -1738,6 +1744,24 @@ func _window_layout(crew: Crew, art: SpriteArt.SpriteSet) -> Dictionary:
 		return {}
 	var fr := force_frame(t.opening, ff.pos)
 	return {"k": fr.k, "breaker": ff.id, "spot": stand_spot(door_center(t.opening), fr.facing, art.stand("window_break"), sim.units.cell_size_m)}
+
+
+## 가스 차단 배치 (B6): 그 조가 가스 밸브 차단을 맡아 밸브 곁에 멈춰 있으면 {k, spot 조장 자리}, 아니면 빈 것.
+## 기준점 = 밸브 칸(LPG 용기). 조장은 다가온 쪽에서 용기를 본다
+func _gas_layout(crew: Crew, art: SpriteArt.SpriteSet) -> Dictionary:
+	if crew == null or art == null or art.frames("gas_off") <= 0 or not sim.gas.workers.has(crew.id):
+		return {}
+	var lead := crew.leader
+	var valve := Vector2(sim.gas.valve) + Vector2(0.5, 0.5)
+	if lead.incapacitated or lead.is_moving() or lead.level != 1 or lead.pos.distance_to(valve) > 2.0:
+		return {}
+	var away := lead.pos - valve
+	if away.length_squared() < 0.0001:
+		away = Vector2.DOWN
+	var st := art.stand("gas_off")
+	var phi := away.angle() - atan2(float(st.get("right_m", 0.0)), float(st.get("fwd_m", 0.0)))
+	var k := posmod(roundi(phi / (PI / 4.0)), 8)
+	return {"k": k, "spot": stand_spot(valve, Vector2.RIGHT.rotated(k * PI / 4.0), st, sim.units.cell_size_m)}
 
 
 ## 창을 깨는 대원 id (없으면 -1)
@@ -2180,6 +2204,13 @@ func _shown_pos(ff: Firefighter, alpha: float) -> Vector2:
 		var wl := _window_layout(dc, dart)
 		if not wl.is_empty() and int(wl.breaker) == ff.id:
 			return wl.spot
+	if not ff.incapacitated and not sim.gas.workers.is_empty():
+		var gc := sim.units.get_crew(ff.crew_id)
+		if gc != null and gc.leader == ff:
+			var gart := SpriteArt.crew_set(sim.units.squads[gc.squad_id].type) if not thermal else null
+			var gl := _gas_layout(gc, gart)
+			if not gl.is_empty():
+				return gl.spot
 	if not ff.incapacitated and not sim.rekindle.tasks.is_empty():
 		var oc := sim.units.get_crew(ff.crew_id)
 		if oc != null and oc.partner == ff:

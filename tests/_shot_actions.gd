@@ -261,5 +261,29 @@ func _run() -> void:
 		for i in 6:
 			await process_frame
 		root.get_texture().get_image().save_png(out + "shot_actions_window.png")
+	# 잔불 정리 (B3): 1조가 건물 안 방에서 잔불 정리 중
+	sim.doors.tasks.clear()
+	var room0 = null
+	for cp in sim.fire.comps:
+		if cp.level == 1 and not cp.cells.is_empty():
+			room0 = cp
+			break
+	if room0 != null:
+		var rc: Vector2i = room0.cells[room0.cells.size() / 2]
+		sim.water.hoses.clear()
+		_place(crews[0], Vector2(rc) + Vector2(0.5, 0.5))
+		var ot := RekindleSystem.OverhaulTask.new()
+		ot.crew_id = crews[0].id
+		ot.room = room0.index
+		ot.remain = 999.0
+		sim.rekindle.tasks.append(ot)
+		world._set_interior(true)
+		for i in 4:
+			await process_frame
+		var iview = world.iso_view.current_live if world.iso_view.current_live else world.iso_view.layers[0]
+		world.camera.position = iview.proj.to_screen(Vector2(rc), 0.0) if "proj" in iview else world.camera.position
+		for i in 6:
+			await process_frame
+		root.get_texture().get_image().save_png(out + "shot_actions_overhaul.png")
 	print("저장 ", out, " · 조 ", crews.size(), " · 구조대상자 ", sim.rescue.victims.size(), " · 문 ", door != null, " · 층 그림 ", layer != null)
 	quit()

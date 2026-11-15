@@ -1261,6 +1261,33 @@
    "actors": {
     "window_break": "FF_A"
    }
+  },
+  {
+   "blend": "tools/blender/scenes/overhaul.blend",
+   "target": "firefighter_v2",
+   "pivot_object": "FF_A",
+   "frames": 12,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "overhaul",
+   "note": "B3 잔불 정리: 조장(ovh_a)은 천장 아래에서 노란 갈고리(장대 끝 금속 갈고리)를 천장 가장자리에 걸고 두 손으로 당겨 뜯어 내린다(위를 본다). 짝(ovh_b)은 옆에서 관창을 두 손으로 들고 뜯어 낸 천장 속을 겨눠 좌우로 조금씩 훑는다 — 2026-11-15 사용자가 블렌더에서 확인 (화재1 잔화정리: 천장 뒤는 파괴해서 확인, 감압 주수로 주수 사각이 없게, 높은 곳에서 낮은 곳으로). 기준점 = 조장",
+   "actors": {
+    "ovh_a": "FF_A",
+    "ovh_b": "FF_B"
+   }
   }
  ]
 }

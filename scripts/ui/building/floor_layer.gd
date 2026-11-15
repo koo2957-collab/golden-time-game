@@ -1582,6 +1582,12 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		else:
 			# 운반 그림이 없는 묶음(예전 그림): 들고 걷기, 그것도 없으면 걷기
 			anim = "carry" if art.frames("carry") > 0 else "walk"
+	elif not _overhaul_layout(crew, art).is_empty():
+		# 잔불 정리 (B3, 2026-11-15 사용자가 블렌더에서 확인): 조장은 갈고리로 천장을 뜯어 내리고, 짝은 그 속을 관창으로 겨눈다
+		var ol := _overhaul_layout(crew, art)
+		anim = str(ol.anims.get(ff.id, "ovh_a"))
+		dir = int(ol.k)
+		moving = false
 	elif _window_breaker(crew, art) == ff.id:
 		# 창 파괴 (B2, 2026-11-15 사용자가 블렌더에서 확인): 창 옆 벽에 붙어 만능도끼 곡괭이 끝으로 창 위쪽을 옆으로 차례로 깬다
 		var wl := _window_layout(crew, art)
@@ -1648,7 +1654,29 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 ## 여럿이 한 장면으로 구운 동작 (프레임을 조장 기준으로 맞춘다)
 const PAIRED_ANIMS := ["force_a", "force_b", "lift_f", "lift_b", "drag", "spray_n", "spray_h", "spray_h1", "spray_h2",
 	"spray_ln", "spray_lh", "spray_lh1", "spray_lh2", "search_a", "search_b", "aid_a", "aid_b",
-	"cot_a", "cot_b", "scoop_a", "scoop_b"]
+	"cot_a", "cot_b", "scoop_a", "scoop_b", "ovh_a", "ovh_b"]
+
+
+## 잔불 정리 배치 (B3): 그 조가 잔불 정리를 맡아 그 방에 멈춰 있으면 {k, anims {대원 id: 동작}, spots {짝 id: 칸 좌표}}, 아니면 빈 것.
+## 기준점 = 조장 (조장 자리 그대로, 짝은 구울 때 적은 자리). 방향 = 조장이 마지막으로 본 쪽
+func _overhaul_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dictionary:
+	if crew == null or art == null or art.frames("ovh_a") <= 0 or sim.rekindle.tasks.is_empty():
+		return {}
+	var t := sim.rekindle.task_of_crew(crew.id)
+	var lead := crew.leader
+	if t == null or lead.incapacitated or lead.is_moving():
+		return {}
+	var room := sim.fire.compartment_at(lead.level, floori(lead.pos.x), floori(lead.pos.y))
+	if room == null or room.index != t.room:
+		return {}
+	var k := int(_facing.get(lead.id, 1))
+	var facing := Vector2.RIGHT.rotated(k * PI / 4.0)
+	var out := {"k": k, "anims": {lead.id: "ovh_a"}, "spots": {}}
+	var mate := crew.partner
+	if mate != null and not mate.incapacitated and mate.level == lead.level:
+		out.anims[mate.id] = "ovh_b"
+		out.spots[mate.id] = stand_spot(UnitsView.display_pos(lead, alpha), facing, art.stand("ovh_b"), sim.units.cell_size_m)
+	return out
 
 
 ## 문 확인 후 개방 배치 (B1): 그 조가 문을 열기 전 확인 중(door_feel)이거나 잠기지 않은 문을 여는 중(door_open)이면
@@ -1980,6 +2008,13 @@ func _shown_pos(ff: Firefighter, alpha: float) -> Vector2:
 		var wl := _window_layout(dc, dart)
 		if not wl.is_empty() and int(wl.breaker) == ff.id:
 			return wl.spot
+	if not ff.incapacitated and not sim.rekindle.tasks.is_empty():
+		var oc := sim.units.get_crew(ff.crew_id)
+		if oc != null and oc.partner == ff:
+			var oart := SpriteArt.crew_set(sim.units.squads[oc.squad_id].type) if not thermal else null
+			var ol := _overhaul_layout(oc, oart, alpha)
+			if not ol.is_empty():
+				return ol.spots.get(ff.id, p)
 	if not sim.rescue.searches.is_empty() and not ff.incapacitated:
 		var scr := sim.units.get_crew(ff.crew_id)
 		if scr != null and scr.partner == ff:

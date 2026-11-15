@@ -383,3 +383,12 @@ func test_window_break_baked() -> void:
 	var st := s.stand("window_break")
 	assert_true(absf(float(st.right_m)) > 0.4, "창 정면이 아니라 창 옆에 선다 (%.2f)" % float(st.get("right_m", 0.0)))
 
+
+## B3 잔불 정리 (2026-11-15 사용자가 블렌더에서 확인): 갈고리로 천장 뜯기 + 관창으로 그 속 겨누기
+func test_overhaul_baked() -> void:
+	var s := SpriteArt.get_set(str(SpriteArt.config().crew))
+	assert_eq(s.frames("ovh_a"), 12, "갈고리 12장")
+	assert_eq(s.frames("ovh_b"), 12, "관창 12장")
+	var b := s.stand("ovh_b")
+	assert_true(Vector2(float(b.fwd_m), float(b.right_m)).length() > 0.5, "짝은 조장 옆 (%.2f, %.2f)" % [float(b.get("fwd_m", 0.0)), float(b.get("right_m", 0.0))])
+

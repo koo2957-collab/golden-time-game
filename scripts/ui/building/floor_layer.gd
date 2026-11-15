@@ -2258,6 +2258,9 @@ func _victim_pose(v: Victim, art: SpriteArt.SpriteSet) -> Array:
 	var walking := sim.evac.paths.has(v.id) and v.state == Victim.State.CONSCIOUS
 	var standing := v.state == Victim.State.CONSCIOUS
 	var anim := "walk" if walking else ("idle" if standing else "down_up")
+	# 구조 요청 (B8, 2026-11-16 사용자가 블렌더에서 확인): 창가 요구조자가 의식이 있으면 창밖으로 몸을 내밀어 두 팔을 흔든다
+	if v.jumper and standing and not walking and v.carried_by < 0 and art.frames("wave") > 0:
+		anim = "wave"
 	var tint := Color(0.55, 0.55, 0.6) if v.state == Victim.State.DEAD else Color.WHITE
 	return [anim, (v.id * 3) % 8, SpriteArt.frame_at(anim, art.frames(anim), v.id * 0.5), tint]
 

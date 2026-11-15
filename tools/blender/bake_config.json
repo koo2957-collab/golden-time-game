@@ -1574,6 +1574,67 @@
    "actors": {
     "gas_off": "FF_A"
    }
+  },
+  {
+   "blend": "tools/blender/scenes/victim_wave.blend",
+   "target": "civilian_m",
+   "pivot_object": "VIC_rig",
+   "frames": 8,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "victim_wave",
+   "note": "B8 구조 요청: 창턱에 배를 대고 상체를 창밖으로 내밀어(연기를 피해 바깥 공기) 두 팔을 양쪽으로 벌렸다 머리 위로 모으며 크게 흔든다, 고개는 들어 밖을 본다. 2026-11-16 사용자가 블렌더에서 확인 (창 높이는 민간인 모델 키에 맞춤)",
+   "actors": {
+    "wave": {
+     "rig": "VIC_rig",
+     "target": "civilian_m"
+    }
+   }
+  },
+  {
+   "blend": "tools/blender/scenes/victim_wave.blend",
+   "target": "civilian_m",
+   "pivot_object": "VIC_rig",
+   "frames": 8,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "victim_wave_f",
+   "note": "B8 구조 요청 — 여성 그림",
+   "actors": {
+    "wave": {
+     "rig": "VIC_rig",
+     "target": "civilian_f",
+     "images": {
+      "humanMaleA.png": "humanFemaleA.png"
+     }
+    }
+   }
   }
  ]
 }

@@ -430,3 +430,10 @@ func test_gas_off_baked() -> void:
 	assert_eq(s.frames("gas_off"), 16, "가스 차단 16장")
 	var st := s.stand("gas_off")
 	assert_true(Vector2(float(st.fwd_m), float(st.right_m)).length() > 0.3, "용기 앞에 선다 (용기와 겹치지 않음)")
+
+
+## B8 구조 요청 (2026-11-16 사용자가 블렌더에서 확인): 창가 요구조자가 창밖으로 몸을 내밀어 두 팔을 흔든다
+func test_victim_wave_baked() -> void:
+	for key in ["male", "female"]:
+		var v := SpriteArt.get_set(str(SpriteArt.config().victims[key]))
+		assert_eq(v.frames("wave"), 8, "구조 요청(%s) 8장" % key)

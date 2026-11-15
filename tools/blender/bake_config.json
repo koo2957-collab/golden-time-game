@@ -1183,6 +1183,58 @@
      }
     }
    }
+  },
+  {
+   "blend": "tools/blender/scenes/door_check.blend",
+   "target": "firefighter_v2",
+   "pivot_object": "door_mid",
+   "frames": 12,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "door_feel",
+   "frame_start": 1,
+   "note": "B1 문 확인(가스 확인): 문 옆 벽(손잡이 쪽 = 경첩 반대쪽)에 붙어 반쯤 웅크려 서서 오른손 손등으로 문 위·가운데·아래 온도를 차례로 짚는다 — 2026-11-15 사용자가 블렌더에서 확인 (화재1 '문의 측면에 위치해 … 서서히 문을 개방', 카드 '문 상부 온도와 연기를 확인한 뒤 문 옆에서 천천히 개방'). 기준점 = 문 가운데 앞",
+   "actors": {
+    "door_feel": "FF_B"
+   }
+  },
+  {
+   "blend": "tools/blender/scenes/door_check.blend",
+   "target": "firefighter_v2",
+   "pivot_object": "door_mid",
+   "frames": 12,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "door_open",
+   "frame_start": 13,
+   "note": "B1 서서히 개방: 같은 자리에서 한 무릎을 꿇은 낮은 자세로 오른손으로 손잡이를 잡고 문을 천천히 당겨 25°까지 연다 (몸은 문틀 바깥 벽 앞). 게임은 여는 진행 정도로 장을 고른다 — 2026-11-15 사용자가 블렌더에서 확인",
+   "actors": {
+    "door_open": "FF_B"
+   }
   }
  ]
 }

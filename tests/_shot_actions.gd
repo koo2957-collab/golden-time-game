@@ -223,5 +223,15 @@ func _run() -> void:
 		sim.ems.patients.erase(pt)
 		vic.carried_by = -1
 		sq.type = old_type
+	# 문 확인 후 개방 (B1): 2조가 잠기지 않은 문을 천천히 여는 중 (절반쯤)
+	if door and not sim.doors.tasks.is_empty():
+		door.locked = false
+		var dtk: DoorSystem.Task = sim.doors.tasks[0]
+		dtk.progress = dtk.required * 0.5
+		dtk.waiting_people = false
+		world.camera.position = world.projections[world.ViewMode.ISO].to_screen(door_at + Vector2(0.5, 1.0))
+		for i in 6:
+			await process_frame
+		root.get_texture().get_image().save_png(out + "shot_actions_door_open.png")
 	print("저장 ", out, " · 조 ", crews.size(), " · 구조대상자 ", sim.rescue.victims.size(), " · 문 ", door != null, " · 층 그림 ", layer != null)
 	quit()

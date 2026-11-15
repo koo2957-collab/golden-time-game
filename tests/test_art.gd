@@ -365,3 +365,13 @@ func test_stretchers_baked() -> void:
 			assert_eq(v.frames(kind + "_v"), 16, "%s 환자(%s) 16장" % [kind, key])
 			assert_true(float(v.stand(kind + "_v").fwd_m) > 0.5, "%s 환자는 조장 앞 들것 위" % kind)
 
+
+## B1 문 확인 후 개방 (2026-11-15 사용자가 블렌더에서 확인): 손등으로 문 온도 짚기 · 낮은 자세로 천천히 열기
+func test_door_check_baked() -> void:
+	var s := SpriteArt.get_set(str(SpriteArt.config().crew))
+	assert_eq(s.frames("door_feel"), 12, "문 확인 12장")
+	assert_eq(s.frames("door_open"), 12, "서서히 개방 12장")
+	for anim in ["door_feel", "door_open"]:
+		var st := s.stand(anim)
+		assert_true(absf(float(st.right_m)) > 0.5, "%s: 문 앞이 아니라 문 옆 벽에 (%.2f)" % [anim, float(st.get("right_m", 0.0))])
+

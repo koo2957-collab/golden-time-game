@@ -741,6 +741,16 @@ func _apply(effect: String, c: Card, tick: int) -> void:
 			pass
 
 
+## 그 조가 지금 문을 열기 전에 확인하는 중이면 그 문 (정보 확인 선택지·문 앞 휠 '가스 확인 후 개방'의 기다리는 시간), 아니면 null.
+## 화면이 문 확인 동작(손등으로 문 온도 짚기)을 보여 줄 때 쓴다
+func checking_door(crew_id: int) -> Opening:
+	for d in _delayed:
+		var c: Card = d.card
+		if c != null and c.crew_id == crew_id and str(d.effect) == "open_door":
+			return _opening(c.ctx.get("door", []))
+	return null
+
+
 func _step_followups(tick: int) -> void:
 	for d in _delayed.duplicate():
 		if tick >= int(d.tick):

@@ -1546,6 +1546,8 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		_facing[ff.id] = SpriteArt.dir8(delta)
 	# 방향을 따로 정하는 동작 (운반): 0 이상이면 _facing 대신 쓴다
 	var dir := -1
+	# 진행 정도로 장을 고르는 동작 (문 개방): 0 이상이면 그 장
+	var fixed_frame := -1
 	if ff.incapacitated:
 		anim = "down"
 		# 들려·끌려 가는 쓰러진 대원: 엎드린 그림은 머리가 그림 방향 — 2인 운반은 머리가 뒷사람 쪽, 끌기는 끄는 사람 쪽
@@ -1580,6 +1582,14 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		else:
 			# 운반 그림이 없는 묶음(예전 그림): 들고 걷기, 그것도 없으면 걷기
 			anim = "carry" if art.frames("carry") > 0 else "walk"
+	elif _door_opener(crew, art) == ff.id:
+		# 문 확인 후 개방 (B1, 2026-11-15 사용자가 블렌더에서 확인): 문 옆 벽(손잡이 쪽)에 붙어 손등으로 문 위·가운데·아래 온도를
+		# 짚고(확인하는 동안), 낮은 자세로 손잡이를 잡고 천천히 연다(여는 동안 — 진행 정도로 장을 고른다)
+		var dl := _door_check_layout(crew, art)
+		anim = str(dl.anim)
+		dir = int(dl.k)
+		moving = false
+		fixed_frame = int(dl.frame)
 	elif door_task != null and _forcing(door_task, ff) and art.frames("force_a") > 0:
 		# 잠긴 문 개방 (A1, 2026-11-15 사용자가 블렌더에서 확인): 두 대원이 문틈 양쪽에 서서 빠루 끝을 문틈에 넣고
 		# 몸은 그대로, 두 손으로 번갈아 젖힌다. 조장 = force_a, 짝 = force_b. 서는 자리는 _force_layout
@@ -1622,8 +1632,10 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 	var frame := 0
 	# 여럿이 한 장면으로 구운 동작(문 개방·2인 운반)은 조장 기준 같은 박자로 — 구울 때 맞춘 엇갈림이 그대로 보이게
 	var phase := (crew.leader.id if anim in PAIRED_ANIMS else ff.id) * 0.37
-	if moving or anim in ["idle", "idle_bag", "spray", "search", "force_a", "force_b", "radio", "radio_low"] or anim in PAIRED_ANIMS:
+	if moving or anim in ["idle", "idle_bag", "spray", "search", "force_a", "force_b", "radio", "radio_low", "door_feel"] or anim in PAIRED_ANIMS:
 		frame = SpriteArt.frame_at(anim, art.frames(anim), phase)
+	if fixed_frame >= 0:
+		frame = fixed_frame
 	return [anim, dir if dir >= 0 else int(_facing.get(ff.id, 1)), frame]
 
 
@@ -1631,6 +1643,39 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 const PAIRED_ANIMS := ["force_a", "force_b", "lift_f", "lift_b", "drag", "spray_n", "spray_h", "spray_h1", "spray_h2",
 	"spray_ln", "spray_lh", "spray_lh1", "spray_lh2", "search_a", "search_b", "aid_a", "aid_b",
 	"cot_a", "cot_b", "scoop_a", "scoop_b"]
+
+
+## 문 확인 후 개방 배치 (B1): 그 조가 문을 열기 전 확인 중(door_feel)이거나 잠기지 않은 문을 여는 중(door_open)이면
+## {k 문을 보는 방향, opener 여는 대원 id, anim, frame(여는 중의 장, 확인 중은 -1), spot 서는 자리}, 아니면 빈 것.
+## 여는 사람 = 짝(없으면 조장) — 조장(관창수)은 문 앞에서 기다린다. 기준점 = 문 가운데
+func _door_check_layout(crew: Crew, art: SpriteArt.SpriteSet) -> Dictionary:
+	if crew == null or art == null or art.frames("door_feel") <= 0:
+		return {}
+	var door: Opening = null
+	var anim := "door_feel"
+	var frame := -1
+	var dt := sim.doors.task_of_crew(crew.id)
+	if dt != null and dt.open and dt.opening != null and not dt.opening.locked and not dt.waiting_people:
+		door = dt.opening
+		anim = "door_open"
+		var n := art.frames("door_open")
+		frame = clampi(int(dt.progress / maxf(dt.required, 0.001) * n), 0, n - 1)
+	else:
+		door = sim.cards.checking_door(crew.id)
+	if door == null or door.cells.is_empty():
+		return {}
+	var opener := crew.partner if crew.partner != null and not crew.partner.incapacitated else crew.leader
+	if opener.incapacitated or opener.level != door.level or opener.is_moving() or opener.pos.distance_to(door_center(door)) > 3.5:
+		return {}
+	var fr := force_frame(door, opener.pos)
+	return {"k": fr.k, "opener": opener.id, "anim": anim, "frame": frame,
+		"spot": stand_spot(door_center(door), fr.facing, art.stand(anim), sim.units.cell_size_m)}
+
+
+## 문을 확인·여는 대원 id (없으면 -1)
+func _door_opener(crew: Crew, art: SpriteArt.SpriteSet) -> int:
+	var dl := _door_check_layout(crew, art)
+	return int(dl.opener) if not dl.is_empty() else -1
 
 
 ## 구급대 들것 이송 배치 (A10): 처치한 환자를 구급차로 옮기는 중이면
@@ -1899,6 +1944,12 @@ func _shown_pos(ff: Firefighter, alpha: float) -> Vector2:
 			var el := _ems_carry_layout(ec, eart, alpha)
 			if not el.is_empty():
 				return el.spots.get(ff.id, p)
+	if not ff.incapacitated and (not sim.doors.tasks.is_empty() or sim.cards.checking_door(ff.crew_id) != null):
+		var dc := sim.units.get_crew(ff.crew_id)
+		var dart := SpriteArt.crew_set(sim.units.squads[dc.squad_id].type) if dc != null and not thermal else null
+		var dl := _door_check_layout(dc, dart)
+		if not dl.is_empty() and int(dl.opener) == ff.id:
+			return dl.spot
 	if not sim.rescue.searches.is_empty() and not ff.incapacitated:
 		var scr := sim.units.get_crew(ff.crew_id)
 		if scr != null and scr.partner == ff:

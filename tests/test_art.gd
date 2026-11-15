@@ -270,3 +270,15 @@ func test_two_person_carry_baked_together() -> void:
 		assert_true(float(SpriteArt.config().fps.get(anim, 0.0)) >= 8.0, "%s: 부드럽게 (초당 장 수)" % anim)
 	assert_true(FloorLayer.PAIRED_ANIMS.has("lift_f") and FloorLayer.PAIRED_ANIMS.has("lift_b"), "두 사람은 같은 박자로")
 
+
+## A3 1인 운반 = 끌기 (2026-11-15 사용자가 블렌더에서 확인): 대원 + 끌려가는 구조대상자를 한 장면으로 구웠다
+func test_drag_baked_together() -> void:
+	var crew := SpriteArt.get_set(str(SpriteArt.config().crew))
+	assert_true(crew.frames("drag") >= 16, "끌기 16장 (%d)" % crew.frames("drag"))
+	for key in ["male", "female"]:
+		var v := SpriteArt.get_set(str(SpriteArt.config().victims[key]))
+		assert_eq(v.frames("drag_v"), crew.frames("drag"), "구조대상자(%s) 끌려가는 그림 — 같은 장 수" % key)
+		var s := v.stand("drag_v")
+		assert_true(float(s.fwd_m) > 0.4 and absf(float(s.right_m)) < 0.05, "구조대상자(%s)는 대원이 보는 쪽 바닥에 (%.2fm)" % [key, float(s.get("fwd_m", 0.0))])
+	assert_true(float(SpriteArt.config().fps.get("drag", 0.0)) >= 10.0, "걸음 빠르기 (사용자 확인: 한 주기 약 1.3초)")
+

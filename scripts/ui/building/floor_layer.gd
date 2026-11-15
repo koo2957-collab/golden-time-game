@@ -1595,7 +1595,7 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 
 
 ## 여럿이 한 장면으로 구운 동작 (프레임을 조장 기준으로 맞춘다)
-const PAIRED_ANIMS := ["force_a", "force_b", "lift_f", "lift_b"]
+const PAIRED_ANIMS := ["force_a", "force_b", "lift_f", "lift_b", "drag"]
 
 
 ## 잠긴 문을 부수는 중인가 (그 문 가까이에서, 사람이 모자라 기다리는 중이 아닐 때)
@@ -1692,6 +1692,16 @@ func _carry_layout(crew: Crew, alpha: float) -> Dictionary:
 				out.victim = stand_spot(lead, dir, vart.stand("lift_v"), cell_m)
 				out.victim_h = 0.0
 				out.victim_anim = "lift_v"
+				out.victim_dir = k
+	# 1인 운반 = 끌기 (A3, 2026-11-15 사용자가 블렌더에서 확인): 장면에서 대원은 구조대상자를 본다(가는 방향의 반대) —
+	# 구조대상자 자리는 대원이 보는 쪽으로 구운 거리만큼
+	elif task.kind == "victim":
+		var vart := SpriteArt.victim_set(sim.rescue.victims[task.target_id].label())
+		if vart != null and vart.frames("drag_v") > 0:
+			out.victim = stand_spot(lead, -dir, vart.stand("drag_v"), sim.units.cell_size_m)
+			out.victim_h = 0.0
+			out.victim_anim = "drag_v"
+			out.victim_dir = posmod(k + 4, 8)
 	return out
 
 
@@ -2483,12 +2493,14 @@ func _draw_victim(v: Victim) -> void:
 		# 끌기는 끄는 사람 뒤 바닥에(머리가 끄는 사람 쪽). 누운 그림은 발이 그림 방향을 향한다
 		var lay := _carry_layout(sim.units.get_crew(v.carried_by), sim.clock.alpha())
 		var held_art := SpriteArt.victim_set(v.label()) if not thermal and not lay.is_empty() else null
-		if held_art != null and str(lay.get("victim_anim", "")) == "lift_v":
-			# 2인 운반: 두 사람 사이에 들린 그림 (구울 때 높이까지 들어 있다). 박자는 조장과 같게
+		var held_anim := str(lay.get("victim_anim", ""))
+		if held_art != null and held_anim != "" and held_art.frames(held_anim) > 0:
+			# 2인 운반(lift_v): 두 사람 사이에 들린 그림 / 끌기(drag_v): 대원 앞 바닥에 끌려가는 그림.
+			# 구울 때 높이까지 들어 있다. 박자는 조장과 같게
 			var c := sim.units.get_crew(v.carried_by)
 			var walking := c.leader.level == c.leader.prev_level and (c.leader.pos - c.leader.prev_pos).length_squared() > 0.000001
-			var fr := SpriteArt.frame_at("lift_v", held_art.frames("lift_v"), c.leader.id * 0.37) if walking else 0
-			held_art.draw(self, "lift_v", int(lay.k), fr, proj.to_screen(lay.victim, 0.0))
+			var fr := SpriteArt.frame_at(held_anim, held_art.frames(held_anim), c.leader.id * 0.37) if walking else 0
+			held_art.draw(self, held_anim, int(lay.get("victim_dir", lay.k)), fr, proj.to_screen(lay.victim, 0.0))
 			return
 		if held_art != null and held_art.frames("down_up") > 0:
 			var spot: Vector2 = lay.victim

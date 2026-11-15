@@ -185,6 +185,20 @@ def bbox_world(objs):
     return mn, mx
 
 
+def keep_scene_anims(folder, meta):
+    """사람 그림을 다시 구울 때, 장면으로 구운 동작(meta stand 에 있는 것 — 문 개방·운반 등)은 지우지 않고 남긴다"""
+    path = os.path.join(folder, "meta.json")
+    if not os.path.exists(path):
+        return
+    old = json.load(open(path, encoding="utf-8"))
+    stand = old.get("stand", {})
+    for anim, info in old.get("anims", {}).items():
+        if anim in stand and anim not in meta["anims"]:
+            meta["anims"][anim] = info
+    if stand:
+        meta.setdefault("stand", {}).update({k: v for k, v in stand.items() if k not in meta.get("stand", {})})
+
+
 def write_meta(folder, meta):
     os.makedirs(folder, exist_ok=True)
     with open(os.path.join(folder, "meta.json"), "w", encoding="utf-8") as f:
@@ -572,6 +586,7 @@ def bake_built_character(spec):
                 for o in bpy.data.objects:
                     o.is_holdout = False
         log(spec["name"], anim, "done")
+    keep_scene_anims(folder, meta)
     write_meta(folder, meta)
 
 
@@ -647,6 +662,7 @@ def bake_character(spec):
                     for o in bpy.data.objects:
                         o.is_holdout = False
         log(spec["name"], anim, "done")
+    keep_scene_anims(folder, meta)
     write_meta(folder, meta)
 
 

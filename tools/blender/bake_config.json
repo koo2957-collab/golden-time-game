@@ -66,8 +66,7 @@
     "search",
     "down",
     "lift_f",
-    "lift_b",
-    "drag"
+    "lift_b"
    ],
    "save_blend": "art_source/models/firefighter_v2.blend",
    "source": "3D 모델: 자체 제작 (tools/blender/firefighter_v2.py, 사용자 참고 그림 서울소방 방화복 캐릭터)",
@@ -705,6 +704,68 @@
    "note": "A2 2인 운반 — 들려 가는 구조대상자(여성 그림)",
    "actors": {
     "lift_v": {
+     "rig": "VIC_rig",
+     "target": "civilian_f",
+     "images": {
+      "humanMaleA.png": "humanFemaleA.png"
+     }
+    }
+   }
+  },
+  {
+   "blend": "tools/blender/scenes/carry_drag.blend",
+   "target": "firefighter_v2",
+   "pivot_object": "FF_A",
+   "frames": 16,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "carry_drag",
+   "note": "A3 1인 운반(구조대상자 끌기): 대원이 구조대상자 머리 쪽에서 무릎을 벌리고 쪼그린 채 양어깨 옷깃을 잡아 상체를 들고 뒷걸음질한다. 머리는 대원 무릎 사이로 바닥에 닿지 않는다 — 2026-11-15 사용자가 블렌더에서 확인 (구조 교재 제4편 제2장 1인 운반 가. 끌기). 장면에서 대원은 구조대상자를 보고(-Y) 가는 방향은 뒤(+Y)",
+   "actors": {
+    "drag": "FF_A",
+    "drag_v": {
+     "rig": "VIC_rig",
+     "target": "civilian_m"
+    }
+   }
+  },
+  {
+   "blend": "tools/blender/scenes/carry_drag.blend",
+   "target": "firefighter_v2",
+   "pivot_object": "FF_A",
+   "frames": 16,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "carry_drag_f",
+   "note": "A3 끌기 — 끌려가는 구조대상자(여성 그림)",
+   "actors": {
+    "drag_v": {
      "rig": "VIC_rig",
      "target": "civilian_f",
      "images": {

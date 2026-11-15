@@ -1048,8 +1048,11 @@ def bake_scene(spec):
         return [o for o in bpy.data.objects if o.parent == rig]
     def base(name):
         return name.split(".")[0]
+    SHAPES = ("MESH", "CURVE")
+    # 장면에 저장된 보이기 상태(관창·도구·호스 곡선을 켜고 끈 것)를 그 사람의 몫으로 그대로 쓴다
+    saved = {o.name: o.hide_render for o in bpy.data.objects}
     for o in bpy.data.objects:
-        if o.type == "MESH" and o.name.startswith(hide):
+        if o.type in SHAPES and o.name.startswith(hide):
             o.hide_render = True
     frames = int(spec["frames"])
     metas = {}
@@ -1082,11 +1085,12 @@ def bake_scene(spec):
         tint = [o for o in mine if base(o.name) in TINT_PARTS]
         tint_mats = {sl.material for o in tint for sl in o.material_slots if sl.material}
         for o in bpy.data.objects:
-            if o.type == "MESH" and not o.name.startswith(hide):
-                if o in mine:
-                    o.hide_render = base(o.name).startswith(("nozzle", "hose", "tool_"))
-                else:
-                    o.hide_render = True
+            if o.type in SHAPES and not o.name.startswith(hide):
+                o.hide_render = saved.get(o.name, False) if o in mine else True
+        # 관창 끝 자리 (방수): 그림 기준점에서의 px — 게임이 물줄기를 거기서 시작한다
+        nz = actor.get("nozzle", "")
+        nz_tip = next((o for o in mine if base(o.name) == nz), None) if nz else None
+        nz_from = next((o for o in mine if base(o.name) == actor.get("nozzle_from", "")), None) if nz else None
         for k in ([ONLY_DIR] if ONLY_ANIMS else range(NDIR)):
             R = mathutils.Matrix.Rotation(dir_angle(k), 4, "Z")
             # 회전한 뒤 이 사람이 원점에 오게
@@ -1095,6 +1099,15 @@ def bake_scene(spec):
                 sc.frame_set(int(spec.get("frame_start", 1)) + i)
                 upd()
                 name = "%s_%d_%d.png" % (anim, k, i)
+                if nz_tip is not None:
+                    dg = bpy.context.evaluated_depsgraph_get()
+                    et = nz_tip.evaluated_get(dg)
+                    pts = [et.matrix_world @ v.co for v in et.data.vertices]
+                    ref = nz_from.evaluated_get(dg).matrix_world.translation if nz_from is not None else rig.matrix_world.translation
+                    tipw = max(pts, key=lambda q: (q - ref).length)
+                    ndc = world_to_camera_view(sc, sc.camera, tipw)
+                    meta.setdefault("nozzle", {}).setdefault(anim, {})["%d_%d" % (k, i)] = [
+                        round(ndc.x * spec["frame"][0] - spec["anchor"][0], 2), round((1.0 - ndc.y) * spec["frame"][1] - spec["anchor"][1], 2)]
                 for o in mine:
                     o.is_holdout = False
                 for m in tint_mats:
@@ -1105,7 +1118,7 @@ def bake_scene(spec):
                 for m in tint_mats:
                     set_helmet(m, HELMET_TINT)
                 for o in mine:
-                    if o.type == "MESH" and o not in tint:
+                    if o.type in SHAPES and o not in tint:
                         o.is_holdout = True
                 render_to(os.path.join(folder, name.replace(".png", "_stripe.png")), spec["frame"])
                 for o in mine:

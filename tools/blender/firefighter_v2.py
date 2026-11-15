@@ -171,13 +171,13 @@ class Builder:
         self.band(name, a, b, f, r, h, "reflect", bone, sx)
         self.band(name + "_s", a, b, f, r + 0.002, h * 0.3, "silver", bone, sx)
 
-    def loft(self, name, rings, mat, bone, n=20, y_off=0.0):
-        """타원 단면을 위로 쌓은 몸통: rings = [(z, 반폭, 반깊이)]"""
+    def loft(self, name, rings, mat, bone, n=20, y_off=0.0, x_off=0.0):
+        """타원 단면을 위로 쌓은 몸통: rings = [(z, 반폭, 반깊이)], 가운데는 (x_off, y_off)"""
         me = bpy.data.meshes.new(name)
         bm = bmesh.new()
         loops = []
         for z, w, dd in rings:
-            loops.append([bm.verts.new((w * math.cos(2 * math.pi * k / n), y_off + dd * math.sin(2 * math.pi * k / n), z)) for k in range(n)])
+            loops.append([bm.verts.new((x_off + w * math.cos(2 * math.pi * k / n), y_off + dd * math.sin(2 * math.pi * k / n), z)) for k in range(n)])
         for r0, r1 in zip(loops, loops[1:]):
             for k in range(n):
                 bm.faces.new((r0[k], r0[(k + 1) % n], r1[(k + 1) % n], r1[k]))
@@ -210,15 +210,95 @@ def _head(p):
     return tuple(base + (V(p) - base) * HEAD_S)
 
 
+# 상의 아랫단 (2026-11-15 사용자): 처음 모델의 반코트 모양 그대로(허벅지 중간까지, 퍼지지 않음).
+# 다리를 들면 찢어지거나 갈라지지 않고 그쪽 밑단이 허벅지를 따라 말려 올라간다 — 골반·허벅지 뼈에 나눠 붙여 한 장 그대로 휜다.
+# (z, 반폭, 반깊이) — 처음 모델의 COAT 아래쪽과 같다. 윗단(1.0 위)은 가슴 조각보다 조금 작게 넣어 겹치는 자리가 깜빡이지 않게
+COAT_SKIRT = [(0.66, 0.222, 0.166), (0.8, 0.21, 0.156), (0.95, 0.194, 0.146), (1.0, 0.188, 0.142), (1.05, 0.184, 0.138)]
+SKIRT_TOP_Z = 1.0
+SKIRT_HEM_Z = 0.66
+SKIRT_FOLLOW = 1.0   # 밑단은 허벅지에 완전히 붙어 함께 올라간다 (허벅지가 밑단을 뚫지 않게)   # 아랫단에서 허벅지를 따라가는 정도 (0 = 골반에 그대로, 1 = 허벅지에 붙음)
+SKIRT_PARTS = ("coat_lower", "band_hem", "band_hem_s", "band_waist", "band_waist_s", "coat_hip", "coat_skirt",
+               "coat_flap_L", "coat_flap_R", "band_hem_L", "band_hem_L_s", "band_hem_R", "band_hem_R_s",
+               "band_waist_L", "band_waist_L_s", "band_waist_R", "band_waist_R_s")
+
+
+def _skirt_at(z):
+    for (z0, w0, d0), (z1, w1, d1) in zip(COAT_SKIRT, COAT_SKIRT[1:]):
+        if z0 <= z <= z1:
+            f = (z - z0) / (z1 - z0)
+            return w0 + (w1 - w0) * f, d0 + (d1 - d0) * f
+    return COAT_SKIRT[-1][1], COAT_SKIRT[-1][2]
+
+
+def skin_skirt(arm, o):
+    """상의 아랫단 조각을 뼈에 나눠 붙인다: 위(허리)는 골반, 아래(밑단)로 갈수록 그쪽 허벅지를 따라간다. 쉬는 자세에서 부른다"""
+    mw = o.matrix_world.copy()
+    o.parent = arm
+    o.parent_type = "OBJECT"
+    o.matrix_world = mw
+    groups = {n: o.vertex_groups.new(name=n) for n in ("hips", "thigh.L", "thigh.R")}
+    for v in o.data.vertices:
+        p = mw @ v.co
+        t = max(0.0, min(1.0, (SKIRT_TOP_Z - p.z) / (SKIRT_TOP_Z - SKIRT_HEM_Z)))
+        follow = SKIRT_FOLLOW * t
+        left = max(0.0, min(1.0, 0.5 + p.x / 0.16))    # 가운데는 두 다리에 반씩
+        groups["hips"].add([v.index], 1.0 - follow, "REPLACE")
+        if follow > 0.0:
+            groups["thigh.L"].add([v.index], follow * left, "REPLACE")
+            groups["thigh.R"].add([v.index], follow * (1.0 - left), "REPLACE")
+    mod = o.modifiers.new("armature", "ARMATURE")
+    mod.object = arm
+    mod.use_vertex_groups = True
+
+
+def coat_skirt(bld):
+    """상의 아랫단(반코트) 한 장. 반사띠(밑단·허리)는 따로 붙이지 않고 같은 천의 면에 색을 칠한다 —
+    휠 때 띠가 천 속으로 들어가 찢어진 것처럼 보이지 않게 (2026-11-15)"""
+    bands = [(0.7, 0.045), (0.84, 0.045)]       # (가운데 높이, 폭)
+    zs = sorted({z for z, _, _ in COAT_SKIRT} | {zc + k * h for zc, h in bands for k in (-0.5, -0.15, 0.15, 0.5)})
+    rings = [(z,) + _skirt_at(z) for z in zs]
+    o = bld.loft("coat_skirt", rings, "coat", "hips", n=28)
+    o.data.materials.append(bld.m["reflect"])
+    o.data.materials.append(bld.m["silver"])
+    for poly in o.data.polygons:
+        z = sum((o.data.vertices[i].co.z for i in poly.vertices)) / len(poly.vertices)
+        for zc, h in bands:
+            if abs(z - zc) < h * 0.5:
+                poly.material_index = 2 if abs(z - zc) < h * 0.15 else 1
+    bpy.context.view_layer.update()
+    skin_skirt(bld.arm, o)
+
+
+def refit_coat(arm, mats):
+    """이미 만든 장면의 대원(arm)에 새 상의 아랫단을 입힌다 (예전 조각은 지운다). mats = {coat, reflect, silver}.
+    쉬는 자세·원점에서 만들어 뼈에 붙인 뒤 원래대로 돌린다"""
+    for o in [o for o in bpy.data.objects if o.parent == arm and o.name.split(".")[0] in SKIRT_PARTS]:
+        bpy.data.objects.remove(o, do_unlink=True)
+    mw = arm.matrix_world.copy()
+    pose_pos = arm.data.pose_position
+    arm.data.pose_position = "REST"
+    arm.matrix_world = mathutils.Matrix.Identity(4)
+    bpy.context.view_layer.update()
+    bld = Builder.__new__(Builder)
+    bld.arm = arm
+    bld.parts = []
+    bld.m = dict(mats)
+    bld.helmet_mat = None
+    coat_skirt(bld)
+    arm.data.pose_position = pose_pos
+    arm.matrix_world = mw
+    bpy.context.view_layer.update()
+    return bld.parts
+
+
 def build_parts(bld):
     b = BONES
-    # 상의: 허리 아래(엉덩이)·위(가슴) 두 조각 — 숙일 때 허리에서 접힌다
-    lower = [r for r in COAT if r[0] <= 1.12]
+    # 상의: 위(가슴) 한 조각 + 아랫단(골반 몸통·다리마다 자락) — 숙일 때 허리에서 접히고, 다리를 내딛으면 자락이 따라간다
     upper = [r for r in COAT if r[0] >= 1.0]
     upper[0] = (1.0,) + _coat_at(1.0)
-    bld.loft("coat_lower", lower, "coat", "hips")
     bld.loft("coat_upper", upper, "coat", "chest")
-    for name, z, bone in (("band_hem", 0.7, "hips"), ("band_waist", 0.84, "hips"), ("band_chest", 1.27, "chest")):
+    coat_skirt(bld)
+    for name, z, bone in (("band_chest", 1.27, "chest"),):
         w, d = _coat_at(z)
         bld.reflect_band(name, (0, 0, z - 0.02), (0, 0, z + 0.02), 0.5, w + 0.006, 0.045, bone, sx=1.0)
         bld.parts[-1].scale.y = (d + 0.008) / (w + 0.008)

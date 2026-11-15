@@ -1574,6 +1574,13 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		anim = str(lay.anims.get(ff.id, "force_a"))
 		dir = int(lay.k)
 		moving = false
+	elif not _spray_layout(crew, art).is_empty():
+		# 방수 (A4, 2026-11-15 사용자가 블렌더에서 확인): 관창수(조장)는 두 손으로 관창을 들고 앞굽이,
+		# 관창보조는 그 뒤에서 호스를 겨드랑이에 끼고 버틴다 (2인 = spray_h, 분대 = spray_h1·h2). 물이 찬 호스는 일직선
+		var sl := _spray_layout(crew, art)
+		anim = str(sl.anims.get(ff.id, "spray_n"))
+		dir = int(sl.k)
+		moving = false
 	elif hose and hose.flowing and not hose.approaching and not moving and ff == crew.leader:
 		# 관창은 조장(관창수) 한 사람만 든다 — 짝은 뒤에서 서 있는다 (2026-11-12)
 		anim = "spray"
@@ -1589,13 +1596,38 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 	var frame := 0
 	# 여럿이 한 장면으로 구운 동작(문 개방·2인 운반)은 조장 기준 같은 박자로 — 구울 때 맞춘 엇갈림이 그대로 보이게
 	var phase := (crew.leader.id if anim in PAIRED_ANIMS else ff.id) * 0.37
-	if moving or anim in ["idle", "spray", "search", "force_a", "force_b"]:
+	if moving or anim in ["idle", "spray", "search", "force_a", "force_b", "spray_n", "spray_h", "spray_h1", "spray_h2"]:
 		frame = SpriteArt.frame_at(anim, art.frames(anim), phase)
 	return [anim, dir if dir >= 0 else int(_facing.get(ff.id, 1)), frame]
 
 
 ## 여럿이 한 장면으로 구운 동작 (프레임을 조장 기준으로 맞춘다)
-const PAIRED_ANIMS := ["force_a", "force_b", "lift_f", "lift_b", "drag"]
+const PAIRED_ANIMS := ["force_a", "force_b", "lift_f", "lift_b", "drag", "spray_n", "spray_h", "spray_h1", "spray_h2"]
+
+
+## 방수 배치 (A4): 관창수(조장)가 방수 중이면 {k 방향, anims {대원 id: 동작}, spots {대원 id: 칸 좌표}}, 아니면 빈 것.
+## 조가 2명이면 관창수 + 관창보조(spray_h), 3명 이상(분대)이면 관창보조1·2(spray_h1·h2). 자리는 구울 때 적은 값
+func _spray_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dictionary:
+	if art == null or art.frames("spray_n") <= 0:
+		return {}
+	var hose := sim.water.hose_of_crew(crew.id)
+	var lead := crew.leader
+	if hose == null or not hose.flowing or hose.approaching or lead.incapacitated or lead.is_moving():
+		return {}
+	var k := SpriteArt.dir8(hose.aim - lead.pos)
+	var facing := Vector2.RIGHT.rotated(k * PI / 4.0)
+	var members := crew.members()
+	var names: Array = ["spray_n", "spray_h"] if members.size() <= 2 else ["spray_n", "spray_h1", "spray_h2"]
+	var lp := UnitsView.display_pos(lead, alpha)
+	var out := {"k": k, "anims": {}, "spots": {}}
+	for i in members.size():
+		var ff := members[i]
+		if ff.incapacitated:
+			continue
+		var anim: String = names[mini(i, names.size() - 1)]
+		out.anims[ff.id] = anim
+		out.spots[ff.id] = lp if i == 0 else stand_spot(lp, facing, art.stand(anim), sim.units.cell_size_m)
+	return out
 
 
 ## 잠긴 문을 부수는 중인가 (그 문 가까이에서, 사람이 모자라 기다리는 중이 아닐 때)
@@ -1718,6 +1750,13 @@ func _ff_carry_layout(ff: Firefighter, alpha: float) -> Dictionary:
 ## 대원을 그리는 자리: 보통은 실제 자리, 운반 중인 짝·옮겨지는 대원·문을 부수는 대원은 배치 자리
 func _shown_pos(ff: Firefighter, alpha: float) -> Vector2:
 	var p := UnitsView.display_pos(ff, alpha)
+	if not ff.incapacitated and not sim.water.hoses.is_empty():
+		var sc := sim.units.get_crew(ff.crew_id)
+		if sc != null and sc.leader != ff:
+			var sart := SpriteArt.get_set(str(SpriteArt.config().get("crew", ""))) if not thermal else null
+			var sl := _spray_layout(sc, sart, alpha)
+			if not sl.is_empty():
+				return sl.spots.get(ff.id, p)
 	if not sim.doors.tasks.is_empty() and not ff.incapacitated:
 		var dt := sim.doors.task_of_crew(ff.crew_id)
 		if dt != null and _forcing(dt, ff):
@@ -1921,8 +1960,9 @@ func _draw_sprays(alpha: float) -> void:
 		var crew_art := SpriteArt.get_set(str(SpriteArt.config().get("crew", ""))) if not thermal else null
 		if crew_art != null and not h.approaching:
 			var feet := proj.to_screen(UnitsView.display_pos(leader, alpha), 0.0)
-			var fr := SpriteArt.frame_at("spray", crew_art.frames("spray"), leader.id * 0.37)
-			from = feet + crew_art.nozzle_offset("spray", SpriteArt.dir8(h.aim - leader.pos), fr, from - feet)
+			var nanim := "spray_n" if crew_art.frames("spray_n") > 0 else "spray"
+			var fr := SpriteArt.frame_at(nanim, crew_art.frames(nanim), leader.id * 0.37)
+			from = feet + crew_art.nozzle_offset(nanim, SpriteArt.dir8(h.aim - leader.pos), fr, from - feet)
 		var to := proj.to_screen(h.impact, IMPACT_M)
 		# 물줄기 그림 (사용자 참고 그림, 2026-11-12): 직사는 가는 줄기와 튀는 물, 그 밖(분무 등)은 원뿔 물안개. 없으면 아래 도형
 		var straight := h.pattern == HoseLine.Pattern.STRAIGHT

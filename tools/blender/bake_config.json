@@ -773,6 +773,64 @@
      }
     }
    }
+  },
+  {
+   "target": "firefighter_v2",
+   "pivot_object": "FF_A",
+   "frames": 12,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "spray_squad",
+   "blend": "tools/blender/scenes/spray_squad.blend",
+   "note": "A4 방수(서서) 분대: 관창수는 앞굽이로 두 손으로 관창을 허리 앞에 들고 12° 위로 겨눈다. 관창보조1·2는 다리를 앞뒤로 크게 벌려 버티며 호스를 오른 겨드랑이에 끼고, 잡은 손은 겨드랑이 앞·다른 손은 그 앞을 잡는다. 물이 찬 호스는 일직선, 맨 뒤 사람 등 뒤에서 바닥으로 — 2026-11-15 사용자가 블렌더에서 확인 (화재1 직사주수 요령, 사용자 참고 그림 방수자세·관창, 실무 4인조법)",
+   "actors": {
+    "spray_n": {
+     "rig": "FF_A",
+     "nozzle": "nozzle_tip",
+     "nozzle_from": "nozzle_coupling"
+    },
+    "spray_h1": "FF_B",
+    "spray_h2": "FF_C"
+   }
+  },
+  {
+   "target": "firefighter_v2",
+   "pivot_object": "FF_A",
+   "frames": 12,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "spray_pair",
+   "blend": "tools/blender/scenes/spray_pair.blend",
+   "note": "A4 방수(서서) 2인: 관창수 + 관창보조 1명 (호스는 관창보조 등 뒤에서 바닥으로)",
+   "actors": {
+    "spray_h": "FF_B"
+   }
   }
  ]
 }

@@ -282,3 +282,21 @@ func test_drag_baked_together() -> void:
 		assert_true(float(s.fwd_m) > 0.4 and absf(float(s.right_m)) < 0.05, "구조대상자(%s)는 대원이 보는 쪽 바닥에 (%.2fm)" % [key, float(s.get("fwd_m", 0.0))])
 	assert_true(float(SpriteArt.config().fps.get("drag", 0.0)) >= 10.0, "걸음 빠르기 (사용자 확인: 한 주기 약 1.3초)")
 
+
+## A4 방수(서서) (2026-11-15 사용자가 블렌더에서 확인): 관창수 + 관창보조 (2인) / 관창보조1·2 (분대)
+func test_spray_team_baked() -> void:
+	var s := SpriteArt.get_set(str(SpriteArt.config().crew))
+	for anim in ["spray_n", "spray_h", "spray_h1", "spray_h2"]:
+		assert_eq(s.frames(anim), 12, "%s 12장" % anim)
+	# 관창 끝 자리: 방향·프레임마다 (물줄기가 거기서 시작한다)
+	for k in s.directions:
+		for i in s.frames("spray_n"):
+			assert_true(s.nozzle_offset("spray_n", k, i, Vector2(-999, -999)) != Vector2(-999, -999), "관창 끝 %d방향 %d장" % [k, i])
+	# 관창보조는 관창수 뒤에 일직선으로 (2인 = 한 명, 분대 = 두 명)
+	var h := s.stand("spray_h")
+	var h1 := s.stand("spray_h1")
+	var h2 := s.stand("spray_h2")
+	assert_true(float(h.fwd_m) < -0.5 and float(h1.fwd_m) < -0.5, "관창보조는 관창수 뒤")
+	assert_true(float(h2.fwd_m) < float(h1.fwd_m) - 0.6, "관창보조2는 관창보조1 뒤 (%.2f / %.2f)" % [float(h2.fwd_m), float(h1.fwd_m)])
+	assert_true(absf(float(h1.right_m)) < 0.5 and absf(float(h2.right_m)) < 0.5, "옆으로 크게 벗어나지 않는다 (호스가 일직선)")
+

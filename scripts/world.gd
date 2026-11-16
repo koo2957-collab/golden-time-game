@@ -121,14 +121,21 @@ func _ready() -> void:
 	selection.mission_target.connect(mission_ui.open_mission)
 	selection.door_menu.connect(mission_ui.open_door_menu)
 	selection.squad_menu.connect(mission_ui.open_squad_menu)
-	# 안내 흐름 (P4-5): 조를 고르면 진입구·층·계단·방이 노랗게. 방을 누르면 임무 고르기
-	selection.room_menu.connect(mission_ui.open_room_menu)
+	# 좌클릭 = 보기·고르기, 우클릭 = 지시 (2026-11-16 사용자 결정): 방·외벽 층 우클릭 = 분대 기본 임무
+	selection.quick_mission.connect(mission_ui.quick_assign)
 	selection.guide_view.connect(func(lv: int, ext: bool) -> void: set_view_level(lv, ext))
 	selection.shell_picker = func(world_pos: Vector2) -> int:
 		if view_mode != ViewMode.ISO or not exterior_view:
 			return -99
 		return iso_view.shell_level_at(world_pos)
-	selection.shell_hover = func(lv: int) -> void: iso_view.set_hover_floor(lv)
+	selection.shell_hover = func(lv: int, text: String) -> void: iso_view.set_hover_floor(lv, text)
+	# 내부 화면에서 함께 보이는 층과 화면 위치 — 아래층 바깥의 대원·차량도 그려진 자리에서 고른다
+	selection.shown_floors = func() -> Array:
+		if view_mode != ViewMode.ISO:
+			return [[view_level, Vector2.ZERO]]
+		return iso_view.shown_floors()
+	# 빈 곳 좌클릭으로 볼 곳: 외부 보기의 외벽 층 → 그 층 내부, 내부 화면의 바깥 땅 → 외부 보기, 다른 층 → 그 층
+	selection.view_picker = _view_target
 	mission_ui.press_card = _press_card
 	# 단면 보기: 아래층을 누르면 그 층으로 (R17)
 	selection.level_picker = func(world_pos: Vector2) -> int:
@@ -1054,6 +1061,27 @@ func _step_level(direction: int) -> void:
 			i = k
 	var j := clampi(i + direction, 0, steps.size() - 1)
 	set_view_level(steps[j][0], steps[j][1])
+
+
+## 빈 곳을 좌클릭했을 때 볼 곳 (2026-11-16 사용자 결정 — 좌클릭 = 보기·고르기): Vector2i(층, 외부 보기면 1).
+## 외부 보기: 외벽의 층 띠 → 그 층 내부. 내부 화면: 바깥 땅 → 외부 보기, 함께 보이는 다른 층 → 그 층. 없으면 (-99, 0)
+func _view_target(world_pos: Vector2) -> Vector2i:
+	if view_mode != ViewMode.ISO:
+		return Vector2i(-99, 0)
+	if exterior_view:
+		var band := iso_view.shell_level_at(world_pos)
+		return Vector2i(band, 0) if band != -99 else Vector2i(-99, 0)
+	var lv := iso_view.stack.pick_level(view_level, world_pos, projection())
+	var ground := sim.building.levels()[0]
+	if lv == ground:
+		var off := Vector2.ZERO
+		for spec: Array in iso_view.shown_floors():
+			if int(spec[0]) == ground:
+				off = spec[1]
+		var c := projection().to_cell(world_pos - off)
+		if sim.building.cell(ground, floori(c.x), floori(c.y)) in BuildingData.OUTDOOR:
+			return Vector2i(ground, 1)
+	return Vector2i(lv, 0) if lv != view_level else Vector2i(-99, 0)
 
 
 ## 마우스 가둠 (기획안 9-3). 자동 테스트·헤드리스에서는 하지 않는다

@@ -249,8 +249,9 @@ func shell_level_at(world_pos: Vector2) -> int:
 
 
 ## 층 고르기: 노랗게 테두리를 그릴 층 (-99 = 없음)
-func set_hover_floor(lv: int) -> void:
+func set_hover_floor(lv: int, text := "") -> void:
 	if not layers.is_empty():
+		layers[0].hover_text = text
 		layers[0].hover_floor = lv if _exterior else -99
 
 

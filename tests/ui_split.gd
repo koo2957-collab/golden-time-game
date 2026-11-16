@@ -1,7 +1,7 @@
 extends SceneTree
 ## 두 화면 점검 — 튜토리얼 2층 주택 (창이 열린다, 2026-11-14 결정):
 ## 외부 화면 ↔ 내부 화면(층 분리) 단추, 고른 층이 가운데에 크게(위·아래층은 잘려 보임), 층 수 단추(1개 층 / 2개 층 / 3개 층 — 이 건물은 2층이라 3개 층은 꺼짐),
-## 기본 간격 874px, 간격을 바꿔도 대원의 실제 위치는 그대로, 보이는 층 어디든 한 번 눌러 지시
+## 기본 간격 874px, 간격을 바꿔도 대원의 실제 위치는 그대로, 보이는 층 어디든 고르기(좌클릭)·지시(우클릭)
 ## (2개 층에서는 보고 있는 두 층 안이라 화면이 제자리, 1개 층에서는 누른 층이 가운데로 미끄러져 온다), 내부 화면에서는 바깥이 흐려짐.
 ## 사용: godot --path . -s res://tests/ui_split.gd [-- 저장폴더]
 
@@ -126,7 +126,8 @@ func _run() -> void:
 	for i in 10:
 		await process_frame
 
-	# 4) 보이는 층 어디든 한 번에 (2개 층 — 보고 있는 두 층 안이라 화면은 제자리): 1층을 고른 채 2층에 선 조를 누르면 2층이 고른 층이 되고 그 조가 선택된다
+	# 4) 보이는 층 어디든 (2개 층 — 보고 있는 두 층 안이라 화면은 제자리). 좌클릭 = 보기·고르기, 우클릭 = 지시 (2026-11-16):
+	#    다른 층의 조를 누르면 고르기만 (층은 그대로), 다른 층의 빈 곳을 누르면 그 층이 고른 층, 다른 층의 방을 우클릭하면 그 층 임무
 	var proj = world.projection()
 	var crew_up = sim.units.get_crew(1)
 	var up_world: Vector2 = proj.to_screen(crew_up.leader.pos, 0.9) + iso.stack.upper_vec(1)
@@ -135,36 +136,51 @@ func _run() -> void:
 	_click(up_screen)
 	for i in 5:
 		await process_frame
-	_check("2층의 조를 누름 → 2층이 고른 층", world.view_level, top)
-	_check("같은 클릭으로 그 조가 선택된다", sel.selected, [1] as Array[int])
+	_check("2층의 조를 누름 → 그 조 선택, 층은 그대로", [sel.selected, world.view_level], [[1] as Array[int], low])
 	_check("조를 고르면 오른쪽 정보 창이 뜬다 (그림 + 명령 카드)", [hud.side_panel.visible, hud._side_portrait.texture != null, hud._command_panel.is_visible_in_tree()], [true, true, true])
 	_check("정보 창은 화면 안, 아래 바 위", [hud.get_rect().encloses(hud.side_panel.get_rect()), hud.side_panel.get_rect().end.y <= hud.console.position.y], [true, true])
+	# 2층의 빈 곳(방)을 누르면 2층이 고른 층 — 화면은 제자리, 선택은 그대로
+	var room: Compartment = null
+	for c in sim.fire.comps:
+		if room == null and c.level == top and c.cells.size() > 8 and not sim.fire.is_exposure_comp(c):
+			room = c
+	var rc := Vector2i(-1, -1)
+	for cell: Vector2i in room.cells:
+		var w: Vector2 = proj.to_screen(Vector2(cell) + Vector2(0.5, 0.5)) + iso.stack.upper_vec(1)
+		if rc.x < 0 and sel._crew_at(w) < 0:
+			rc = cell
+	var room_world: Vector2 = proj.to_screen(Vector2(rc) + Vector2(0.5, 0.5)) + iso.stack.upper_vec(1)
+	var room_screen: Vector2 = root.get_canvas_transform() * room_world
+	_click(room_screen)
+	for i in 5:
+		await process_frame
 	var after_screen: Vector2 = root.get_canvas_transform() * proj.to_screen(crew_up.leader.pos, 0.9)
+	_check("2층 빈 곳을 누름 → 2층이 고른 층, 선택 그대로, 지시 없음", [world.view_level, sel.selected, world.mission_ui.menu.visible], [top, [1] as Array[int], false])
 	_check("층이 바뀌어도 화면에서 제자리", up_screen.distance_to(after_screen) < 2.0, true)
 	_check("2층을 고르면 1층이 직하층으로 함께", [iso.layers[0].level, iso.layers[1].visible and iso.layers[1].level == low], [top, true])
 	root.get_texture().get_image().save_png(out + "split_on_f2.png")
-	# 2층을 고른 채 아래 1층의 조를 누르면 1층으로
+	# 2층을 고른 채 아래 1층의 조를 누르면 그 조 선택 (층은 그대로)
 	var crew_low = sim.units.get_crew(0)
 	var low_screen: Vector2 = root.get_canvas_transform() * (proj.to_screen(crew_low.leader.pos, 0.9) + iso.stack.offset_vec(1))
 	_click(low_screen)
 	for i in 5:
 		await process_frame
-	_check("1층의 조를 누름 → 1층이 고른 층 · 그 조 선택", [world.view_level, sel.selected], [low, [0] as Array[int]])
-	# 1층의 조를 고른 채 2층의 방을 누르면 → 2층이 고른 층이 되고 그 방의 임무 고르기가 뜬다 (한 번에 지시)
-	var room: Compartment = null
-	for c in sim.fire.comps:
-		if room == null and c.level == top and c.cells.size() > 8 and not sim.fire.is_exposure_comp(c):
-			room = c
-	@warning_ignore("integer_division")
-	var rc: Vector2i = room.cells[room.cells.size() / 2]
-	var room_screen: Vector2 = root.get_canvas_transform() * (proj.to_screen(Vector2(rc) + Vector2(0.5, 0.5)) + iso.stack.upper_vec(1))
-	_click(room_screen)
-	for i in 5:
+	_check("1층의 조를 누름 → 그 조 선택, 층은 그대로", [world.view_level, sel.selected], [top, [0] as Array[int]])
+	# 1층의 조를 고른 채 2층의 방을 우클릭 → 그 방 기본 임무 (화면 그대로)
+	var n0 := sim.issued.size()
+	_click(root.get_canvas_transform() * proj.to_screen(Vector2(rc) + Vector2(0.5, 0.5)), MOUSE_BUTTON_RIGHT)
+	for i in 3:
 		await process_frame
-	_check("조를 고른 채 2층 방을 누름 → 2층 · 임무 고르기", [world.view_level, world.mission_ui.menu.visible or world.mission_ui.panel.visible], [top, true])
-	world.mission_ui.close_menu()
+	var tac: Array = []
+	for i in range(n0, sim.issued.size()):
+		if sim.issued[i].command is TacticalCommand:
+			tac.append(sim.issued[i].command)
+	_check("조를 고른 채 2층 방을 우클릭 → 그 층 임무, 화면 그대로", [tac.size(), tac[0].target.z if not tac.is_empty() else -1, world.view_level], [1, top, top])
 	sel.cancel_mode()
 	sel._set_selection([] as Array[int], [] as Array[int])
+	world.set_view_level(low, false)
+	for i in 5:
+		await process_frame
 
 	# 5) 분리 화면에서도 시뮬레이션은 실제 좌표로 돈다
 	var tick0 := sim.clock.tick
@@ -216,9 +232,9 @@ func _positions(sim: SimWorld) -> Array:
 	return out
 
 
-func _click(screen_pos: Vector2) -> void:
+func _click(screen_pos: Vector2, button := MOUSE_BUTTON_LEFT) -> void:
 	var e := InputEventMouseButton.new()
-	e.button_index = MOUSE_BUTTON_LEFT
+	e.button_index = button
 	e.pressed = true
 	e.position = screen_pos
 	root.push_input(e, true)

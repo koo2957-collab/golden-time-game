@@ -185,6 +185,8 @@ var hover_floor := -99:
 		if v != hover_floor:
 			hover_floor = v
 			queue_redraw()
+## 층 띠 위 안내 문구 (비면 "N층 — 클릭: 내부 보기")
+var hover_text := ""
 ## 외관 층 [{kind: "floor"|"gap", level, h0, h1, text}] (아래 → 위)
 var _shell: Array[Dictionary] = []
 var _shell_top := CEILING_M
@@ -502,7 +504,12 @@ func _draw_floor_hover() -> void:
 		# 이름은 남쪽 면 가운데 (긴 건물에서도 마우스 가까이)
 		var s: PackedVector2Array = _band_polys(float(band[1]), float(band[2]))[0]
 		var at := (s[0] + s[1] + s[2] + s[3]) * 0.25
-		draw_string(PlanStyle.font(), at + Vector2(-90, 6), "%s — 클릭하면 이 층으로" % sim.building.floor_name(hover_floor), HORIZONTAL_ALIGNMENT_CENTER, 180, 16, Color.WHITE)
+		var text := hover_text if hover_text != "" else "%s — 클릭: 내부 보기" % sim.building.floor_name(hover_floor)
+		var font := PlanStyle.font()
+		var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+		# 벽 위에서도 읽히게 어두운 바탕
+		draw_rect(Rect2(at + Vector2(-w * 0.5 - 8.0, -14.0), Vector2(w + 16.0, 26.0)), Color(0.04, 0.07, 0.12, 0.8))
+		draw_string(font, at + Vector2(-w * 0.5, 6), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color.WHITE)
 
 
 ## 외부 보기의 층 띠 [층, 아래 높이, 위 높이] (1층 포함, 줄여 그린 층 제외)

@@ -1,7 +1,8 @@
 class_name MissionUi
 extends Control
 ## 임무형 내부 지휘 화면 (기획안 9-1·9-2, R7c)
-##   - 대상 메뉴 (P4-5): 조를 고른 채 방을 누르면 화재진압·인명검색·직하층 확인, 곁의 문을 누르면 문 행동.
+##   - 우클릭 기본 임무 (2026-11-16, quick_assign): 조를 고른 채 방·외벽 층을 우클릭하면 분대 기본 임무 (진압대 화재진압·구조대 인명검색).
+##     곁의 문을 우클릭하면 문 행동. 방 임무 목록(open_room_menu)은 점검용으로 남아 있다.
 ##     조를 누를 때마다 뜨던 원형 메뉴는 없앴다 (2026-11-11 사용자 결정 — 명령은 명령 카드와 노란 표시로)
 ##   - 끌어다 놓기: 전술상황판의 팀 카드를 지도의 방·층에 놓으면 임무 창 → 임무(화점 진압·인명 검색) + 임무 조건
 ## 화면만 만든다. 명령은 order_issued로 내보내고 시뮬레이션이 실행한다 (다시 하기에 기록된다).
@@ -32,6 +33,8 @@ var _menu_buttons: Array[Button] = []
 ## 임무 창 (진입 지시 4단계): 받는 조들, 진입구, 기본 임무
 var _drop_crews: Array[int] = []
 var _drop_via := Vector3i(-1, -1, -1)
+## 외벽 층 우클릭: 방이 아니라 그 층 단위 임무 (quick_assign)
+var _force_floor := false
 var _default_kind := ""
 var _kind_buttons: Dictionary = {}
 ## 명령 카드 (Hud와 같은 것)와 칸 누르기 (World._press_card)
@@ -191,6 +194,23 @@ func open_room_menu(crew_ids: Array[int], target: Vector3i, via: Vector3i, scree
 		assign(id))
 
 
+## 우클릭 기본 임무 (2026-11-16): 목록 없이 바로 지시. 조건은 그 조가 쓰던 것(없으면 직전 값) 그대로.
+## 본 적 없는 방이면 층 단위, 외벽 층 우클릭은 by_floor로 층 단위
+func quick_assign(crew_ids: Array[int], target: Vector3i, via: Vector3i, kind: String, by_floor := false) -> void:
+	if crew_ids.is_empty():
+		return
+	_drop_crews = crew_ids.duplicate()
+	_drop_crew = crew_ids[0]
+	_drop_target = target
+	_drop_via = via
+	_force_floor = by_floor
+	var cur: Dictionary = sim.tactical.conditions.get(crew_ids[0], _last)
+	for k: String in _opts:
+		_select_key(_opts[k], _groups[k], str(cur.get(k, _last[k])))
+	assign(kind)
+	_force_floor = false
+
+
 ## 문 행동 (건물 안 조가 2칸 안의 문을 누름): 가스 확인 후 개방·문 옆 벽에서 개방·파괴 후 개방·문 닫고 대기 (P4-2)
 func open_door_menu(crew_id: int, door_index: int, screen_pos: Vector2) -> void:
 	var items: Array[Dictionary] = []
@@ -348,7 +368,7 @@ func drop_crew(crew_id: int, screen_pos: Vector2) -> void:
 	var t: Vector3i = to_cell.call(screen_pos)
 	var room := sim.fire.compartment_at(t.z, t.x, t.y)
 	if room == null:
-		notice.emit("건물 안 방이나 층 위에 놓으세요 — 밖에서는 조를 고르고 노란 진입구를 누릅니다")
+		notice.emit("건물 안 방이나 층 위에 놓으세요 — 지도에서는 조를 고르고 방·노란 진입구를 우클릭합니다")
 		return
 	_drop_crew = crew_id
 	_drop_crews = [crew_id] as Array[int]
@@ -414,6 +434,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 
 func _by_floor() -> bool:
+	if _force_floor:
+		return true
 	return sim.command.interior.enabled and not sim.command.interior.room_known(_drop_target)
 
 

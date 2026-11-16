@@ -39,6 +39,8 @@ var _rows: Array[Dictionary] = []
 ## 아래 → 위 순서의 층 (휠 이동용)
 var _order: Array[int] = []
 var _row_h := ROW_MAX
+## 마우스를 올린 칸 (_rows index, -1 = 없음) — 노란 테두리로 누를 수 있는 곳을 보인다 (2026-11-16 사용자 결정)
+var _hover := -1
 
 
 func setup(p_sim: SimWorld) -> void:
@@ -114,7 +116,20 @@ func _row_at(p: Vector2) -> Dictionary:
 	return {}
 
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_MOUSE_EXIT and _hover >= 0:
+		_hover = -1
+		queue_redraw()
+
+
 func _gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion:
+		var it := _row_at(event.position)
+		var h := _rows.find(it) if not it.is_empty() and it.kind != "gap" else -1
+		if h != _hover:
+			_hover = h
+			queue_redraw()
+		return
 	if not event is InputEventMouseButton or not event.pressed:
 		return
 	match event.button_index:
@@ -177,6 +192,9 @@ func _draw() -> void:
 				draw_string(font, Vector2(bx + BUILDING_W + 8.0, r.end.y - 2.0), it.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color("94a3b8"))
 			"floor":
 				_draw_floor(it, body, font, fs)
+	# 마우스를 올린 칸: 노란 테두리 (누르면 그 층·외부 보기)
+	if _hover >= 0 and _hover < _rows.size():
+		draw_rect((_rows[_hover].rect as Rect2).grow(-0.5), PlanStyle.ENTRY_POINT, false, 2.5)
 
 
 func _draw_floor(it: Dictionary, body: Rect2, font: Font, fs: int) -> void:

@@ -34,6 +34,14 @@ static func load_sets() -> Dictionary:
 	return {}
 
 
+## 우클릭 기본 임무: 출동대 종류 → 임무 id ("attack"·"search"). 없는 종류는 들어있지 않다 (2026-11-16)
+static func load_default_missions() -> Dictionary:
+	var data: Variant = JsonData.load_file(PATH)
+	if data is Dictionary and data.get("default_mission", {}).get("by_type") is Dictionary:
+		return data.default_mission.by_type
+	return {}
+
+
 ## 지휘관 명령 칸의 묶음들: [{id, label, items: [{id, label, hint}]}] (보고·지원·안전·구역)
 static func load_board() -> Array[Dictionary]:
 	return _load_list("commander_board")

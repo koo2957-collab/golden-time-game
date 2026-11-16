@@ -206,7 +206,7 @@ func _run() -> void:
 	_check("본 방은 방 단위, 못 본 방은 층 단위", str(tcmd.action) if tcmd else "", "attack" if known else "attack_floor")
 	world._press_card("BACK")
 	sel._set_selection([crew_id] as Array[int], [] as Array[int])
-	# 건물 안 조: 땅 우클릭은 지휘관 이동(대원 명령 없음), 곁의 문을 누르면 문 행동
+	# 건물 안 조: 시킬 일이 없는 곳을 우클릭하면 아무 지시도 없다 (지휘관도 그대로), 곁의 문을 우클릭하면 문 행동 (2026-11-16)
 	var inner: Opening = null
 	for o in sim.fire.openings:
 		if inner == null and o.kind == Opening.Kind.DOOR and o.level == 1 and o.room_a >= 0 and o.room_b >= 0:
@@ -219,14 +219,14 @@ func _run() -> void:
 	world.set_view_level(1, false)
 	await process_frame
 	var n2 := sim.issued.size()
-	sel._issue_right_click(sel.projection.to_screen(Vector2(inner.cells[0]) + Vector2(3.5, 3.5)))
+	sel._issue_right_click(sel.projection.to_screen(Vector2(-30.5, -30.5)))
 	var after: Array = sim.issued.slice(n2)
-	_check("건물 안 조 고른 채 땅 우클릭 → 지휘관 이동만", after.map(func(x): return x.command is CommandOrder and x.command.action == "commander_move"), [true])
+	_check("건물 안 조 고른 채 시킬 일 없는 곳 우클릭 → 지시 없음 (지휘관 이동도 없음)", after.size(), 0)
 	_check("건물 안 조 = 건물 안", sim.command.interior.crew_inside(crew_id), true)
-	sel._click_select(sel.projection.to_screen(Vector2(inner.cells[0]) + Vector2(0.5, 0.5), 1.0), false, Vector2(700, 400))
+	sel._right_click_at(sel.projection.to_screen(Vector2(inner.cells[0]) + Vector2(0.5, 0.5), 1.0), Vector2(700, 400))
 	await process_frame
 	var mui = world.mission_ui
-	_check("문 클릭 → 문 행동 목록", mui.menu.visible and mui.menu_ids.has("door_check") and mui.menu_ids.has("door_side"), true)
+	_check("곁의 문 우클릭 → 문 행동 목록",mui.menu.visible and mui.menu_ids.has("door_check") and mui.menu_ids.has("door_side"), true)
 	mui.pick("door_side")
 	# 건물 안 조라 무전으로 전달된 뒤 적용된다
 	for i in 200:
@@ -251,7 +251,8 @@ func _run() -> void:
 		world.mission_ui.close_menu()
 		var n_before := sim.issued.size()
 		var wc := Vector2(win.cells[0]) + Vector2(0.5, 0.5)
-		sel._issue_crew_right_click(sel.projection.to_screen(wc, 1.2))
+		# 밖의 분대 우클릭 대상 (진압1 1조는 앞 점검에서 건물 안에 세웠으므로 대상 판정만 바로 부른다)
+		sel._issue_target_click(sel.projection.to_screen(wc, 1.2))
 		var last_cmd = sim.issued[-1].command if sim.issued.size() > n_before else null
 		_check("창 우클릭 → 깨서 열기", last_cmd != null and str(last_cmd.action) == "door_open" and Vector2i(last_cmd.target.x, last_cmd.target.y) == win.cells[0], true)
 	var quiet_room: Compartment = null

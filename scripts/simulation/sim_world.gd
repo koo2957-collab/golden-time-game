@@ -370,6 +370,8 @@ func apply_growth(xp: Dictionary) -> void:
 
 ## 무전으로 보낸 편성 지시가 아직 닿지 않은 분대 {출동대 id: true}
 var _regroup_pending: Dictionary = {}
+## 받을 조가 없어 차에 실어 둔 열화상카메라 수 (출동 준비 '열화상카메라 1대 추가') — 분대를 나누면 카메라 없는 조가 든다
+var spare_thermal := 0
 
 
 ## 이 조가 일을 맡고 있으면 그 이유 ("" = 쉬는 중) — 합칠 때 들어오는 조는 쉬고 있어야 한다
@@ -473,6 +475,9 @@ func _on_regroup(tick: int, squad_id: int, split: bool) -> void:
 		var made: Crew = units.split_squad(squad)
 		if made == null:
 			return
+		if not made.thermal_camera and spare_thermal > 0:
+			made.thermal_camera = true
+			spare_thermal -= 1
 		command._decide(tick, "분대 나누기 — %s (2인 1조 둘)" % squad.name)
 		events.add(tick, "squad_split", {"squad": squad.name, "crew": units.crew_name(made), "crew_id": made.id,
 			"first": _names(squad.crews[0]), "second": _names(squad.crews[1])})
@@ -481,6 +486,9 @@ func _on_regroup(tick: int, squad_id: int, split: bool) -> void:
 		return
 	var keeper := _merge_keeper(squad)
 	var home := crew_busy(squad.crews[0].id) == "" and crew_busy(squad.crews[1].id) == ""
+	# 두 조가 모두 열화상카메라를 들었으면 하나는 다시 차에 (다음에 나눌 때 쓴다)
+	if keeper != null and squad.crews[0].thermal_camera and squad.crews[1].thermal_camera:
+		spare_thermal += 1
 	if keeper == null or not units.merge_squad(squad, keeper, home):
 		return
 	units.gather(keeper, pathfinder)
@@ -908,10 +916,15 @@ func apply_loadout(items: Array, tick: int) -> void:
 		loadout.append(str(key))
 		match str(key):
 			"thermal_extra":
+				var given := false
 				for c in units.crews:
 					if not c.thermal_camera and not ems.is_ems_crew(c.id):
 						c.thermal_camera = true
+						given = true
 						break
+				# 분대마다 이미 있으면 차에 실어 두고, 분대를 나눌 때 카메라가 없는 조가 든다 (2026-11-16 분대 편성)
+				if not given:
+					spare_thermal += 1
 			"fire_door_breaker":
 				# 선착 진압대 조가 든다 (P4-1: 없으면 차량에 가서 가져와야 한다)
 				for c in units.crews:

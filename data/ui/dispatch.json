@@ -40,7 +40,7 @@
     "loadout_none": "챙기지 않음",
     "preassign_tag": "출동 중 무전",
     "preassign_title": "도착 후 임무",
-    "preassign_text": "{crew}입니다. 도착하면 저희 조는 무엇을 할까요? (건물 안 임무는 발화층으로 가고, 진입 허가는 입구에서 다시 묻습니다)",
+    "preassign_text": "{crew}입니다. 도착하면 저희는 무엇을 할까요? (건물 안 임무는 발화층으로 가고, 진입 허가는 입구에서 다시 묻습니다)",
     "placement_tag": "출동 중 무전",
     "placement_who": "선착 펌프차 운전원",
     "placement_title": "선착 차량 배치",

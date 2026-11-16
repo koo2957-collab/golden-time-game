@@ -4,7 +4,7 @@
   "clock": "14:20",
   "note": "튜토리얼 (M7c). 주택화재 ①과 같은 집, 구조대상자는 1층 아이 한 명. 인물은 모두 가상.",
   "building": "res://data/buildings/house_2f.json",
-  "roster": "res://data/units/test_roster.json",
+  "roster": "res://data/units/squad_roster.json",
   "seed": 2026,
   "dispatch": {
     "title": "출동 지령 — 주택 화재",
@@ -175,7 +175,7 @@
       }
     ]
   },
-  "reinforcements": "res://data/units/dev_reinforcements.json",
+  "reinforcements": "res://data/units/squad_reinforcements.json",
   "arrivals": [
     {
       "squad": "pump2",

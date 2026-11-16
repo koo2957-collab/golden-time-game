@@ -83,7 +83,17 @@ func test_loadout() -> void:
 	sim.issue(CommandOrder.make("loadout", [], 0, Vector3i.ZERO, {"items": ["thermal_extra", "fire_door_breaker", "high_rise_pack", "spare_cylinders"]}))
 	sim.step_ticks(1)
 	assert_eq(sim.loadout.size(), 3, "최대 3개")
-	assert_eq(sim.units.crews.filter(func(c: Crew) -> bool: return c.thermal_camera).size(), thermal + 1, "열화상카메라 +1")
+	# 열화상카메라 +1: 없는 조가 있으면 그 조가, 분대마다 이미 있으면 차에 실어 두고 분대를 나눌 때 2조가 든다 (2026-11-16)
+	var now := sim.units.crews.filter(func(c: Crew) -> bool: return c.thermal_camera).size()
+	assert_eq(now + sim.spare_thermal, thermal + 1, "열화상카메라 +1 (조 %d + 차 %d)" % [now, sim.spare_thermal])
+	var rescue := sim.units.squad_by_key("rescue1")
+	if sim.spare_thermal > 0 and rescue != null:
+		sim.issue(CommandOrder.make("regroup", [rescue.id] as Array[int], 1))
+		for i in roundi(60.0 / SimClock.TICK_DT):
+			if rescue.crews.size() == 2:
+				break
+			sim.step_ticks(1)
+		assert_true(rescue.crews.size() == 2 and rescue.crews[1].thermal_camera and sim.spare_thermal == 0, "분대를 나누면 2조가 차에 실은 카메라를 든다")
 	assert_true(sim.units.crews.any(func(c: Crew) -> bool: return c.squad_id == 0 and c.has_item("fire_door_breaker")), "방화문 파괴기는 선착 진압대 조가 든다 (P4-1)")
 	assert_eq(sim.building.outlet_hose_m, hose + 15.0, "고층 호스팩")
 	assert_eq(sim.conditions.swap_scale, 1.0, "4번째는 싣지 못함")

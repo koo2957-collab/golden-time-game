@@ -22,17 +22,24 @@ func _run() -> void:
 	var sel = world.selection
 	var sim: SimWorld = world.sim
 	sim.perception.enabled = false
+	# 출동 중이면 대원이 차에 타 있어 잡히지 않는다 — 현장에 내려 세운다 (2026-11-16: 선착대도 차를 타고 온다)
+	sim.clock.paused = true
+	for ff in sim.units.firefighters:
+		ff.aboard = false
+		ff.path.clear()
+	sim.command.resources.alighting.clear()
 	var c0 := sim.units.get_crew(0)
 	var c1 := sim.units.get_crew(1)
-	var proj = world.projection()
+	var proj = sel.projection
 	var lv: int = sel.level
+	# 분대(3~4명): 선두와 짝은 점검 자리에, 나머지 조원은 그 줄 끝에 (두 사람 사이 판정은 선두·짝 사이로 본다)
+	var spots := {c0.id: [Vector2(10.5, 30.5), Vector2(13.5, 30.5)], c1.id: [Vector2(40.5, 30.5), Vector2(41.5, 30.5)]}
 	for c in [c0, c1]:
-		c.leader.level = lv
-		c.partner.level = lv
-	c0.leader.pos = Vector2(10.5, 30.5)
-	c0.partner.pos = Vector2(13.5, 30.5)
-	c1.leader.pos = Vector2(40.5, 30.5)
-	c1.partner.pos = Vector2(41.5, 30.5)
+		var at: Array = spots[c.id]
+		for k in c.list.size():
+			c.list[k].level = lv
+			c.list[k].pos = at[k] if k < 2 else (at[1] as Vector2) + Vector2(0, 1.0 * (k - 1))
+			c.list[k].prev_pos = c.list[k].pos
 	var xf: Transform2D = sel.get_canvas_transform()
 	var feet: Vector2 = xf * proj.to_screen(c0.leader.pos, proj.pick_height_m)
 	var inv := xf.affine_inverse()

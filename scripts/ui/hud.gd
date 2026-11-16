@@ -287,6 +287,8 @@ func _refresh_selection() -> void:
 	var any_flowing := false
 	for crew_id in _crew_ids:
 		var crew := sim.units.get_crew(crew_id)
+		if crew == null or crew.list.is_empty():
+			continue
 		var squad := sim.units.squads[crew.squad_id]
 		var names: PackedStringArray = []
 		for ff in crew.members():

@@ -54,7 +54,7 @@ func test_basement_disorientation_and_lifeline() -> void:
 	var sim := SimWorld.from_scenario(STAGES["3-2"])
 	assert_true(sim.lifeline.enabled, "지하층 라이트라인 규칙")
 	assert_eq(sim.building.floor_number(2), -1, "index 2 = 지하1층 (층 막대 입면도에서 땅 밑, R16)")
-	var c := sim.units.get_crew(2)
+	var c := sim.units.squad_by_key("rescue1").crews[0]
 	var room := sim.fire.compartment_at(2, 30, 13)
 	room.soot = 50.0
 	room.layer_depth = room.height
@@ -65,13 +65,13 @@ func test_basement_disorientation_and_lifeline() -> void:
 		m.prev_level = 2
 	assert_true(sim.fire.visibility_m(room) < 1.0, "시계 0 (%.2fm)" % sim.fire.visibility_m(room))
 	sim.lifeline.step(95.0, 10)
-	assert_true(sim.lifeline.disoriented.has(2), "라이트라인 없이 오래 있으면 방향감각 상실")
+	assert_true(sim.lifeline.disoriented.has(c.id), "라이트라인 없이 오래 있으면 방향감각 상실")
 	assert_eq(sim.events.of_type("crew_disoriented").size(), 1, "대원 안전 무전")
 	sim.lifeline.cells[Vector3i(30, 13, 2)] = true
 	sim.lifeline.step(0.1, 11)
-	assert_true(not sim.lifeline.disoriented.has(2), "라이트라인에 닿으면 방향을 되찾는다")
+	assert_true(not sim.lifeline.disoriented.has(c.id), "라이트라인에 닿으면 방향을 되찾는다")
 	# 라이트라인을 깔고 있으면 길을 잃지 않는다
-	var c2 := sim.units.get_crew(3)
+	var c2 := sim.units.squad_by_key("pump1").crews[0]
 	for m in c2.members():
 		m.pos = Vector2(28.5, 13.5)
 		m.prev_pos = m.pos
@@ -79,7 +79,7 @@ func test_basement_disorientation_and_lifeline() -> void:
 		m.prev_level = 2
 	sim.lifeline.cells[Vector3i(28, 13, 2)] = true
 	sim.lifeline.step(200.0, 12)
-	assert_true(not sim.lifeline.disoriented.has(3), "라이트라인 옆은 괜찮다")
+	assert_true(not sim.lifeline.disoriented.has(c2.id), "라이트라인 옆은 괜찮다")
 
 
 func test_supertall_refuge_and_real_floors() -> void:

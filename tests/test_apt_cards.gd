@@ -117,7 +117,7 @@ func test_fire_not_found_report() -> void:
 
 func test_rit_help_card() -> void:
 	var sim := _sim(APT15)
-	var rit := sim.units.crews[3].id
+	var rit := sim.units.crews[sim.units.crews.size() - 1].id
 	sim.command.safety.roles[rit] = SafetySystem.Role.RIT
 	var hose_crew := sim.units.crews[0]
 	sim.events.add(1, "hose_resupply", {"crew": "진압1 1조", "crew_id": hose_crew.id, "lengths": 4})

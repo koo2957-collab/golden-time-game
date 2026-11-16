@@ -12,7 +12,7 @@
     "summary": "새벽 3시 40분, 2층 딸 방(방4) 침대에서 불이 났습니다. 남편은 빠져나왔지만 아내와 딸이 2층에 있습니다. 1층으로 진입해 2층으로 올라가야 하고, 연기는 2층 복도로 퍼집니다. 딸의 위치는 판마다 바뀝니다(방4 또는 복도). 이웃의 말은 믿기 어렵습니다."
   },
   "building": "res://data/buildings/house_2f.json",
-  "roster": "res://data/units/test_roster.json",
+  "roster": "res://data/units/squad_roster.json",
   "commander": {
     "name": "서정호",
     "rank": "소방경",
@@ -24,7 +24,7 @@
     "note": "가상 인물"
   },
   "entry_order_required": true,
-  "reinforcements": "res://data/units/dev_reinforcements.json",
+  "reinforcements": "res://data/units/squad_reinforcements.json",
   "staging": {
     "name": "도로 동쪽",
     "lanes": [

@@ -67,10 +67,14 @@ func test_scene_order() -> void:
 	assert_eq([str(ui.steps[1].card_id), str(ui.steps[2].card_id)].has(WATER_CARD) and [str(ui.steps[1].card_id), str(ui.steps[2].card_id)].has(RELAY_CARD), true, "예비 소방용수·관계자 조치 요청도 장면으로")
 	assert_eq(str(ui.steps[4].mode), "multi", "장비는 체크 목록")
 	assert_eq(str(ui.steps[kinds.size() - 1].mode), "select", "차량 배치는 고르고 확인")
-	# 조별 임무 장면은 그 조의 조장이 말한다 (출동대 종류 그림)
+	# 조별 임무 장면은 그 분대의 팀장(없으면 선두)이 말한다 (출동대 종류 그림)
 	var pre: Dictionary = ui.steps[5]
-	assert_true(str(pre.who).contains("조") and str(pre.portrait) != "", "조별 임무: 말하는 사람·그림 (%s)" % pre.who)
-	assert_true(str(pre.text).contains("조"), "조 이름이 글에 들어간다")
+	var pc := sim.units.get_crew(int(pre.crew_id))
+	assert_true(str(pre.who).begins_with(sim.units.crew_name(pc)) and str(pre.who).contains(pc.speaker().name) and str(pre.portrait) != "",
+		"조별 임무: 말하는 사람·그림 (%s)" % pre.who)
+	assert_true(str(pre.text).contains(sim.units.crew_name(pc)), "분대 이름이 글에 들어간다")
+	var rescue_pre: Array = ui.steps.filter(func(s: Dictionary) -> bool: return str(s.kind) == "preassign" and sim.units.get_crew(int(s.crew_id)).officer() != null)
+	assert_true(not rescue_pre.is_empty() and str(rescue_pre[0].who).contains(sim.units.get_crew(int(rescue_pre[0].crew_id)).officer().name), "팀장이 있는 분대는 팀장이 말한다")
 	# 배치 보기가 없는 시나리오에는 배치 장면이 없다
 	var dev := SimWorld.from_scenario(DEV_SCENARIO_PATH)
 	var dev_ui := _ui(dev)

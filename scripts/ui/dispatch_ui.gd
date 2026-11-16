@@ -157,7 +157,7 @@ func build_steps() -> void:
 							continue
 						kinds.append({"text": str(k[1]), "value": str(k[0])})
 					steps.append(_step("preassign", "pick", "%s 임무" % crew_name, t("preassign_tag"),
-						"%s · %s %s" % [crew_name, c.leader.rank, c.leader.name], _portrait_path(squad.type),
+						"%s · %s %s" % [crew_name, c.speaker().rank, c.speaker().name], _portrait_path(squad.type),
 						t("preassign_title"), t("preassign_text").format({"crew": crew_name}), kinds, {"crew_id": c.id}))
 			"placement":
 				var opts := Placement.options(sim)

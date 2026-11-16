@@ -42,7 +42,7 @@
       }
     }
   },
-  "roster": "res://data/units/test_roster.json",
+  "roster": "res://data/units/squad_roster.json",
   "seed": 2132,
   "dispatch": {
     "title": "출동 지령 — 고층 아파트 화재",
@@ -180,7 +180,7 @@
       }
     ]
   },
-  "reinforcements": "res://data/units/dev_reinforcements.json",
+  "reinforcements": "res://data/units/squad_reinforcements.json",
   "arrivals": [
     {
       "squad": "pump2",

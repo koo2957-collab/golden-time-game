@@ -75,9 +75,14 @@ func _best(c: CardSystem.Card) -> int:
 	return 0
 
 
-## 현장에 있는 조마다 임무 (할 일이 없는 조만, 진입 허가는 입구에서 카드로): 진압대 첫 조 화점진압, 나머지 발화층·직상층 인명검색
+## 현장에 있는 조마다 임무 (할 일이 없는 조만, 진입 허가는 입구에서 카드로): 진압대 첫 조 화점진압, 나머지 발화층·직상층 인명검색.
+## 분대 편성(2026-11-16): 진압대가 아닌 4명 분대(구조대)는 2인 1조 둘로 나눠 발화층·직상층을 함께 찾는다
 func _orders(sim: SimWorld, fire_lv: int) -> void:
 	_casualty(sim)
+	for s in sim.units.squads:
+		if s.type == "구조대" and sim.command.resources.on_scene(s.id) and sim.regroup_reason(s.id, true) == "" \
+				and s.crews.size() == 1 and sim.tactical.task_of_crew(s.crews[0].id) == null and sim.rescue.task_of_crew(s.crews[0].id) == null:
+			sim.issue(CommandOrder.make("regroup", [s.id] as Array[int], 1))
 	# 출동대가 3개 이상이면 마지막에 도착한 조 하나를 RIT로 (SSG 9) — 임무를 주지 않는다
 	var on_scene := sim.units.squads.filter(func(s: Squad) -> bool: return sim.command.resources.on_scene(s.id))
 	var rit := sim.command.safety.crews_with(SafetySystem.Role.RIT)

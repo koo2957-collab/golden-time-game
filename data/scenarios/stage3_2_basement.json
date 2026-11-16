@@ -13,7 +13,7 @@
     "stage": "3-2"
   },
   "building": "res://data/buildings/basement_karaoke.json",
-  "roster": "res://data/units/test_roster.json",
+  "roster": "res://data/units/squad_roster.json",
   "seed": 2032,
   "dispatch": {
     "title": "출동 지령",
@@ -149,7 +149,7 @@
       }
     ]
   },
-  "reinforcements": "res://data/units/dev_reinforcements.json",
+  "reinforcements": "res://data/units/squad_reinforcements.json",
   "arrivals": [
     {
       "squad": "pump2",

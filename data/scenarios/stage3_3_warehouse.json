@@ -13,7 +13,7 @@
     "stage": "3-3"
   },
   "building": "res://data/buildings/warehouse_panel.json",
-  "roster": "res://data/units/test_roster.json",
+  "roster": "res://data/units/squad_roster.json",
   "seed": 2033,
   "dispatch": {
     "title": "출동 지령",
@@ -146,7 +146,7 @@
       }
     ]
   },
-  "reinforcements": "res://data/units/dev_reinforcements.json",
+  "reinforcements": "res://data/units/squad_reinforcements.json",
   "arrivals": [
     {
       "squad": "pump2",

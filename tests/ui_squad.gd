@@ -42,8 +42,11 @@ func _run() -> void:
 		elif str(s.mode) == "select":
 			d.choose(0)
 			d.confirm()
+		elif str(s.kind) == "preassign":
+			# 도착 후 임무는 정하지 않는다 (도착하자마자 움직이면 클릭 점검이 빗나간다)
+			d.confirm()
 		else:
-			d.choose((s.options as Array).size() - 1 if str(s.kind) == "preassign" else 0)
+			d.choose(0)
 	d.skip()
 	for i in 600:
 		if not d.active:
@@ -61,8 +64,15 @@ func _run() -> void:
 		ff.aboard = false
 		ff.path.clear()
 	sim.command.commander.aboard = false
+	sim.preassign.clear()
+	sim.tactical.tasks.clear()
+	sim.rescue.searches.clear()
 	sim.clock.paused = false
-	world.camera.locked = false
+	# 도착 확대 연출이 끝날 때까지 — 화면이 움직이는 중에 클릭 좌표를 계산하면 빗나간다
+	for i in 600:
+		if not world.camera.locked:
+			break
+		await process_frame
 	for i in 5:
 		await process_frame
 	world.hud.card_ui.visible = false

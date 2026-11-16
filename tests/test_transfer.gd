@@ -74,12 +74,12 @@ func test_elevator_rule() -> void:
 	assert_eq(c.leader.level, 16, "16층 도착")
 	assert_true(not c.leader.aboard, "내림")
 	# 다른 조가 17층까지 타면 위반
-	var c2 := sim.units.get_crew(2)
+	var c2 := sim.units.squad_by_key("rescue1").crews[0]
 	for m in c2.members():
 		m.pos = at
 		m.prev_pos = at
 		m.level = 1
 		m.prev_level = 1
-	sim.elevator.ride(2, 17, sim.clock.tick)
+	sim.elevator.ride(c2.id, 17, sim.clock.tick)
 	assert_eq(sim.elevator.violations, 1, "화재층 2개층 아래보다 높이 = 위반 (SOP 222)")
 	assert_eq(sim.events.of_type("elevator_too_high").size(), 1, "대원 안전 무전")

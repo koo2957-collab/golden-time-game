@@ -12,7 +12,7 @@
     "summary": "저녁 6시 50분, 1층 주방에서 불이 났습니다. 다리가 불편한 할머니가 혼자 삽니다. 주방 뒤(C면)에 LPG 용기가 있지만 도착 위치에서는 보이지 않습니다. 선착 펌프차가 작고(물 2,400L) 후착대는 인접 관할에서 7분 뒤에 옵니다. 위험 요소 확인, 전략 판단, 지원 요청 시점이 핵심입니다."
   },
   "building": "res://data/buildings/house_2f.json",
-  "roster": "res://data/units/test_roster.json",
+  "roster": "res://data/units/squad_roster.json",
   "commander": {
     "name": "서정호",
     "rank": "소방경",
@@ -24,7 +24,7 @@
     "note": "가상 인물"
   },
   "entry_order_required": true,
-  "reinforcements": "res://data/units/dev_reinforcements.json",
+  "reinforcements": "res://data/units/squad_reinforcements.json",
   "staging": {
     "name": "도로 동쪽",
     "lanes": [

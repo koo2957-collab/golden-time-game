@@ -13,7 +13,7 @@
   },
   "building": "res://data/buildings/apartment_5f.json",
   "units": {"note": "세대별 변형·집기 세트 (기획안 4-2-1, P2-2). 시드로 고르고, 발화·요구조자 세대는 시나리오 설계대로 고정한다. 가중치는 게임 설정값", "mix": {"variants": {"표준": 6, "발코니확장": 2, "현관잠김": 1, "도어체크": 1, "피난막힘": 1}, "furnishings": {"일반": 5, "노인1인": 1, "짐많음": 2, "공실": 1, "리모델링": 1}}, "overrides": {"301": {"variant": "표준", "furnish": "일반"}, "302": {"variant": "표준", "furnish": "일반"}, "401": {"variant": "표준", "furnish": "일반"}}},
-  "roster": "res://data/units/test_roster.json",
+  "roster": "res://data/units/squad_roster.json",
   "seed": 3131,
   "dispatch": {
     "title": "출동 지령 — 아파트 화재",
@@ -182,7 +182,7 @@
       }
     ]
   },
-  "reinforcements": "res://data/units/dev_reinforcements.json",
+  "reinforcements": "res://data/units/squad_reinforcements.json",
   "arrivals": [
     {
       "squad": "pump2",

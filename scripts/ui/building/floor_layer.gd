@@ -1593,7 +1593,11 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		var lay := _carry_layout(crew, 0.0)
 		var k := int(lay.get("k", _facing.get(crew.leader.id, 1)))
 		moving = crew.leader.level == crew.leader.prev_level and (crew.leader.pos - crew.leader.prev_pos).length_squared() > 0.000001
-		if str(lay.get("mode", "")) == "lift" and art.frames("lift_f") > 0:
+		if ff != crew.leader and ff != crew.mate():
+			# 분대의 나머지 조원은 옆에서 같이 걷는다 (드는 사람은 선두와 그 짝 둘)
+			anim = ("crouch_walk" if ff.crouched else "walk") if moving else ("crouch_walk" if ff.crouched else "idle")
+			dir = k
+		elif str(lay.get("mode", "")) == "lift" and art.frames("lift_f") > 0:
 			anim = "lift_f" if ff == crew.leader else "lift_b"
 			dir = k
 		elif art.frames("drag") > 0:
@@ -1602,7 +1606,7 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		else:
 			# 운반 그림이 없는 묶음(예전 그림): 들고 걷기, 그것도 없으면 걷기
 			anim = "carry" if art.frames("carry") > 0 else "walk"
-	elif not _overhaul_layout(crew, art).is_empty():
+	elif _overhaul_layout(crew, art).get("anims", {}).has(ff.id):
 		# 잔불 정리 (B3, 2026-11-15 사용자가 블렌더에서 확인): 조장은 갈고리로 천장을 뜯어 내리고, 짝은 그 속을 관창으로 겨눈다
 		var ol := _overhaul_layout(crew, art)
 		anim = str(ol.anims.get(ff.id, "ovh_a"))
@@ -1622,14 +1626,14 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		dir = int(dl.k)
 		moving = false
 		fixed_frame = int(dl.frame)
-	elif door_task != null and _forcing(door_task, ff) and art.frames("force_a") > 0:
+	elif door_task != null and _forcing(door_task, ff) and art.frames("force_a") > 0 and _force_layout(door_task, crew, art).anims.has(ff.id):
 		# 잠긴 문 개방 (A1, 2026-11-15 사용자가 블렌더에서 확인): 두 대원이 문틈 양쪽에 서서 빠루 끝을 문틈에 넣고
 		# 몸은 그대로, 두 손으로 번갈아 젖힌다. 조장 = force_a, 짝 = force_b. 서는 자리는 _force_layout
 		var lay := _force_layout(door_task, crew, art)
 		anim = str(lay.anims.get(ff.id, "force_a"))
 		dir = int(lay.k)
 		moving = false
-	elif not _spray_layout(crew, art).is_empty():
+	elif _spray_layout(crew, art).get("anims", {}).has(ff.id):
 		# 방수 (A4, 2026-11-15 사용자가 블렌더에서 확인): 관창수(조장)는 두 손으로 관창을 들고 앞굽이,
 		# 관창보조는 그 뒤에서 호스를 겨드랑이에 끼고 버틴다 (2인 = spray_h, 분대 = spray_h1·h2). 물이 찬 호스는 일직선
 		var sl := _spray_layout(crew, art)
@@ -1642,12 +1646,12 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		_facing[ff.id] = SpriteArt.dir8(hose.aim - ff.pos)
 	elif hose and hose.flowing and not hose.approaching and not moving:
 		_facing[ff.id] = SpriteArt.dir8(hose.aim - ff.pos)
-	elif task is RescueSystem.SearchTask and not _search_layout(crew, art).is_empty():
+	elif task is RescueSystem.SearchTask and _search_layout(crew, art).get("anims", {}).has(ff.id):
 		# 인명검색 이동 (A7, 2026-11-15 사용자가 블렌더에서 확인): 둘 다 낮은 자세로, 조장은 만능도끼로 앞바닥을 두드리며
 		# 더듬고, 짝은 조장 공기호흡기 아래를 잡고 뒤따른다. 짝 자리는 구울 때 적은 값
 		var sl := _search_layout(crew, art)
 		anim = str(sl.anims.get(ff.id, "search_a"))
-		dir = int(sl.k)
+		dir = int(sl.ks.get(ff.id, sl.k))
 	elif not _gas_layout(crew, art).is_empty() and ff == crew.leader:
 		# 가스 차단 (B6, 2026-11-16 사용자가 블렌더에서 확인): LPG 용기 앞에 쪼그려 앉아 밸브 손잡이를 시계 방향으로 돌려 잠근다
 		var gl := _gas_layout(crew, art)
@@ -2015,20 +2019,32 @@ func _talking(crew: Crew) -> bool:
 func _search_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dictionary:
 	if art == null or art.frames("search_a") <= 0 or crew == null:
 		return {}
-	var lead := crew.leader
-	var mate := crew.partner
-	if lead.incapacitated or mate == null or mate.incapacitated or mate.level != lead.level:
-		return {}
 	if not sim.rescue.task_of_crew(crew.id) is RescueSystem.SearchTask:
 		return {}
-	var delta := lead.pos - lead.prev_pos
-	if lead.level != lead.prev_level or delta.length_squared() <= 0.000001:
-		return {}
-	var k := SpriteArt.dir8(delta)
-	var facing := Vector2.RIGHT.rotated(k * PI / 4.0)
-	var lp := UnitsView.display_pos(lead, alpha)
-	return {"k": k, "anims": {lead.id: "search_a", mate.id: "search_b"},
-		"spots": {mate.id: stand_spot(lp, facing, art.stand("search_b"), sim.units.cell_size_m)}}
+	# 2인 1조씩: 첫째 짝(조원 첫째·둘째), 4명 분대는 둘째 짝(셋째·넷째)도 — 짝마다 앞사람이 걷는 방향으로 (2026-11-16 결정)
+	var pairs: Array = [[crew.leader, crew.partner]]
+	if crew.list.size() >= 4:
+		pairs.append([crew.list[2], crew.list[3]])
+	var out := {"k": 1, "ks": {}, "anims": {}, "spots": {}}
+	for pair: Array in pairs:
+		var lead: Firefighter = pair[0]
+		var mate: Firefighter = pair[1]
+		if lead.incapacitated or mate == null or mate.incapacitated or mate.level != lead.level:
+			continue
+		var delta := lead.pos - lead.prev_pos
+		if lead.level != lead.prev_level or delta.length_squared() <= 0.000001:
+			continue
+		var k := SpriteArt.dir8(delta)
+		var facing := Vector2.RIGHT.rotated(k * PI / 4.0)
+		var lp := UnitsView.display_pos(lead, alpha)
+		out.anims[lead.id] = "search_a"
+		out.anims[mate.id] = "search_b"
+		out.ks[lead.id] = k
+		out.ks[mate.id] = k
+		out.spots[mate.id] = stand_spot(lp, facing, art.stand("search_b"), sim.units.cell_size_m)
+		if lead == crew.leader:
+			out.k = k
+	return out if not out.anims.is_empty() else {}
 
 
 ## 방수 배치 (A4): 관창수(조장)가 방수 중이면 {k 방향, anims {대원 id: 동작}, spots {대원 id: 칸 좌표}}, 아니면 빈 것.
@@ -2104,11 +2120,21 @@ func _force_layout(task: DoorSystem.Task, crew: Crew, art: SpriteArt.SpriteSet) 
 	var fr := force_frame(task.opening, crew.leader.pos)
 	var out := {"k": fr.k, "seam": fr.seam, "spots": {}, "anims": {}}
 	var names := ["force_a", "force_b"]
-	var members := crew.members()
-	for i in members.size():
-		var anim: String = names[mini(i, 1)]
-		out.anims[members[i].id] = anim
-		out.spots[members[i].id] = stand_spot(fr.seam, fr.facing, art.stand(anim), sim.units.cell_size_m)
+	# 문을 젖히는 두 사람: 2인 조는 조장·짝, 분대(일하는 조원 3명 이상)는 둘째·셋째 —
+	# 선두(관창수·팀장)는 문 앞에서 기다린다 (2026-11-16 결정, 방수태세 그림은 나중에)
+	var workers: Array[Firefighter] = crew.workers()
+	var order: Array[Firefighter] = workers.duplicate()
+	if workers.size() >= 3:
+		order = workers.slice(1)
+		order.append(workers[0])
+	var n := 0
+	for ff in order:
+		if ff.incapacitated or n >= 2:
+			continue
+		var anim: String = names[n]
+		out.anims[ff.id] = anim
+		out.spots[ff.id] = stand_spot(fr.seam, fr.facing, art.stand(anim), sim.units.cell_size_m)
+		n += 1
 	return out
 
 
@@ -2127,7 +2153,8 @@ static func carry_spots(mode: String, lead: Vector2, dir: Vector2, cfg: Dictiona
 
 ## 운반 방식: 조장이 낮은 자세(연기층 아래)이거나 짝이 없으면 끌기, 아니면 2인 운반
 static func carry_mode(crew: Crew) -> String:
-	var solo := crew.partner == null or crew.partner.incapacitated
+	# 들 사람이 둘이 안 되면 끌기 (분대는 일하는 조원 중 움직일 수 있는 사람 수)
+	var solo := crew.able_workers() < 2
 	return "drag" if (crew.leader.crouched or solo) else "lift"
 
 
@@ -2226,7 +2253,7 @@ func _shown_pos(ff: Firefighter, alpha: float) -> Vector2:
 				return ol.spots.get(ff.id, p)
 	if not sim.rescue.searches.is_empty() and not ff.incapacitated:
 		var scr := sim.units.get_crew(ff.crew_id)
-		if scr != null and scr.partner == ff:
+		if scr != null and scr.leader != ff:
 			var art0 := SpriteArt.get_set(str(SpriteArt.config().get("crew", ""))) if not thermal else null
 			var srl := _search_layout(scr, art0, alpha)
 			if not srl.is_empty():
@@ -2244,7 +2271,7 @@ func _shown_pos(ff: Firefighter, alpha: float) -> Vector2:
 		var held := _ff_carry_layout(ff, alpha)
 		return held.victim if not held.is_empty() else p
 	var crew := sim.units.get_crew(ff.crew_id)
-	if crew != null and crew.partner == ff:
+	if crew != null and crew.leader != ff and crew.mate() == ff:
 		var lay := _carry_layout(crew, alpha)
 		if not lay.is_empty():
 			return lay.partner

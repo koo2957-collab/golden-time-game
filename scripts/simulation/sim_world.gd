@@ -167,6 +167,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.perception = Perception.new(sim.fire, sim.units, stats)
 	var hazard_params := ParamTable.from_dict(hazard_data)
 	sim.rescue = RescueSystem.new(sim.fire, sim.units, sim.pathfinder, sim.perception, hazard_params, sim.events)
+	sim.rescue.safe_at = sim.conditions.safe_to_enter
 	sim.hazards = HazardSystem.new(sim.fire, sim.units, sim.rescue, sim.perception, hazard_params, sim.events)
 	sim.rekindle = RekindleSystem.new(sim.fire, sim.units, sim.pathfinder, hazard_params, sim.events, p_seed)
 	sim.exposure = ExposureSystem.new(sim.fire, sim.water, hazard_params, sim.events)

@@ -225,6 +225,25 @@ func order_move(crew_ids: Array[int], target: Vector3i, pathfinder: Pathfinder, 
 		_route_crew(targets[i], Vector3i(slot.x, slot.y, target.z), pathfinder, via, outdoor)
 
 
+## 두 사람만 따로 보낸다 (분대 안의 2인 1조 — 구조대 두 짝 검색): lead는 goal까지, mate는 그 경로를 따라 한 칸 뒤까지.
+## 길이 없으면 false
+func route_pair(lead: Firefighter, mate: Firefighter, goal: Vector3i, pathfinder: Pathfinder) -> bool:
+	var path := pathfinder.find_path(lead.cell3(), goal)
+	if path.is_empty():
+		return false
+	lead.set_path(path)
+	if mate == null or path.size() < 2:
+		return true
+	var trail := pathfinder.find_path(mate.cell3(), path[0])
+	if trail.is_empty():
+		trail = pathfinder.find_path(mate.cell3(), path[-2])
+	else:
+		trail.append_array(path.slice(1, path.size() - 1))
+	if not trail.is_empty():
+		mate.set_path(trail)
+	return true
+
+
 ## 조장은 goal까지(via가 있으면 그 칸을 거쳐), 짝은 조장 경로를 따라 한 칸 뒤까지 이동한다.
 func _route_crew(c: Crew, goal: Vector3i, pathfinder: Pathfinder, via := Vector3i(-1, -1, -1), outdoor := false) -> void:
 	var lead_path := pathfinder.find_path_outdoors(c.leader.cell3(), goal) if outdoor else pathfinder.find_path(c.leader.cell3(), goal)

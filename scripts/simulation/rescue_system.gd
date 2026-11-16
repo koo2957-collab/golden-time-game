@@ -23,6 +23,14 @@ class SearchTask:
 	var level := 1
 	## 닿지 못한 지점으로 다시 길을 찾을 틱
 	var retry_tick := 0
+	## 두 짝 검색 (2026-11-16 결정: 구조대는 분대로 임무를 받고 검색은 2인 1조 두 짝으로):
+	## 선두가 방에 들어서면 남은 지점을 둘로 나눠, 첫째 짝(조원 첫째·둘째)은 waypoints를,
+	## 둘째 짝(셋째·넷째)은 waypoints2를 반대 방향으로 돈다. 나눴는가 / 둘째 짝의 지점·진행
+	var split := false
+	var waypoints2: Array[Vector2i] = []
+	var next2 := 0
+	var retry2 := 0
+	var tries2 := 0
 
 
 class CarryTask:
@@ -46,6 +54,9 @@ var pathfinder: Pathfinder
 var perception: Perception
 var events: SimEventLog
 var victims: Array[Victim] = []
+## 그 칸에 걸어 들어가도 되는가 (level, cell) -> bool. SimWorld가 CrewConditionSystem.safe_to_enter로 잇는다 —
+## 따로 도는 둘째 짝이 뜨거운 칸으로 들어가지 않게
+var safe_at: Callable
 var searches: Array[SearchTask] = []
 var carries: Array[CarryTask] = []
 ## 수관을 든 조는 구조할 수 없다 (WaterSystem으로 확인)
@@ -281,6 +292,11 @@ func order_rescue(crew_id: int, kind: String, target_id: int, tick: int) -> bool
 func cancel(crew_id: int) -> void:
 	for t in searches.duplicate():
 		if t.crew_id == crew_id:
+			# 따로 돌던 둘째 짝은 멈춘다 (다음 지시 때 선두 뒤로 다시 줄 선다)
+			if t.split:
+				var c := units.get_crew(crew_id)
+				for k in range(2, c.list.size()):
+					c.list[k].path.clear()
 			searches.erase(t)
 	for t in carries.duplicate():
 		if t.crew_id == crew_id:
@@ -484,25 +500,117 @@ func _step_search(t: SearchTask, tick: int) -> void:
 	if c.leader.incapacitated:
 		searches.erase(t)
 		return
-	if c.leader.is_moving():
-		return
-	# 멈췄는데 아직 그 지점에 닿지 못했다 (입구에서 진입 허가를 기다리는 중 등):
-	# 1초마다 다시 길을 찾고, 길이 아예 없으면 그 지점은 건너뛴다 (예전에는 멈추기만 하면 다음 지점으로 넘어가 밖에서 검색이 끝났다)
-	if t.next < t.waypoints.size() and not _at_waypoint(c, t.waypoints[t.next], t.level):
-		if tick < t.retry_tick:
-			return
-		t.retry_tick = tick + roundi(1.0 / SimClock.TICK_DT)
-		_go(c, t.waypoints[t.next], t.level)
+	_step_second_pair(t, c, tick)
+	if t.next < t.waypoints.size():
 		if c.leader.is_moving():
 			return
-	t.next += 1
-	if t.next < t.waypoints.size():
-		_go(c, t.waypoints[t.next], t.level)
+		# 멈췄는데 아직 그 지점에 닿지 못했다 (입구에서 진입 허가를 기다리는 중 등):
+		# 1초마다 다시 길을 찾고, 길이 아예 없으면 그 지점은 건너뛴다 (예전에는 멈추기만 하면 다음 지점으로 넘어가 밖에서 검색이 끝났다)
+		if not _at_waypoint(c, t.waypoints[t.next], t.level):
+			if tick < t.retry_tick:
+				return
+			t.retry_tick = tick + roundi(1.0 / SimClock.TICK_DT)
+			_go_first(t, c, t.waypoints[t.next])
+			if c.leader.is_moving():
+				return
+		t.next += 1
+		# 선두가 방의 첫 지점에 닿았다 → 4명 분대면 남은 지점을 두 짝이 나눈다
+		if t.next == 1:
+			_split_search(t, c)
+		if t.next < t.waypoints.size():
+			_go_first(t, c, t.waypoints[t.next])
+			return
+	# 첫째 짝은 다 돌았다 — 둘째 짝이 남았으면 기다린다
+	if t.next2 < t.waypoints2.size():
 		return
 	var room := fire.comps[t.room]
 	room.searched_tick = tick
 	searches.erase(t)
 	events.add(tick, "search_done", {"crew": _crew_name(c), "room": room.display_name()})
+
+
+## 남은 검색 지점을 두 짝이 나눈다: 둘레 지점의 앞 절반 + 마지막(방 가운데)은 첫째 짝이 그대로,
+## 뒤 절반은 둘째 짝이 거꾸로(반대 방향으로 벽을 따라) 돈다. 4명 분대이고 남은 지점이 3개 이상일 때만
+func _split_search(t: SearchTask, c: Crew) -> void:
+	var pair: Array[Firefighter] = c.second_pair()
+	var rest: Array[Vector2i] = t.waypoints.slice(t.next)
+	if t.split or pair.is_empty() or rest.size() < 3:
+		return
+	var last: Vector2i = rest[-1]
+	var around: Array[Vector2i] = rest.slice(0, rest.size() - 1)
+	@warning_ignore("integer_division")
+	var half := (around.size() + 1) / 2
+	var mine: Array[Vector2i] = t.waypoints.slice(0, t.next)
+	mine.append_array(around.slice(0, half))
+	mine.append(last)
+	var theirs: Array[Vector2i] = around.slice(half)
+	theirs.reverse()
+	t.waypoints = mine
+	t.waypoints2 = theirs
+	t.next2 = 0
+	t.tries2 = 0
+	t.split = true
+	if not theirs.is_empty():
+		_go_pair(pair, theirs[0], t.level)
+
+
+## 둘째 짝의 진행. 길이 막히거나(열·문) 한 사람이 쓰러지면 남은 지점을 첫째 짝에게 넘기고 다시 뒤따른다
+func _step_second_pair(t: SearchTask, c: Crew, tick: int) -> void:
+	if t.next2 >= t.waypoints2.size():
+		return
+	var pair: Array[Firefighter] = c.second_pair()
+	if pair.is_empty():
+		_merge_search(t)
+		return
+	var lead: Firefighter = pair[0]
+	if lead.is_moving():
+		# 다음 칸이 뜨거우면 멈춘다 (선두는 CrewConditionSystem이 막는다)
+		var wp: Vector3i = lead.path[0]
+		if safe_at.is_valid() and wp.z == lead.level and not safe_at.call(wp.z, Vector2i(wp.x, wp.y)):
+			for ff in pair:
+				ff.path.clear()
+		else:
+			return
+	var cell := t.waypoints2[t.next2]
+	if not (lead.level == t.level and lead.pos.distance_to(Vector2(cell) + Vector2(0.5, 0.5)) <= 2.0):
+		if tick < t.retry2:
+			return
+		t.retry2 = tick + roundi(1.0 / SimClock.TICK_DT)
+		t.tries2 += 1
+		if t.tries2 > 3 or not _go_pair(pair, cell, t.level):
+			_merge_search(t)
+		return
+	t.tries2 = 0
+	t.next2 += 1
+	if t.next2 < t.waypoints2.size():
+		_go_pair(pair, t.waypoints2[t.next2], t.level)
+
+
+## 둘째 짝이 못 돈 지점을 첫째 짝의 목록 끝(방 가운데 앞)에 넣는다
+func _merge_search(t: SearchTask) -> void:
+	var left: Array[Vector2i] = t.waypoints2.slice(t.next2)
+	t.waypoints2.clear()
+	t.next2 = 0
+	if left.is_empty():
+		return
+	var at := maxi(t.next, t.waypoints.size() - 1)
+	for k in left.size():
+		t.waypoints.insert(mini(at + k, t.waypoints.size()), left[k])
+
+
+## 첫째 짝 이동: 나눈 뒤에는 두 사람만, 그 전에는 조 전체가 뒤따른다
+func _go_first(t: SearchTask, c: Crew, cell: Vector2i) -> void:
+	if t.split and t.next2 < t.waypoints2.size():
+		_go_pair([c.leader, c.partner] as Array[Firefighter], cell, t.level)
+	else:
+		_go(c, cell, t.level)
+
+
+func _go_pair(pair: Array[Firefighter], cell: Vector2i, level: int) -> bool:
+	var slots := pathfinder.formation_slots(level, cell, 1)
+	if slots.is_empty():
+		return false
+	return units.route_pair(pair[0], pair[1] if pair.size() > 1 else null, Vector3i(slots[0].x, slots[0].y, level), pathfinder)
 
 
 ## 방 둘레(벽에 붙은 칸)를 조장에게서 가까운 곳부터 한 바퀴, SEARCH_SPACING 간격으로 돈다. 마지막에 방 가운데.

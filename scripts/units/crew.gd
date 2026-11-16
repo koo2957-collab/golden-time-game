@@ -63,6 +63,23 @@ func workers() -> Array[Firefighter]:
 	return out
 
 
+## 선두의 짝: 선두 다음으로 움직일 수 있는 일하는 조원 (운반의 뒷사람 등). 없으면 둘째 조원(null일 수 있다)
+func mate() -> Firefighter:
+	for ff in workers():
+		if ff != leader and not ff.incapacitated:
+			return ff
+	return partner
+
+
+## 둘째 짝 [앞, 뒤] — 4명 분대가 2인 1조 둘로 일할 때의 셋째·넷째 (구조대 두 짝 검색). 둘 다 움직일 수 있을 때만, 아니면 빈 배열
+func second_pair() -> Array[Firefighter]:
+	var out: Array[Firefighter] = []
+	if list.size() >= 4 and not list[2].incapacitated and not list[3].incapacitated:
+		out.append(list[2])
+		out.append(list[3])
+	return out
+
+
 ## 지금 움직일 수 있는 일하는 조원 수
 func able_workers() -> int:
 	var n := 0

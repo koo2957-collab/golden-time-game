@@ -102,6 +102,68 @@ func test_squad_walks_in_line() -> void:
 	assert_eq(cells.size(), 4, "줄지어 선다 — 겹치지 않음")
 
 
+## 구조1 분대(4명)를 2층에서 가장 큰 방에 세우고 그 방 검색을 시킨다. second_pair가 false면 넷째 조원을 쓰러뜨려 한 짝만 돌게 한다.
+## → [검색에 걸린 틱 (-1 = 못 끝냄), 두 짝으로 나눴는가, 첫째·둘째 짝 앞사람이 가장 멀어진 거리(칸)]
+func _search_big_room(second_pair: bool) -> Array:
+	var sim := SimWorld.from_scenario(SQUAD_SCENARIO)
+	sim.command.resources.clear_schedule()
+	sim.tactical.set_level("입문")
+	sim.command.interior.enabled = false
+	var room: Compartment = null
+	for r in sim.fire.comps:
+		if r.level == 2 and (room == null or r.cells.size() > room.cells.size()):
+			room = r
+	@warning_ignore("integer_division")
+	var cell: Vector2i = room.cells[room.cells.size() / 2]
+	var c := sim.units.squad_by_key("rescue1").crews[0]
+	for ff in c.list:
+		ff.pos = Vector2(cell) + Vector2(0.5, 0.5)
+		ff.prev_pos = ff.pos
+		ff.level = 2
+		ff.prev_level = 2
+	sim.command.entry_allowed[c.squad_id] = true
+	if not second_pair:
+		c.list[3].incapacitated = true
+	assert_true(sim.rescue.order_search(c.id, Vector3i(cell.x, cell.y, 2), sim.clock.tick), "검색 시작")
+	var task: RescueSystem.SearchTask = sim.rescue.task_of_crew(c.id)
+	var split := false
+	var apart := 0.0
+	var done := -1
+	for i in roundi(240.0 / SimClock.TICK_DT):
+		sim.step_ticks(1)
+		split = split or task.split
+		apart = maxf(apart, c.list[0].pos.distance_to(c.list[2].pos))
+		if room.searched_tick >= 0 and sim.rescue.task_of_crew(c.id) == null:
+			done = i
+			break
+	return [done, split, apart]
+
+
+func test_rescue_squad_searches_room_in_two_pairs() -> void:
+	var two := _search_big_room(true)
+	var one := _search_big_room(false)
+	assert_true(int(two[0]) >= 0, "두 짝 검색을 끝낸다")
+	assert_true(bool(two[1]), "방에 들어서면 남은 지점을 두 짝이 나눈다")
+	assert_true(float(two[2]) > 2.0, "두 짝이 서로 다른 쪽을 돈다 (가장 멀어진 거리 %.1f칸)" % float(two[2]))
+	assert_true(int(one[0]) >= 0 and not bool(one[1]), "한 사람이 쓰러지면 나누지 않고 한 짝이 다 돈다")
+	assert_true(int(two[0]) < int(one[0]), "두 짝이면 더 빨리 끝난다 (%d틱 < %d틱)" % [int(two[0]), int(one[0])])
+
+
+func test_mate_and_second_pair() -> void:
+	var units := _units(REINFORCEMENTS)
+	var pump := units.squad_by_key("pump2").crews[0]
+	assert_true(pump.mate() == pump.list[1], "선두의 짝 = 다음 일하는 조원")
+	pump.list[1].incapacitated = true
+	assert_true(pump.mate() == pump.list[2], "쓰러지면 그다음 조원이 짝")
+	assert_true(pump.mate() != pump.officer(), "진압 팀장은 드는 사람이 아니다")
+	var rescue := units.squad_by_key("rescue2").crews[0]
+	assert_eq(rescue.second_pair().size(), 2, "4명 분대는 둘째 짝이 있다")
+	rescue.list[3].incapacitated = true
+	assert_true(rescue.second_pair().is_empty(), "한 사람이 쓰러지면 둘째 짝 없음")
+	var first := _units(ROSTER).squad_by_key("pump1").crews[0]
+	assert_true(first.second_pair().is_empty(), "3명 분대는 둘째 짝 없음")
+
+
 func test_commander_alights_from_passenger_door() -> void:
 	var sim := SimWorld.from_scenario(SQUAD_SCENARIO)
 	var res := sim.command.resources

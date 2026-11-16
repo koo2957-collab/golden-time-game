@@ -8,7 +8,7 @@ extends Node2D
 ##     방 → 분대 기본 임무 (진압대 화재진압, 구조대 인명검색 — data/commands.json default_mission). 밖의 분대는 가까운 진입구로 가서 진입 허가를 묻는다
 ##     외부 보기의 외벽 층 → 그 층 단위 기본 임무 / 노란 진입구 → 그 문으로 / 바깥 땅 → 분대 이동 (밖의 분대만)
 ##     계단을 묻는 조 → 노란 계단 / 건물 안 조 곁의 문 → 문 행동 / 대상(펌프차·방수구·밸브·창·요구조자·환자) → 그 작업
-## - 우클릭 (지휘관을 골랐거나 아무것도 안 골랐을 때): 지휘관 이동
+## - 우클릭 (지휘관을 고른 채): 지휘관 이동. 아무것도 안 골랐으면 우클릭은 아무 일도 하지 않는다 (알림만)
 ## - 우클릭(차량): 이동, 소화전 점령(소화전 우클릭), 급수(물탱크차로 펌프차 우클릭)
 ## - 관계인 클릭: 진술 창 (witness_clicked)
 ## - 숫자 1~9: 팀 초상 줄 순서의 조 선택 (P10-1)
@@ -398,7 +398,11 @@ func _issue_right_click(world_pos: Vector2, screen_pos := Vector2(-1, -1)) -> vo
 		if not _issue_crew_right_click(world_pos, screen_pos):
 			notice.emit("여기서는 시킬 일이 없습니다 — 방·외벽 층·노란 진입구·바깥 땅을 우클릭 (지휘관을 옮기려면 지휘관을 고르세요)")
 		return
-	# 지휘관을 골랐거나 아무것도 안 골랐으면 땅 우클릭 = 현장지휘관 이동
+	# 아무것도 안 골랐으면 우클릭은 아무 일도 하지 않는다 — 고른 것만 움직인다 (2026-11-16 사용자 결정: 헷갈리지 않게)
+	if not commander_selected:
+		notice.emit("고른 대상이 없습니다 — 지휘관을 옮기려면 지휘관(파란 헬멧)이나 아래 바의 지휘관 그림을 먼저 고르세요")
+		return
+	# 지휘관을 고른 채 땅 우클릭 = 현장지휘관 이동
 	sim.issue(CommandOrder.make("commander_move", [], 0, Vector3i(cell.x, cell.y, level)))
 	_marker_world = projection.to_screen(marker_cell)
 	_marker_start_ms = Time.get_ticks_msec()

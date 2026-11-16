@@ -22,7 +22,7 @@ var view_mode := ViewMode.ISO
 var thermal := false
 var ignite_mode := false
 var command_hint := ""
-## 원형 메뉴·임무 창 (R7c)
+## 지시 창(층 우클릭)·팀장 둥근 버튼 (R7c, 2026-11-17)
 var mission_ui: MissionUi
 ## 리플레이 보기: 아직 넣지 않은 기록 (R12)
 var _view_entries: Array[Dictionary] = []
@@ -108,18 +108,13 @@ func _ready() -> void:
 	hud.command_ui.dialog_changed.connect(_on_dialog_changed)
 	selection.witness_clicked.connect(hud.command_ui.open_witness)
 	selection.notice.connect(hud.show_notice)
-	# 임무형 내부 지휘: 대상 메뉴(방·문)·팀 카드 끌어다 놓기 (R7c, P4-5)
+	# 임무형 내부 지휘: 층 우클릭 지시 창·팀장 둥근 버튼 (R7c, 2026-11-17)
 	mission_ui = MissionUi.new()
 	hud.add_child(mission_ui)
 	mission_ui.setup(sim, selection, screen_to_cell)
 	mission_ui.order_issued.connect(sim.issue)
 	mission_ui.notice.connect(hud.show_notice)
 	mission_ui.card = hud.card
-	# 진입 지시 4단계 (P4-2): 진입구 → 그 층 단면 → 목표 → 임무 창, 문 앞 휠
-	selection.entry_chosen.connect(func(lv: int) -> void: set_view_level(lv, false))
-	selection.entry_mode_started.connect(func(lv: int) -> void: set_view_level(lv, true))
-	selection.mission_target.connect(mission_ui.open_mission)
-	selection.door_menu.connect(mission_ui.open_door_menu)
 	selection.squad_menu.connect(mission_ui.open_squad_menu)
 	# 좌클릭 = 보기·고르기, 우클릭 = 지시 (2026-11-16 사용자 결정): 층 우클릭 → 지시 창 (임무 + 진입구 + 지시)
 	selection.floor_order.connect(mission_ui.open_order)
@@ -145,17 +140,9 @@ func _ready() -> void:
 		return iso_view.stack.pick_level(view_level, world_pos, projection())
 	# 내부 화면에서 다른 층을 누름: 그 층이 고른 층이 되고 화면은 제자리 (같은 클릭이 그 층에서 처리된다)
 	selection.floor_clicked.connect(func(lv: int) -> void: set_view_level(lv, false, true))
-	hud.command_ui.team_drag_started.connect(mission_ui.begin_drag)
 	city.progress = hud.command_ui.dispatch_progress
 	city.placement = hud.command_ui.dispatch_placement
-	# 팀 카드를 끌어 놓은 곳: 전술상황판 평면도 위면 그 칸, 아니면 지도 (P10-1)
-	hud.command_ui.team_dropped.connect(func(id: int, pos: Vector2) -> void:
-		if hud.board.visible and hud.board.map.get_global_rect().has_point(pos):
-			var cell := hud.board.map.to_cell(pos - hud.board.map.get_global_rect().position)
-			_board_drop(id, Vector3i(floori(cell.x), floori(cell.y), hud.board.map.draw_level()), pos)
-		else:
-			mission_ui.drop_crew(id, pos))
-	hud.board.crew_dropped.connect(_board_drop)
+	# 팀 카드·상황판에 끌어다 놓아 임무 주기는 없앴다 (2026-11-17 — 임무는 층 우클릭 지시 창 하나로)
 	hud.radio_log.jump.connect(_jump_to_crew)
 	hud.team_strip.jump.connect(_jump_to_crew)
 	hud.team_strip.picked.connect(func(id: int) -> void: selection._set_selection([id] as Array[int], [] as Array[int]))
@@ -779,16 +766,6 @@ func _on_radio_scene(open: bool) -> void:
 			sim.clock.paused = _paused_before_scene
 
 
-## 전술상황판에서 팀을 방·세대에 놓음 → 임무 창 (진입 지시 3~4단계, 확정하면 무전으로)
-func _board_drop(crew_id: int, target: Vector3i, screen_pos: Vector2) -> void:
-	var room := sim.fire.compartment_at(target.z, target.x, target.y)
-	if room == null:
-		hud.show_notice("상황판의 방이나 세대 위에 놓으세요")
-		return
-	var kind := "attack" if sim.units.squad_of_crew(crew_id).type == "진압대" else "search"
-	mission_ui.open_mission([crew_id] as Array[int], target, kind, Vector3i(-1, -1, -1), screen_pos)
-
-
 ## 무전 기록·팀 초상: 그 조로 화면 이동 (층도 바꾼다)
 func _jump_to_crew(crew_id: int) -> void:
 	var c := sim.units.get_crew(crew_id)
@@ -908,10 +885,6 @@ func _on_command(id: String) -> void:
 				selection.begin_mode(SelectionController.Mode.TRIAGE_POST)
 		"transport":
 			selection.begin_mode(SelectionController.Mode.TRANSPORT)
-		"attack":
-			selection.begin_mission("attack")
-		"search_auto":
-			selection.begin_mission("search")
 		"exterior":
 			selection.begin_mode(SelectionController.Mode.EXTERIOR)
 		"withdraw":

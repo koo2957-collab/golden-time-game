@@ -162,56 +162,33 @@ func _run() -> void:
 	_check("팀 선택 → 팀 세트 · 카드 보임(오른쪽 정보 창) · 지휘관 명령 묶음도 그대로", [card.set_name, hud._command_panel.is_visible_in_tree(), hud.side_panel.visible, hud.board_groups["report"].is_visible_in_tree()], ["team", true, true, true])
 	_check("정보 창과 아래 바가 함께 화면 안에", [hud.get_rect().encloses(hud.console.get_rect()), hud.get_rect().encloses(hud.side_panel.get_rect())], [true, true])
 	root.get_texture().get_image().save_png("user://ui_board_team.png")
-	_check("팀 6칸 (기획안 9-1)", _labels(card), ["Q 인명검색", "W 화점진압", "E 경계", "R 배연", "A 대기", "S 철수"])
+	_check("팀 4칸 — 임무(인명검색·화재진압)는 층 우클릭 지시 창으로 (2026-11-17)", _labels(card), ["Q 경계", "W 배연", "A 대기", "S 철수"])
 	_check("조를 골라도 메뉴가 뜨지 않는다", world.mission_ui.menu.visible, false)
 	# A 대기(하위 칸만) → 명령 카드가 하위 칸으로
 	world._press_card("A")
 	await process_frame
 	_check("A 대기 → 하위 칸", [card.parent, _labels(card)[0]], ["standby", "Q 그 자리 대기"])
+	_check("A 대기 → S 방수 중지 칸", _labels(card).has("S 방수 중지"), true)
 	world._press_card("BACK")
-	# W 화점진압: 대상 고르기 + 세부 동작 칸
-	world._press_card("W")
-	_check("W → 밖의 조는 진입구 고르기 (P4-2)", sel.mode, sel.Mode.ENTRY_POINT)
-	# 진입구가 아닌 곳은 고를 수 없다
-	var far_cell := Vector2(1.5, 1.5)
-	sel._pick_entry(sel.projection.to_screen(far_cell))
-	_check("진입구가 아니면 그대로 고르기", sel.mode, sel.Mode.ENTRY_POINT)
+	_check("고르기를 끝내면 첫 칸", card.parent, "")
+	# 층 우클릭 → 지시 창: 진압대는 화재진압, 가까운 진입구 → 지시하면 그 문을 거쳐 층 단위 화재진압
 	var ent = sim.entries.list[0]
-	sel._pick_entry(sel.projection.to_screen(Vector2(ent.door) + Vector2(0.5, 0.5)))
-	await process_frame
-	_check("진입구 → 그 층 단면 · 목표 고르기", [sel.mode, world.exterior_view, sel.chosen_entry == ent], [sel.Mode.ATTACK, false, true])
-	# 경로 미리보기: 아는 칸 실선 / 모르는 칸 점선
-	var room0: Compartment = null
-	for room in sim.fire.comps:
-		if room0 == null and room.level == ent.level and room.cells.size() > 4 and not sim.fire.is_exposure_comp(room):
-			room0 = room
-	var tc: Vector2i = room0.cells[room0.cells.size() / 2]
-	var path: Array = sel.preview_path(Vector3i(tc.x, tc.y, ent.level))
-	_check("경로 미리보기", path.size() > 1, true)
-	var kinds := {}
-	for p in path:
-		kinds[sel.known_cell(p)] = true
-	_check("아는 칸(바깥)과 모르는 칸(안 가본 집 안)이 섞인다", kinds.has(true) and kinds.has(false), true)
-	var est: Vector2 = sel.preview_estimate(path)
-	_check("예상 시간·도착 공기", est.x > 0.0 and est.y > 0.0 and est.y <= 1.0, true)
-	# 목표를 고르면 임무 창 → Enter = 기본 임무(화점진압) 지시, 진입구를 거쳐
+	var mui = world.mission_ui
 	var n_issued := sim.issued.size()
-	sel._complete_mode(sel.projection.to_screen(Vector2(tc) + Vector2(0.5, 0.5)))
-	sel.cancel_mode()
-	_check("목표 → 임무 창", world.mission_ui.panel.visible, true)
-	world.mission_ui.assign("attack")
+	sel.order_floor(ent.level, Vector2(600, 300))
+	await process_frame
+	_check("층 우클릭 → 지시 창 (화재진압·가까운 진입구)", [mui.order.visible, mui.order_kind, mui.order_entry >= 0], [true, "attack", true])
+	var chosen: EntryPoints.Entry = sim.entries.list[mui.order_entry]
+	mui.confirm_order()
 	var tcmd = sim.issued.filter(func(x): return x.command is TacticalCommand).back().command if sim.issued.size() > n_issued else null
-	_check("지시 → 진입구를 거치는 화점진압", tcmd != null and tcmd.via == ent.outside and str(tcmd.action).begins_with("attack"), true)
-	var known: bool = sim.command.interior.room_known(Vector3i(tc.x, tc.y, ent.level))
-	_check("본 방은 방 단위, 못 본 방은 층 단위", str(tcmd.action) if tcmd else "", "attack" if known else "attack_floor")
-	world._press_card("BACK")
-	sel._set_selection([crew_id] as Array[int], [] as Array[int])
-	# 건물 안 조: 시킬 일이 없는 곳을 우클릭하면 아무 지시도 없다 (지휘관도 그대로), 곁의 문을 우클릭하면 문 행동 (2026-11-16)
+	_check("지시 → 고른 진입구를 거치는 층 단위 화재진압", [str(tcmd.action) if tcmd else "", tcmd.via == chosen.outside if tcmd else false], ["attack_floor", true])
+	# 건물 안 조: 시킬 일이 없는 곳을 우클릭하면 아무 지시도 없다 (지휘관도 그대로). 문 앞 목록은 없앴다 (2026-11-17)
 	var inner: Opening = null
 	for o in sim.fire.openings:
 		if inner == null and o.kind == Opening.Kind.DOOR and o.level == 1 and o.room_a >= 0 and o.room_b >= 0:
 			inner = o
 	var cin := sim.units.get_crew(crew_id)
+	sim.tactical.cancel(crew_id)
 	for ff in cin.members():
 		ff.path.clear()
 		ff.level = 1
@@ -225,22 +202,10 @@ func _run() -> void:
 	_check("건물 안 조 = 건물 안", sim.command.interior.crew_inside(crew_id), true)
 	sel._right_click_at(sel.projection.to_screen(Vector2(inner.cells[0]) + Vector2(0.5, 0.5), 1.0), Vector2(700, 400))
 	await process_frame
-	var mui = world.mission_ui
-	_check("곁의 문 우클릭 → 문 행동 목록",mui.menu.visible and mui.menu_ids.has("door_check") and mui.menu_ids.has("door_side"), true)
-	mui.pick("door_side")
-	# 건물 안 조라 무전으로 전달된 뒤 적용된다
-	for i in 200:
-		if not sim.tactical.door_methods.get(crew_id, {}).is_empty():
-			break
-		sim.step_ticks(1)
-	_check("휠 → 문 처리 미리 정함", sim.tactical.door_methods.get(crew_id, {}).get("door", -1), inner.index)
-	_check("W → 하위 칸 없음 (주수 방법은 카드로, P10-2 결정 ②)", card.parent, "")
+	_check("곁의 문 우클릭 → 문 목록 대신 그 층 지시 창 (건물 안이라 진입구 줄 없음)", [mui.menu.visible, mui.order.visible, mui.order_entries.is_empty()], [false, true, true])
+	mui.close_order()
 	sel.cancel_mode()
 	await process_frame
-	world._press_card("A")
-	_check("A 대기 → S 방수 중지 칸", _labels(card).has("S 방수 중지"), true)
-	world._press_card("BACK")
-	_check("고르기를 끝내면 첫 칸", card.parent, "")
 	# 상황 행동 우클릭 (P10-2 결정 ②): 창 → 깨서 열기, 초진 뒤 불 없는 방에 화점진압 → 잔불정리
 	var win: Opening = null
 	for o in sim.fire.openings:
@@ -265,10 +230,16 @@ func _run() -> void:
 			if not burning:
 				quiet_room = room
 	if quiet_room:
+		# 지시 창의 화재진압은 초진 뒤 그 층에 보이는 불이 없으면 잔불정리로 바뀐다 (층 단위, 2026-11-17)
+		var g := sim.fire.grid
 		var qc: Vector2i = quiet_room.cells[quiet_room.cells.size() / 2]
-		_check("초진 전에는 화점진압", sel._overhaul_room(Vector3i(qc.x, qc.y, 1)), false)
+		g.fuel[g.index(1, qc.x, qc.y)] = g.fuel0[g.index(1, qc.x, qc.y)] * 0.5
+		_check("초진 전에는 화재진압 그대로", sel.overhaul_target(1), Vector3i(-1, -1, -1))
+		var burning_before := g.burning.duplicate()
+		for i in burning_before:
+			g.apply_water(i, 1000.0, 1.0)
 		sim.phases.knockdown_tick = sim.clock.tick
-		_check("초진 뒤 불 없는 방에 화점진압 → 잔불정리", sel._overhaul_room(Vector3i(qc.x, qc.y, 1)), true)
+		_check("초진 뒤 그 층에 불이 없으면 화재진압 → 잔불정리 (탄 방)", sel.overhaul_target(1).z, 1)
 		sim.phases.knockdown_tick = -1
 	# 단축키 이벤트로도 같다
 	var ev := InputEventKey.new()

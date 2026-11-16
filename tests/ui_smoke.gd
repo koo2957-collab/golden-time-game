@@ -351,10 +351,9 @@ func _run() -> void:
 	await process_frame
 	_click(u.get_crew(0).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
 	_check("조 클릭 → 고르기만 (원형 메뉴 없음, P4-5)", [sel.selected, world.mission_ui.menu.visible], [[0], false])
-	# 예전 동작 칸(수관·직사·분무)은 없다 — 수관은 펌프차 우클릭, 주수 방법은 화점실 앞 카드 (P10-2 결정 ②)
+	# 팀 칸은 경계·배연·대기·철수뿐 — 인명검색·화재진압은 층 우클릭 지시 창으로 (2026-11-17)
 	_key(KEY_W)
-	var want_mode = sel.Mode.ENTRY_POINT if sim.command.interior.enabled and not sim.command.interior.crew_inside(0) else sel.Mode.ATTACK
-	_check("W → (밖의 조면) 진입구 고르기 (P4-2)", [world.hud.card.parent, sel.mode], ["", want_mode])
+	_check("W → 배연 (출입문 고르기, 인명검색·화재진압 칸은 없다)", [world.hud.card.parent, sel.mode], ["", sel.Mode.PPV])
 	sel.cancel_mode()
 	_click(sim.units.vehicles[0].pos, MOUSE_BUTTON_RIGHT)
 	# 수관 준비·연장에는 현장 작업 시간이 걸린다 (P4-1)
@@ -391,10 +390,10 @@ func _run() -> void:
 	await process_frame
 	_click(u.get_crew(1).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
 	await _mission(KEY_Q, Vector2(24.5, 17.5))
-	_check("Q → 진입구 → 목표 → 임무 창 → 인명검색 (P4-2)", sel.mode, sel.Mode.NONE)
+	_check("층 우클릭 → 지시 창 Q(인명검색) → Enter", [sel.mode, world.mission_ui.order.visible], [sel.Mode.NONE, false])
 	sim.step_ticks(1)
 	var searches := sim.command_log.entries.filter(func(c): return c is TacticalCommand and str(c.action).begins_with("search"))
-	_check("방 클릭 → 인명검색 임무", searches.size() >= 1, true)
+	_check("지시 창 → 인명검색 임무", searches.size() >= 1, true)
 
 	# 지휘관 명령 칸 지원 ▸ 단위대 지정 → 단위대 창. 조를 고른 채로 눌러도 된다 (칸은 늘 보인다)
 	sel._set_selection([1] as Array[int], [] as Array[int])
@@ -463,7 +462,7 @@ func _run() -> void:
 	await process_frame
 	_check("알림 표시", world.hud._notice_label.text.contains("소화전 점령"), true)
 
-	# 명령 카드 (P10-2): 진압대·구조대 같은 팀 카드 — W 화점진압, Q 인명검색 (팀 초상 줄에 가리지 않게 가운데로)
+	# 진압대·구조대 같은 팀 카드. 임무는 층 우클릭 지시 창 — W 화재진압, Q 인명검색 (팀 초상 줄에 가리지 않게 가운데로)
 	world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(u.get_crew(1).leader.pos))
 	await process_frame
 	_click(u.get_crew(1).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
@@ -478,7 +477,7 @@ func _run() -> void:
 	await _mission(KEY_Q, Vector2(24.5, 17.5))
 	sim.step_ticks(1)
 	var tacts := sim.command_log.entries.filter(func(c): return c is TacticalCommand)
-	_check("진압대 → 진압, 구조대 → 수색", tacts.slice(-2).map(func(c): return c.action), ["attack", "search"])
+	_check("진압대 → 층 진압, 구조대 → 층 검색 (지시 창)", tacts.slice(-2).map(func(c): return c.action), ["attack_floor", "search_floor"])
 	_check("RECEO 상태판", cui._receo_label.text.contains("R 구조"), true)
 	# 지휘관 명령 칸 안전 ▸ RIT 지정 → 조 누르기, 안전 ▸ 인원 점검
 	hud_board["rit"].pressed.emit()
@@ -582,7 +581,7 @@ func _run() -> void:
 		_key(KEY_Q)
 		var held := sim.issued.filter(func(x): return x.command is TacticalCommand and x.command.action == "hold")
 		_check("대기 지시", held.size(), 1)
-	# 팀 카드(진입대원 통제표, 전술상황판 왼쪽 열)를 상황판 평면도의 방에 끌어다 놓기 → 임무 창 (P10-1)
+	# 팀 카드(진입대원 통제표)는 보기만 한다 — 끌어다 놓아 임무 주기는 없앴다 (2026-11-17: 임무는 층 우클릭 지시 창 하나로)
 	_check("팀 카드", cui._team_buttons.size() >= 4, true)
 	var card_id := 2
 	var card_btn: Button = cui._team_buttons.get(card_id)
@@ -593,6 +592,7 @@ func _run() -> void:
 		board.show_level(1)
 		await process_frame
 		await process_frame
+		var n_drop := sim.issued.size()
 		var drop := Vector2(room1.cells[room1.cells.size() / 2]) + Vector2(0.5, 0.5)
 		var from := card_btn.get_global_rect().get_center()
 		var to: Vector2 = board.map.get_global_rect().position + board.map.to_px(drop)
@@ -613,14 +613,7 @@ func _run() -> void:
 		rl.global_position = to
 		root.push_input(rl, true)
 		await process_frame
-		_check("팀 카드 끌어다 놓기 → 임무 창", mui.panel.visible, true)
-		mui._opts["on_victim"].select(1)
-		mui.assign("search")
-		var conds := sim.issued.filter(func(x): return x.command is CommandOrder and x.command.action == "mission_conditions")
-		var miss := sim.issued.filter(func(x): return x.command is TacticalCommand and x.command.action.begins_with("search") and x.command.crew_ids == [card_id])
-		_check("임무 조건 + 인명 검색", [conds.size() >= 1, miss.size() >= 1], [true, true])
-		sim.step_ticks(1)
-		_check("조건 기록", sim.tactical.condition_text(card_id).contains("즉시 구조"), true)
+		_check("팀 카드를 끌어다 놓아도 임무가 나가지 않는다", [mui.is_open(), sim.issued.slice(n_drop).filter(func(x): return x.command is TacticalCommand).size()], [false, 0])
 		board.toggle()
 	# R15 성능 표시 (F12)
 	_key(KEY_F12)
@@ -795,19 +788,15 @@ func _drag(from_cell: Vector2, to_cell: Vector2) -> void:
 	root.push_input(release, true)
 
 
-## 진입 지시 4단계 (P4-2): 임무 키 → (밖의 조면) 진입구 → 목표 클릭 → 임무 창 '지시'(Enter)
+## 임무 주기 (2026-11-17): 그 층 내부 화면에서 목표 자리를 우클릭 → 지시 창 → 임무 키(Q 인명검색·W 화재진압) → Enter
 func _mission(key: Key, target: Vector2, lv := 1) -> void:
-	var sel = _world.selection
-	_key(key)
-	if sel.mode == sel.Mode.ENTRY_POINT:
-		var e = _world.sim.entries.list[0]
-		sel._pick_entry(sel.projection.to_screen(Vector2(e.door) + Vector2(0.5, 0.5)))
 	if _world.view_level != lv or _world.exterior_view:
 		_world.set_view_level(lv, false)
 	_world.camera.retarget(_world.projection().bounds(_world.sim.building), _world.projection().to_screen(target))
 	await process_frame
-	_click(target, MOUSE_BUTTON_LEFT)
+	_click(target, MOUSE_BUTTON_RIGHT)
 	await process_frame
+	_key(key)
 	var k := InputEventKey.new()
 	k.keycode = KEY_ENTER
 	k.pressed = true

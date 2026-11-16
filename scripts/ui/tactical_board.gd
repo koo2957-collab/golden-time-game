@@ -7,12 +7,10 @@ extends Control
 ##   왼쪽 60%: 도면 (BoardMap — 무전 보고만)
 ##   오른쪽 40%: 선으로 나눈 정보 칸 세 줄 — 2026-11-15 사용자 결정: 글자를 키우고 중요한 것만 (칸마다 판 폭을 다 쓴다)
 ##     ① 전략 · 우선순위: 전략 한 줄 + 지금 해당하는 우선순위(대원 안전 → RECEO, 가장 급한 것은 빨강) + 확인 필요 몇 건
-##     ② 임무 부여 · 진입대원 통제 (팀 카드 — 끌어다 도면에 놓으면 임무 창), 통솔범위는 넘었을 때만
+##     ② 임무 부여 · 진입대원 통제 (팀 카드 — 보기만, 임무는 지도에서 층 우클릭 지시 창으로), 통솔범위는 넘었을 때만
 ##     ③ 구조대상자 · 물 · 출동대(오는 중·대기 중인 출동대만)
 ##   뺀 것: 출동 지령 원문·둘러보기(→ 현장 정보 창), 해당 없는 우선순위 줄, 구역 한 줄(외부 도면에 그려진다), 출동대별 진입 상태
 ## 열려 있을 때만 2Hz로 다시 그린다 (사무용 PC). 질문 카드는 이보다 위에 뜬다.
-
-signal crew_dropped(crew_id: int, target: Vector3i, screen_pos: Vector2)
 
 const REFRESH_S := 0.5
 
@@ -135,7 +133,6 @@ func setup(p_sim: SimWorld, ui: CommandUi) -> void:
 	map.setup(sim)
 	map.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	map.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	map.crew_dropped.connect(func(id: int, t: Vector3i, p: Vector2) -> void: crew_dropped.emit(id, t, p))
 	map_cell.add_child(map)
 	# 오른쪽 — 정보 칸
 	info_cell = PanelContainer.new()

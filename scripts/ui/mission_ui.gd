@@ -1,28 +1,24 @@
 class_name MissionUi
 extends Control
 ## 임무형 내부 지휘 화면 (기획안 9-1·9-2, R7c)
-##   - 지시 창 (2026-11-16, open_order): 조를 고른 채 층을 우클릭하면 임무(분대 기본 임무가 골라져 있다) + 진입구 + 지시.
-##     임무는 층 단위 — 방 단위 지시는 없다. 곁의 문을 우클릭하면 문 행동. 방 임무 목록(open_room_menu)은 점검용으로 남아 있다.
-##     조를 누를 때마다 뜨던 원형 메뉴는 없앴다 (2026-11-11 사용자 결정 — 명령은 명령 카드와 노란 표시로)
-##   - 끌어다 놓기: 전술상황판의 팀 카드를 지도의 방·층에 놓으면 임무 창 → 임무(화점 진압·인명 검색) + 임무 조건
+##   - 지시 창 (2026-11-16·17 사용자 결정, open_order): 분대를 고른 채 층을 우클릭하면 임무(분대 기본 임무가 골라져 있다)
+##     + 진입구 + 지시. 임무를 주는 길은 이것 하나 — 방 단위 지시·조건 3개 임무 창·팀 카드 끌어다 놓기·문 앞 목록은 없앴다.
+##   - 팀장 둥근 버튼 (분대 편성)과 한 명 보내기 목록, 대기 ▸ 지원 투입
 ## 화면만 만든다. 명령은 order_issued로 내보내고 시뮬레이션이 실행한다 (다시 하기에 기록된다).
 
 signal order_issued(command: RefCounted)
 signal notice(text: String)
 
-const PANEL_WIDTH := 420.0
-
 var sim: SimWorld
 var selection: SelectionController
 ## 화면 좌표 → 칸 (x, y, 층)
 var to_cell: Callable
-var panel: PanelContainer
-## 대상 메뉴 (방·문을 눌렀을 때만, 커서 곁의 작은 목록)
+## 커서 곁 작은 목록 (한 명 보내기 임무 고르기)
 var menu: PanelContainer
 var _menu_box: VBoxContainer
 var _menu_title: Label
 var _menu_pick := Callable()
-## 대상 메뉴 항목 id (테스트·화면 점검용)
+## 목록 항목 id (테스트·화면 점검용)
 var menu_ids: Array[String] = []
 ## 팀장 둥근 버튼 (분대 편성)과 그 항목 id · 누른 출동대
 var radial: RadialMenu
@@ -30,12 +26,10 @@ var radial_ids: Array[String] = []
 var _radial_squad := -1
 var _radial_pos := Vector2.ZERO
 var _menu_buttons: Array[Button] = []
-## 임무 창 (진입 지시 4단계): 받는 조들, 진입구, 기본 임무
-var _drop_crews: Array[int] = []
-var _drop_via := Vector3i(-1, -1, -1)
-## 지시 창 (층 우클릭): 임무·진입구를 고르고 '지시'. 화면 점검이 읽는 값 — 고른 임무, 층, 진입구 목록(가까운 순)과 고른 진입구
-const ORDER_KINDS := {"search": "인명검색", "attack": "화재진압"}
-const ORDER_KEYS := {"search": "Q", "attack": "W"}
+## 지시 창 (층 우클릭): 임무·진입구를 고르고 '지시'. 화면 점검이 읽는 값 — 고른 임무, 층, 진입구 목록(가까운 순)과 고른 진입구.
+## 직하층 확인은 세대 배치가 있는 건물(공동주택)에서만 보인다
+const ORDER_KINDS := {"search": "인명검색", "attack": "화재진압", "check_below": "직하층 확인"}
+const ORDER_KEYS := {"search": "Q", "attack": "W", "check_below": "E"}
 var order: PanelContainer
 var _order_box: VBoxContainer
 var _order_crews: Array[int] = []
@@ -43,21 +37,9 @@ var order_level := 0
 var order_kind := ""
 var order_entries: Array[int] = []
 var order_entry := -1
-var _default_kind := ""
-var _kind_buttons: Dictionary = {}
 ## 명령 카드 (Hud와 같은 것)와 칸 누르기 (World._press_card)
 var card: CommandCard
 var press_card: Callable
-var _drop_crew := -1
-var _drop_target := Vector3i.ZERO
-var _drag_crew := -1
-var _ghost: Label
-var _title: Label
-var _hint: Label
-var _opts: Dictionary = {}  # 조건 키 -> OptionButton
-var _groups := {"withdraw_air": "withdraw_air_options", "on_fire": "on_fire_options", "on_victim": "on_victim_options"}
-## 마지막으로 고른 조건 (다음 임무 창의 기본값)
-var _last := {"withdraw_air": "alarm", "on_fire": "ask", "on_victim": "ask"}
 
 
 func setup(p_sim: SimWorld, p_selection: SelectionController, p_to_cell: Callable) -> void:
@@ -66,15 +48,6 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_to_cell: Callabl
 	to_cell = p_to_cell
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_build_panel()
-	_ghost = Label.new()
-	_ghost.add_theme_font_size_override("font_size", 16)
-	_ghost.add_theme_color_override("font_color", Color("fde68a"))
-	_ghost.add_theme_color_override("font_outline_color", Color.BLACK)
-	_ghost.add_theme_constant_override("outline_size", 4)
-	_ghost.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_ghost.visible = false
-	add_child(_ghost)
 	_build_menu()
 	_build_order()
 	# 팀장 둥근 버튼 (분대 편성)
@@ -83,21 +56,14 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_to_cell: Callabl
 	radial.picked.connect(_on_squad_pick)
 
 
-func _process(_delta: float) -> void:
-	if _drag_crew >= 0:
-		_ghost.position = get_viewport().get_mouse_position() + Vector2(16, 6)
-
-
 func is_open() -> bool:
-	return menu.visible or panel.visible or radial.visible or order.visible
+	return menu.visible or radial.visible or order.visible
 
 
 func close_all() -> void:
 	close_menu()
 	close_order()
 	radial.close()
-	panel.visible = false
-	end_drag()
 
 
 # --- 팀장 둥근 버튼: 분대 편성 (2026-11-16 결정 — 명령 카드는 임무, 둥근 버튼은 편성) ---
@@ -174,36 +140,6 @@ func open_solo_menu(squad_id: int, screen_pos: Vector2) -> void:
 		order_issued.emit(CommandOrder.make("solo", [squad_id] as Array[int], 0, Vector3i.ZERO, {"task": id}))
 		notice.emit("%s: 한 명 보내기 — %s" % [squad.name, str(sim.solo_spec(id).get("label", id))]))
 
-# --- 대상 메뉴 (P4-5) ---
-
-## 방을 눌렀다: 임무 고르기. 조건은 직전에 쓴 값 그대로 (바꾸려면 '조건 바꾸기')
-func open_room_menu(crew_ids: Array[int], target: Vector3i, via: Vector3i, screen_pos: Vector2) -> void:
-	if crew_ids.is_empty():
-		return
-	_drop_crews = crew_ids.duplicate()
-	_drop_crew = crew_ids[0]
-	_drop_target = target
-	_drop_via = via
-	var names: PackedStringArray = []
-	for id in crew_ids:
-		names.append(_crew_name(id))
-	var items: Array[Dictionary] = [
-		{"id": "attack", "label": "1  화재진압"},
-		{"id": "search", "label": "2  인명검색"},
-		{"id": "check_below", "label": "3  직하층 확인"},
-		{"id": "panel", "label": "4  조건 바꾸기…"},
-	]
-	open_menu("%s → %s" % [" · ".join(names), _target_name()], items, screen_pos, func(id: String) -> void:
-		if id == "panel":
-			open_mission(crew_ids, target, "attack", via, screen_pos)
-			return
-		# 조건은 그 조가 쓰던 것(없으면 직전 값) 그대로
-		var cur: Dictionary = sim.tactical.conditions.get(crew_ids[0], _last)
-		for k: String in _opts:
-			_select_key(_opts[k], _groups[k], str(cur.get(k, _last[k])))
-		assign(id))
-
-
 # --- 지시 창 (2026-11-16 사용자 결정): 분대를 고른 채 층을 우클릭 → 임무 + 진입구 + 지시. 임무를 주는 길은 이것 하나 ---
 
 ## 층을 우클릭했다: 임무(분대 종류의 기본 임무가 골라져 있다)와 진입구(가는 중인 문, 없으면 가까운 문)를 보이고
@@ -244,10 +180,30 @@ func open_order(crew_ids: Array[int], level: int, screen_pos: Vector2) -> void:
 
 ## 지시 창에서 임무를 바꾼다 ("search"·"attack")
 func pick_order_kind(kind: String) -> void:
-	if not order.visible or not kind in ORDER_KINDS:
+	if not order.visible or not kind in order_kinds():
 		return
 	order_kind = kind
 	_rebuild_order()
+
+
+## 지시 창에 보일 임무: 인명검색·화재진압, 세대 배치가 있는 건물에서 아래층이 있으면 직하층 확인 (SOP 202 4.4)
+func order_kinds() -> Array[String]:
+	var out: Array[String] = ["search", "attack"]
+	var layout := sim.tactical.layout
+	if layout != null and not layout.units.is_empty() and sim.building.has_level(order_level - 1):
+		out.append("check_below")
+	return out
+
+
+## 직하층 확인의 기준 칸: 그 층에서 불이 났던 방(타고 있거나 탄 자리), 없으면 층 가운데 — 그 세대 바로 아래 세대를 본다
+func _below_target(lv: int) -> Vector3i:
+	var fires: Dictionary = sim.tactical._fire_rooms(lv)
+	for idx: int in fires:
+		var room := sim.fire.comps[idx]
+		if not room.cells.is_empty():
+			return Vector3i(room.cells[0].x, room.cells[0].y, lv)
+	var mid := Vector2i(sim.building.footprint(lv).get_center())
+	return Vector3i(mid.x, mid.y, lv)
 
 
 ## 지시 창에서 진입구를 바꾼다 (EntryPoints 목록 index)
@@ -283,6 +239,8 @@ func confirm_order() -> void:
 	var fp := sim.building.footprint(lv)
 	var mid := Vector2i(fp.get_center())
 	var cmd := TacticalCommand.make(order_kind + "_floor", crews, Vector3i(mid.x, mid.y, lv), via)
+	if order_kind == "check_below":
+		cmd = TacticalCommand.make("check_below", crews, _below_target(lv), via)
 	order_issued.emit(cmd)
 	notice.emit("%s, %s%s" % [" · ".join(names), "%s로 진입 — " % via_name if via_name != "" else "", sim.command.interior.order_text(cmd)])
 
@@ -309,9 +267,9 @@ func _rebuild_order() -> void:
 	_order_box.add_child(_order_caption("임무"))
 	var kinds := HBoxContainer.new()
 	kinds.add_theme_constant_override("separation", 6)
-	for k: String in ORDER_KINDS:
+	for k: String in order_kinds():
 		var b := _order_button("%s  %s" % [ORDER_KEYS[k], ORDER_KINDS[k]], k == order_kind)
-		b.custom_minimum_size = Vector2(150, 36)
+		b.custom_minimum_size = Vector2(130, 36)
 		# 단추가 자기 신호 안에서 지워지지 않게 다음 프레임에 다시 그린다
 		b.pressed.connect(func() -> void: pick_order_kind.call_deferred(k))
 		kinds.add_child(b)
@@ -397,24 +355,6 @@ func _build_order() -> void:
 	add_child(order)
 
 
-## 문 행동 (건물 안 조가 2칸 안의 문을 누름): 가스 확인 후 개방·문 옆 벽에서 개방·파괴 후 개방·문 닫고 대기 (P4-2)
-func open_door_menu(crew_id: int, door_index: int, screen_pos: Vector2) -> void:
-	var items: Array[Dictionary] = []
-	var sets: Array = CommandCard.load_sets().get("door", [])
-	var o := sim.fire.openings[door_index]
-	for k in sets.size():
-		var it: Dictionary = sets[k]
-		var enabled := true
-		if str(it.id) == "door_force":
-			enabled = o.locked or not o.is_open
-		items.append({"id": str(it.id), "label": "%d  %s" % [k + 1, str(it.label)], "enabled": enabled, "tip": str(it.get("hint", ""))})
-	open_menu("%s · 문 앞" % _crew_name(crew_id), items, screen_pos, func(id: String) -> void:
-		for k in sets.size():
-			if str(sets[k].id) == id:
-				order_issued.emit(EquipmentCommand.make("door_method", [crew_id] as Array[int], -1, door_index, Vector3i(k, 0, 0)))
-				notice.emit("%s: %s" % [_crew_name(crew_id), str(sets[k].label)]))
-
-
 ## 커서 곁 작은 목록. 숫자키 1~n·클릭으로 고르고 Esc·바깥 클릭으로 닫는다
 func open_menu(title: String, items: Array[Dictionary], screen_pos: Vector2, on_pick: Callable) -> void:
 	for ch in _menu_box.get_children():
@@ -489,6 +429,8 @@ func _order_input(event: InputEvent) -> void:
 			pick_order_kind("search")
 		elif event.keycode == KEY_W:
 			pick_order_kind("attack")
+		elif event.keycode == KEY_E:
+			pick_order_kind("check_below")
 		elif event.keycode >= KEY_1 and event.keycode <= KEY_9:
 			var n: int = event.keycode - KEY_1
 			if n < order_entries.size():
@@ -558,198 +500,6 @@ func send_support(crew_id: int) -> void:
 		action = "search"
 	order_issued.emit(TacticalCommand.make(action, [helper] as Array[int], target))
 	notice.emit("지원 투입: %s → %s 쪽 %s" % [_crew_name(helper), _crew_name(crew_id), TacticalSystem.ACTIONS.get(action, action)])
-
-
-# --- 끌어다 놓기 ---
-
-## 팀 카드를 끌기 시작 (전술상황판)
-func begin_drag(crew_id: int) -> void:
-	_drag_crew = crew_id
-	_ghost.text = "▶ %s — 방이나 층에 놓기" % _crew_name(crew_id)
-	_ghost.visible = true
-
-
-func end_drag() -> void:
-	_drag_crew = -1
-	if _ghost:
-		_ghost.visible = false
-
-
-## 팀 카드를 지도에 놓음 → 임무 창
-func drop_crew(crew_id: int, screen_pos: Vector2) -> void:
-	end_drag()
-	var t: Vector3i = to_cell.call(screen_pos)
-	var room := sim.fire.compartment_at(t.z, t.x, t.y)
-	if room == null:
-		notice.emit("건물 안 방이나 층 위에 놓으세요 — 지도에서는 조를 고르고 방·노란 진입구를 우클릭합니다")
-		return
-	_drop_crew = crew_id
-	_drop_crews = [crew_id] as Array[int]
-	_drop_target = t
-	_drop_via = Vector3i(-1, -1, -1)
-	_default_kind = ""
-	_title.text = "%s → %s" % [_crew_name(crew_id), _target_name()]
-	var cur: Dictionary = sim.tactical.conditions.get(crew_id, _last)
-	for k: String in _opts:
-		_select_key(_opts[k], _groups[k], str(cur.get(k, _last[k])))
-	var cmd := sim.command
-	var squad := sim.units.get_crew(crew_id).squad_id
-	_hint.text = "" if not cmd.entry_order_required or cmd.entry_allowed.has(squad) else "진입 명령(R)이 아직 없습니다 — 임무를 받아도 입구에서 기다립니다"
-	_hint.visible = _hint.text != ""
-	panel.size = Vector2.ZERO
-	panel.reset_size()
-	var area := get_viewport_rect().size
-	panel.position = Vector2(clampf(screen_pos.x + 14.0, 8.0, area.x - PANEL_WIDTH - 8.0), clampf(screen_pos.y + 14.0, 8.0, area.y - panel.size.y - 8.0))
-	panel.visible = true
-
-
-## 진입 지시 4단계: 목표를 고르면 임무 창 (임무·조건, 기본값은 직전 사용값). '지시'(Enter)로 내린다
-func open_mission(crew_ids: Array[int], target: Vector3i, kind: String, via: Vector3i, screen_pos: Vector2) -> void:
-	if crew_ids.is_empty():
-		return
-	var room := sim.fire.compartment_at(target.z, target.x, target.y)
-	if room == null:
-		notice.emit("건물 안 방이나 층을 고르세요")
-		return
-	_drop_crews = crew_ids.duplicate()
-	_drop_crew = crew_ids[0]
-	_drop_target = target
-	_drop_via = via
-	_default_kind = kind
-	var names: PackedStringArray = []
-	for id in crew_ids:
-		names.append(_crew_name(id))
-	var e := sim.entries.nearest(Vector2(via.x, via.y), via.z, 2.5) if via.x >= 0 else null
-	_title.text = "%s → %s%s" % [" · ".join(names), (e.name + " → ") if e else "", _target_name()]
-	var cur: Dictionary = sim.tactical.conditions.get(crew_ids[0], _last)
-	for k: String in _opts:
-		_select_key(_opts[k], _groups[k], str(cur.get(k, _last[k])))
-	_hint.text = ""
-	_hint.visible = false
-	for k: String in _kind_buttons:
-		var b: Button = _kind_buttons[k]
-		b.text = ("▶ " if k == kind else "") + b.get_meta("label")
-	_place_panel(screen_pos)
-
-
-func _place_panel(screen_pos: Vector2) -> void:
-	panel.size = Vector2.ZERO
-	panel.reset_size()
-	var area := get_viewport_rect().size
-	panel.position = Vector2(clampf(screen_pos.x + 14.0, 8.0, area.x - PANEL_WIDTH - 8.0), clampf(screen_pos.y + 14.0, 8.0, area.y - panel.size.y - 8.0))
-	panel.visible = true
-
-
-func _unhandled_key_input(event: InputEvent) -> void:
-	if panel.visible and event is InputEventKey and event.pressed and not event.echo and event.keycode in [KEY_ENTER, KEY_KP_ENTER] and _default_kind != "":
-		get_viewport().set_input_as_handled()
-		assign(_default_kind)
-
-
-func _by_floor() -> bool:
-	return sim.command.interior.enabled and not sim.command.interior.room_known(_drop_target)
-
-
-func _target_name() -> String:
-	if _by_floor():
-		return "%s (층 단위 — 아직 본 적 없는 곳)" % sim.building.floor_name(_drop_target.z)
-	return sim.fire.compartment_at(_drop_target.z, _drop_target.x, _drop_target.y).display_name()
-
-
-## 임무 부여: 조건을 먼저 정하고 임무를 내린다 (화점 진압·인명 검색·직하층 확인). 진입구를 골랐으면 그 문으로
-func assign(kind: String) -> void:
-	if _drop_crews.is_empty():
-		return
-	var cond := {"crews": _drop_crews.duplicate()}
-	for k: String in _opts:
-		var key := _selected_key(_opts[k], _groups[k])
-		cond[k] = key
-		_last[k] = key
-	order_issued.emit(CommandOrder.make("mission_conditions", [], 0, Vector3i.ZERO, cond))
-	var action := kind + ("_floor" if _by_floor() and kind != "check_below" else "")
-	var cmd := TacticalCommand.make(action, _drop_crews, _drop_target, _drop_via)
-	order_issued.emit(cmd)
-	var names: PackedStringArray = []
-	for id in _drop_crews:
-		names.append(_crew_name(id))
-	# 지시 문장 (밖의 조는 대면 지시, 안의 조는 무전으로 같은 문장이 나간다)
-	notice.emit("%s, %s" % [" · ".join(names), sim.command.interior.order_text(cmd)])
-	panel.visible = false
-	_drop_crew = -1
-	_drop_crews.clear()
-	_default_kind = ""
-
-
-func _build_panel() -> void:
-	panel = PanelContainer.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.04, 0.07, 0.12, 0.95)
-	style.border_color = Color("fbbf24")
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(8)
-	style.set_content_margin_all(12)
-	panel.add_theme_stylebox_override("panel", style)
-	panel.custom_minimum_size = Vector2(PANEL_WIDTH, 0)
-	panel.visible = false
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 6)
-	panel.add_child(box)
-	_title = Label.new()
-	_title.add_theme_font_size_override("font_size", 17)
-	_title.add_theme_color_override("font_color", Color("fde68a"))
-	_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_title.custom_minimum_size = Vector2(PANEL_WIDTH - 24.0, 0)
-	box.add_child(_title)
-	var lab := Label.new()
-	lab.text = "임무 조건 — 정해 두면 그 상황에서 묻지 않고 그대로 한다"
-	lab.add_theme_font_size_override("font_size", 13)
-	lab.add_theme_color_override("font_color", Color("94a3b8"))
-	box.add_child(lab)
-	for k: String in ["withdraw_air", "on_fire", "on_victim"]:
-		var ob := OptionButton.new()
-		ob.focus_mode = Control.FOCUS_NONE
-		for o: Dictionary in sim.tactical.mission_data.get(_groups[k], []):
-			ob.add_item(str(o.get("label", o.get("key", ""))))
-			ob.set_item_metadata(ob.item_count - 1, str(o.get("key", "")))
-		box.add_child(ob)
-		_opts[k] = ob
-	_hint = Label.new()
-	_hint.add_theme_font_size_override("font_size", 13)
-	_hint.add_theme_color_override("font_color", Color("fca5a5"))
-	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_hint.custom_minimum_size = Vector2(PANEL_WIDTH - 24.0, 0)
-	box.add_child(_hint)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
-	for spec in [["attack", "화점 진압"], ["search", "인명 검색"], ["check_below", "직하층 확인"]]:
-		var b := Button.new()
-		b.text = spec[1]
-		b.set_meta("label", spec[1])
-		_kind_buttons[spec[0]] = b
-		b.focus_mode = Control.FOCUS_NONE
-		b.custom_minimum_size = Vector2(110, 36)
-		b.pressed.connect(assign.bind(spec[0]))
-		row.add_child(b)
-	var cancel := Button.new()
-	cancel.text = "취소"
-	cancel.focus_mode = Control.FOCUS_NONE
-	cancel.custom_minimum_size = Vector2(70, 36)
-	cancel.pressed.connect(func() -> void: panel.visible = false)
-	row.add_child(cancel)
-	box.add_child(row)
-	add_child(panel)
-
-
-func _select_key(ob: OptionButton, _group: String, key: String) -> void:
-	for i in ob.item_count:
-		if str(ob.get_item_metadata(i)) == key:
-			ob.select(i)
-			return
-	ob.select(0)
-
-
-func _selected_key(ob: OptionButton, _group: String) -> String:
-	return str(ob.get_item_metadata(ob.selected)) if ob.selected >= 0 else ""
 
 
 func _crew_name(crew_id: int) -> String:

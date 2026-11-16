@@ -34,16 +34,12 @@ var _refresh := 0.0
 var _radio_panel: PanelContainer
 var _radio_label: Label
 var _entry_label: Label
-## 팀 카드 (조마다 한 줄: 위치·임무·공기·마지막 보고). 클릭 = 선택, 더블클릭 = 화면 이동, 끌어다 놓기 = 임무 (R7c)
+## 팀 카드 (조마다 한 줄: 위치·임무·공기·마지막 보고). 클릭 = 선택, 더블클릭 = 화면 이동 (R7c). 끌어다 놓기 임무는 없앴다 (2026-11-17)
 var _team_box: VBoxContainer
 var _team_buttons: Dictionary = {}  # 조 id -> Button
 var _team_press := -1
-var _team_press_pos := Vector2.ZERO
-var _team_dragging := false
-## 팀 카드 클릭 (선택)·더블클릭(화면 이동)·끌기 시작·놓기
+## 팀 카드 클릭 (선택)·더블클릭(화면 이동)
 signal team_selected(crew_id: int, focus: bool)
-signal team_drag_started(crew_id: int)
-signal team_dropped(crew_id: int, screen_pos: Vector2)
 ## 출동 중 장면 (기획안 4-4, 2026-11-14): 차가 달리는 동안 지령·상황실 요청·장비·조별 임무·차량 배치를 하나씩 묻는다.
 ## 도착하면 고른 것을 여기서 명령으로 내린다 (_arrive)
 var dispatch: DispatchUi
@@ -1436,26 +1432,18 @@ func _team_color(crew_id: int) -> Color:
 	return paper_palette.get("text", TEXT_COLOR)
 
 
+## 팀 카드 누르기: 한 번 = 고르기, 두 번 = 고르고 그 조로 화면 이동. 끌어다 놓아 임무 주기는 없앴다 (2026-11-17)
 func _on_team_input(event: InputEvent, crew_id: int, b: Button) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			_team_press = crew_id
-			_team_press_pos = event.global_position
-			_team_dragging = false
 			if event.double_click:
 				team_selected.emit(crew_id, true)
 				_team_press = -1
 		elif _team_press == crew_id:
-			if _team_dragging:
-				team_dropped.emit(crew_id, event.global_position)
-			elif b.get_global_rect().has_point(event.global_position):
+			if b.get_global_rect().has_point(event.global_position):
 				team_selected.emit(crew_id, false)
 			_team_press = -1
-			_team_dragging = false
-	elif event is InputEventMouseMotion and _team_press == crew_id and not _team_dragging:
-		if event.global_position.distance_to(_team_press_pos) > 10.0:
-			_team_dragging = true
-			team_drag_started.emit(crew_id)
 
 
 # --- 지휘권 이양 (SOP 112, R13) ---

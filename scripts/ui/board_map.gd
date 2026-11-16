@@ -6,9 +6,8 @@ extends Control
 ##            보고된 화점(불꽃 + 빨간 빗금)·연기(물결선), 구조대상자(사람 표시 + 인원수, 구조 완료는 체크), 위험 징후(삼각형),
 ##            검색 지시(/)·검색 완료(✕), 조 자석(마지막 보고 위치·보고 시각, 오래되면 흐리게), 수관(방수 중 실선·연장만 점선)
 ##   외부(level = -1): 차량 자석, 소화전·급수 연결, 수관, 진입구 화살표, 구역(점선)·집결지·분류소, 지휘소 깃발, 밖의 조
-## 조 자석을 방·세대로 끌어다 놓으면 임무 창 (진입 지시 3~4단계)
+## 상황판은 보는 곳 — 자석을 끌어다 임무를 주지 않는다 (2026-11-17)
 
-signal crew_dropped(crew_id: int, target: Vector3i, screen_pos: Vector2)
 
 ## 범례 글 (기호 id → 설명)
 const LEGEND := {
@@ -23,8 +22,6 @@ var sim: SimWorld
 var style: BoardStyle
 ## 보는 층 (-1 = 외부)
 var level := -1
-var _drag_crew := -1
-var _drag_at := Vector2.ZERO
 
 
 func setup(p_sim: SimWorld) -> void:
@@ -688,20 +685,7 @@ func _legend_symbol(id: String, p: Vector2, font: Font) -> void:
 			BoardSymbols.cross_mark(self, p, r, style.color("casualty"), ink, style.color("board"))
 
 
-# --- 끌어다 놓기 ---
-
-func _gui_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
-		if event.pressed:
-			_drag_crew = crew_at(event.position)
-			_drag_at = event.position
-		elif _drag_crew >= 0:
-			var id := _drag_crew
-			_drag_crew = -1
-			if event.position.distance_to(_drag_at) > 6.0:
-				var cell := to_cell(event.position)
-				crew_dropped.emit(id, Vector3i(floori(cell.x), floori(cell.y), draw_level()), get_global_transform() * event.position)
-		accept_event()
+# 상황판은 보는 곳이다 — 자석을 끌어다 놓아 임무를 주던 기능은 없앴다 (2026-11-17 사용자 결정: 임무는 층 우클릭 지시 창 하나로)
 
 
 ## 상황판의 조 자석 (누른 자리가 자석 위, 살짝 넉넉하게)

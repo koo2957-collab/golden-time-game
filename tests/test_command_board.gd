@@ -51,4 +51,5 @@ func test_no_commander_card_set() -> void:
 	assert_eq(card.slots().filter(func(s: Dictionary) -> bool: return not s.is_empty()).size(), 0, "빈 6칸")
 	assert_eq(card.press("Q"), "", "세트 없이 Q → 실행할 것 없음")
 	card.set_target("team")
-	assert_eq(card.slots().filter(func(s: Dictionary) -> bool: return not s.is_empty()).size(), 6, "팀 6칸")
+	# 2026-11-17: 인명검색·화재진압은 층 우클릭 지시 창 — 팀 칸은 경계·배연·대기·철수 4칸
+	assert_eq(card.slots().filter(func(s: Dictionary) -> bool: return not s.is_empty()).size(), 4, "팀 4칸")

@@ -53,6 +53,23 @@ static func font() -> Font:
 	return ThemeDB.fallback_font
 
 
+## 팀장(분대 지휘관) 표시: 머리 위 ★ (2026-11-17 — 헬멧 파란 띠 대신, 사용자가 '별표 같은 다른 방법'을 원함)
+const OFFICER_STAR := Color("fbbf24")
+const OFFICER_STAR_EDGE := Color("1c1917")
+
+
+## 별 (꼭짓점 5개). r = 바깥 반지름
+static func draw_star(ci: CanvasItem, center: Vector2, r: float, fill: Color = OFFICER_STAR, edge: Color = OFFICER_STAR_EDGE) -> void:
+	var pts := PackedVector2Array()
+	for i in 10:
+		var a := -PI / 2.0 + i * PI / 5.0
+		var rr := r if i % 2 == 0 else r * 0.45
+		pts.append(center + Vector2(cos(a), sin(a)) * rr)
+	ci.draw_colored_polygon(pts, fill)
+	pts.append(pts[0])
+	ci.draw_polyline(pts, edge, maxf(1.0, r * 0.18))
+
+
 static func to_px(cell_pos: Vector2) -> Vector2:
 	return cell_pos * CELL_PX
 

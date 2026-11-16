@@ -59,26 +59,6 @@ class SpriteSet:
 				_blit(ci, sc, feet, k, Color(helmet, helmet.a * modulate.a))
 		return true
 
-	## 헬멧 띠: 헬멧 색 층(stripe)의 가로 한 줄(위에서 from~to 비율)만 color로 덧그린다 — 다시 굽지 않고 팀장 표시 (2026-11-16)
-	func draw_band(ci: CanvasItem, anim: String, dir: int, frame: int, feet: Vector2, color: Color, from_v: float, to_v: float,
-			alpha := 1.0, size := 1.0) -> void:
-		var a: Dictionary = anims.get(anim, {})
-		if a.is_empty() or not a.has("stripe"):
-			return
-		var n := maxi(1, int(a.frames))
-		var sc: Array = a.stripe.get("%d_%d" % [posmod(dir, directions), posmod(frame, n)], [])
-		if sc.is_empty():
-			return
-		var h := float(sc[4])
-		var y0 := floorf(h * clampf(from_v, 0.0, 1.0))
-		var y1 := ceilf(h * clampf(to_v, 0.0, 1.0))
-		if y1 <= y0:
-			return
-		var k := size / scale
-		var src := Rect2(float(sc[1]), float(sc[2]) + y0, float(sc[3]), y1 - y0)
-		var dst := Rect2(feet + Vector2(float(sc[5]), float(sc[6]) + y0) * k, src.size * k)
-		ci.draw_texture_rect_region(pages[int(sc[0])], dst, src, Color(color, color.a * alpha))
-
 	func _blit(ci: CanvasItem, cell: Array, feet: Vector2, k: float, modulate: Color) -> void:
 		var tex := pages[int(cell[0])]
 		var src := Rect2(float(cell[1]), float(cell[2]), float(cell[3]), float(cell[4]))
@@ -178,11 +158,6 @@ static func victim_set(label: String) -> SpriteSet:
 		if label.contains(w):
 			return get_set(str(v.get("female", "")))
 	return get_set(str(v.get("male", "")))
-
-
-## 팀장 헬멧 띠 설정 (data/art.json helmet_band): {color, from, to}. 없으면 빈 것
-static func helmet_band() -> Dictionary:
-	return config().get("helmet_band", {})
 
 
 ## 헬멧 색: 출동대 종류(진압대·구조대·구급대 …)로만 정한다 (data/art.json helmet_color, 없으면 default)

@@ -151,6 +151,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.pathfinder = Pathfinder.new(building)
 	var speed_cells := stats.value("walk_speed_mps") / building.cell_size_m
 	sim.units = UnitSystem.from_roster(roster, speed_cells, vehicle_stats, building.cell_size_m)
+	sim.units.line_gap_cells = maxi(1, roundi(stats.value("line_gap_m") / building.cell_size_m))
 	# 휴대 장비 (P4-1): 출동대 종류별 기본 장비. 이미 만든 조에도 나눠 준다
 	var equip: Variant = JsonData.load_file("res://data/units/equipment.json")
 	if equip is Dictionary:

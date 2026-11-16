@@ -253,7 +253,9 @@ func _draw_sprays(alpha: float) -> void:
 		else:
 			var r := sim.water.radius_cells(h.pattern) * PlanStyle.CELL_PX
 			var side := (to - from).orthogonal().normalized() * r
-			draw_colored_polygon(PackedVector2Array([from, to + side, to - side]), PlanStyle.FOG_COLOR)
+			# 목표 칸 바로 앞이면 넓이 0 삼각형 (그리기 경고) — 건너뛴다
+			if from.distance_to(to) > 1.0:
+				draw_colored_polygon(PackedVector2Array([from, to + side, to - side]), PlanStyle.FOG_COLOR)
 			draw_arc(to, r, 0.0, TAU, 24, PlanStyle.WATER_COLOR, 1.5)
 
 
@@ -266,6 +268,9 @@ func _draw_unit(ff: Firefighter, alpha: float) -> void:
 	var a := 1.0 if on_floor else PlanStyle.OTHER_FLOOR_ALPHA
 	if on_floor and crew.id in selection.selected:
 		draw_arc(center, r + 4.0, 0.0, TAU, 32, PlanStyle.SELECTION, 2.5)
+		# 팀장은 이중 고리 (2026-11-17)
+		if ff.officer:
+			draw_arc(center, r + 8.0, 0.0, TAU, 32, PlanStyle.SELECTION, 1.5)
 	# 열 스트레스가 쌓이면 붉게
 	var body := squad.color.lerp(Color(1.0, 0.25, 0.1), clampf(ff.heat_stress, 0.0, 1.0) * 0.7)
 	draw_circle(center, r, Color(body, a))
@@ -285,6 +290,9 @@ func _draw_unit(ff: Firefighter, alpha: float) -> void:
 	if ff.crouched:
 		draw_arc(center, r + 2.0, 0.2, PI - 0.2, 12, Color.WHITE, 1.5)
 	var bar := Rect2(center.x - r, center.y - r - 6.0, r * 2.0, 3.0)
+	# 팀장(분대 지휘관): 공기 막대 위 ★
+	if ff.officer:
+		PlanStyle.draw_star(self, center + Vector2(0, -r - 14.0), 6.0)
 	draw_rect(bar, PlanStyle.TANK_BG)
 	var f := ff.air_ratio()
 	draw_rect(Rect2(bar.position, Vector2(bar.size.x * f, bar.size.y)), PlanStyle.AIR_LOW if f < 0.18 else PlanStyle.AIR_OK)

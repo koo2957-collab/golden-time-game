@@ -72,5 +72,18 @@ func _run() -> void:
 	for i in 6:
 		await process_frame
 	root.get_texture().get_image().save_png(out + "hover_band_ext.png")
+	# 팀장 ★·선택 이중 고리 (구조대 분대를 고르고 팀장을 크게)
+	for sq in sim.units.squads:
+		if sq.type == "구조대" and not sq.crews.is_empty():
+			var cr: Crew = sq.crews[0]
+			sel._set_selection([cr.id] as Array[int], [] as Array[int])
+			var o: Firefighter = cr.officer()
+			if o:
+				world.camera.zoom = Vector2(1.8, 1.8)
+				world.camera.position = proj.to_screen(o.pos, 1.0)
+	root.warp_mouse(Vector2(10, 10))
+	for i in 8:
+		await process_frame
+	root.get_texture().get_image().save_png(out + "officer.png")
 	print("저장 ", out)
 	quit()

@@ -98,7 +98,11 @@ func test_squad_walks_in_line() -> void:
 	for i in c.list.size():
 		var ff := c.list[i]
 		cells[ff.cell3()] = true
-		assert_true(ff.pos.distance_to(c.leader.pos) <= float(i) * 1.5 + 0.1, "%d번째는 선두 뒤 %d칸 안 (%.1f)" % [i + 1, i, ff.pos.distance_to(c.leader.pos)])
+		# 간격 line_gap_cells칸 (1m, 2026-11-17)마다 한 사람 — 대각선 길이면 조금 더 멀다
+		var gap: int = sim.units.line_gap_cells
+		assert_true(ff.pos.distance_to(c.leader.pos) <= float(i * gap) * 1.5 + 0.1, "%d번째는 선두 뒤 %d칸 안 (%.1f)" % [i + 1, i * gap, ff.pos.distance_to(c.leader.pos)])
+		if i > 0:
+			assert_true(ff.pos.distance_to(c.list[i - 1].pos) >= float(gap) * 0.9, "%d번째는 앞사람과 %d칸쯤 떨어진다 (%.1f)" % [i + 1, gap, ff.pos.distance_to(c.list[i - 1].pos)])
 	assert_eq(cells.size(), 4, "줄지어 선다 — 겹치지 않음")
 
 
@@ -345,23 +349,17 @@ func test_solo_fetches_equipment_for_the_squad() -> void:
 	assert_true(back.size() == 1 and str(back[0].item) != "", "전달 기록 (%s)" % [back])
 
 
-func test_officer_helmet_band_config() -> void:
-	# 팀장 헬멧 파란 띠 (2026-11-16): 다시 굽지 않고 헬멧 색 층의 가로 한 줄을 덧그린다 — 설정과 그림의 헬멧 층이 있어야 한다
-	var band := SpriteArt.helmet_band()
-	assert_true(not band.is_empty(), "data/art.json helmet_band")
-	assert_true(float(band.get("from", 1.0)) < float(band.get("to", 0.0)), "띠 위치 from < to")
-	assert_true(Color(str(band.get("color", ""))).b > 0.5, "파란 띠")
-	var path := "res://art/sprites/%s.json" % str(SpriteArt.config().get("crew", ""))
-	if not FileAccess.file_exists(path):
-		return
-	var meta: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
-	for anim: String in meta.anims:
-		var a: Dictionary = meta.anims[anim]
-		assert_eq((a.get("stripe", {}) as Dictionary).size(), (a.cells as Dictionary).size(), "%s: 모든 장에 헬멧 층" % anim)
-	# 팀장 표시는 편성 파일의 officer
-	var units := _units(REINFORCEMENTS)
-	var officers := units.firefighters.filter(func(ff: Firefighter) -> bool: return ff.officer)
-	assert_eq(officers.size(), 5, "후착 진압 4개 분대 + 구조2 = 팀장 5명")
+## 팀장(분대 지휘관)만 머리 위 ★ 표시 대상 (2026-11-17 — 헬멧 띠 대신). 분대마다 팀장은 한 명
+func test_officer_marked_once_per_squad() -> void:
+	var sim := SimWorld.from_scenario("res://data/scenarios/dev_squad_house_fire.json")
+	for squad in sim.units.squads:
+		var officers := 0
+		for c in squad.crews:
+			for ff in c.list:
+				if ff.officer:
+					officers += 1
+		assert_true(officers <= 1, "%s 팀장 %d명" % [squad.name, officers])
+	assert_true(PlanStyle.OFFICER_STAR.a > 0.0, "★ 색")
 
 
 func test_commander_alights_from_passenger_door() -> void:

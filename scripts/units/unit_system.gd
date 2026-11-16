@@ -17,6 +17,8 @@ var walk_speed_cells := 2.4
 ## vehicle_stats: data/units/vehicles.json (차종 -> 제원)
 var vehicle_stats: Dictionary = {}
 var cell_size_m := 0.5
+## 분대가 줄지어 걸을 때 앞사람과의 간격 (칸, data/units/firefighter.json line_gap_m — SimWorld가 넣는다)
+var line_gap_cells := 2
 
 
 static func from_roster(roster: Dictionary, speed_cells: float, p_vehicle_stats: Dictionary = {}, p_cell_size_m := 0.5) -> UnitSystem:
@@ -442,10 +444,10 @@ func _route_crew(c: Crew, goal: Vector3i, pathfinder: Pathfinder, via := Vector3
 	if lead_path.is_empty():
 		return
 	c.leader.set_path(lead_path)
-	# 뒤따르는 조원: k번째는 선두 경로의 끝에서 k칸 앞까지 (줄지어 선다). 경로가 그보다 짧으면 제자리
+	# 뒤따르는 조원: k번째는 선두 경로의 끝에서 k × 간격 칸 앞까지 (줄지어 선다, line_gap_cells). 경로가 그보다 짧으면 제자리
 	for k in range(1, c.list.size()):
 		var ff: Firefighter = c.list[k]
-		var end := lead_path.size() - 1 - k
+		var end := lead_path.size() - 1 - k * line_gap_cells
 		if end < 0:
 			break
 		var trail := pathfinder.find_path_outdoors(ff.cell3(), lead_path[0]) if outdoor else pathfinder.find_path(ff.cell3(), lead_path[0])

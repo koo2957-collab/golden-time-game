@@ -70,7 +70,7 @@ func _run() -> void:
 			break
 		await process_frame
 	world.hud.command_ui.close_all()
-	print("  도착 뒤 %d초 · 타는 칸 %d" % [roundi(sim.clock.tick * SimClock.TICK_DT), sim.fire.grid.burning.size()])
+	print("  도착 뒤 %d초 · 타는 칸 %d · 끝남 %s (%s)" % [roundi(sim.clock.tick * SimClock.TICK_DT), sim.fire.grid.burning.size(), sim.ended(), str(sim.end_type)])
 	for e in sim.events.entries:
 		if str(e.type) in ["tactical_done", "tactical_halt", "card_answered", "card_asked", "crew_decided", "door_task_start", "equipment_missing", "spray_start", "knockdown_reported", "fire_out", "crew_withdraw"]:
 			print("  ▷ ", e)
@@ -96,8 +96,17 @@ func _run() -> void:
 	var fire_lv := _fire_level(sim)
 	var mui = world.mission_ui
 	var ordered := 0
+	# 출동대가 4개 이상이면 RIT부터 (SSG 9 — 없으면 진입 허가의 정답이 '대기'): 마지막 진압·구조 분대
+	var rit := -1
+	if sim.units.squads.size() >= 4:
+		for c in sim.units.crews:
+			if not c.solo and not c.leader.aboard and sel.default_kind(c.id) != "":
+				rit = c.id
+		if rit >= 0:
+			sim.issue(CommandOrder.make("role", [rit] as Array[int], SafetySystem.Role.RIT))
+			sim.step_ticks(2)
 	for c in sim.units.crews:
-		if c.solo or c.leader.aboard or c.leader.incapacitated:
+		if c.solo or c.leader.aboard or c.leader.incapacitated or c.id == rit:
 			continue
 		sel._set_selection([c.id] as Array[int], [] as Array[int])
 		if sel.default_kind(c.id) == "":
@@ -108,6 +117,11 @@ func _run() -> void:
 			mui.confirm_order()
 			ordered += 1
 	_check("지시 창으로 층 임무를 줬다 (%d개 분대)" % ordered, ordered > 0, true)
+	print("  발화층 %d · 명령 기록 마지막 %s" % [fire_lv, sim.issued.slice(-ordered).map(func(x): return "%s %s" % [x.command.get_class(), str(x.command.get("action"))])])
+	sim.step_ticks(5)
+	for e in sim.events.entries.slice(-20):
+		if str(e.type).contains("reject") or str(e.type).contains("delay") or str(e.type).contains("span") or str(e.type).contains("entry") or str(e.type).contains("floor"):
+			print("  ◇ ", e)
 	sel._set_selection([] as Array[int], [] as Array[int])
 	# 4) 전술상황판 열고 닫기
 	world.hud.board.toggle()
@@ -138,9 +152,11 @@ func _run() -> void:
 	print("  자동화 수준 ", sim.tactical.level_name, " · 난이도 ", sim.realism, " · 진입 명령 규칙 ", sim.command.entry_order_required)
 	# 밖에서(문·창 너머) 화점을 잡으면 들어가지 않아도 된다 (실전에서 출동 중 정한 화재진압이 그렇다)
 	var knocked := sim.events.of_type("tactical_done").any(func(e: Dictionary) -> bool: return str(e.text).contains("진압"))
-	_check("대원이 들어갔거나 화점을 잡았다 (진입 %d회 · 카드 %d장 답함)" % [entered, answered], entered > 0 or knocked, true)
+	# 샌드위치패널 창고처럼 방어 전략으로 지켜보다 전소로 끝나는 시나리오도 있다 (지시 전에 끝남)
+	var burnt_out := sim.ended() and str(sim.end_type) == "전소"
+	_check("대원이 들어갔거나 화점을 잡았다 (진입 %d회 · 카드 %d장 답함)" % [entered, answered], entered > 0 or knocked or burnt_out, true)
 	var started := sim.events.of_type("tactical_start").size()
-	_check("층 임무가 시작됐다 (%d건)" % started, started > 0, true)
+	_check("층 임무가 시작됐다 (%d건)" % started, started > 0 or burnt_out, true)
 	# 6) 활동 종료 → 디브리핑
 	if not sim.ended():
 		var cui = world.hud.command_ui

@@ -487,7 +487,7 @@ func _draw_floor_hover() -> void:
 		var t := Time.get_ticks_msec() / 1000.0
 		var glow := 0.55 + 0.25 * sin(t * 5.0)
 		for poly: PackedVector2Array in _band_polys(float(band[1]), float(band[2])):
-			draw_colored_polygon(poly, Color(PlanStyle.ENTRY_POINT, 0.18 * glow))
+			_fill(poly, Color(PlanStyle.ENTRY_POINT, 0.18 * glow))
 			var loop := poly.duplicate()
 			loop.append(poly[0])
 			draw_polyline(loop, Color(PlanStyle.ENTRY_POINT, 0.95), 3.0)
@@ -629,8 +629,8 @@ func _draw_window_signs(w: Dictionary, h0: float, fh: float) -> void:
 		var flick := 0.8 + 0.25 * sin(t * 9.0 + o.index * 1.7)
 		var tip := _face_point(w.face, mid, g1 + fh * 0.9 * flick) + Vector2(sin(t * 5.0 + o.index) * 4.0, 0)
 		if not _draw_window_fire(o.index, base, half, (base - tip).length(), t):
-			draw_colored_polygon(_flame_shape(base, half, tip), Color(1.0, 0.45, 0.1, 0.9))
-			draw_colored_polygon(_flame_shape(base, half * 0.5, base.lerp(tip, 0.6)), Color(1.0, 0.85, 0.3, 0.95))
+			_fill(_flame_shape(base, half, tip), Color(1.0, 0.45, 0.1, 0.9))
+			_fill(_flame_shape(base, half * 0.5, base.lerp(tip, 0.6)), Color(1.0, 0.85, 0.3, 0.95))
 	# 창가·발코니의 사람 (구조대상자)
 	var v := _victim_at_window(o)
 	if v != null:
@@ -1479,7 +1479,7 @@ func _draw_flame(x: int, y: int, base_m: float) -> void:
 	var base := proj.to_screen(c, base_m)
 	var w := IsoProjection.HALF_W * 0.55
 	var sway := Vector2(sin(t * 3.1 + seed_f) * 3.0, 0)
-	draw_colored_polygon(_ellipse(base, w * 1.3, w * 0.65), Color(1.0, 0.45, 0.1, 0.35 * intensity * fade))
+	_fill(_ellipse(base, w * 1.3, w * 0.65), Color(1.0, 0.45, 0.1, 0.35 * intensity * fade))
 	if depth == 0 and fade >= 1.0:
 		_glow_spots.append([base, IsoProjection.HALF_W * (3.0 + 3.0 * intensity), intensity, x * 131 + y])
 	# 셰이더로 구운 불꽃 그림 (tools/bake_fx.gd). 없으면 아래 도형
@@ -1492,8 +1492,8 @@ func _draw_flame(x: int, y: int, base_m: float) -> void:
 		FxArt.draw_puff(self, base + bob, fw_px * (1.3 + 0.4 * mass), FxArt.PUFF_FIRE, x * 7 + y * 3 + int(t * 0.5), Color(1, 1, 1, 0.55 * mass * fade))
 	if FxArt.draw_flame(self, base + Vector2(sin(t * 2.3 + seed_f) * 1.5, 0), fw_px, fh_px, (x * 31 + y * 17), Color(1, 1, 1, fade)):
 		return
-	draw_colored_polygon(_flame_shape(base, w, proj.to_screen(c, base_m + height) + sway), Color(0.95, 0.3, 0.06, 0.9 * fade))
-	draw_colored_polygon(_flame_shape(base, w * 0.55, proj.to_screen(c, base_m + height * 0.6) + sway * 0.6), Color(1.0, 0.8, 0.3, 0.95 * fade))
+	_fill(_flame_shape(base, w, proj.to_screen(c, base_m + height) + sway), Color(0.95, 0.3, 0.06, 0.9 * fade))
+	_fill(_flame_shape(base, w * 0.55, proj.to_screen(c, base_m + height * 0.6) + sway * 0.6), Color(1.0, 0.8, 0.3, 0.95 * fade))
 
 
 func _draw_unit(ff: Firefighter, alpha: float) -> void:
@@ -1508,6 +1508,9 @@ func _draw_unit(ff: Firefighter, alpha: float) -> void:
 		feet = proj.to_screen(p, float(carried.victim_h))
 	if crew.id in selection.selected:
 		draw_polyline(_ellipse(feet, 13, 6.5, true), PlanStyle.SELECTION, 2.0)
+		# 팀장은 이중 고리 — 다시 누르면 분대 편성 둥근 버튼이 뜨는 사람 (2026-11-17)
+		if ff.officer:
+			draw_polyline(_ellipse(feet, 18, 9, true), PlanStyle.SELECTION, 1.5)
 	# 열 스트레스가 쌓이면 붉게
 	var body_color := squad.color.lerp(Color(1.0, 0.25, 0.1), clampf(ff.heat_stress, 0.0, 1.0) * 0.7)
 	if ff.incapacitated:
@@ -1530,6 +1533,9 @@ func _draw_unit(ff: Firefighter, alpha: float) -> void:
 		draw_string(PlanStyle.font(), label + Vector2(-30, 0), str(crew.number) + _role_tag(crew), HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color.WHITE)
 	elif ff == crew.speaker():
 		draw_string(PlanStyle.font(), label + Vector2(-45, 0), squad.name + _role_tag(crew), HORIZONTAL_ALIGNMENT_CENTER, 90, 12, Color.WHITE)
+	# 팀장(분대 지휘관): 머리 위 ★ (선착대장은 파란 헬멧 지휘관 캐릭터라 따로)
+	if ff.officer:
+		PlanStyle.draw_star(self, label + Vector2(0, -20), 7.0)
 	_draw_air_bar(label + Vector2(0, 4), ff)
 
 
@@ -1545,12 +1551,6 @@ func _draw_unit_sprite(ff: Firefighter, crew: Crew, squad: Squad, feet: Vector2)
 	var tint := Color.WHITE.lerp(Color(1.0, 0.45, 0.35), clampf(ff.heat_stress, 0.0, 1.0) * 0.6)
 	if not art.draw(self, pose[0], pose[1], pose[2], feet, tint, SpriteArt.helmet_color(squad.type)):
 		return false
-	# 팀장(분대 지휘관): 헬멧에 파란 띠 — 선착대장(헬멧 전체 파랑)과 구분 (2026-11-16 사용자 결정)
-	if ff.officer:
-		var band := SpriteArt.helmet_band()
-		if not band.is_empty():
-			art.draw_band(self, pose[0], pose[1], pose[2], feet, Color(str(band.get("color", "#1F6FE5"))),
-				float(band.get("from", 0.38)), float(band.get("to", 0.62)), tint.a)
 	return true
 
 
@@ -2497,8 +2497,10 @@ func _draw_sprays(alpha: float) -> void:
 		else:
 			var r := sim.water.radius_cells(h.pattern) * IsoProjection.HALF_W
 			var side := (to - from).orthogonal().normalized() * r * 0.8
-			draw_colored_polygon(PackedVector2Array([from, to + side, to - side]), PlanStyle.FOG_COLOR)
-			draw_colored_polygon(_ellipse(to, r, r * 0.5), Color(PlanStyle.FOG_COLOR, 0.25))
+			# 관창이 목표 칸 바로 앞이면 물줄기 삼각형이 넓이 0이 된다 (그리기 경고 'triangulation failed') — 원만 그린다
+			if from.distance_to(to) > 1.0:
+				draw_colored_polygon(PackedVector2Array([from, to + side, to - side]), PlanStyle.FOG_COLOR)
+			_fill(_ellipse(to, r, r * 0.5), Color(PlanStyle.FOG_COLOR, 0.25))
 
 
 ## 바닥 다각형(셀 좌표)을 h0~h1 높이의 기둥으로 그린다. 보는 쪽 옆면과 윗면만 그린다.
@@ -2514,8 +2516,8 @@ func _prism(base: PackedVector2Array, h0: float, h1: float, color: Color) -> voi
 		if n.x + n.y <= 0.01:
 			continue
 		var face := PackedVector2Array([proj.to_screen(a, h0), proj.to_screen(b, h0), proj.to_screen(b, h1), proj.to_screen(a, h1)])
-		draw_colored_polygon(face, Color(color.darkened(SOUTH_SHADE if n.y >= n.x else EAST_SHADE), color.a))
-	draw_colored_polygon(_lift(base, h1), color)
+		_fill(face, Color(color.darkened(SOUTH_SHADE if n.y >= n.x else EAST_SHADE), color.a))
+	_fill(_lift(base, h1), color)
 
 
 func _lift(base: PackedVector2Array, h: float) -> PackedVector2Array:
@@ -2591,7 +2593,7 @@ func _draw_smoke() -> void:
 		var front := Color(FireView.SMOKE_COLOR, minf(0.6, a + 0.1))
 		_face_room("S", r, h, CEILING_M, front.darkened(SOUTH_SHADE))
 		_face_room("E", r, h, CEILING_M, front.darkened(EAST_SHADE))
-		draw_colored_polygon(plane, Color(FireView.SMOKE_COLOR, a * 0.65))
+		_fill(plane, Color(FireView.SMOKE_COLOR, a * 0.65))
 		_draw_smoke_texture(plane, r, a, c.index)
 		plane.append(plane[0])
 		draw_polyline(plane, Color(FireView.SMOKE_COLOR.darkened(0.3), minf(1.0, a + 0.15)), 1.5)
@@ -2782,7 +2784,7 @@ func _draw_smoke_sheet(r: Rect2i, h: float, col: Color, seed: int, spread: Vecto
 				var pts := PackedVector2Array([proj.to_screen(Vector2(x, y), h), proj.to_screen(Vector2(xe, y), h),
 					proj.to_screen(Vector2(xe, ye), h), proj.to_screen(Vector2(x, ye), h)])
 				if base.a > 0.0:
-					draw_colored_polygon(pts, base)
+					_fill(pts, base)
 				FxArt.draw_flip(self, FxArt.sheet, "smoke_sheet", pts, Vector2(u0, v0), Vector2(u1, v1), col, seed)
 			else:
 				# 선두 원과 겹친 조각만
@@ -2793,7 +2795,7 @@ func _draw_smoke_sheet(r: Rect2i, h: float, col: Color, seed: int, spread: Vecto
 						spts.append(proj.to_screen(q, h))
 						uvs.append(Vector2(u0 + (q.x - x) / tile, v0 + (q.y - y) / tile))
 					if base.a > 0.0 and spts.size() >= 3:
-						draw_colored_polygon(spts, base)
+						_fill(spts, base)
 					FxArt.draw_flip_poly(self, FxArt.sheet, "smoke_sheet", spts, uvs, col, seed)
 			y = ye
 		x = xe
@@ -3448,6 +3450,20 @@ func _flame_shape(base: Vector2, half_w: float, tip: Vector2) -> PackedVector2Ar
 	])
 
 
+## 다각형 채우기 — 넓이가 거의 0이면 건너뛴다 (작은 불꽃·관창 바로 앞 물줄기 등: 그리기 경고 'triangulation failed' 방지, 2026-11-17)
+func _fill(pts: PackedVector2Array, color: Color) -> void:
+	if pts.size() < 3:
+		return
+	var area := 0.0
+	for k in pts.size():
+		var a := pts[k]
+		var b := pts[(k + 1) % pts.size()]
+		area += a.x * b.y - b.x * a.y
+	if absf(area) < 1.0:
+		return
+	draw_colored_polygon(pts, color)
+
+
 static func _ellipse(center: Vector2, rx: float, ry: float, closed := false) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	var n := 16
@@ -4041,7 +4057,7 @@ func _draw_upper_ledge(tone: Color) -> void:
 	for q in hole:
 		top.append(proj.to_screen(q, 0.0))
 	top.append(proj.to_screen(Vector2(x0, y1), 0.0))
-	draw_colored_polygon(top, Color(tone.lightened(0.25), a))
+	_fill(top, Color(tone.lightened(0.25), a))
 	# 바닥판 두께: 보는 쪽(남·동)을 향한 변만, 윗면보다 어둡고 진하게
 	var t := sp.ghost_slab_m
 	var side_a := minf(1.0, a + 0.25)

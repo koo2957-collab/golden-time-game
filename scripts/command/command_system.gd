@@ -920,6 +920,9 @@ func order_division_clear(name: String, tick: int) -> bool:
 
 
 func move_commander(target: Vector3i) -> void:
+	# 선착 펌프차에 타고 있는 동안에는 움직일 수 없다 (내린 뒤부터)
+	if commander.aboard:
+		return
 	var cell := pathfinder.nearest_walkable(target.z, Vector2i(target.x, target.y))
 	if cell == Pathfinder.NO_CELL:
 		return

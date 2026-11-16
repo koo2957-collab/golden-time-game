@@ -108,9 +108,16 @@ func _draw() -> void:
 		draw_arc(center, SIZE * 0.5 - RING * 0.5, -PI / 2.0, -PI / 2.0 + TAU * a, 32, ring_color, RING)
 		if c.id in selected:
 			draw_arc(center, SIZE * 0.5 + 1.0, 0.0, TAU, 32, Color.WHITE, 2.0)
-		var label := "%s%d" % [sim.units.squads[c.squad_id].name.substr(0, 2), c.number]
+		# 나누지 않은 분대는 분대 이름("진압2"), 나뉜 조는 예전처럼 앞 두 글자 + 조 번호
+		var label := sim.units.squads[c.squad_id].name if sim.units.whole_squad(c) \
+			else "%s%d" % [sim.units.squads[c.squad_id].name.substr(0, 2), c.number]
 		var w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
 		draw_string(font, center + Vector2(-w / 2.0, 5), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
+		# 인원 점: 조원 수만큼 (쓰러진 대원은 빨강) — 3명 이상일 때만
+		if c.list.size() > 2:
+			for k in c.list.size():
+				var dot := Vector2(center.x + (k - (c.list.size() - 1) * 0.5) * 7.0, r.position.y + 9.0)
+				draw_circle(dot, 2.5, Color("ef4444") if c.list[k].incapacitated else Color(1, 1, 1, 0.9))
 		draw_string(font, Vector2(r.position.x + 2, r.end.y + 14), str(i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("94a3b8"))
 		if asking(c.id):
 			draw_circle(r.position + Vector2(SIZE - 8, 8), 9.0, Color("fde047"))

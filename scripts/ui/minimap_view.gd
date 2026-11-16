@@ -160,7 +160,7 @@ func _draw() -> void:
 	if level == ground_level:
 		ZoneDraw.draw(self, sim.zones, func(cell: Vector2) -> Vector2: return o + cell * s, 0, sim.clock.tick)
 	var c := sim.command.commander
-	if c.level == level:
+	if c.level == level and not c.aboard:
 		draw_circle(o + c.pos * s, maxf(2.5, s * 0.7), COMMANDER)
 	_draw_view_rect()
 	draw_string(font, Vector2(4, 14), b.floor_name(level), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("cbd5e1"))

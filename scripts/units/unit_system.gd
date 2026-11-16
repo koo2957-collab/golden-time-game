@@ -84,6 +84,7 @@ func add_crew(squad: Squad, crew_data: Dictionary, spawn: Vector2i, level := 1) 
 		ff.name = str(members[i].get("name", ""))
 		ff.rank = str(members[i].get("rank", ""))
 		ff.role = str(members[i].get("role", ""))
+		ff.officer = bool(members[i].get("officer", false))
 		for t in members[i].get("traits", []):
 			var spec: Dictionary = traits().get(str(t), {})
 			if spec.is_empty():
@@ -169,14 +170,21 @@ func squad_of_crew(crew_id: int) -> Squad:
 	return squads[c.squad_id] if c else null
 
 
-## 조 이름 — 무전·기록·화면이 모두 이것을 쓴다: "진압1 1조"
+## 분대가 조 하나로 같이 움직이는가 (나누지 않은 분대)
+func whole_squad(c: Crew) -> bool:
+	return squads[c.squad_id].crews.size() == 1
+
+
+## 조 이름 — 무전·기록·화면이 모두 이것을 쓴다: 나누지 않은 분대는 "진압2", 나뉜 조는 "진압1 1조"
 func crew_name(c: Crew) -> String:
+	if whole_squad(c):
+		return squads[c.squad_id].name
 	return "%s %s" % [squads[c.squad_id].name, crew_short(c)]
 
 
-## 출동대 이름 없이: "1조"
+## 출동대 이름 없이: "1조" (나누지 않은 분대는 "분대")
 func crew_short(c: Crew) -> String:
-	return "%d조" % c.number
+	return "분대" if whole_squad(c) else "%d조" % c.number
 
 
 ## 대원 이름: "진압1 1조 이준호"

@@ -951,7 +951,7 @@ func _draw() -> void:
 		if victim.discovered and victim.level == level:
 			_bucket(buckets, _victim_shown_pos(victim, alpha), victim)
 	var commander := sim.command.commander
-	if commander.level == level:
+	if commander.level == level and not commander.aboard:
 		_bucket_person(buckets, UnitsView.display_pos(commander, alpha), commander, alpha)
 	if level == _first_level:
 		for w in sim.command.survey.witnesses:
@@ -1525,7 +1525,11 @@ func _draw_unit(ff: Firefighter, alpha: float) -> void:
 	if not _draw_unit_sprite(ff, crew, squad, feet):
 		_draw_figure(p, scale, body_color, SpriteArt.helmet_color(squad.type))
 	var label := proj.to_screen(p, UNIT_LABEL_M * scale)
-	draw_string(PlanStyle.font(), label + Vector2(-30, 0), str(crew.number) + _role_tag(crew), HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color.WHITE)
+	# 이름표: 나뉜 조는 사람마다 조 번호, 나누지 않은 분대는 말하는 사람(팀장) 위에만 분대 이름 (2026-11-16)
+	if not sim.units.whole_squad(crew):
+		draw_string(PlanStyle.font(), label + Vector2(-30, 0), str(crew.number) + _role_tag(crew), HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color.WHITE)
+	elif ff == crew.speaker():
+		draw_string(PlanStyle.font(), label + Vector2(-45, 0), squad.name + _role_tag(crew), HORIZONTAL_ALIGNMENT_CENTER, 90, 12, Color.WHITE)
 	_draw_air_bar(label + Vector2(0, 4), ff)
 
 
@@ -1661,7 +1665,8 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		anim = "crouch_walk"
 	# 무전 보고 (A8, 2026-11-15 사용자가 블렌더에서 확인): 이 조가 지금 무전을 보내고 있으면, 손이 비어 멈춰 있는 조장이
 	# 무전기를 입 앞에 대고 말한다 — 누가 말하는지 보이게. 방수·문 개방·운반 중에는 그 동작을 그대로 둔다
-	if ff == crew.leader and not moving and anim in ["idle", "crouch_walk", "search"] and art.frames("radio") > 0 and _talking(crew):
+	# 말하는 사람 = 팀장(분대 지휘관), 팀장이 없으면 선두 (2026-11-16 결정)
+	if ff == crew.speaker() and not moving and anim in ["idle", "crouch_walk", "search"] and art.frames("radio") > 0 and _talking(crew):
 		anim = "radio_low" if ff.crouched and art.frames("radio_low") > 0 else "radio"
 	# 구급가방 (2026-11-15 사용자): 구급대 조의 짝(두 번째 대원)이 오른손에 들고 다닌다
 	if ff == crew.partner and anim in ["idle", "walk"] and art.frames(anim + "_bag") > 0:
@@ -2037,7 +2042,8 @@ func _spray_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dictio
 		return {}
 	var k := SpriteArt.dir8(hose.aim - lead.pos)
 	var facing := Vector2.RIGHT.rotated(k * PI / 4.0)
-	var members := crew.members()
+	# 방수는 일하는 조원만 — 진압 분대의 팀장은 호스를 잡지 않고 옆에서 통솔한다 (2026-11-16 결정)
+	var members: Array[Firefighter] = crew.workers()
 	var names: Array = ["spray_n", "spray_h"] if members.size() <= 2 else ["spray_n", "spray_h1", "spray_h2"]
 	# 낮은 자세 (A5, 2026-11-15 사용자가 블렌더에서 확인): 관창수가 낮은 자세면 모두 무릎을 꿇고 호스를 겨드랑이에 낀다
 	if lead.crouched and art.frames("spray_ln") > 0:
@@ -3291,7 +3297,7 @@ func _draw_live_only() -> void:
 			var vp := _victim_shown_pos(v, alpha)
 			items.append([vp.x + vp.y, v])
 	var cmd := sim.command.commander
-	if cmd.level == level:
+	if cmd.level == level and not cmd.aboard:
 		var cp := UnitsView.display_pos(cmd, alpha)
 		items.append([cp.x + cp.y, cmd])
 	if level == _first_level:
@@ -3798,7 +3804,7 @@ func _draw_outdoor_people() -> void:
 			var vp := _victim_shown_pos(victim, alpha)
 			items.append([vp.x + vp.y, victim])
 	var cmd := sim.command.commander
-	if cmd.level == level:
+	if cmd.level == level and not cmd.aboard:
 		var cp := UnitsView.display_pos(cmd, alpha)
 		if _outdoor_at(cp):
 			items.append([cp.x + cp.y, cmd])

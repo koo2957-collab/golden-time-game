@@ -247,11 +247,8 @@ func order_rescue(crew_id: int, kind: String, target_id: int, tick: int) -> bool
 	var c := units.get_crew(crew_id)
 	if c == null or _busy_carrying(crew_id):
 		return false
-	# 2인이 업어야 하므로 두 명 모두 움직일 수 있어야 한다
-	for member in c.members():
-		if member.incapacitated:
-			return false
-	if c.partner == null:
+	# 2인이 업어야 하므로 선두와 또 한 명이 움직일 수 있어야 한다 (2인 조는 둘 다, 분대는 일하는 조원 둘 이상)
+	if c.leader.incapacitated or c.able_workers() < 2:
 		return false
 	if water and water.hose_of_crew(crew_id) != null:
 		events.add(tick, "rescue_hose_crew", {"crew": _crew_name(c)})
@@ -323,7 +320,7 @@ func on_flashover(room: Compartment, tick: int) -> void:
 
 func _step_carry(t: CarryTask, tick: int) -> void:
 	var c := units.get_crew(t.crew_id)
-	if c.leader.incapacitated or (c.partner and c.partner.incapacitated):
+	if c.leader.incapacitated or (c.list.size() > 1 and c.able_workers() < 2):
 		_drop(t)
 		return
 	if not t.carrying:

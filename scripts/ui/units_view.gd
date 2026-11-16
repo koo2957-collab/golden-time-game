@@ -293,7 +293,7 @@ func _draw_unit(ff: Firefighter, alpha: float) -> void:
 ## 현장지휘관: 흰 사각형·빨간 테두리, "지휘" 표시
 func _draw_commander(alpha: float) -> void:
 	var c := sim.command.commander
-	if c.level != level:
+	if c.level != level or c.aboard:
 		return
 	var center := PlanStyle.to_px(display_pos(c, alpha))
 	var r := RADIUS_CELLS * PlanStyle.CELL_PX

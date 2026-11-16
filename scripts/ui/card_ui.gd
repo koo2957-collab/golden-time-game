@@ -310,8 +310,11 @@ static func speaker(p_sim: SimWorld, c: CardSystem.Card) -> Dictionary:
 		var asker := str(c.spec.get("asker", "무전"))
 		return {"name": asker, "where": "", "portrait": str(portraits.get(asker, ""))}
 	var squad := p_sim.units.squad_of_crew(crew.id)
-	var ff := crew.leader
-	var air := minf(ff.air_ratio(), crew.partner.air_ratio() if crew.partner else 1.0)
+	# 말하는 사람 = 팀장(없으면 선두), 공기는 조원 중 가장 낮은 값
+	var ff: Firefighter = crew.speaker()
+	var air := 1.0
+	for m in crew.list:
+		air = minf(air, m.air_ratio())
 	var halves: Dictionary = SpriteArt.config().get("portraits_half", {})
 	var kind := squad.type if squad else ""
 	return {

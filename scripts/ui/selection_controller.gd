@@ -742,8 +742,12 @@ func crews_under(world_pos: Vector2) -> Array[int]:
 			if dist < nearest_d:
 				nearest_d = dist
 				nearest = c.id
-		if pts.size() == 2 and best == INF and Geometry2D.get_closest_point_to_segment(mouse, pts[0], pts[1]).distance_to(mouse) <= rx:
-			best = Geometry2D.get_closest_point_to_segment(mouse, pts[0], pts[1]).distance_to(mouse)
+		# 조원 사이(줄지어 선 사람과 사람 사이)를 눌러도 그 조 — 분대 3~4명도 한 덩어리
+		if best == INF:
+			for k in range(1, pts.size()):
+				var near := Geometry2D.get_closest_point_to_segment(mouse, pts[k - 1], pts[k]).distance_to(mouse)
+				if near <= rx:
+					best = minf(best, near)
 		if best < INF:
 			hits.append({"id": c.id, "d": best})
 	hits.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.d < b.d)
@@ -779,7 +783,7 @@ func _witness_at(world_pos: Vector2) -> int:
 
 func _commander_at(world_pos: Vector2) -> bool:
 	var c := sim.command.commander
-	return c.level == level and projection.to_screen(c.pos, projection.pick_height_m).distance_to(world_pos) < projection.pick_radius_px
+	return c.level == level and not c.aboard and projection.to_screen(c.pos, projection.pick_height_m).distance_to(world_pos) < projection.pick_radius_px
 
 
 ## world_pos 아래(현재 층)의 문 (with_windows면 창도). 입체 화면에서 닫힌 문 블록을 누른 경우도 잡는다. 없으면 null.

@@ -1,13 +1,13 @@
 {
-  "note": "출동대 기본 편성 (기획안 6-1). 센터마다 근무 환경이 다르면 여기 인원을 고친다. 게임 편성(test_roster.json·dev_reinforcements.json)은 이 표를 기준으로 2인 1조로 묶는다. 운전원을 뺀 분대원이 홀수면 남는 1명은 지휘관이 관창보조·방재실 연락·현장안전담당으로 배정한다 (기획안 6-1) — 단독 대원 배정은 아직 없어 선착대는 분대원 4명(2조)으로 둔다(보고서 개선점).",
-  "source": "기획안 6-1 (센터별 검수 필요)",
+  "note": "출동대 기본 편성 (2026-11-16 사용자 결정 — docs/decisions.md '분대', 기획안 6-1을 고침). 센터마다 근무 환경이 다르면 여기 인원을 고친다. 분대는 조 하나로 같이 움직이고(게임 편성 squad_roster.json·squad_reinforcements.json), 필요하면 4명 분대만 2인 1조 둘로 나눈다. people = 차에 탄 전체, drivers = 운전원(차에 남는다), officer = 팀장(분대 지휘관), members = 팀장을 뺀 분대원, game_members = 현장에서 걸어 다니는 사람(팀장 포함, 선착대장은 따로). 예전 2인조 편성(test_roster.json·dev_reinforcements.json)은 테스트용으로 남긴다.",
+  "source": "사용자 결정 2026-11-16 (현직 소방관, 실무 4인조법) — 센터별 검수 필요",
   "squads": {
-    "선착대": {"vehicle": "펌프차", "people": 5, "commander": 1, "drivers": 1, "members": 3, "game_members": 4, "note": "선착대장이 플레이어(현장지휘관). 게임은 진압대장 포함 2조(4명) + 운전원"},
-    "진압대": {"vehicle": "펌프차", "people": 5, "commander": 0, "drivers": 1, "members": 4, "game_members": 4, "note": "후착분대. 팀장은 선착대장이 있으므로 분대원 역할"},
-    "구조대": {"vehicle": "구조공작차", "people": 4, "commander": 0, "drivers": 1, "members": 3, "game_members": 4, "note": "운전원 포함 4명. 게임은 2조(4명)로 묶고 운전원은 차량에 둔다"},
-    "구급대": {"vehicle": "구급차", "people": 3, "commander": 0, "drivers": 1, "members": 2, "game_members": 2, "note": "운전원 포함 3명"},
-    "물탱크차": {"vehicle": "물탱크차", "people": 1, "commander": 0, "drivers": 1, "members": 0, "game_members": 0, "note": "운전원 1명 (선착대에 딸린 차량)"},
-    "굴절차·고가사다리차": {"vehicle": "굴절차", "people": 1, "commander": 0, "drivers": 1, "members": 0, "game_members": 0},
-    "그 밖의 차량": {"vehicle": "배연차", "people": 1, "commander": 0, "drivers": 1, "members": 0, "game_members": 0}
+    "선착대": {"vehicle": "펌프차", "people": 5, "commander": 1, "drivers": 1, "officer": 0, "members": 3, "game_members": 3, "note": "팀장이 곧 선착대장(플레이어, 현장지휘관) — 선착 펌프차 조수석에서 내린다. 현장 분대원은 관창수 1 + 관창보조 2, 관창수(선임)가 대신 보고한다"},
+    "진압대": {"vehicle": "펌프차", "people": 5, "commander": 0, "drivers": 1, "officer": 1, "members": 3, "game_members": 4, "note": "후착 분대. 팀장 1 + 관창수 1 + 관창보조 2. 팀장은 분대원 옆에서 통솔하고 방수는 3명이 한다"},
+    "구조대": {"vehicle": "구조공작차", "people": 5, "commander": 0, "drivers": 1, "officer": 1, "members": 3, "game_members": 4, "note": "팀장 1 + 대원 3. 분대 단위로 임무를 받고 인명검색은 2인 1조 두 짝으로 한다"},
+    "구급대": {"vehicle": "구급차", "people": 3, "commander": 0, "drivers": 1, "officer": 0, "members": 2, "game_members": 2, "note": "운전원 포함 3명"},
+    "물탱크차": {"vehicle": "물탱크차", "people": 1, "commander": 0, "drivers": 1, "officer": 0, "members": 0, "game_members": 0, "note": "운전원 1명. 다른 작업(소화전 점령·급수 연결 돕기)은 진압·구조대원의 지원을 받는다"},
+    "굴절차·고가사다리차": {"vehicle": "굴절차", "people": 1, "commander": 0, "drivers": 1, "officer": 0, "members": 0, "game_members": 0, "note": "운전원 1명"},
+    "그 밖의 차량": {"vehicle": "배연차", "people": 1, "commander": 0, "drivers": 1, "officer": 0, "members": 0, "game_members": 0, "note": "운전원 1명"}
   }
 }

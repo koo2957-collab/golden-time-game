@@ -1,0 +1,135 @@
+{
+  "note": "분대 단위 후착대·지원 출동대 편성 (2026-11-16 사용자 결정 — docs/decisions.md '분대'). 인물은 모두 가상이다. 차량을 타고 들어와 대기 장소에 선 뒤 분대가 내린다 (spawn 없음). 후착 펌프차 분대 = 관창수 + 관창보조 2명 + 팀장(officer — 분대원 옆에서 통솔, 방수는 3명이 한다). members 순서 = 줄 서는 순서: 관창수가 선두, 팀장은 맨 뒤. 구조대 = 팀장(선두) + 대원 3명. 구급대는 2명 + 운전원. 시나리오의 arrivals·support가 id로 부른다. 예전 2인조 편성은 dev_reinforcements.json (테스트용).",
+  "source": "사용자 결정 2026-11-16 (현직 소방관, 실무 4인조법) — 펌프차: 운전원 1 + 팀장 1 + 관창수 1 + 관창보조 2 / 구조대: 운전원 1 + 팀장 1 + 대원 3 / 물탱크차·굴절차 등: 운전원 1",
+  "squads": [
+    {
+      "id": "pump2",
+      "name": "진압2",
+      "type": "진압대",
+      "color": "#10B981",
+      "vehicles": [{"type": "펌프차", "driver": {"name": "박정우", "rank": "소방장"}}],
+      "crews": [
+        {
+          "thermal_camera": true,
+          "members": [
+            {"name": "서동욱", "rank": "소방장", "role": "관창수"},
+            {"name": "임재석", "rank": "소방교", "role": "관창보조"},
+            {"name": "문태양", "rank": "소방사", "role": "관창보조", "traits": ["신참"]},
+            {"name": "오세훈", "rank": "소방위", "role": "진압팀장", "officer": true, "traits": ["베테랑"]}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pump3",
+      "name": "진압3",
+      "type": "진압대",
+      "color": "#8B5CF6",
+      "vehicles": [{"type": "펌프차", "driver": {"name": "최영호", "rank": "소방교"}}, {"type": "물탱크차", "driver": {"name": "정민규", "rank": "소방장"}}],
+      "crews": [
+        {
+          "thermal_camera": true,
+          "members": [
+            {"name": "송하늘", "rank": "소방장", "role": "관창수", "traits": ["체력 좋음"]},
+            {"name": "권민석", "rank": "소방교", "role": "관창보조"},
+            {"name": "남궁현", "rank": "소방사", "role": "관창보조", "traits": ["열 민감"]},
+            {"name": "배준영", "rank": "소방위", "role": "진압팀장", "officer": true}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pump4",
+      "name": "진압4",
+      "type": "진압대",
+      "color": "#EC4899",
+      "vehicles": [{"type": "펌프차", "driver": {"name": "한석진", "rank": "소방교"}}],
+      "crews": [
+        {
+          "thermal_camera": true,
+          "members": [
+            {"name": "장기훈", "rank": "소방장", "role": "관창수"},
+            {"name": "황보선", "rank": "소방교", "role": "관창보조", "traits": ["신참"]},
+            {"name": "노을빈", "rank": "소방사", "role": "관창보조"},
+            {"name": "유상철", "rank": "소방위", "role": "진압팀장", "officer": true}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "rescue2",
+      "name": "구조2",
+      "type": "구조대",
+      "color": "#14B8A6",
+      "vehicles": [{"type": "구조공작차", "driver": {"name": "윤도경", "rank": "소방장"}}],
+      "crews": [
+        {
+          "thermal_camera": true,
+          "members": [
+            {"name": "탁영호", "rank": "소방위", "role": "구조팀장", "officer": true},
+            {"name": "모정훈", "rank": "소방장", "role": "구조대원"},
+            {"name": "편주원", "rank": "소방교", "role": "구조대원", "traits": ["체력 좋음"]},
+            {"name": "어진우", "rank": "소방사", "role": "구조대원"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ems1",
+      "name": "구급1",
+      "type": "구급대",
+      "color": "#F8FAFC",
+      "vehicles": [{"type": "구급차", "driver": {"name": "민서준", "rank": "소방교"}}],
+      "crews": [
+        {
+          "members": [
+            {"name": "하은수", "rank": "소방장", "role": "구급대장 (1급 응급구조사)", "traits": ["베테랑"]},
+            {"name": "도윤아", "rank": "소방사", "role": "구급대원 (간호사)"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ems2",
+      "name": "구급2",
+      "type": "구급대",
+      "color": "#E2E8F0",
+      "vehicles": [{"type": "구급차", "driver": {"name": "류지환", "rank": "소방교"}}],
+      "crews": [
+        {
+          "members": [
+            {"name": "엄태준", "rank": "소방장", "role": "구급대장 (1급 응급구조사)"},
+            {"name": "표하린", "rank": "소방사", "role": "구급대원 (2급 응급구조사)"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pump5",
+      "name": "진압5",
+      "type": "진압대",
+      "color": "#A3E635",
+      "vehicles": [{"type": "펌프차", "driver": {"name": "조성래", "rank": "소방교"}}],
+      "crews": [
+        {
+          "thermal_camera": true,
+          "members": [
+            {"name": "제갈윤", "rank": "소방장", "role": "관창수"},
+            {"name": "봉민호", "rank": "소방교", "role": "관창보조"},
+            {"name": "선우진", "rank": "소방사", "role": "관창보조"},
+            {"name": "길성수", "rank": "소방위", "role": "진압팀장", "officer": true}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "aerial1",
+      "name": "굴절1",
+      "type": "굴절차·고가사다리차",
+      "color": "#B45309",
+      "note": "굴절차 운전원 1명. 분대원 없음 — 지휘관이 차량 카드로 방수포·바스켓 구조를 지시",
+      "vehicles": [{"type": "굴절차", "driver": {"name": "차민혁", "rank": "소방장"}}],
+      "crews": []
+    }
+  ]
+}

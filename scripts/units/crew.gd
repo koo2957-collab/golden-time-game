@@ -31,3 +31,42 @@ func has_item(key: String) -> bool:
 
 func members() -> Array[Firefighter]:
 	return list.duplicate()
+
+
+## 팀장 (분대 지휘관). 없으면 null — 선착 분대는 팀장이 플레이어(선착대장)다
+func officer() -> Firefighter:
+	for ff in list:
+		if ff.officer:
+			return ff
+	return null
+
+
+## 무전·질문 카드로 말하는 사람: 팀장, 팀장이 없거나 쓰러졌으면 움직일 수 있는 첫 조원
+func speaker() -> Firefighter:
+	var o := officer()
+	if o != null and not o.incapacitated:
+		return o
+	for ff in list:
+		if not ff.incapacitated:
+			return ff
+	return leader
+
+
+## 손으로 일하는 조원 (방수·문 개방·운반). 선두가 아닌 팀장은 옆에서 통솔하므로 뺀다 —
+## 진압 분대는 관창수 + 관창보조 2명, 구조 분대는 팀장이 선두라 모두
+func workers() -> Array[Firefighter]:
+	var out: Array[Firefighter] = []
+	for ff in list:
+		if ff.officer and ff != leader:
+			continue
+		out.append(ff)
+	return out
+
+
+## 지금 움직일 수 있는 일하는 조원 수
+func able_workers() -> int:
+	var n := 0
+	for ff in workers():
+		if not ff.incapacitated:
+			n += 1
+	return n

@@ -562,7 +562,9 @@ func _entry_text() -> String:
 			if role != SafetySystem.Role.NONE:
 				state += " · %s %s%s" % [sim.units.crew_short(c), "RIT" if role == SafetySystem.Role.RIT else "안전담당", " 투입" if cmd.safety.deployed.has(c.id) else ""]
 			if not sim.building.cell(c.leader.level, floori(c.leader.pos.x), floori(c.leader.pos.y)) in BuildingData.OUTDOOR:
-				var air := minf(c.leader.air_ratio(), c.partner.air_ratio() if c.partner else 1.0)
+				var air := 1.0
+				for m in c.list:
+					air = minf(air, m.air_ratio())
 				inside.append("%s %s 공기 %d%%" % [sim.units.crew_short(c), sim.building.floor_name(c.leader.level), roundi(air * 100.0)])
 		# 조별 위치·공기는 아래 팀 카드에 (R7c)
 		lines.append("%s: %s%s" % [squad.name, state, "  · 내부 %d조" % inside.size() if not inside.is_empty() else ""])

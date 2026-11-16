@@ -156,9 +156,8 @@ func before_move(tick: int) -> void:
 		if wp.z != leader.level or Vector2i(wp.x, wp.y) == here:
 			continue
 		if heat_at(wp.z, Vector2i(wp.x, wp.y), leader.crouched) >= _hazard:
-			leader.path.clear()
-			if c.partner:
-				c.partner.path.clear()
+			for ff in c.list:
+				ff.path.clear()
 			_heat_event(c, "heat_blocked", tick)
 
 

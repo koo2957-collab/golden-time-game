@@ -576,8 +576,8 @@ func _set_hose_timing(h: HoseLine, c: Crew, tick: int, outlet: bool) -> void:
 		prep += float(_tt.get("crew_hose_prep_s", 20.0))
 	else:
 		prep += float(_tt.get("crew_hose_prep_s", 20.0)) * 0.5  # 방수구 함의 호스·관창은 가까이 있다
-	var people := 1 if c.partner == null or c.partner.incapacitated else 2
-	if people == 1:
+	# 혼자면 2배. 3명 이상이어도 더 빨라지지 않는다 (교재 수치 없음 — 2026-11-16 결정)
+	if c.able_workers() <= 1:
 		prep *= 2.0
 	h.ready_tick = tick + roundi(prep / SimClock.TICK_DT)
 	h.water_tick = h.ready_tick + roundi(float(_tt.get("water_start_s", 10.0)) / SimClock.TICK_DT)
@@ -632,7 +632,8 @@ func _update_hoses(tick: int) -> void:
 			for ff in c.members():
 				ff.speed_factor = _drag_factor
 		if h.outlet < 0 and h.resupply_until < 0:
-			var people := 2 if c.partner and not c.partner.incapacitated else 1
+			# 한 사람이 들 수 있는 본 수 × 일하는 조원 수 (분대 3명이면 그만큼 더 들고 간다)
+			var people := maxi(1, c.able_workers())
 			var load_cells := people * float(_tt.get("carry_lengths_per_person", 2.0)) * float(_tt.get("hose_length_m", 15.0)) / _cell_m
 			if load_cells > 0.0 and h.length_cells() > load_cells * h.carried_loads:
 				h.carried_loads += 1
@@ -658,9 +659,8 @@ func _update_hoses(tick: int) -> void:
 		var end := h.points[-1]
 		leader.pos = Vector2(end.x + 0.5, end.y + 0.5)
 		leader.level = end.z
-		leader.path.clear()
-		if c.partner:
-			c.partner.path.clear()
+		for ff in c.list:
+			ff.path.clear()
 		if not h.at_limit:
 			h.at_limit = true
 			events.add(tick, "hose_limit", {"crew": _crew_name(c), "crew_id": c.id})

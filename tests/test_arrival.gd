@@ -167,9 +167,10 @@ func test_crews_alight_from_own_doors_and_walk() -> void:
 	for ff in riders:
 		assert_true(ff.aboard, "내리기 전에는 탄 채로")
 		assert_true(not v.contains(ff.pos) and v.distance_to_body(ff.pos) <= 2.5, "문 앞 자리 = 차체 바로 옆 (%.1f칸)" % v.distance_to_body(ff.pos))
-		cells[ff.cell3()] = true
+		# 운전석 문은 운전원 자리라 쓰지 않는다 → 문(3)보다 사람이 많으면 같은 문으로 다음 차례에 (2026-11-16)
+		cells["%d:%s" % [ticks[ff.id], ff.cell3()]] = true
 		sides[signf((ff.pos - v.pos).dot(Vector2(-v.heading.y, v.heading.x)))] = true
-	assert_eq(cells.size(), riders.size(), "각자 다른 문")
+	assert_eq(cells.size(), riders.size(), "같은 차례에는 각자 다른 문")
 	if riders.size() >= 3:
 		assert_true(sides.has(1.0) and sides.has(-1.0), "운전석 쪽·조수석 쪽 문을 모두 쓴다")
 	for c in sim.units.squads[v.squad_id].crews:

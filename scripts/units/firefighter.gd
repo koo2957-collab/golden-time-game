@@ -8,6 +8,8 @@ var rank := ""
 var role := ""
 var squad_id := 0
 var crew_id := 0
+## 팀장 (분대 지휘관): 분대원 옆에서 통솔하고 무전·질문 카드의 주인이 된다 (2026-11-16 결정, 편성 파일 officer)
+var officer := false
 
 var pos := Vector2.ZERO
 var level := 1

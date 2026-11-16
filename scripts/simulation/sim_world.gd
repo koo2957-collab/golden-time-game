@@ -185,6 +185,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.zones = ZoneSystem.new(building, sim.units, sim.falls, ParamTable.from_dict(ems_data).value("triage_setup_s"),
 		ParamTable.from_dict(safety_data).value("safe_zone_default_m"), sim.events)
 	sim.command.resources = ResourceSystem.new(sim.units, sim.pathfinder, sim.conditions, building, sim.events)
+	sim.command.resources.commander = sim.command.commander
 	var safety := SafetySystem.new(sim.fire, sim.units, sim.pathfinder, sim.rescue, sim.water, sim.doors, ParamTable.from_dict(safety_data), sim.events)
 	safety.radio = sim.command.radio
 	safety.org = sim.command.org

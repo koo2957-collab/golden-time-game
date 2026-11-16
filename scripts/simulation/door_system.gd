@@ -174,7 +174,7 @@ func _step_fetches(tick: int) -> void:
 			continue
 		if f.phase == "go":
 			if c.leader.level == v.level and c.leader.pos.distance_to(v.closest_body_point(c.leader.pos)) <= 2.5 and not c.leader.is_moving():
-				var people := 2 if c.partner and not c.partner.incapacitated else 1
+				var people: int = c.able_workers()
 				f.phase = "get"
 				f.until = tick + roundi(_fetch_s * (1.0 if people >= 2 else 2.0) / SimClock.TICK_DT)
 			elif not c.leader.is_moving():

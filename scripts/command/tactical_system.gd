@@ -246,7 +246,7 @@ func _step_doors(t: Task, c: Crew, tick: int) -> void:
 		return
 	# 자동으로 열 수 있는 문인지 (자동화 수준·잠김·백드래프트 징후)
 	if level.doors == "none":
-		_halt(t, c, tick, "%s 닫힘 — 문 개방 지시 바람 (E)" % _door_name(o), false, "closed", _door_ctx(o))
+		_halt(t, c, tick, "%s 닫힘 — 문 개방 지시 바람" % _door_name(o), false, "closed", _door_ctx(o))
 		return
 	if o.locked and level.doors != "all":
 		_halt(t, c, tick, "%s 잠김 — 진입구 개척(문 파괴) 지시 바람" % _door_name(o), false, "locked", _door_ctx(o))

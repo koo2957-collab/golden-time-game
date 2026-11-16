@@ -499,7 +499,7 @@ func _issue_target_click(world_pos: Vector2) -> bool:
 			if door != null and en.opening == door:
 				entry = en
 		if entry == null and door == null and window == null and pump < 0:
-			entry = _entry_near(cell_f)
+			entry = sim.entries.nearest(cell_f, level, ENTRY_PICK_CELLS)
 	var casualty := _casualty_at(world_pos)
 	var patient := _patient_at(world_pos)
 	if patient >= 0 and sim.ems.is_ems_crew(selected[0]):
@@ -1033,7 +1033,7 @@ func _update_guide(mouse_world: Vector2, crew_under: int) -> void:
 	var over_map := crew_under < 0 and mode == Mode.NONE
 	var cell := projection.to_cell(mouse_world)
 	if over_map and _guiding() and _outside_crews().size() == selected.size() and sim.entries:
-		entry = _entry_near(cell)
+		entry = sim.entries.nearest(cell, level, ENTRY_PICK_CELLS)
 	if over_map and entry == null:
 		if shell_picker.is_valid():
 			floor_lv = int(shell_picker.call(mouse_world))
@@ -1058,19 +1058,6 @@ func _update_guide(mouse_world: Vector2, crew_under: int) -> void:
 		queue_redraw()
 	elif _guiding() or view.x != -99:
 		queue_redraw()  # 깜빡임
-
-
-func _entry_near(cell: Vector2) -> EntryPoints.Entry:
-	var best: EntryPoints.Entry = null
-	var best_d := ENTRY_PICK_CELLS
-	for e in sim.entries.list:
-		if e.level != level:
-			continue
-		var d := cell.distance_to(Vector2(e.door) + Vector2(0.5, 0.5))
-		if d <= best_d:
-			best_d = d
-			best = e
-	return best
 
 
 ## 밖의 조가 쓸 진입구: 가고 있는 진입구, 없으면 가장 가까운 진입구

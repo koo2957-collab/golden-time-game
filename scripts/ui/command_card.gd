@@ -1,7 +1,7 @@
 class_name CommandCard
 extends RefCounted
 ## 명령 카드 상태 (기획안 9-1 "명령 카드 하나로 통일", P10-2).
-## data/commands.json 하나를 원형 메뉴·하단 명령 카드·단축키(Q W E R A S)가 같이 쓴다.
+## data/commands.json 하나를 오른쪽 명령 칸·단축키(Q W E R A S)·팀장 둥근 버튼이 같이 쓴다.
 ##   - 세트: team(진압·구조) · ems(구급) · vehicle(차량). 아무것도 안 고르면 세트 없음("") — 카드는 숨는다
 ##   - 지휘관 명령은 카드가 아니라 항상 보이는 '지휘관 명령 칸'이다 (load_board, G3 2026-11-14 결정)
 ##   - act: false 항목은 누르면 하위 칸을 펼친다. 실행 항목에 sub가 있으면 실행(대상 클릭 대기) 중에 세부 동작을 펼친다
@@ -128,7 +128,7 @@ func item_for_key(key: String) -> Dictionary:
 	return {}
 
 
-## 칸을 누른다 (단축키·버튼·원형 메뉴 공통). 실행할 명령 id를 돌려준다 ("" = 하위 칸만 펼침·못 씀)
+## 칸을 누른다 (단축키·버튼 공통). 실행할 명령 id를 돌려준다 ("" = 하위 칸만 펼침·못 씀)
 func press(key: String) -> String:
 	return press_item(item_for_key(key))
 

@@ -1,6 +1,6 @@
 class_name RadialMenu
 extends Control
-## 원형 메뉴 (기획안 9-1·9-3): 커서 주변에 둥글게 펼쳐 손을 덜 움직인다.
+## 둥근 버튼 (기획안 9-1·9-3): 커서 주변에 둥글게 펼쳐 손을 덜 움직인다. 지금은 팀장 둥근 버튼(분대 편성)에만 쓴다.
 ## 항목 {id, label, enabled, tip}. 첫 항목이 위쪽, 시계 방향. 고르면 picked(id), 바깥 클릭·우클릭·Esc는 닫기.
 
 signal picked(id: String)

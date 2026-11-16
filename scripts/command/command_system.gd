@@ -1344,7 +1344,7 @@ func _crew_name(c: Crew) -> String:
 	return units.crew_name(c)
 
 
-# --- 보고 요청 (원형 메뉴, R7c) ---
+# --- 보고 요청 (분대 명령 칸 A 대기 ▸ 보고 요청, R7c) ---
 
 ## 지휘관이 조에게 상황 보고를 요청한다 (SOP 107-1.6). 요청이 전달되면 조가 위치·임무·공기를 보고한다
 func request_report(crew_ids: Array, tick: int) -> void:

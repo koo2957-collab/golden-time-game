@@ -59,7 +59,7 @@ var _crew_ids: Array[int] = []
 var _vehicle_ids: Array[int] = []
 var _selection_timer := 0.0
 var _victim_label: Label
-## 명령 카드 (기획안 9-1, P10-2): 6칸 Q W E R / A S. 원형 메뉴와 같은 CommandCard를 그린다.
+## 명령 카드 (기획안 9-1, P10-2): 칸 Q W E R / A S. 분대는 경계·배연·대기·철수 — 임무는 층 우클릭 지시 창 (2026-11-17).
 ## 조·차량을 골랐을 때만 오른쪽 정보 창에 보인다 — 지휘관 명령은 아래 바의 네 묶음(board_groups)에 있다
 var card: CommandCard
 var _command_panel: VBoxContainer

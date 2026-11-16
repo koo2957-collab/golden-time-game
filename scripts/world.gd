@@ -787,7 +787,7 @@ func _card_key(event: InputEvent) -> String:
 	return ""
 
 
-## 명령 카드 칸 누르기 (단축키·카드 버튼·원형 메뉴 공통, P10-2). "BACK" = 뒤로
+## 명령 카드 칸 누르기 (단축키·카드 버튼 공통, P10-2). "BACK" = 뒤로
 func _press_card(key: String) -> void:
 	# 단축키·카드 버튼으로 고르면 떠 있던 대상 메뉴는 닫는다
 	if mission_ui:

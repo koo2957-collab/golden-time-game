@@ -1546,7 +1546,15 @@ func _draw_unit_sprite(ff: Firefighter, crew: Crew, squad: Squad, feet: Vector2)
 	var pose := _unit_pose(ff, crew, art)
 	# 헬멧 색은 출동대 종류로만 (진압 검정·구조 주황·구급 흰색). RIT·안전담당은 임무라 이름표로 (_role_tag)
 	var tint := Color.WHITE.lerp(Color(1.0, 0.45, 0.35), clampf(ff.heat_stress, 0.0, 1.0) * 0.6)
-	return art.draw(self, pose[0], pose[1], pose[2], feet, tint, SpriteArt.helmet_color(squad.type))
+	if not art.draw(self, pose[0], pose[1], pose[2], feet, tint, SpriteArt.helmet_color(squad.type)):
+		return false
+	# 팀장(분대 지휘관): 헬멧에 파란 띠 — 선착대장(헬멧 전체 파랑)과 구분 (2026-11-16 사용자 결정)
+	if ff.officer:
+		var band := SpriteArt.helmet_band()
+		if not band.is_empty():
+			art.draw_band(self, pose[0], pose[1], pose[2], feet, Color(str(band.get("color", "#1F6FE5"))),
+				float(band.get("from", 0.38)), float(band.get("to", 0.62)), tint.a)
+	return true
 
 
 ## 대원 그림 자세 [동작, 방향, 장] — 실제 그림과 테두리(다른 층·연기 속)가 같은 것을 쓴다 (2026-11-12).

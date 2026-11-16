@@ -345,6 +345,25 @@ func test_solo_fetches_equipment_for_the_squad() -> void:
 	assert_true(back.size() == 1 and str(back[0].item) != "", "전달 기록 (%s)" % [back])
 
 
+func test_officer_helmet_band_config() -> void:
+	# 팀장 헬멧 파란 띠 (2026-11-16): 다시 굽지 않고 헬멧 색 층의 가로 한 줄을 덧그린다 — 설정과 그림의 헬멧 층이 있어야 한다
+	var band := SpriteArt.helmet_band()
+	assert_true(not band.is_empty(), "data/art.json helmet_band")
+	assert_true(float(band.get("from", 1.0)) < float(band.get("to", 0.0)), "띠 위치 from < to")
+	assert_true(Color(str(band.get("color", ""))).b > 0.5, "파란 띠")
+	var path := "res://art/sprites/%s.json" % str(SpriteArt.config().get("crew", ""))
+	if not FileAccess.file_exists(path):
+		return
+	var meta: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	for anim: String in meta.anims:
+		var a: Dictionary = meta.anims[anim]
+		assert_eq((a.get("stripe", {}) as Dictionary).size(), (a.cells as Dictionary).size(), "%s: 모든 장에 헬멧 층" % anim)
+	# 팀장 표시는 편성 파일의 officer
+	var units := _units(REINFORCEMENTS)
+	var officers := units.firefighters.filter(func(ff: Firefighter) -> bool: return ff.officer)
+	assert_eq(officers.size(), 5, "후착 진압 4개 분대 + 구조2 = 팀장 5명")
+
+
 func test_commander_alights_from_passenger_door() -> void:
 	var sim := SimWorld.from_scenario(SQUAD_SCENARIO)
 	var res := sim.command.resources

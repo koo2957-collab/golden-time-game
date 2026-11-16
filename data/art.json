@@ -22,6 +22,10 @@
     "진압대": "#3A3A3E", "구조대": "#FF7A1A", "구급대": "#FFFFFF", "지휘": "#1F6FE5", "default": "#3A3A3E",
     "_note": "지휘 = 현장지휘관 파란 헬멧 (2026-11-11 사용자 결정). default = 굴절차 등 그 밖의 출동대(진압대원이 운용)"
   },
+  "helmet_band": {
+    "_source": "화면 설정 — 팀장(분대 지휘관) 헬멧 띠 (2026-11-16 사용자 결정: 선착대장 외 팀장은 헬멧에 선착대장과 구분되게 파란 띠). 헬멧 색 층의 가로 한 줄(위에서 from~to 비율)을 color로 덧그린다 — 다시 굽지 않는다. 선착대장은 헬멧 전체가 파랑(helmet_color 지휘)",
+    "color": "#1F6FE5", "from": 0.38, "to": 0.62
+  },
   "vehicles": {"펌프차": "vehicles_pump", "물탱크차": "vehicles_tanker", "구급차": "vehicles_ambulance", "구조공작차": "vehicles_rescue", "굴절차": "vehicles_aerial"},
   "vehicle_lightbar": {
     "_note": "깜박이는 경광등 불빛 위치 (차량 그림 위에 덧그린다). forward = 차 가운데에서 앞으로(차 길이 비율), side = 가운데에서 옆으로(차 폭 비율), h_m = 높이(m, 없으면 차 높이). 그림 모델의 경광등 막대 위치와 같아야 한다 (tools/blender/bake.py build_photo_truck: 운전실 길이 × 0.22 + 0.16m 뒤, 운전실 지붕 + 0.1m)",

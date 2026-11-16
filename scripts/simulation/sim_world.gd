@@ -245,6 +245,8 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 		sim.elevator.apply_building(building_data)
 	sim.falls.commander = sim.command.commander
 	sim.command.survey = SiteSurvey.new(sim.fire, sim.units, sim.pathfinder, sim.command.resources, sim.command.commander, ParamTable.from_dict(survey_data), sim.events)
+	# 층 검색은 구조대상자가 있다고 들은 방부터 (같은 사전을 같이 쓴다)
+	sim.tactical.reported_rooms = sim.command.survey.reported_rooms
 	sim.water.safe_cell = sim.conditions.safe_to_enter
 	sim.rescue.water = sim.water
 	sim.rescue.zones = sim.zones

@@ -479,36 +479,26 @@ func order_floor(lv: int, screen_pos := Vector2(-1, -1)) -> bool:
 	return true
 
 
-## 초진 보고 뒤 그 층에 보이는 불이 없으면: 잔불정리할 방의 칸 (탄 자리가 가장 넓고 아직 잔불정리하지 않은 방).
-## 없으면 (-1, -1, -1) — 화재진압이 그 층에서 잔불정리로 바뀐다 (기획안 9-1)
+## 초진 보고 뒤 그 층에 보이는 불이 없으면: 처음 잔불정리할 방의 칸 (탄 자리가 있고 아직 잔불정리하지 않은 방 중
+## 고른 첫 분대에서 가까운 곳 — 그 뒤는 RekindleSystem이 그 층을 차례로 잇는다). 없으면 (-1, -1, -1).
+## 화재진압이 그 층에서 잔불정리로 바뀐다 (기획안 9-1)
 func overhaul_target(lv: int) -> Vector3i:
 	var none := Vector3i(-1, -1, -1)
 	if sim.phases.knockdown_tick < 0:
 		return none
-	var done := {}
-	for o: Dictionary in sim.rekindle.overhaul_order:
-		done[int(o.room)] = true
 	var grid := sim.fire.grid
-	var best := none
-	var best_n := 0
 	for room in sim.fire.comps:
-		if room.level != lv or done.has(room.index):
+		if room.level != lv:
 			continue
-		var burnt := 0
-		var cell := Vector2i(-1, -1)
 		for c in room.cells:
 			if sim.perception.enabled and not sim.perception.is_seen(lv, c.x, c.y):
 				continue
-			var st := grid.state[grid.index(lv, c.x, c.y)]
-			if st == FuelGrid.State.BURNING:
+			if grid.state[grid.index(lv, c.x, c.y)] == FuelGrid.State.BURNING:
 				return none
-			if st == FuelGrid.State.BURNT:
-				burnt += 1
-				cell = c
-		if burnt > best_n:
-			best_n = burnt
-			best = Vector3i(cell.x, cell.y, lv)
-	return best
+	var from := Vector2(sim.building.footprint(lv).get_center())
+	if not selected.is_empty():
+		from = sim.units.get_crew(selected[0]).leader.pos
+	return sim.rekindle.next_floor_room(lv, from)
 
 
 ## 그 조의 우클릭 기본 임무 ("attack"·"search", 없으면 "")

@@ -276,8 +276,9 @@ func confirm_order() -> void:
 	close_order()
 	var embers := selection.overhaul_target(lv) if order_kind == "attack" else Vector3i(-1, -1, -1)
 	if embers.x >= 0:
-		order_issued.emit(EquipmentCommand.make("overhaul", crews, -1, -1, embers))
-		notice.emit("%s, %s 잔불정리 — 초진 뒤 불이 보이지 않아 열화상으로 불씨를 찾아 정리" % [" · ".join(names), sim.building.floor_name(lv)])
+		# 층 단위 잔불정리 (other = 1): 그 층의 탄 방을 차례로
+		order_issued.emit(EquipmentCommand.make("overhaul", crews, -1, 1, embers))
+		notice.emit("%s, %s 잔불정리 — 초진 뒤 불이 보이지 않아 탄 방을 차례로 열화상으로 확인·정리" % [" · ".join(names), sim.building.floor_name(lv)])
 		return
 	var fp := sim.building.footprint(lv)
 	var mid := Vector2i(fp.get_center())

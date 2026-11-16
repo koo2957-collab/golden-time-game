@@ -33,6 +33,35 @@ func test_embers_rekindle_if_left() -> void:
 	assert_true(rk.rekindles >= 1, "재발화 기록")
 
 
+## 층 단위 잔불정리 (2026-11-16): 한 방을 마치면 같은 층의 다음 탄 방으로, 남은 방이 없으면 층 완료 보고
+func test_floor_overhaul_continues_room_by_room() -> void:
+	var sim := _doused_sim()
+	var rk := sim.rekindle
+	var living := _living(sim)
+	# 같은 층의 다른 방 하나에도 탄 자리를 만든다 (가구가 탄 것처럼)
+	var other: Compartment = null
+	for c in sim.fire.comps:
+		if other == null and c.level == 1 and c != living and c.cells.size() >= 4 and not sim.fire.is_exposure_comp(c):
+			other = c
+	assert_true(other != null, "1층에 다른 방이 있다")
+	var g := sim.fire.grid
+	var oc: Vector2i = other.cells[0]
+	g.state[g.index(1, oc.x, oc.y)] = FuelGrid.State.BURNT
+	var first: Vector3i = rk.next_floor_room(1, Vector2(14.5, 15.5))
+	assert_true(first.x >= 0, "탄 방이 있다")
+	sim.issue(EquipmentCommand.make("overhaul", [0], -1, 1, first))
+	var both := func() -> bool: return living.overhauled_tick >= 0 and other.overhauled_tick >= 0
+	for i in roundi(400.0 / SimClock.TICK_DT):
+		sim.step_ticks(1)
+		if both.call():
+			break
+	assert_true(both.call(), "한 번 지시로 그 층의 탄 방 둘 다 잔불정리 (거실 %d, %s %d)" % [living.overhauled_tick, other.display_name(), other.overhauled_tick])
+	sim.step_ticks(2)
+	var done := sim.events.of_type("tactical_done").filter(func(e: Dictionary) -> bool: return str(e.text).contains("잔불정리 완료"))
+	assert_eq(done.size(), 1, "층 잔불정리 완료 보고")
+	assert_eq(rk.next_floor_room(1, Vector2.ZERO), Vector3i(-1, -1, -1), "남은 방 없음")
+
+
 func test_thermal_spot_and_overhaul() -> void:
 	var sim := _doused_sim()
 	var rk := sim.rekindle

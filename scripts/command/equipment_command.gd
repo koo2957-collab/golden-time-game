@@ -115,7 +115,8 @@ func execute(sim: SimWorld) -> void:
 				sim.doors.cancel(id)
 				sim.tactical.cancel(id)
 				sim.rescue.cancel(id)
-				sim.rekindle.order_overhaul(id, target, tick)
+				# other = 1: 층 단위 (그 층의 탄 방을 차례로, 지시 창의 화재진압이 초진 뒤에 바뀐 것)
+				sim.rekindle.order_overhaul(id, target, tick, other == 1)
 		"air_mat":
 			for id in crew_ids:
 				sim.doors.cancel(id)

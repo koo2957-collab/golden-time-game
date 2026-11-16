@@ -60,6 +60,55 @@ func test_unseen_room_needs_floor_mission() -> void:
 	assert_true(sim.command.interior.room_known(Vector3i(cell.x, cell.y, room.level)), "도면이 있으면 방 단위 가능 (R8)")
 
 
+## 층 검색 순서 (SOP 202-3.1.2, 2026-11-16 — 검색 순서 카드 대신 대원이 교재대로):
+## 구조대상자가 있다고 들은 방 → 화점실 → 인근실(화점실과 문으로 이어짐) → 나머지. 같은 순위면 가까운 곳부터
+func test_floor_search_follows_textbook_order() -> void:
+	var sim := _sim("입문")
+	var tac := sim.tactical
+	var rooms: Array[Compartment] = []
+	for room in sim.fire.comps:
+		if room.level == 1 and room.cells.size() >= 4 and not sim.fire.is_exposure_comp(room):
+			rooms.append(room)
+	assert_true(rooms.size() >= 3, "1층 방이 셋 이상")
+	# 화점실: 문으로 이어진 이웃이 있고, 이웃이 아닌 방도 있는 방
+	var fire_room: Compartment = null
+	var neighbour: Compartment = null
+	var far: Compartment = null
+	for r in rooms:
+		var near: Array[Compartment] = []
+		for oi in r.openings:
+			var o := sim.fire.openings[oi]
+			if o.kind != Opening.Kind.DOOR:
+				continue
+			for idx in [o.room_a, o.room_b]:
+				if idx >= 0 and idx != r.index and sim.fire.comps[idx].level == 1 and sim.fire.comps[idx] in rooms:
+					near.append(sim.fire.comps[idx])
+		for f in rooms:
+			if fire_room == null and f != r and not f in near and not near.is_empty():
+				fire_room = r
+				neighbour = near[0]
+				far = f
+	assert_true(fire_room != null, "화점실·인근실·먼 방을 고를 수 있다")
+	var g := sim.fire.grid
+	var fc: Vector2i = fire_room.cells[0]
+	g.state[g.index(1, fc.x, fc.y)] = FuelGrid.State.BURNT
+	var fires: Dictionary = tac._fire_rooms(1)
+	assert_eq([tac._search_rank(fire_room, fires), tac._search_rank(neighbour, fires)], [1, 2], "화점실 1 · 인근실 2")
+	assert_true(tac._search_rank(far, fires) >= 2, "먼 방은 화점실보다 뒤")
+	# 대원을 먼 방에 세워도 화점실부터 간다
+	var cell: Vector2i = far.cells[0]
+	var crew := _put(sim, 2, Vector2(cell) + Vector2(0.5, 0.5), 1)
+	assert_eq(tac._next_floor_room(crew, "search_floor", 1), fire_room, "먼 방에 있어도 화점실부터")
+	fire_room.searched_tick = 1
+	var next := tac._next_floor_room(crew, "search_floor", 1)
+	assert_true(tac._search_rank(next, fires) <= tac._search_rank(far, fires), "화점실 다음은 인근실 (%s)" % next.display_name())
+	# 관계인이 구조대상자가 있다고 한 방이 가장 먼저
+	sim.command.survey.reported_rooms[str(far.id)] = "관계인"
+	assert_eq(tac._next_floor_room(crew, "search_floor", 1), far, "구조대상자가 있다고 들은 방이 먼저")
+	# 검색 순서 카드는 나오지 않는다
+	assert_true(not sim.cards.cards.any(func(s) -> bool: return str(s.get("id", "")) == "SEARCH-ORDER-01"), "검색 순서 카드 없음")
+
+
 func test_floor_search_goes_room_by_room() -> void:
 	var sim := _sim("입문")
 	# 구조1 1조를 2층 방 하나에 둔다

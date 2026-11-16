@@ -240,8 +240,9 @@ func _trigger_of(e: Dictionary) -> String:
 					alive += 1
 			return "victims_many" if alive >= 2 else ""
 		"tactical_start":
+			# 검색 순서는 대원이 교재대로 스스로 한다 — 묻지 않는다 (2026-11-16 사용자 결정, 예전 SEARCH-ORDER-01)
 			if str(e.get("action", "")) == "수색":
-				return "first_search"
+				return ""
 			return "attack_upper" if _upper_attack(e) else ""
 		"search_done":
 			return "search_mark"

@@ -20,6 +20,8 @@ class OverhaulTask:
 	var crew_id := -1
 	var room := -1
 	var remain := 0.0
+	## 층 단위면 그 층 (-1 = 방 하나)
+	var floor := -1
 
 
 var fire: FireSim
@@ -46,7 +48,6 @@ var overhaul_order: Array[Dictionary] = []
 var _overhaul_s: float
 var _prev_burning := PackedInt32Array()
 
-
 func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, params: ParamTable, p_events: SimEventLog, p_seed: int) -> void:
 	fire = p_fire
 	units = p_units
@@ -67,8 +68,9 @@ func overhaul_seconds() -> float:
 	return _overhaul_s
 
 
-## 조에게 잔불정리를 시킨다 (cell이 속한 방). 방이 아니면 false
-func order_overhaul(crew_id: int, cell: Vector3i, tick: int) -> bool:
+## 조에게 잔불정리를 시킨다 (cell이 속한 방). 방이 아니면 false.
+## by_floor: 그 방을 마치면 같은 층의 탄 방(아직 잔불정리 안 한 곳)을 가까운 순으로 이어 간다 (층 단위 임무, 2026-11-16)
+func order_overhaul(crew_id: int, cell: Vector3i, tick: int, by_floor := false) -> bool:
 	var c := units.get_crew(crew_id)
 	var room := fire.compartment_at(cell.z, cell.x, cell.y)
 	if c == null or room == null:
@@ -78,12 +80,55 @@ func order_overhaul(crew_id: int, cell: Vector3i, tick: int) -> bool:
 	t.crew_id = crew_id
 	t.room = room.index
 	t.remain = _overhaul_s
+	t.floor = cell.z if by_floor else -1
 	tasks.append(t)
 	var spot := pathfinder.nearest_walkable(cell.z, Vector2i(cell.x, cell.y))
 	if spot != Pathfinder.NO_CELL:
 		units.order_move([crew_id] as Array[int], Vector3i(spot.x, spot.y, cell.z), pathfinder)
 	events.add(tick, "overhaul_start", {"crew": _crew_name(c), "room": room.display_name()})
 	return true
+
+
+## 탄 자리인가: 다 탔거나, 타다가 물로 꺼져 연료가 줄었다 (꺼진 칸은 '타지 않음'으로 돌아가므로 연료로 본다 —
+## 연료는 탈 때만 줄어든다)
+static func scorched_cell(grid: FuelGrid, i: int) -> bool:
+	var st := grid.state[i]
+	return st == FuelGrid.State.BURNT or st == FuelGrid.State.BURNING or grid.fuel[i] < grid.fuel0[i]
+
+
+func scorched(i: int) -> bool:
+	return scorched_cell(fire.grid, i)
+
+
+## 그 층에서 다음으로 잔불정리할 방의 칸: 탄 자리가 있고 아직 잔불정리하지 않은 방 중 from에서 가까운 곳. 없으면 (-1, -1, -1)
+func next_floor_room(lv: int, from: Vector2) -> Vector3i:
+	var grid := fire.grid
+	var best := Vector3i(-1, -1, -1)
+	var best_d := INF
+	for room in fire.comps:
+		if room.level != lv or room.overhauled_tick >= 0 or room.cells.is_empty():
+			continue
+		# 가구 칸까지 본다 (구획의 걷는 칸 목록에는 가구 칸이 없을 수 있다 — FuelGrid.room_cells)
+		var burnt := false
+		for i in grid.room_cells[room.index]:
+			if scorched(i):
+				burnt = true
+				break
+		if not burnt:
+			continue
+		# 대원이 설 칸: 그 방 안의 걸을 수 있는 칸 중 가운데에 가까운 곳 (가구 칸을 주면 옆 방에 서 버린다)
+		var center := Vector2(room.rect.get_center())
+		var stand := Vector2i(-1, -1)
+		for cell in room.cells:
+			if fire.building.is_walkable(lv, cell.x, cell.y) and (stand.x < 0 or Vector2(cell).distance_to(center) < Vector2(stand).distance_to(center)):
+				stand = cell
+		if stand.x < 0:
+			continue
+		var d := from.distance_to(center)
+		if d < best_d:
+			best_d = d
+			best = Vector3i(stand.x, stand.y, lv)
+	return best
 
 
 func cancel(crew_id: int) -> void:
@@ -189,6 +234,13 @@ func _step_tasks(dt: float, tick: int) -> void:
 		fire.comps[t.room].water_damage_l += _overhaul_water * _overhaul_damage
 		overhaul_order.append({"room": room.display_name(), "level": room.level, "tick": tick})
 		events.add(tick, "overhaul_done", {"crew": _crew_name(c), "room": room.display_name(), "embers": n})
+		# 층 단위: 같은 층의 다음 탄 방으로. 남은 방이 없으면 층 잔불정리 완료 보고
+		if t.floor >= 0:
+			var next := next_floor_room(t.floor, lead.pos)
+			if next.x >= 0:
+				order_overhaul(t.crew_id, next, tick, true)
+			else:
+				events.add(tick, "tactical_done", {"crew": _crew_name(c), "text": "%s 잔불정리 완료" % fire.building.floor_name(t.floor)})
 
 
 func _vented(c: Compartment) -> bool:

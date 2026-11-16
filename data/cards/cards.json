@@ -825,32 +825,6 @@
       "once": true
     },
     {
-      "id": "SEARCH-ORDER-01",
-      "title": "검색 순서",
-      "phase": "탐색",
-      "trigger": "first_search",
-      "asker": "현장 대원",
-      "urgency": "일반",
-      "text": "{crew}: 어느 공간부터 검색할까요?",
-      "options": [
-        {
-          "text": "화점실 → 인근실 → 연소층 → 직상층 순",
-          "grade": "최선",
-          "effect": "note"
-        },
-        {
-          "text": "출입구에서 먼 방부터",
-          "grade": "오답",
-          "effect": "note"
-        }
-      ],
-      "sop_ref": [
-        "SOP 202-3.1.2"
-      ],
-      "debrief": "검색은 화점실, 인근실, 연소층, 화점직상층, 화점상층, 화점하층 순으로 한다.",
-      "once": true
-    },
-    {
       "id": "SEARCH-MARK-01",
       "scene": "judgment",
       "monologue": "{room} 검색을 마쳤다. 표시는 어떻게 하지?",

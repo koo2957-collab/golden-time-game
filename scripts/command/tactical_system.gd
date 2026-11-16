@@ -90,6 +90,10 @@ var _fire_lost_ticks := 9000
 var _fire_lost_vis_m := 1.0
 ## 세대 배치 (P2-2, SimWorld가 넣는다)
 var layout: UnitAssembly
+## 관계인 진술로 구조대상자가 있다고 들은 방 {구획 id: 말한 사람} (SiteSurvey.reported_rooms를 같이 쓴다, SimWorld가 넣는다)
+var reported_rooms: Dictionary = {}
+## 검색 순서 한 단계를 거리로 바꾼 값 (칸) — 층 안에서는 순위가 거리보다 늘 먼저다 (게임 설정값: 가장 큰 층보다 넓게)
+const SEARCH_RANK_GAP := 1000.0
 ## 직하층 확인으로 얻은 추정 구조 {위 세대 이름: {from: 아래 세대, variant: 아래 세대 변형, furnish, tick}} — 지휘관이 아는 정보
 var unit_estimates: Dictionary = {}
 
@@ -519,22 +523,57 @@ func _next_unit_room(c: Crew, rooms: Array[int], check: Dictionary, tick: int) -
 	tasks.append(t)
 
 
-## 층 검색: 아직 검색하지 않은 방 / 층 진압: 타는 방 — 조에게서 가까운 곳부터
+## 층 검색: 아직 검색하지 않은 방을 교재 순서로 (_search_rank), 같은 순위면 조에게서 가까운 곳부터.
+## 층 진압: 타는 방 — 가까운 곳부터
 func _next_floor_room(c: Crew, action: String, lv: int) -> Compartment:
+	var search := action == "search_floor"
+	var fire_rooms := _fire_rooms(lv) if search else {}
 	var best: Compartment = null
 	var best_d := INF
 	for room in fire.comps:
 		if room.level != lv or room.cells.is_empty():
 			continue
-		if action == "search_floor" and room.searched_tick >= 0:
+		if search and room.searched_tick >= 0:
 			continue
 		if action == "attack_floor" and not _room_burning(room.index):
 			continue
 		var d := c.leader.pos.distance_to(Vector2(room.rect.get_center())) + absi(lv - c.leader.level) * 8.0
+		if search:
+			d += _search_rank(room, fire_rooms) * SEARCH_RANK_GAP
 		if d < best_d:
 			best_d = d
 			best = room
 	return best
+
+
+## 층 안 검색 순서 (SOP 202-3.1.2 화점실 → 인근실 → 연소층): 0 구조대상자가 있다고 들은 방(관계인 진술) →
+## 1 화점실(타고 있거나 탄 자리가 있는 방) → 2 인근실(화점실과 문으로 이어진 방) → 3 그 층 나머지.
+## 어느 층부터 보낼지(화점층·직상층…)는 지휘관이 지시 창에서 정한다
+func _search_rank(room: Compartment, fire_rooms: Dictionary) -> int:
+	if reported_rooms.has(str(room.id)):
+		return 0
+	if fire_rooms.has(room.index):
+		return 1
+	for oi in room.openings:
+		var o := fire.openings[oi]
+		if o.kind == Opening.Kind.DOOR and (fire_rooms.has(o.room_a) or fire_rooms.has(o.room_b)):
+			return 2
+	return 3
+
+
+## 그 층의 화점실: 타고 있거나 탄 자리(다 탔거나 타다 꺼져 연료가 준 칸)가 있는 방 {구획 index: true}
+func _fire_rooms(lv: int) -> Dictionary:
+	var out := {}
+	var grid := fire.grid
+	for room in fire.comps:
+		if room.level != lv or room.index >= grid.room_cells.size():
+			continue
+		# 가구 칸까지 본다 (FuelGrid.room_cells)
+		for i in grid.room_cells[room.index]:
+			if RekindleSystem.scorched_cell(grid, i):
+				out[room.index] = true
+				break
+	return out
 
 
 ## 방 가운데에 가까운 칸

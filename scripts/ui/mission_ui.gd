@@ -23,6 +23,10 @@ var _menu_title: Label
 var _menu_pick := Callable()
 ## 대상 메뉴 항목 id (테스트·화면 점검용)
 var menu_ids: Array[String] = []
+## 팀장 둥근 버튼 (분대 편성)과 그 항목 id · 누른 출동대
+var radial: RadialMenu
+var radial_ids: Array[String] = []
+var _radial_squad := -1
 var _menu_buttons: Array[Button] = []
 ## 임무 창 (진입 지시 4단계): 받는 조들, 진입구, 기본 임무
 var _drop_crews: Array[int] = []
@@ -60,6 +64,10 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_to_cell: Callabl
 	_ghost.visible = false
 	add_child(_ghost)
 	_build_menu()
+	# 팀장 둥근 버튼 (분대 편성)
+	radial = RadialMenu.new()
+	add_child(radial)
+	radial.picked.connect(_on_squad_pick)
 
 
 func _process(_delta: float) -> void:
@@ -68,13 +76,50 @@ func _process(_delta: float) -> void:
 
 
 func is_open() -> bool:
-	return menu.visible or panel.visible
+	return menu.visible or panel.visible or radial.visible
 
 
 func close_all() -> void:
 	close_menu()
+	radial.close()
 	panel.visible = false
 	end_drag()
+
+
+# --- 팀장 둥근 버튼: 분대 편성 (2026-11-16 결정 — 명령 카드는 임무, 둥근 버튼은 편성) ---
+
+## 이미 고른 분대의 팀장(선착 분대는 지휘관 캐릭터)을 다시 눌렀다: 나누기 또는 합치기 · 한 명 보내기 · 복귀.
+## 할 수 없는 항목은 회색이고 올리면 이유가 보인다
+func open_squad_menu(squad_id: int, screen_pos: Vector2) -> void:
+	if squad_id < 0 or squad_id >= sim.units.squads.size():
+		return
+	var squad := sim.units.squads[squad_id]
+	_radial_squad = squad_id
+	var split_now := squad.crews.size() >= 2
+	var items: Array[Dictionary] = []
+	for it: Dictionary in CommandCard.load_sets().get("squad", []):
+		var id := str(it.id)
+		# 나누기·합치기는 지금 할 수 있는 쪽 하나만
+		if (id == "split" and split_now) or (id == "merge" and not split_now):
+			continue
+		var why := ""
+		if str(it.get("need", "")) == "later":
+			why = "다음 작업에서"
+		elif id in ["split", "merge"]:
+			why = sim.regroup_reason(squad_id, id == "split")
+		items.append({"id": id, "label": str(it.label), "enabled": why == "", "tip": str(it.get("hint", "")) if why == "" else "%s — %s" % [str(it.label), why]})
+	radial_ids.clear()
+	for it in items:
+		radial_ids.append(str(it.id))
+	radial.open(screen_pos, "%s · 분대 편성" % squad.name, items)
+
+
+func _on_squad_pick(id: String) -> void:
+	if _radial_squad < 0 or not id in ["split", "merge"]:
+		return
+	var squad := sim.units.squads[_radial_squad]
+	order_issued.emit(CommandOrder.make("regroup", [_radial_squad] as Array[int], 1 if id == "split" else 0))
+	notice.emit("%s: %s 지시" % [squad.name, "2개 조로 나누기" if id == "split" else "합치기"])
 
 
 # --- 대상 메뉴 (P4-5) ---

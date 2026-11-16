@@ -11,10 +11,15 @@ var squad_id := 0
 var number := 1
 ## 조원 (선두부터). 예전 편성은 [조장, 짝]
 var list: Array[Firefighter] = []
+## 다른 조에 합쳐져 비어 있으면 그 조 (UnitSystem.merge_squad). 이 조 id를 아직 들고 있는 곳이
+## 선두를 물어도 합쳐진 조의 선두를 돌려준다 — 빈 조는 UnitSystem.crews 에 없다
+var merged_into: Crew
 ## 선두 = 조원 첫째 (경로를 따라가는 사람)
 var leader: Firefighter:
 	get:
-		return list[0] if not list.is_empty() else null
+		if not list.is_empty():
+			return list[0]
+		return merged_into.leader if merged_into != null else null
 ## 짝 = 조원 둘째 (없으면 null). 예전 2인 1조 코드가 쓴다
 var partner: Firefighter:
 	get:

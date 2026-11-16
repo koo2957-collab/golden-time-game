@@ -120,6 +120,7 @@ func _ready() -> void:
 	selection.entry_mode_started.connect(func(lv: int) -> void: set_view_level(lv, true))
 	selection.mission_target.connect(mission_ui.open_mission)
 	selection.door_menu.connect(mission_ui.open_door_menu)
+	selection.squad_menu.connect(mission_ui.open_squad_menu)
 	# 안내 흐름 (P4-5): 조를 고르면 진입구·층·계단·방이 노랗게. 방을 누르면 임무 고르기
 	selection.room_menu.connect(mission_ui.open_room_menu)
 	selection.guide_view.connect(func(lv: int, ext: bool) -> void: set_view_level(lv, ext))

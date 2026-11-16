@@ -66,9 +66,14 @@ static func traits() -> Dictionary:
 var default_items: Dictionary = {}
 
 
+## 조 id -> 조 (합쳐서 비어 있는 조도 들어 있다 — crews 에는 활동 중인 조만)
+var _crew_by_id: Dictionary = {}
+
+
 func add_crew(squad: Squad, crew_data: Dictionary, spawn: Vector2i, level := 1) -> Crew:
 	var crew := Crew.new()
-	crew.id = crews.size()
+	crew.id = _crew_by_id.size()
+	_crew_by_id[crew.id] = crew
 	crew.squad_id = squad.id
 	crew.number = squad.crews.size() + 1
 	crew.thermal_camera = bool(crew_data.get("thermal_camera", false))
@@ -162,7 +167,95 @@ func get_vehicle(id: int) -> Vehicle:
 
 
 func get_crew(id: int) -> Crew:
-	return crews[id] if id >= 0 and id < crews.size() else null
+	return _crew_by_id.get(id)
+
+
+## 활동 중인 조인가 (합쳐져 비어 있는 조가 아니다)
+func crew_active(id: int) -> bool:
+	var c := get_crew(id)
+	return c != null and not c.list.is_empty()
+
+
+# --- 분대 편성 (2026-11-16 결정 — docs/decisions.md '분대': 팀장 둥근 버튼) ---
+
+## 분대(조 하나, 4명)를 2인 1조 둘로 나눈다: 첫째·둘째 조원은 그대로 남고(임무·호스를 이어 간다),
+## 셋째·넷째가 새 조가 된다 — 팀장이 있으면 팀장이 선두. 진압 분대 = [관창수 + 보조1] / [팀장 + 보조2].
+## → 떨어져 나온 조 (나눌 수 없으면 null)
+func split_squad(squad: Squad) -> Crew:
+	if squad.crews.size() != 1 or squad.crews[0].list.size() != 4:
+		return null
+	var a := squad.crews[0]
+	var b: Crew = squad.spare
+	if b == null:
+		b = Crew.new()
+		b.id = _crew_by_id.size()
+		_crew_by_id[b.id] = b
+		b.squad_id = squad.id
+		b.number = 2 if a.number == 1 else 1
+	if squad.home.is_empty():
+		for ff in a.list:
+			squad.home.append(ff.id)
+	squad.spare = null
+	b.merged_into = null
+	var moved: Array[Firefighter] = [a.list[2], a.list[3]]
+	if moved[1].officer and not moved[0].officer:
+		moved.reverse()
+	var kept: Array[Firefighter] = [a.list[0], a.list[1]]
+	a.list = kept
+	b.list = moved
+	b.thermal_camera = false
+	b.items.clear()
+	for k in default_items.get(squad.type, []):
+		b.items.append(str(k))
+	for ff in moved:
+		ff.crew_id = b.id
+		ff.path.clear()
+	squad.crews.append(b)
+	squad.crews.sort_custom(func(x: Crew, y: Crew) -> bool: return x.number < y.number)
+	crews.append(b)
+	return b
+
+
+## 나뉜 두 조를 다시 한 분대로: keeper가 남고 다른 조의 조원이 들어온다 (그 조는 비워 둔다).
+## home_order면 처음 편성 순서로 되돌린다 (둘 다 쉬는 채로 합칠 때) — 아니면 keeper의 조원 뒤에 붙는다 (임무 중인 조에 합류)
+func merge_squad(squad: Squad, keeper: Crew, home_order: bool) -> bool:
+	if squad.crews.size() != 2 or not keeper in squad.crews:
+		return false
+	var joiner := squad.crews[0] if squad.crews[1] == keeper else squad.crews[1]
+	var all: Array[Firefighter] = keeper.list.duplicate()
+	all.append_array(joiner.list)
+	if home_order and not squad.home.is_empty():
+		all.sort_custom(func(x: Firefighter, y: Firefighter) -> bool: return squad.home.find(x.id) < squad.home.find(y.id))
+	for ff in joiner.list:
+		ff.crew_id = keeper.id
+	for item in joiner.items:
+		if not item in keeper.items:
+			keeper.items.append(item)
+	keeper.thermal_camera = keeper.thermal_camera or joiner.thermal_camera
+	keeper.list = all
+	var none: Array[Firefighter] = []
+	joiner.list = none
+	joiner.merged_into = keeper
+	squad.crews.erase(joiner)
+	crews.erase(joiner)
+	squad.spare = joiner
+	return true
+
+
+## 흩어진 조원을 선두 곁으로 모은다 (합친 직후). 선두는 움직이지 않는다
+func gather(c: Crew, pathfinder: Pathfinder) -> void:
+	var lead := c.leader
+	if lead == null:
+		return
+	var slots := pathfinder.formation_slots(lead.level, Vector2i(lead.pos.floor()), c.list.size(), 1)
+	for k in range(1, c.list.size()):
+		var ff: Firefighter = c.list[k]
+		if ff.incapacitated or (ff.level == lead.level and ff.pos.distance_to(lead.pos) <= 2.0):
+			continue
+		var cell: Vector2i = slots[mini(k, slots.size() - 1)] if not slots.is_empty() else Vector2i(lead.pos.floor())
+		var path := pathfinder.find_path(ff.cell3(), Vector3i(cell.x, cell.y, lead.level))
+		if not path.is_empty():
+			ff.set_path(path)
 
 
 func squad_of_crew(crew_id: int) -> Squad:

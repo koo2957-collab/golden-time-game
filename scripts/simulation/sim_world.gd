@@ -366,6 +366,134 @@ func apply_growth(xp: Dictionary) -> void:
 		ff.grade = str(l.get("name", ""))
 
 
+# --- 분대 편성: 2개 조로 나누기 · 합치기 (2026-11-16 결정 — docs/decisions.md '분대', 팀장 둥근 버튼) ---
+
+## 무전으로 보낸 편성 지시가 아직 닿지 않은 분대 {출동대 id: true}
+var _regroup_pending: Dictionary = {}
+
+
+## 이 조가 일을 맡고 있으면 그 이유 ("" = 쉬는 중) — 합칠 때 들어오는 조는 쉬고 있어야 한다
+func crew_busy(crew_id: int) -> String:
+	var c := units.get_crew(crew_id)
+	if c == null or c.list.is_empty():
+		return ""
+	if c.leader.aboard:
+		return "차량·승강기에 타고 있음"
+	if water.hose_of_crew(crew_id) != null:
+		return "수관을 잡고 있음"
+	var rt: RefCounted = rescue.task_of_crew(crew_id)
+	if rt is RescueSystem.CarryTask:
+		return "구조대상자를 옮기는 중"
+	if rt != null:
+		return "인명검색 중"
+	if tactical.task_of_crew(crew_id) != null:
+		return "임무 중"
+	if doors.task_of_crew(crew_id) != null or doors.fetches.any(func(f: Dictionary) -> bool: return int(f.crew) == crew_id):
+		return "문 작업 중"
+	if command.safety.role_of(crew_id) != SafetySystem.Role.NONE or command.safety.role_pending(crew_id):
+		return "안전 임무(RIT·현장안전담당)를 맡고 있음"
+	if cards.queue.any(func(q: CardSystem.Card) -> bool: return q.crew_id == crew_id):
+		return "질문에 답을 기다리는 중"
+	if rekindle.task_of_crew(crew_id) != null:
+		return "잔불 정리 중"
+	if vent != null and vent.crew_id == crew_id:
+		return "송풍기 배연 중"
+	if gas.workers.has(crew_id):
+		return "가스 차단 중"
+	if command.post != null and command.post.jobs.any(func(j: Dictionary) -> bool: return int(j.crew) == crew_id):
+		return "구역 설치 중"
+	return ""
+
+
+## 편성 지시를 할 수 없는 이유 ("" = 할 수 있다). split: true 나누기 / false 합치기
+func regroup_reason(squad_id: int, split: bool) -> String:
+	if squad_id < 0 or squad_id >= units.squads.size():
+		return "없는 출동대"
+	var squad := units.squads[squad_id]
+	if command.resources.is_en_route(squad_id) or squad.crews.is_empty():
+		return "아직 현장에 없음"
+	if _regroup_pending.has(squad_id):
+		return "앞의 편성 지시가 전달되는 중"
+	if split:
+		if squad.crews.size() != 1:
+			return "이미 나뉘어 있음"
+		var c := squad.crews[0]
+		if c.list.size() != 4:
+			return "4명 분대만 2인 1조 둘로 나눌 수 있음 (%d명)" % c.list.size()
+		if c.list.any(func(ff: Firefighter) -> bool: return ff.incapacitated):
+			return "쓰러진 대원이 있음"
+		if c.leader.aboard:
+			return "차량·승강기에 타고 있음"
+		if rescue.task_of_crew(c.id) is RescueSystem.CarryTask:
+			return "구조대상자를 옮기는 중"
+		return ""
+	if squad.crews.size() != 2:
+		return "나뉘어 있지 않음"
+	if _merge_keeper(squad) == null:
+		return "두 조 모두 임무 중 — 한 조를 대기·철수시킨 뒤 합치기 (%s: %s)" % [units.crew_short(squad.crews[1]), crew_busy(squad.crews[1].id)]
+	return ""
+
+
+## 합칠 때 남는 조: 한 조만 쉬고 있으면 일하는 조(쉬는 조가 합류), 둘 다 쉬면 1조. 둘 다 일하면 null
+func _merge_keeper(squad: Squad) -> Crew:
+	var a := squad.crews[0]
+	var b := squad.crews[1]
+	var a_busy := crew_busy(a.id) != ""
+	var b_busy := crew_busy(b.id) != ""
+	if a_busy and b_busy:
+		return null
+	return b if b_busy else a
+
+
+## 편성 지시 (CommandOrder "regroup"): 할 수 없으면 이유를 기록하고, 할 수 있으면 무전으로 지시한다 — 닿아야 바뀐다
+func order_regroup(squad_id: int, split: bool, tick: int) -> bool:
+	var why := regroup_reason(squad_id, split)
+	if why != "":
+		var who := units.squads[squad_id].name if squad_id >= 0 and squad_id < units.squads.size() else ""
+		events.add(tick, "regroup_rejected", {"squad": who, "what": "나누기" if split else "합치기", "reason": why})
+		return false
+	var squad := units.squads[squad_id]
+	_regroup_pending[squad_id] = true
+	var body := "2개 조로 나눠 활동하라." if split else "다시 한 분대로 합쳐 활동하라."
+	command.radio.send(Radio.Priority.TACTICS, CommandSystem.COMMANDER, squad.name, body, tick, _on_regroup.bind(squad_id, split))
+	return true
+
+
+func _on_regroup(tick: int, squad_id: int, split: bool) -> void:
+	_regroup_pending.erase(squad_id)
+	var squad := units.squads[squad_id]
+	# 전달되는 사이 상황이 바뀌었으면 하지 않는다
+	var why := regroup_reason(squad_id, split)
+	if why != "":
+		events.add(tick, "regroup_rejected", {"squad": squad.name, "what": "나누기" if split else "합치기", "reason": why})
+		return
+	if split:
+		var made: Crew = units.split_squad(squad)
+		if made == null:
+			return
+		command._decide(tick, "분대 나누기 — %s (2인 1조 둘)" % squad.name)
+		events.add(tick, "squad_split", {"squad": squad.name, "crew": units.crew_name(made), "crew_id": made.id,
+			"first": _names(squad.crews[0]), "second": _names(squad.crews[1])})
+		command.radio.send(Radio.Priority.TACTICS, squad.name, CommandSystem.COMMANDER, "2개 조로 나눔. %s %s, %s %s." % [
+			units.crew_short(squad.crews[0]), _names(squad.crews[0]), units.crew_short(squad.crews[1]), _names(squad.crews[1])], tick)
+		return
+	var keeper := _merge_keeper(squad)
+	var home := crew_busy(squad.crews[0].id) == "" and crew_busy(squad.crews[1].id) == ""
+	if keeper == null or not units.merge_squad(squad, keeper, home):
+		return
+	units.gather(keeper, pathfinder)
+	command._decide(tick, "분대 합치기 — %s" % squad.name)
+	events.add(tick, "squad_merged", {"squad": squad.name, "crew_id": keeper.id})
+	command.radio.send(Radio.Priority.TACTICS, squad.name, CommandSystem.COMMANDER, "한 분대로 합침.", tick)
+
+
+func _names(c: Crew) -> String:
+	var out: PackedStringArray = []
+	for ff in c.list:
+		out.append(ff.name)
+	return "·".join(out)
+
+
 ## 도착 후 임무 미리 정하기 (P9-1): {조 id: attack·search·office·officer}. 그 조가 차에서 내리면 바로 지시한다
 var preassign: Dictionary = {}
 

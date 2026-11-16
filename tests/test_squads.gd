@@ -164,6 +164,82 @@ func test_mate_and_second_pair() -> void:
 	assert_true(first.second_pair().is_empty(), "3명 분대는 둘째 짝 없음")
 
 
+func test_split_pairs_by_role() -> void:
+	var units := _units(REINFORCEMENTS)
+	# 진압: [관창수 + 보조1] / [팀장 + 보조2] — 팀장이 둘째 조의 선두
+	var pump := units.squad_by_key("pump2")
+	var officer := pump.crews[0].officer()
+	var made := units.split_squad(pump)
+	assert_true(made != null and pump.crews.size() == 2, "두 조가 된다")
+	assert_eq(pump.crews[0].leader.role, "관창수", "1조 선두는 관창수 (수관·임무를 이어 간다)")
+	assert_eq(pump.crews[0].list.size(), 2, "1조 2명")
+	assert_true(made.leader == officer and made.list.size() == 2, "2조 선두는 팀장")
+	assert_eq(units.crew_name(made), "진압2 2조", "나뉜 조는 조 번호로 부른다")
+	assert_true(units.get_crew(made.id) == made and made in units.crews, "새 조도 조 목록에")
+	assert_true(made.list.all(func(ff: Firefighter) -> bool: return ff.crew_id == made.id), "대원의 조 번호도 바뀐다")
+	# 3명 분대와 이미 나뉜 분대는 나눌 수 없다
+	assert_true(units.split_squad(pump) == null, "이미 나뉜 분대")
+	assert_true(_units(ROSTER).split_squad(_units(ROSTER).squad_by_key("pump1")) == null, "3명 분대는 나누지 않는다")
+	# 합치면 처음 순서로, 비운 조는 조 목록에서 빠진다 — 그 id를 물어도 선두는 합쳐진 조의 선두
+	assert_true(units.merge_squad(pump, pump.crews[0], true), "합치기")
+	var whole := pump.crews[0]
+	assert_eq(whole.list.size(), 4, "다시 4명")
+	assert_true(whole.leader.role == "관창수" and whole.list[3] == officer, "처음 편성 순서로")
+	assert_eq(units.crew_name(whole), "진압2", "다시 분대 이름으로")
+	assert_true(not made in units.crews and not units.crew_active(made.id), "비운 조는 활동 목록에 없다")
+	assert_true(units.get_crew(made.id).leader == whole.leader, "비운 조의 선두 = 합쳐진 조의 선두 (안전)")
+	# 다시 나누면 같은 조 id를 쓴다
+	var again := units.split_squad(pump)
+	assert_true(again == made and again.id == made.id, "같은 조를 되살린다")
+	# 일하는 조에 합류하면 그 조의 조원 뒤에 붙는다 (팀장 조가 남는 경우 팀장이 선두)
+	assert_true(units.merge_squad(pump, again, false), "2조에 1조가 합류")
+	assert_true(pump.crews[0] == again and again.leader == officer and again.list.size() == 4, "남은 조의 선두 그대로")
+
+
+func test_regroup_order_by_radio() -> void:
+	var sim := SimWorld.from_scenario(SQUAD_SCENARIO)
+	sim.command.resources.clear_schedule()
+	var squad := sim.units.squad_by_key("rescue1")
+	var whole := squad.crews[0]
+	# 3명 분대는 거절 (이유를 기록)
+	var pump := sim.units.squad_by_key("pump1")
+	sim.issue(CommandOrder.make("regroup", [pump.id] as Array[int], 1))
+	sim.step_ticks(2)
+	var no := sim.events.of_type("regroup_rejected")
+	assert_true(no.size() == 1 and str(no[0].reason).contains("4명"), "3명 분대는 나눌 수 없다고 알린다 (%s)" % [no])
+	# 나누기: 무전이 닿아야 바뀐다
+	sim.issue(CommandOrder.make("regroup", [squad.id] as Array[int], 1))
+	sim.step_ticks(1)
+	assert_eq(squad.crews.size(), 1, "지시가 닿기 전에는 그대로")
+	assert_true(_until(sim, func() -> bool: return squad.crews.size() == 2, 60.0), "무전이 닿으면 두 조")
+	assert_eq(sim.events.of_type("squad_split").size(), 1, "나누기 기록")
+	var second := squad.crews[1]
+	assert_true(squad.crews[0] == whole and whole.officer() != null, "구조 1조에 팀장")
+	assert_eq(sim.units.crew_name(second), "구조1 2조", "2조")
+	# 2조만 따로 움직인다
+	var at := whole.leader.pos
+	var cell := sim.pathfinder.nearest_walkable(1, Vector2i(28, 26))
+	sim.units.order_move([second.id] as Array[int], Vector3i(cell.x, cell.y, 1), sim.pathfinder)
+	assert_true(_until(sim, func() -> bool: return not second.leader.is_moving() and second.leader.pos.distance_to(at) > 4.0, 60.0), "2조가 따로 간다")
+	assert_true(whole.leader.pos.distance_to(at) < 0.1, "1조는 그 자리에")
+	# 두 조 모두 일하면 합칠 수 없다
+	sim.command.safety.roles[whole.id] = SafetySystem.Role.RIT
+	sim.command.safety.roles[second.id] = SafetySystem.Role.OFFICER
+	assert_true(sim.regroup_reason(squad.id, false).contains("모두 임무 중"), "둘 다 임무 중이면 합치기 불가")
+	sim.command.safety.roles.erase(whole.id)
+	sim.command.safety.roles.erase(second.id)
+	# 합치기: 흩어진 조원이 선두 곁으로 모인다
+	sim.issue(CommandOrder.make("regroup", [squad.id] as Array[int], 0))
+	assert_true(_until(sim, func() -> bool: return squad.crews.size() == 1, 60.0), "다시 한 분대")
+	assert_true(squad.crews[0] == whole and whole.list.size() == 4, "1조가 남고 4명")
+	assert_true(not sim.units.crew_active(second.id), "2조는 비었다")
+	assert_true(_until(sim, func() -> bool: return whole.list.all(func(ff: Firefighter) -> bool: return not ff.is_moving() and ff.pos.distance_to(whole.leader.pos) <= 3.0), 60.0), "선두 곁으로 모인다")
+	assert_eq(sim.events.of_type("squad_merged").size(), 1, "합치기 기록")
+	# 비운 조 id가 남아 있어도 진행에 문제없다
+	sim.step_ticks(50)
+	assert_eq(sim.units.crew_name(whole), "구조1", "분대 이름")
+
+
 func test_commander_alights_from_passenger_door() -> void:
 	var sim := SimWorld.from_scenario(SQUAD_SCENARIO)
 	var res := sim.command.resources

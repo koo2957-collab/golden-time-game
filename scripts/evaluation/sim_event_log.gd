@@ -273,6 +273,12 @@ static func describe_text(e: Dictionary) -> String:
 			text = "인원점검 — %s" % ("이상 없음" if e.missing == 0 and e.indoor == 0 else "건물 안 %d명, 미확인 %d명" % [e.indoor, e.missing])
 		"role_assigned":
 			text = "%s — %s" % [e.role, e.crew]
+		"squad_split":
+			text = "분대 나누기 — %s: 1조 %s / 2조 %s" % [e.squad, e.first, e.second]
+		"squad_merged":
+			text = "분대 합치기 — %s" % e.squad
+		"regroup_rejected":
+			text = "%s 불가 (%s) — %s" % [e.what, e.reason, e.squad]
 		"role_reserved":
 			text = "%s은 다른 임무를 받지 않음 (SSG 9 1.2.2) — %s" % [e.role, e.crew]
 		"rit_deployed":

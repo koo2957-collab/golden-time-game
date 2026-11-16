@@ -36,6 +36,8 @@ signal entry_mode_started(level: int)
 signal mission_target(crew_ids: Array[int], target: Vector3i, kind: String, via: Vector3i, screen_pos: Vector2)
 ## 건물 안 조를 고른 채 가까운 문을 눌렀다 → 문 앞 휠 (P4-2)
 signal door_menu(crew_id: int, door_index: int, screen_pos: Vector2)
+## 이미 고른 분대의 팀장을 다시 눌렀다 (선착 분대는 고른 지휘관을 다시) → 분대 편성 둥근 버튼 (2026-11-16)
+signal squad_menu(squad_id: int, screen_pos: Vector2)
 
 const DRAG_THRESHOLD_PX := 6.0
 ## 마우스를 올린 조 (기획안 9-3: 잡힐 조의 윤곽이 빛나고 이름이 뜬다). 없으면 -1
@@ -174,6 +176,13 @@ func crews_spraying() -> Array[int]:
 func _process(_delta: float) -> void:
 	if _marker_start_ms >= 0.0:
 		queue_redraw()
+	# 합쳐져 없어진 조는 선택에서 뺀다 (분대 합치기)
+	if sim != null and selected.any(func(id: int) -> bool: return not sim.units.crew_active(id)):
+		var alive: Array[int] = []
+		for id in selected:
+			if sim.units.crew_active(id):
+				alive.append(id)
+		_set_selection(alive, selected_vehicles.duplicate(), commander_selected)
 	# 올리면 미리 보임: 잡힐 조의 윤곽과 이름 (기획안 9-3)
 	if sim != null:
 		var mouse_world := _to_world(get_viewport().get_mouse_position())
@@ -283,6 +292,10 @@ func _handle_group_key(event: InputEventKey) -> void:
 
 func _click_select(world_pos: Vector2, add: bool, screen_pos := Vector2(-1, -1)) -> void:
 	if not add and _commander_at(world_pos):
+		# 이미 고른 지휘관을 다시 누르면 자기 분대(선착 분대 — 팀장이 곧 선착대장)의 편성 둥근 버튼
+		if commander_selected and screen_pos.x >= 0.0 and not sim.units.squads.is_empty() and not sim.units.squads[0].crews.is_empty():
+			squad_menu.emit(0, screen_pos)
+			return
 		_set_selection([], [], true)
 		return
 	var witness := _witness_at(world_pos)
@@ -290,6 +303,10 @@ func _click_select(world_pos: Vector2, add: bool, screen_pos := Vector2(-1, -1))
 		witness_clicked.emit(witness)
 		return
 	var crew_id := _crew_at(world_pos)
+	# 이미 고른 분대의 팀장을 다시 누르면 편성 둥근 버튼 (첫 클릭은 늘 선택만 — 2026-11-11 결정)
+	if not add and crew_id >= 0 and selected.size() == 1 and selected[0] == crew_id and screen_pos.x >= 0.0 and officer_under(crew_id, world_pos):
+		squad_menu.emit(sim.units.get_crew(crew_id).squad_id, screen_pos)
+		return
 	# 문 행동: 다른 대원이 잡히면 그 대원 선택이 먼저 (기획안 9-3 우선순위). 이미 고른 그 조로 곁의 문을 누르면 문 행동
 	if not add and (crew_id < 0 or (selected.size() == 1 and selected[0] == crew_id)) and _door_wheel(world_pos, screen_pos):
 		return
@@ -757,6 +774,30 @@ func crews_under(world_pos: Vector2) -> Array[int]:
 	if out.is_empty() and nearest >= 0:
 		out.append(nearest)
 	return out
+
+
+## 그 조의 팀장이 world_pos 아래에 있는가 (팀장 그림을 덮는 타원 안이고, 조원 중 팀장이 가장 가깝다)
+func officer_under(crew_id: int, world_pos: Vector2) -> bool:
+	var c := sim.units.get_crew(crew_id)
+	if c == null:
+		return false
+	var o: Firefighter = c.officer()
+	if o == null or o.incapacitated or o.level != level or o.aboard or not _crew_visible(o):
+		return false
+	var xf := get_canvas_transform()
+	var mouse := xf * world_pos
+	var vp: ViewParams = _view_params()
+	var rx := vp.pick_w_px * 0.5
+	var ry := vp.pick_h_px * 0.5
+	var op := xf * projection.to_screen(o.pos, projection.pick_height_m)
+	var d := mouse - (op - Vector2(0, ry * 0.4))
+	if (d.x * d.x) / (rx * rx) + (d.y * d.y) / (ry * ry) > 1.0:
+		return false
+	for ff in c.list:
+		if ff != o and ff.level == level and not ff.aboard \
+				and (xf * projection.to_screen(ff.pos, projection.pick_height_m)).distance_to(mouse) < op.distance_to(mouse):
+			return false
+	return true
 
 
 func _crew_visible(ff: Firefighter) -> bool:

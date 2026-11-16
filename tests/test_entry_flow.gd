@@ -62,3 +62,22 @@ func test_mission_goes_through_chosen_entry() -> void:
 			break
 	assert_true(best <= 1.5, "고른 진입구 앞을 지난다 (가장 가까이 %.1f칸)" % best)
 
+
+## 이웃 건물 문은 지시 창·가까운 문 고르기에서 빠진다 (2026-11-17 — 진압2가 옆집 거실 문으로 '1층'에 들어가던 버그)
+func test_neighbour_door_not_used_for_floor_mission() -> void:
+	var sim := SimWorld.from_scenario("res://data/scenarios/sop214_1_day_living.json", false, 7)
+	var nb: Array = sim.entries.list.filter(func(e: EntryPoints.Entry) -> bool: return e.neighbour)
+	assert_true(not nb.is_empty(), "이 시나리오에는 옆집 문이 진입구 목록에 있다")
+	assert_true(sim.entries.main_entries().all(func(e: EntryPoints.Entry) -> bool: return not e.neighbour), "불난 건물 문만")
+	# 옆집 문 바로 앞에 선 분대에게 1층 임무 → 옆집 문이 아니라 불난 건물 문으로
+	var e_nb: EntryPoints.Entry = nb[0]
+	var c := sim.units.get_crew(0)
+	for ff in c.members():
+		ff.path.clear()
+		ff.aboard = false
+		ff.level = e_nb.level
+		ff.pos = Vector2(e_nb.outside.x, e_nb.outside.y) + Vector2(0.5, 0.5)
+	sim.issue(CommandOrder.make("floor_mission", [0] as Array[int], e_nb.level, Vector3i.ZERO, {"kind": "attack", "entry": -1}))
+	sim.step_ticks(1)
+	var ei := int(sim.command.approach.get(0, -1))
+	assert_true(ei >= 0 and not sim.entries.list[ei].neighbour, "가까운 옆집 문 대신 불난 건물 문 (%s)" % (sim.entries.list[ei].name if ei >= 0 else "없음"))

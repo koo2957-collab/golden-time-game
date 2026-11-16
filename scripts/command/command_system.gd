@@ -1460,12 +1460,14 @@ func waiting_squads() -> Array[int]:
 
 
 func _approach_entry(crew_ids: Array) -> EntryPoints.Entry:
-	var list: Array = interior.entries.list if interior.entries else []
+	# 불난 건물의 문만 (이웃 건물 문으로 들어가 그 집을 '그 층'으로 착각하지 않게, 2026-11-17)
+	var list: Array = interior.entries.main_entries() if interior.entries else []
 	if list.is_empty() or crew_ids.is_empty():
 		return null
 	var first := int(crew_ids[0])
-	if approach.has(first) and int(approach[first]) < list.size():
-		return list[int(approach[first])]
+	# 이미 가고 있는 진입구 (approach 값은 전체 진입구 목록의 번호)
+	if approach.has(first) and int(approach[first]) < interior.entries.list.size():
+		return interior.entries.list[int(approach[first])]
 	var c := units.get_crew(first)
 	var best: EntryPoints.Entry = null
 	for en: EntryPoints.Entry in list:

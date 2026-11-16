@@ -162,7 +162,8 @@ func open_order(crew_ids: Array[int], level: int, screen_pos: Vector2) -> void:
 			outside = id
 	if outside >= 0 and sim.entries:
 		var from: Vector2 = sim.units.get_crew(outside).leader.pos
-		var list: Array = sim.entries.list.duplicate()
+		# 불난 건물의 문만 (이웃 건물 문은 직접 우클릭할 때만)
+		var list: Array = sim.entries.main_entries()
 		list.sort_custom(func(a: EntryPoints.Entry, b: EntryPoints.Entry) -> bool:
 			return from.distance_to(Vector2(a.outside.x, a.outside.y)) < from.distance_to(Vector2(b.outside.x, b.outside.y)))
 		for e: EntryPoints.Entry in list:

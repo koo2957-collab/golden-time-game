@@ -20,6 +20,8 @@ class Entry:
 	var outward := Vector2.ZERO
 	## 안쪽 구획 index
 	var room := -1
+	## 이웃 건물(연소 확대 대상)의 문인가 — 지시 창·가까운 문 고르기에서는 빼고, 직접 우클릭할 때만 쓴다 (2026-11-17)
+	var neighbour := false
 
 
 var fire: FireSim
@@ -53,10 +55,20 @@ func _init(p_fire: FireSim, p_exposure: ExposureSystem, names: Dictionary = {}) 
 		e.door = door_cell
 		e.outward = (Vector2(out_cell.x, out_cell.y) - Vector2(door_cell)).normalized()
 		e.room = inside_room
+		e.neighbour = inside_room >= 0 and fire.is_exposure_comp(fire.comps[inside_room])
 		var key := "%d,%d" % [door_cell.x, door_cell.y]
 		var room_name := fire.comps[inside_room].display_name() if inside_room >= 0 else ""
 		e.name = str(names.get(key, "%s 출입문" % room_name if room_name != "" else "출입문"))
 		list.append(e)
+
+
+## 불난 건물의 진입구 (이웃 건물 문 빼고)
+func main_entries() -> Array[Entry]:
+	var out: Array[Entry] = []
+	for e in list:
+		if not e.neighbour:
+			out.append(e)
+	return out
 
 
 ## 칸(x, y, 층) 가까이(max_cells 안)의 진입구 (없으면 null)

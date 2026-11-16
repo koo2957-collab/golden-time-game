@@ -1080,7 +1080,7 @@ func entry_for(crew_id: int) -> EntryPoints.Entry:
 		return sim.entries.list[ei]
 	var c := sim.units.get_crew(crew_id)
 	var best: EntryPoints.Entry = null
-	for e in sim.entries.list:
+	for e in sim.entries.main_entries():
 		if best == null or c.leader.pos.distance_to(Vector2(e.outside.x, e.outside.y)) < c.leader.pos.distance_to(Vector2(best.outside.x, best.outside.y)):
 			best = e
 	return best

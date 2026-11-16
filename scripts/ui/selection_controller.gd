@@ -408,6 +408,10 @@ func _issue_vehicle_click(world_pos: Vector2) -> void:
 func _issue_crew_right_click(world_pos: Vector2, screen_pos := Vector2(-1, -1)) -> bool:
 	var cell_f := projection.to_cell(world_pos)
 	var cell := Vector2i(cell_f.floor())
+	# 아직 차에 탄 분대 (아래 팀 초상으로 고른 경우): 내린 뒤에 지시한다
+	if selected.all(func(id: int) -> bool: return sim.units.get_crew(id) != null and sim.units.get_crew(id).leader.aboard):
+		notice.emit("아직 차에 타고 있습니다 — 내린 뒤 지시하세요")
+		return true
 	var all_out := _outside_crews().size() == selected.size()
 	if all_out and _issue_target_click(world_pos):
 		return true
@@ -433,11 +437,17 @@ func order_floor(lv: int, screen_pos := Vector2(-1, -1)) -> bool:
 	if sim == null or mode != Mode.NONE or commander_selected or selected.is_empty() or sim.view_only:
 		return false
 	var ids: Array[int] = []
+	var riding := 0
 	for id in selected:
+		var c := sim.units.get_crew(id)
+		if c and c.leader.aboard:
+			riding += 1
+			continue
 		if default_kind(id) != "":
 			ids.append(id)
 	if ids.is_empty():
-		notice.emit("고른 대원은 건물 안 임무가 없습니다 (구급대) — 오른쪽 명령 칸으로 지시")
+		notice.emit("아직 차에 타고 있습니다 — 내린 뒤 지시하세요 (출동 중이면 '도착 후 임무'로 정할 수 있습니다)" if riding > 0 \
+			else "고른 대원은 건물 안 임무가 없습니다 (구급대) — 오른쪽 명령 칸으로 지시")
 		return true
 	floor_order.emit(ids, lv, screen_pos)
 	return true

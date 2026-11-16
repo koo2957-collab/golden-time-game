@@ -148,13 +148,6 @@ func opening_at(cell: Vector3i) -> Opening:
 	return null
 
 
-func set_opening_open(o: Opening, open: bool, tick := 0) -> void:
-	if o.is_open == open:
-		return
-	o.is_open = open
-	events.add(tick, "door_opened" if open else "door_closed", {"opening": o.index, "kind": o.kind_name()})
-
-
 func visibility_m(c: Compartment) -> float:
 	return c.visibility_m(_visibility_coeff)
 

@@ -287,33 +287,30 @@ func _check_rescue_time() -> Dictionary:
 	return {"score": sum / victims.size(), "detail": "%s (기준 %d분 안)" % [", ".join(parts), int(_params.good_s / 60)]}
 
 
-## 질문 카드 판단 (기획안 8장 SOP 준수): 최선 1·허용 0.5·오답·치명·미응답 0, 선제지시는 최선. 카드가 하나라도 있었을 때만
+## 질문 카드 판단 (기획안 8장 SOP 준수): 최선 1·허용 0.5·오답·치명·미응답 0, 출동 중 준비는 최선. 카드가 하나라도 있었을 때만.
+## 대원 판단 장면을 꺼서 대원이 스스로 처리한 카드(crew_auto)는 지휘관의 판단이 아니므로 세지 않는다 (예전에는 '대기 밀림' 0점으로 잡혔다)
 func _check_cards() -> Dictionary:
-	var lg := sim.cards.log
+	var lg := sim.cards.log.filter(func(e: Dictionary) -> bool: return str(e.get("result", "")) != "crew_auto")
 	if lg.is_empty():
 		return {}
 	var sum := 0.0
-	var cond := 0
 	var counts := {}
 	for e in lg:
-		var key: String = e.grade if e.result in ["answered", "preordered", "condition"] else ("미응답" if e.result in ["timeout", "unprepared"] else "대기 밀림")
+		var key: String = e.grade if e.result in ["answered", "preordered"] else ("미응답" if e.result in ["timeout", "unprepared"] else "대기 밀림")
+		# preordered = 출동 중 정해 둔 예비 소방용수로 카드 없이 처리
 		if e.result == "preordered":
-			key = "선제지시"
+			key = "출동 중 준비"
 		elif e.result == "delegated":
 			key = "단위지휘관 대리"
 			sum += float(CardSystem.GRADE_SCORE.get(e.grade, 0.0))
 		counts[key] = int(counts.get(key, 0)) + 1
-		if e.result in ["answered", "preordered", "condition"]:
+		if e.result in ["answered", "preordered"]:
 			sum += float(CardSystem.GRADE_SCORE.get(e.grade, 0.0))
-		if e.result == "condition":
-			cond += 1
 	var parts: PackedStringArray = []
-	for k in ["최선", "선제지시", "단위지휘관 대리", "허용", "오답", "치명", "미응답", "대기 밀림"]:
+	for k in ["최선", "출동 중 준비", "단위지휘관 대리", "허용", "오답", "치명", "미응답", "대기 밀림"]:
 		if counts.has(k):
 			parts.append("%s %d" % [k, counts[k]])
-	var pre := int(counts.get("선제지시", 0))
-	return {"score": sum / lg.size(), "detail": "판단 요청 %d건 — %s%s%s" % [lg.size(), ", ".join(parts), " · 선제지시로 질문 %d건 줄임" % pre if pre > 0 else "",
-		" · 임무 조건으로 %d건 처리" % cond if cond > 0 else ""]}
+	return {"score": sum / lg.size(), "detail": "판단 요청 %d건 — %s" % [lg.size(), ", ".join(parts)]}
 
 
 ## 완진 선언의 정확성 (소방전술 I 8단계 ⑥, SOP 202-6): 활동을 끝냈을 때만
@@ -1052,11 +1049,11 @@ func _card_lines() -> Array:
 	for e in sim.cards.log:
 		var result := str(e.get("result", ""))
 		var what := "미응답 (지시 대기)" if result == "timeout" else "출동 중 정하지 않음" if result == "unprepared" else ("대기 중 밀림" if result == "overflow" else str(e.get("option", "")))
-		var grade := "선제지시" if result == "preordered" else (str(e.get("grade", "")) if str(e.get("grade", "")) != "" else "—")
-		if result == "condition":
-			grade += "·임무 조건"
-		elif result == "delegated":
+		var grade := "출동 중 준비" if result == "preordered" else (str(e.get("grade", "")) if str(e.get("grade", "")) != "" else "—")
+		if result == "delegated":
 			grade = "단위지휘관 대리"
+		elif result == "crew_auto":
+			grade = "대원 판단 (SOP대로)"
 		out.append("%s [%s] %s → %s (%s) — %s" % [_t(int(e.get("asked_tick", 0))), grade, e.get("title", ""), what, e.get("sop", ""), e.get("debrief", "")])
 	return out
 

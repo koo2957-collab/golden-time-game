@@ -13,7 +13,6 @@ const QUESTIONS := {
 	"hazards": "가스통 같은 위험물이 있습니까?",
 	"doors": "출입문은 잠겨 있습니까?",
 }
-const FACE_DIRS := ["south", "west", "north", "east"]
 
 var building: BuildingData
 var fire: FireSim

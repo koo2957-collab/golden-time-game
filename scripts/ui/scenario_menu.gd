@@ -251,11 +251,6 @@ func select(i: int) -> void:
 	_show(i)
 
 
-func selected_path() -> String:
-	var sel := _list.get_selected_items()
-	return scenarios[sel[0]].path if not sel.is_empty() else ""
-
-
 func open_campaign() -> void:
 	var ui := CampaignUi.new()
 	ui.scenario_chosen.connect(select_id)

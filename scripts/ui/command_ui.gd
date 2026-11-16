@@ -205,10 +205,6 @@ func any_dialog_open() -> bool:
 		or _witness.visible or _info.visible or _update.visible or _end.visible or _all_clear.visible or _role.visible
 
 
-func set_radio_visible(on: bool) -> void:
-	_radio_panel.visible = on
-
-
 ## 지휘 버튼 / C: 선언 전이면 상황보고 양식, 선언 후면 전략 변경 창
 func open_command_dialog() -> void:
 	if any_dialog_open() or sim.command.is_declaring():
@@ -234,14 +230,6 @@ func open_update_dialog() -> void:
 	for cb in _update_hazards:
 		cb.button_pressed = false
 	_open(_update)
-
-
-func update_visible() -> bool:
-	return _update.visible
-
-
-func strategy_visible() -> bool:
-	return _strategy.visible
 
 
 func report_visible() -> bool:
@@ -371,11 +359,6 @@ func set_end_watch(i: int) -> void:
 	_end_watch.select(i)
 
 
-## 조에 안전 임무를 맡긴다 (조작 점검용)
-func assign_role(crew_id: int, role: int) -> void:
-	order_issued.emit(CommandOrder.make("role", [crew_id], role))
-
-
 ## 출동 단계를 시작한다: 출동 중 장면과 준비판을 띄운다 (현장 시계는 도착할 때까지 멈춘다)
 func show_dispatch() -> void:
 	if sim.command.dispatch.is_empty():
@@ -401,14 +384,6 @@ func dispatch_placement() -> int:
 ## Enter: 장면의 확인 단추, 결정을 모두 마쳤으면 남은 길을 건너뛰고 도착 (결정은 건너뛸 수 없다)
 func close_dispatch() -> void:
 	dispatch.enter()
-
-
-## 방어 전략 중 진입 명령: 병행으로 바꾸고 진입할지 묻는다
-func confirm_defensive_entry(squad_ids: Array[int]) -> void:
-	if any_dialog_open():
-		return
-	_confirm_squads = squad_ids.duplicate()
-	_open(_confirm)
 
 
 ## 양식의 답 (선택하지 않은 항목은 빈 문자열)
@@ -1370,7 +1345,7 @@ func _refresh_team_cards() -> void:
 			b.add_theme_font_size_override("font_size", 13)
 			b.custom_minimum_size = Vector2(RADIO_WIDTH - 16, 0)
 			b.mouse_filter = Control.MOUSE_FILTER_STOP
-			b.tooltip_text = "클릭: 선택 · 더블클릭: 화면 이동 · 끌어서 지도의 방·층에 놓기: 임무와 임무 조건"
+			b.tooltip_text = "클릭: 선택 · 더블클릭: 화면 이동 (임무는 지도에서 층 우클릭)"
 			b.gui_input.connect(_on_team_input.bind(c.id, b))
 			_team_box.add_child(b)
 			_team_buttons[c.id] = b
@@ -1405,12 +1380,10 @@ func team_text(crew_id: int) -> String:
 		parts.append("잔압 %dbar (출구 %dbar)" % [roundi(air * 300.0), maxi(1, roundi(need * 300.0))])
 		var last := int(sim.command.last_report_tick.get(name, -1))
 		parts.append("보고 %d초 전" % roundi((sim.clock.tick - last) * SimClock.TICK_DT) if last >= 0 else "보고 없음")
-	var cond := sim.tactical.condition_text(crew_id)
 	var waiting := sim.cards.queue.any(func(q: CardSystem.Card) -> bool: return q.crew_id == crew_id)
-	var tail := "\n    조건: " + cond if cond != "" else ""
 	if team_compact and parts.size() > 3:
-		return ("? " if waiting else "") + " · ".join(parts.slice(0, 3)) + "\n    " + " · ".join(parts.slice(3)) + tail
-	return ("? " if waiting else "") + " · ".join(parts) + tail
+		return ("? " if waiting else "") + " · ".join(parts.slice(0, 3)) + "\n    " + " · ".join(parts.slice(3))
+	return ("? " if waiting else "") + " · ".join(parts)
 
 
 ## 쓰러짐·공기 부족 = 빨강, 보고가 오래됨 = 노랑 (기획안 9-2)

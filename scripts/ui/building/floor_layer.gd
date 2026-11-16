@@ -10,7 +10,6 @@ extends Node2D
 ## 위층 노드의 depth 시작값 (IsoView.ABOVE_DEPTH와 같음)
 const ABOVE_DEPTH := 100
 const CEILING_M := 2.4
-const WALL_CUT_M := 0.45
 const WINDOW_SILL_M := 0.9
 ## 화면 연출: 이 세기(최대 열방출 대비) 넘게 타는 칸은 불꽃 뒤에 불덩이 그림을 깐다
 const FIRE_MASS_FROM := 0.6
@@ -62,9 +61,6 @@ const FOG_UNKNOWN_ALPHA := 0.82
 const FOG_SEEN_ALPHA := 0.4
 ## 도면도 없고 본 적도 없는 실내: 구조가 거의 보이지 않게 (기획안 9-1 "구조는 직접 밝힌다", R8)
 const FOG_NO_PLAN_ALPHA := 0.95
-## 도면으로만 아는 벽·문·창 (흐린 선)
-const PLAN_LINE := Color(0.55, 0.72, 0.95, 0.35)
-const PLAN_DOOR := Color(0.95, 0.85, 0.45, 0.4)
 const THERMAL_UNKNOWN := Color(0.03, 0.03, 0.05)
 ## 낮은 자세 대원의 키 비율
 const CROUCH_SCALE := 0.62
@@ -161,12 +157,6 @@ var ghost_mode := 0:
 			ghost = v != 0 and v != 4 and v != 5
 			queue_redraw()
 var _ghost_outdoor_idx: Dictionary = {}  # level -> 바깥 땅 칸 삼각형 index
-const GHOST_WALL := Color(1, 1, 1, 0.42)
-const GHOST_INNER := Color(1, 1, 1, 0.34)
-const GHOST_FIRE_WALL := Color(1.0, 0.55, 0.15, 0.8)
-## 벽 면 채움 (바깥벽은 거의 투명, 확인된 내부 벽은 옅게)
-const GHOST_FACE_ALPHA := 0.04
-const GHOST_INNER_FACE_ALPHA := 0.1
 const GHOST_CREW := Color(1.0, 0.85, 0.2, 0.9)
 const GHOST_VICTIM := Color(1.0, 0.3, 0.3, 0.9)
 var _ghost_units: Node2D
@@ -3688,14 +3678,6 @@ func _cell_temperature(x: int, y: int) -> float:
 
 
 # --- 도면 (R8) ---
-
-## 도면으로만 아는 칸: 벽·창은 낮은 흐린 선, 문은 노란 흐린 선
-func _draw_plan_cell(x: int, y: int) -> void:
-	var t := sim.plan.plan_cell(level, x, y)
-	if t == BuildingData.Cell.WALL or t == BuildingData.Cell.WINDOW:
-		_block(x, y, 0.0, 0.12, PLAN_LINE)
-	elif t == BuildingData.Cell.DOOR:
-		_block(x, y, 0.0, 0.06, PLAN_DOOR)
 
 
 ## 방 이름을 보여도 되는가: 대원이 그 방을 봤거나 도면이 있다

@@ -94,10 +94,6 @@ func show_report(p_report: Dictionary, saved_path: String) -> void:
 	visible = true
 
 
-func select_tab(i: int) -> void:
-	_tabs.current_tab = i
-
-
 func tab_count() -> int:
 	return _tabs.get_tab_count()
 
@@ -249,10 +245,6 @@ func _next_text() -> String:
 ## 고를 수 있는 다시 하기 시점 수 (조작 점검용)
 func moment_count() -> int:
 	return _moments.item_count
-
-
-func moment_tick(i: int) -> int:
-	return int(_moments.get_item_metadata(i))
 
 
 func _button(text: String, on_press: Callable) -> Button:

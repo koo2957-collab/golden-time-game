@@ -210,12 +210,6 @@ func modulate_for(depth: int) -> float:
 	return params.below_modulate[mini(depth, params.below_modulate.size()) - 1]
 
 
-## 층을 화면에서 아래로 내려 그리는 거리 (px)
-## 비켜 놓기: 위층을 건물 뒤로 보내는 화면 거리 (층 높이는 빼고)
-func back_vec() -> Vector2:
-	return _back
-
-
 func offset_px(depth: int) -> float:
 	return absf(offset_vec(depth).y)
 

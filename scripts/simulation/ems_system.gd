@@ -131,21 +131,6 @@ func waiting_count() -> int:
 	return n
 
 
-## 밖에 있는 환자 중 p(셀 좌표)에서 radius 안에 가장 가까운 환자 victim id (-1: 없음)
-func patient_near(p: Vector2, radius: float) -> int:
-	var best := -1
-	var best_d := radius
-	for pt in patients:
-		var v := rescue.victims[pt.victim_id]
-		if not on_scene(pt) or v.carried_by >= 0:
-			continue
-		var d := v.pos.distance_to(p)
-		if d < best_d:
-			best_d = d
-			best = v.id
-	return best
-
-
 ## 현장에 보이는 환자인가 (이송 전, 사망 전)
 func on_scene(p: Patient) -> bool:
 	return p.stage in [Stage.WAITING, Stage.TREATING, Stage.TREATED, Stage.CARRYING] and rescue.victims[p.victim_id].state == Victim.State.RESCUED

@@ -81,17 +81,6 @@ func vehicle_fits(corners: PackedVector2Array) -> bool:
 	return true
 
 
-## start에서 goal까지의 경로. 도달할 수 없으면 빈 배열.
-## 닫힌 문을 열 수 있는 것으로 보고 찾는 경로 (진입 경로 미리보기, P4-2). 막힘은 잠깐 풀었다 되돌린다
-func find_path_through_doors(start: Vector3i, goal: Vector3i) -> Array[Vector3i]:
-	for key: Vector3i in _blocked:
-		_grids[key.z].set_point_solid(Vector2i(key.x, key.y), false)
-	var path := find_path(start, goal)
-	for key: Vector3i in _blocked:
-		_grids[key.z].set_point_solid(Vector2i(key.x, key.y), true)
-	return path
-
-
 ## 건물 밖으로만 가는 경로 (P4-5: 고른 진입구까지 건물을 가로지르지 않고 둘러 간다). 같은 층만. 못 가면 빈 배열
 func find_path_outdoors(start: Vector3i, goal: Vector3i) -> Array[Vector3i]:
 	var out: Array[Vector3i] = []

@@ -106,7 +106,6 @@ var _g_text := ""
 var _defaults: Dictionary = {}
 var _g_room := -1
 var _g_events := 0
-var _room_edges: Dictionary = {}  # 구획 index -> PackedVector2Array (칸 좌표 선분 쌍)
 
 
 var _pressing := false
@@ -1176,37 +1175,3 @@ func _waiting_at(e: EntryPoints.Entry) -> String:
 			if c and not c.leader.is_moving():
 				names.append(sim.units.crew_name(c))
 	return ", ".join(names)
-
-
-## 칸 묶음의 바깥 테두리 (바닥 높이) + 옅은 채움
-func _draw_cells_outline(cells: Array, color: Color, width: float, fill: float) -> void:
-	if cells.is_empty():
-		return
-	var key := hash(cells)
-	if not _room_edges.has(key):
-		var member := {}
-		for c: Vector2i in cells:
-			member[c] = true
-		var segs := PackedVector2Array()
-		for c: Vector2i in cells:
-			var x := float(c.x)
-			var y := float(c.y)
-			if not member.has(c + Vector2i.UP):
-				segs.append_array([Vector2(x, y), Vector2(x + 1, y)])
-			if not member.has(c + Vector2i.DOWN):
-				segs.append_array([Vector2(x, y + 1), Vector2(x + 1, y + 1)])
-			if not member.has(c + Vector2i.LEFT):
-				segs.append_array([Vector2(x, y), Vector2(x, y + 1)])
-			if not member.has(c + Vector2i.RIGHT):
-				segs.append_array([Vector2(x + 1, y), Vector2(x + 1, y + 1)])
-		_room_edges[key] = segs
-	var cell_segs: PackedVector2Array = _room_edges[key]
-	if fill > 0.0:
-		for c: Vector2i in cells:
-			var q := PackedVector2Array([projection.to_screen(Vector2(c), 0.05), projection.to_screen(Vector2(c) + Vector2(1, 0), 0.05),
-				projection.to_screen(Vector2(c) + Vector2(1, 1), 0.05), projection.to_screen(Vector2(c) + Vector2(0, 1), 0.05)])
-			draw_colored_polygon(q, Color(color, fill))
-	var pts := PackedVector2Array()
-	for p in cell_segs:
-		pts.append(projection.to_screen(p, 0.05))
-	draw_multiline(pts, color, width)

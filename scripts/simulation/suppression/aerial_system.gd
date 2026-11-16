@@ -40,10 +40,6 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_rescue: RescueSystem, p_falls
 	events = p_events
 
 
-func is_deployed(vehicle_id: int, tick: int) -> bool:
-	return deployed_at.has(vehicle_id) and tick >= int(deployed_at[vehicle_id])
-
-
 ## 전개를 시작한다 (이미 했거나 하는 중이면 그대로). 끝나는 틱, 못 하면 -1
 func deploy(v: Vehicle, tick: int) -> int:
 	if v == null or not v.is_aerial() or v.away or v.is_moving():

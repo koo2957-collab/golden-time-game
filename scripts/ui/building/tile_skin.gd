@@ -33,7 +33,3 @@ func color(kind: String, fallback := Color.MAGENTA) -> Color:
 ## 그림 영역이 정해져 있으면 그 정보, 없으면 빈 Dictionary (G1 전까지는 늘 비어 있다)
 func sprite(kind: String) -> Dictionary:
 	return _sprites.get(kind, {})
-
-
-func has_kind(kind: String) -> bool:
-	return _colors.has(kind) or _sprites.has(kind)

@@ -1,73 +1,6 @@
 {
   "note_scene": "scene: judgment = 조장의 판단 장면 (2026-11-14 사용자 결정) — 대원이 스스로 판단할 일이라 지휘관에게 묻는 무전이 아니라 조장의 속말(monologue)과 반쪽 얼굴 그림으로 보여 준다. 플레이어가 그 조장으로서 고르고, 고른 대로 그 조가 움직인 뒤 지휘관에게 보고가 간다. 대원 판단 장면을 끄면(지휘관 훈련) 대원이 SOP대로(최선) 알아서 한다. 없으면 지휘관에게 오는 무전",
-  "note": "질문 카드 (기획안 7장). 카드 1장 = SOP 조항 1개. trigger: halt_locked·halt_closed·halt_backdraft·halt_victim(전술 명령이 멈춘 자리), air_alarm, knockdown, arrival, rollover_sign, jump_risk, exposure_heating, shaft, sign_warning, debris_zone, hydrant_out, tank_empty, mayday, gas_found, victim_trapped, triage_urgent, stair_smoke, attack_upper, victims_many, first_search, search_mark, end_suggested, fire_found, rescue_no_point(집결지 없이 구조자가 입구 밖에 나옴, P10-2), triage_needed(걷지 못하는 구조자 START 분류, P10-2), nozzle_choice(화점진압 조가 화점실 앞에서 주수 방법, P10-2), equipment_missing(없는 장비, P4-1), entry_request(입구에서 진입 허가 요청 — 사건의 verdict로 variants를 고른다, P10-2). multi: true면 같은 카드가 여러 장(출동대마다) 떠 있을 수 있다. once: 한 판에 한 번. 선택지 time_cost_sec + then: 정보 확인(시간을 쓴 뒤 then 행동). text·variants의 {이름}은 사건 값으로 채운다 (crew·door_name·victim_name·state·air). effect: reserve_water(예비 소방용수 — 소화전 고장 시 다음 소화전으로)·relay_all(관계자 조치: 가스 차단·발화 위치)·relay_fire(발화 위치만)·force_door·open_door·vent_then_open·rescue_victim·resume·withdraw·overhaul·flood·hold·close_then_resume(화재실 문 닫고 검색 계속)·attack_found(찾은 화점 진압)·halt_here(하던 일 멈춤). 임무 조건(data/command/mission_params.json)이 정해져 있으면 카드 없이 그 행동을 한다. grade: 최선·허용·오답·치명 (화면에는 보이지 않음). skip_if_preordered: 그 선제지시가 켜져 있으면 카드 없이 최선 선택을 실행. stages: 그 스테이지 시나리오에서만 묻는다(R14). 교관이 문구·등급·해설을 고칠 수 있다.",
-  "preorders": [
-    {
-      "key": "force_locked",
-      "label": "잠긴 문은 지휘관 명령 없이 바로 파괴 개방",
-      "sop": "202-3.3"
-    },
-    {
-      "key": "open_closed",
-      "label": "닫힌 문은 상부 온도 확인 후 문 옆에서 개방",
-      "sop": "210-4.5"
-    },
-    {
-      "key": "vent_first",
-      "label": "백드래프트 징후 문은 상부 창 배연 뒤 개방",
-      "sop": "210-4.5"
-    },
-    {
-      "key": "rescue_on_find",
-      "label": "구조대상자를 찾으면 바로 업고 나옴",
-      "sop": "214-2.1"
-    },
-    {
-      "key": "withdraw_on_air",
-      "label": "공기 경보가 울리면 짝과 함께 바로 철수",
-      "sop": "201-3.7"
-    },
-    {
-      "key": "overhaul_plan",
-      "label": "초진 뒤 열화상으로 불씨를 찾아 정확히 주수",
-      "sop": "202-6"
-    },
-    {
-      "key": "rollover_close",
-      "label": "롤오버 징후가 보이면 화점실 문을 닫고 천장 냉각",
-      "sop": "210-3.5"
-    },
-    {
-      "key": "air_mat_ready",
-      "label": "창가 주민이 보이면 바로 그 창 아래 공기안전매트",
-      "sop": "213-2.4.3"
-    },
-    {
-      "key": "cover_exposure",
-      "label": "인접·위층 창이 달궈지면 바로 경계관창",
-      "sop": "214-2.4.1"
-    },
-    {
-      "key": "check_shaft",
-      "label": "샤프트 유입 시 위층 PS 바로 확인",
-      "sop": "212-2.3"
-    },
-    {
-      "key": "clear_debris",
-      "label": "낙하 위험이 생기면 그 아래 대원을 바로 뺌",
-      "sop": "213-2.7.1"
-    },
-    {
-      "key": "auto_shuttle",
-      "label": "소화전 고장·물 소진 시 물탱크차 순환보수·급수",
-      "sop": "200-3.1.1.3"
-    },
-    {
-      "key": "use_standpipe",
-      "label": "상층 진압은 연결송수관 방수구 사용",
-      "sop": "213-1.3"
-    }
-  ],
+  "note": "질문 카드 (기획안 7장). 카드 1장 = SOP 조항 1개. trigger: halt_locked·halt_closed·halt_backdraft·halt_victim(전술 명령이 멈춘 자리), air_alarm, knockdown, arrival, rollover_sign, jump_risk, exposure_heating, shaft, sign_warning, debris_zone, hydrant_out, tank_empty, mayday, gas_found, victim_trapped, triage_urgent, stair_smoke, attack_upper, victims_many, stair_ask(계단이 둘 이상 갈림 — STAIR-01, 2026-11-17), search_mark, end_suggested, fire_found, rescue_no_point(집결지 없이 구조자가 입구 밖에 나옴, P10-2), triage_needed(걷지 못하는 구조자 START 분류, P10-2), nozzle_choice(화점진압 조가 화점실 앞에서 주수 방법, P10-2), equipment_missing(없는 장비, P4-1), entry_request(입구에서 진입 허가 요청 — 사건의 verdict로 variants를 고른다, P10-2). multi: true면 같은 카드가 여러 장(출동대마다) 떠 있을 수 있다. once: 한 판에 한 번. 선택지 time_cost_sec + then: 정보 확인(시간을 쓴 뒤 then 행동). text·variants의 {이름}은 사건 값으로 채운다 (crew·door_name·victim_name·state·air). effect: reserve_water(예비 소방용수 — 소화전 고장 시 다음 소화전으로)·relay_all(관계자 조치: 가스 차단·발화 위치)·relay_fire(발화 위치만)·force_door·open_door·vent_then_open·rescue_victim·resume·withdraw·overhaul·flood·hold·close_then_resume(화재실 문 닫고 검색 계속)·attack_found(찾은 화점 진압)·halt_here(하던 일 멈춤). grade: 최선·허용·오답·치명 (화면에는 보이지 않음). stages: 그 스테이지 시나리오에서만 묻는다(R14). 교관이 문구·등급·해설을 고칠 수 있다. 선제지시·임무 조건·문 앞 휠은 2026-11-17에 없앴다(화면에서 고를 곳이 없었다).",
   "cards": [
     {
       "id": "DOOR-LOCKED-01",
@@ -100,8 +33,7 @@
         "SOP 202-3.3",
         "SOP 213-2.3"
       ],
-      "debrief": "강제 개방은 현장지휘관의 명령으로 한다. 문 정면이 아니라 옆 벽에 붙어 열어야 역류 화염을 피한다.",
-      "skip_if_preordered": "force_locked"
+      "debrief": "강제 개방은 현장지휘관의 명령으로 한다. 문 정면이 아니라 옆 벽에 붙어 열어야 역류 화염을 피한다."
     },
     {
       "id": "DOOR-CLOSED-01",
@@ -134,8 +66,7 @@
         "SOP 210-4.5",
         "SOP 202-3.1"
       ],
-      "debrief": "문을 열기 전에 상부 온도·연기·문틈 기류를 확인한다. 징후가 없을 때 문 옆에서 천천히 연다.",
-      "skip_if_preordered": "open_closed"
+      "debrief": "문을 열기 전에 상부 온도·연기·문틈 기류를 확인한다. 징후가 없을 때 문 옆에서 천천히 연다."
     },
     {
       "id": "DOOR-BACKDRAFT-01",
@@ -168,8 +99,7 @@
         "SOP 210-4.4",
         "SOP 210-4.5"
       ],
-      "debrief": "백드래프트 징후가 있으면 하부 개구부를 열지 않는다. 상부(창·지붕)를 먼저 개방해 가연성 가스를 배출한 뒤 진입한다.",
-      "skip_if_preordered": "vent_first"
+      "debrief": "백드래프트 징후가 있으면 하부 개구부를 열지 않는다. 상부(창·지붕)를 먼저 개방해 가연성 가스를 배출한 뒤 진입한다."
     },
     {
       "id": "VICTIM-FOUND-01",
@@ -211,8 +141,7 @@
         "SOP 214-2.1",
         "SOP 203-1.4"
       ],
-      "debrief": "발견한 구조대상자는 연기·열 노출이 계속되므로 즉시 안전한 곳으로 옮긴다. 응급처치는 밖에서 구급대가 한다.",
-      "skip_if_preordered": "rescue_on_find"
+      "debrief": "발견한 구조대상자는 연기·열 노출이 계속되므로 즉시 안전한 곳으로 옮긴다. 응급처치는 밖에서 구급대가 한다."
     },
     {
       "id": "AIR-ALARM-01",
@@ -244,8 +173,7 @@
       "sop_ref": [
         "SOP 201-3.7"
       ],
-      "debrief": "공기 잔량 경보가 울리면 출구까지 걸리는 시간을 생각해 즉시 짝과 함께 철수하고, 지휘관은 교대조를 투입한다.",
-      "skip_if_preordered": "withdraw_on_air"
+      "debrief": "공기 잔량 경보가 울리면 출구까지 걸리는 시간을 생각해 즉시 짝과 함께 철수하고, 지휘관은 교대조를 투입한다."
     },
     {
       "id": "OVERHAUL-01",
@@ -275,8 +203,7 @@
       "sop_ref": [
         "SOP 202-6"
       ],
-      "debrief": "잔불정리는 불씨 잠복 지점을 찾아 정확히 주수하고 인명검색을 병행한다. 다량 주수는 수손 피해만 키운다.",
-      "skip_if_preordered": "overhaul_plan"
+      "debrief": "잔불정리는 불씨 잠복 지점을 찾아 정확히 주수하고 인명검색을 병행한다. 다량 주수는 수손 피해만 키운다."
     },
     {
       "id": "ARRIVAL-WATER-01",
@@ -371,8 +298,7 @@
         "SOP 210-3.4",
         "SOP 210-3.5"
       ],
-      "debrief": "롤오버는 플래시오버의 전조다. 화재실 문을 닫아 산소를 끊고 천장 가스층을 짧은 분무로 식힌다.",
-      "skip_if_preordered": "rollover_close"
+      "debrief": "롤오버는 플래시오버의 전조다. 화재실 문을 닫아 산소를 끊고 천장 가스층을 짧은 분무로 식힌다."
     },
     {
       "id": "JUMP-01",
@@ -405,7 +331,6 @@
         "SOP 326-2.13"
       ],
       "debrief": "추락 예상지점에 공기안전매트를 설치하되, 뛰어내리게 하지 말고 내부 구조를 우선한다(매트 이탈 위험).",
-      "skip_if_preordered": "air_mat_ready",
       "variants": [
         {
           "if": {
@@ -461,8 +386,7 @@
         "SOP 214-2.4.1",
         "SOP 213-1.1"
       ],
-      "debrief": "화염이 분출되는 개구부 맞은편·위층 창에 경계관창을 두어 연소 확대를 막는다.",
-      "skip_if_preordered": "cover_exposure"
+      "debrief": "화염이 분출되는 개구부 맞은편·위층 창에 경계관창을 두어 연소 확대를 막는다."
     },
     {
       "id": "SHAFT-01",
@@ -492,8 +416,7 @@
       "sop_ref": [
         "SOP 212-2.3"
       ],
-      "debrief": "샤프트·배선관은 층을 관통해 연기와 불이 오르는 통로다. 위층에서 먼저 확인해야 숨은 확대를 막는다.",
-      "skip_if_preordered": "check_shaft"
+      "debrief": "샤프트·배선관은 층을 관통해 연기와 불이 오르는 통로다. 위층에서 먼저 확인해야 숨은 확대를 막는다."
     },
     {
       "id": "SIGN-01",
@@ -523,8 +446,7 @@
       "sop_ref": [
         "SOP 212-1.4"
       ],
-      "debrief": "창문·간판 파손 낙하로 대원이 다친다. 낙하 우려가 보이면 아래 공간에서 즉시 대원을 뺀다.",
-      "skip_if_preordered": "clear_debris"
+      "debrief": "창문·간판 파손 낙하로 대원이 다친다. 낙하 우려가 보이면 아래 공간에서 즉시 대원을 뺀다."
     },
     {
       "id": "DEBRIS-01",
@@ -554,8 +476,7 @@
       "sop_ref": [
         "SOP 213-2.7.1"
       ],
-      "debrief": "유리·파편 낙하 위험반경은 발화층 높이의 1/2로 하되, 바람 등 현장 상황에 따라 건물 높이만큼 안전구역을 둔다.",
-      "skip_if_preordered": "clear_debris"
+      "debrief": "유리·파편 낙하 위험반경은 발화층 높이의 1/2로 하되, 바람 등 현장 상황에 따라 건물 높이만큼 안전구역을 둔다."
     },
     {
       "id": "HYDRANT-OUT-01",
@@ -587,8 +508,7 @@
       "sop_ref": [
         "SOP 200-3.1.1.3"
       ],
-      "debrief": "수원 확보가 어려우면 물탱크차의 순환보수 전술을 지시한다.",
-      "skip_if_preordered": "auto_shuttle"
+      "debrief": "수원 확보가 어려우면 물탱크차의 순환보수 전술을 지시한다."
     },
     {
       "id": "TANK-EMPTY-01",
@@ -613,8 +533,7 @@
       "sop_ref": [
         "SOP 200-3.1.1.2"
       ],
-      "debrief": "물탱크차 운전원은 도착 즉시 펌프차에 급수를 연결하고 소화전을 점령한다. 물이 끊기면 진입 대원이 위험해진다.",
-      "skip_if_preordered": "auto_shuttle"
+      "debrief": "물탱크차 운전원은 도착 즉시 펌프차에 급수를 연결하고 소화전을 점령한다. 물이 끊기면 진입 대원이 위험해진다."
     },
     {
       "id": "MAYDAY-01",
@@ -720,22 +639,50 @@
       "urgency": "중요",
       "text": "{crew}: 계단 두 곳 확인 — {options}. {floor}으로 어느 계단을 쓸까요?",
       "options": [
-        {"text": "{stair_a}으로 올라가라", "effect": "stair_a", "grade": "최선"},
-        {"text": "{stair_b}으로 올라가라", "effect": "stair_b", "grade": "최선"}
+        {
+          "text": "{stair_a}으로 올라가라",
+          "effect": "stair_a",
+          "grade": "최선"
+        },
+        {
+          "text": "{stair_b}으로 올라가라",
+          "effect": "stair_b",
+          "grade": "최선"
+        }
       ],
       "variants": [
         {
-          "if": {"best": "a"},
+          "if": {
+            "best": "a"
+          },
           "options": [
-            {"text": "{stair_a}으로 올라가라", "effect": "stair_a", "grade": "최선"},
-            {"text": "{stair_b}으로 올라가라", "effect": "stair_b", "grade": "오답"}
+            {
+              "text": "{stair_a}으로 올라가라",
+              "effect": "stair_a",
+              "grade": "최선"
+            },
+            {
+              "text": "{stair_b}으로 올라가라",
+              "effect": "stair_b",
+              "grade": "오답"
+            }
           ]
         },
         {
-          "if": {"best": "b"},
+          "if": {
+            "best": "b"
+          },
           "options": [
-            {"text": "{stair_a}으로 올라가라", "effect": "stair_a", "grade": "오답"},
-            {"text": "{stair_b}으로 올라가라", "effect": "stair_b", "grade": "최선"}
+            {
+              "text": "{stair_a}으로 올라가라",
+              "effect": "stair_a",
+              "grade": "오답"
+            },
+            {
+              "text": "{stair_b}으로 올라가라",
+              "effect": "stair_b",
+              "grade": "최선"
+            }
           ]
         }
       ],
@@ -803,7 +750,6 @@
         "SOP 200-3.3.1"
       ],
       "debrief": "고층 화재는 연결송수관(송수구 → 층별 방수구)을 활용한다. 계단 연장은 방수 개시가 크게 늦어진다.",
-      "skip_if_preordered": "use_standpipe",
       "once": true
     },
     {

@@ -142,28 +142,6 @@ func test_floor_attack_finds_burning_room() -> void:
 	assert_eq(halts.size(), 1, "불이 없는 층은 멈추고 지시를 기다림")
 
 
-func test_victim_condition_answers_card() -> void:
-	var sim := _sim("중급")
-	sim.issue(CommandOrder.make("mission_conditions", [], 0, Vector3i.ZERO, {"crews": [2], "on_victim": "rescue"}))
-	sim.step_ticks(1)
-	assert_true(sim.tactical.condition_text(2).contains("즉시 구조"), "조건 문장 (%s)" % sim.tactical.condition_text(2))
-	sim.events.add(sim.clock.tick, "tactical_halt", {"crew": "구조1 1조", "crew_id": 2, "kind": "victim", "victim": 1, "victim_name": "아이(7)",
-		"state": "의식 있음", "reason": "", "safety": false})
-	sim.step_ticks(2)
-	assert_true(not sim.cards.queue.any(func(q: CardSystem.Card) -> bool: return q.id == "VICTIM-FOUND-01"), "카드 없이 처리")
-	var lg := sim.cards.log.filter(func(l: Dictionary) -> bool: return l.id == "VICTIM-FOUND-01")
-	assert_eq(lg.size(), 1, "결정 기록")
-	assert_eq([lg[0].result, lg[0].grade], ["condition", "최선"], "임무 조건 · 최선")
-	# 위치 보고 후 대기는 SOP 214-2.1(즉시 구조)과 다르다 → 오답
-	sim.issue(CommandOrder.make("mission_conditions", [], 0, Vector3i.ZERO, {"crews": [3], "on_victim": "report"}))
-	sim.step_ticks(1)
-	sim.events.add(sim.clock.tick, "tactical_halt", {"crew": "구조1 2조", "crew_id": 3, "kind": "victim", "victim": 0, "victim_name": "노인(78)",
-		"state": "의식 있음", "reason": "", "safety": false})
-	sim.step_ticks(2)
-	lg = sim.cards.log.filter(func(l: Dictionary) -> bool: return l.id == "VICTIM-FOUND-01")
-	assert_eq(lg[-1].grade, "오답", "위치 보고 후 대기는 오답")
-
-
 func test_fire_found_reported_and_card() -> void:
 	var sim := _sim("중급")
 	_put(sim, 2, Vector2(14.5, 17.5))
@@ -178,43 +156,6 @@ func test_fire_found_reported_and_card() -> void:
 	var card := sim.cards.queue.filter(func(q: CardSystem.Card) -> bool: return q.id == "FIRE-FOUND-01")
 	assert_eq(card.size(), 1, "화점 발견 카드")
 	assert_eq(sim.events.of_type("fire_found").size(), 1, "같은 방은 한 번만")
-
-
-func test_fire_condition_closes_door_and_resumes() -> void:
-	var sim := _sim("중급")
-	sim.issue(CommandOrder.make("mission_conditions", [], 0, Vector3i.ZERO, {"crews": [2], "on_fire": "close"}))
-	sim.step_ticks(1)
-	sim.events.add(sim.clock.tick, "fire_found", {"crew": "구조1 1조", "crew_id": 2, "room": sim.fire.compartment_at(1, 12, 17).display_name(),
-		"room_cell": [12, 17, 1], "has_hose": false, "action": "search_floor", "target": [0, 0, 1]})
-	sim.step_ticks(2)
-	var lg := sim.cards.log.filter(func(l: Dictionary) -> bool: return l.id == "FIRE-FOUND-01")
-	assert_eq(lg.size(), 1, "카드 없이 처리")
-	assert_eq([lg[0].result, lg[0].grade], ["condition", "최선"], "문 닫고 검색 계속 = 최선")
-	# 수관이 없는 조에게 '즉시 진압' 조건은 맞는 선택지가 없어 카드로 묻는다
-	sim.issue(CommandOrder.make("mission_conditions", [], 0, Vector3i.ZERO, {"crews": [3], "on_fire": "attack"}))
-	sim.step_ticks(1)
-	sim.cards.queue.clear()  # 도착 카드 등으로 대기열이 차 있지 않게
-	sim.events.add(sim.clock.tick, "fire_found", {"crew": "구조1 2조", "crew_id": 3, "room": "1층 거실",
-		"room_cell": [12, 17, 1], "has_hose": false, "action": "search", "target": [12, 17, 1]})
-	sim.step_ticks(2)
-	assert_true(sim.cards.queue.any(func(q: CardSystem.Card) -> bool: return q.id == "FIRE-FOUND-01" and q.crew_id == 3), "맞는 행동이 없으면 묻는다")
-
-
-func test_withdraw_air_condition() -> void:
-	var sim := _sim("중급")
-	var c := _put(sim, 0, Vector2(11.5, 16.5))
-	sim.issue(CommandOrder.make("mission_conditions", [], 0, Vector3i.ZERO, {"crews": [0], "withdraw_air": "half"}))
-	sim.step_ticks(1)
-	for ff in c.members():
-		ff.air_l = ff.air_capacity * 0.45
-	sim.step_ticks(2)
-	var w := sim.events.of_type("mission_withdraw")
-	assert_eq(w.size(), 1, "절반 아래로 내려가면 질문 없이 철수")
-	assert_true(not w.is_empty() and int(w[0].percent) <= 50, "공기 % 기록")
-	sim.step_ticks(20)
-	assert_eq(sim.events.of_type("mission_withdraw").size(), 1, "한 번만")
-	# 경보 카드도 조건대로 바로 철수 (201-3.7)
-	assert_eq(sim.tactical.condition_effect(0, "AIR-ALARM-01"), "withdraw", "경보에는 바로 철수")
 
 
 func test_floor_order_text() -> void:

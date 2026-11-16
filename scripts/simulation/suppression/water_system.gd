@@ -600,13 +600,6 @@ func work_progress(v: Vehicle) -> float:
 	return 1.0 - float(v.work.remain) / maxf(0.1, float(v.work.total))
 
 
-## 수관 준비 진행률 (0~1). 준비가 끝났으면 -1
-func hose_progress(h: HoseLine, tick: int, start_tick: int) -> float:
-	if tick >= h.water_tick:
-		return -1.0
-	return clampf(float(tick - start_tick) / maxf(1.0, float(h.water_tick - start_tick)), 0.0, 1.0)
-
-
 func _update_pending(tick: int) -> void:
 	for v in units.vehicles:
 		if v.is_moving():

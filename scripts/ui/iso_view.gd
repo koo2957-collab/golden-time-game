@@ -227,20 +227,6 @@ func stack_depth_px() -> float:
 	return stack.offset_px(shown_levels().size() - 1) if stack != null else 0.0
 
 
-## 외부 보기 화면에서 world_pos 아래에 건물 외관이 있는가 (줌 전환 판단)
-func building_under(world_pos: Vector2, proj: ViewProjection) -> bool:
-	if layers.is_empty():
-		return false
-	var fp := Rect2(layers[0].shell_rect())
-	var top := shell_top_m()
-	var h := 0.0
-	while h <= top:
-		if fp.has_point(proj.to_cell_at(world_pos, h)):
-			return true
-		h += 0.5
-	return false
-
-
 ## 층 고르기 (P4-5): 외부 보기에서 world_pos 아래 외벽의 층 (-99 = 없음)
 func shell_level_at(world_pos: Vector2) -> int:
 	if not _exterior or layers.is_empty():

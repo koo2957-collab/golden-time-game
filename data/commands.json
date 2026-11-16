@@ -6,7 +6,10 @@
   "default_mission": {
     "note": "분대를 고른 채 층을 우클릭하면 뜨는 지시 창에서 미리 골라져 있는 임무 (2026-11-16 사용자 결정 — 좌클릭 = 보기·고르기, 우클릭 = 지시, 임무는 층 단위). 출동대 종류(type) → 임무. 없는 종류(구급대·굴절차)는 건물 안 임무가 없다",
     "source": "게임 설정값 (진압대 = 화재진압, 구조대 = 인명검색 — 출동대 기본 임무)",
-    "by_type": {"진압대": "attack", "구조대": "search"}
+    "by_type": {
+      "진압대": "attack",
+      "구조대": "search"
+    }
   },
   "sets": {
     "team": [
@@ -182,44 +185,6 @@
         "label": "바스켓 구조",
         "need": "aerial",
         "hint": "굴절차: 창가 요구조자 클릭 → 바스켓으로 구조 (SOP 326)"
-      }
-    ],
-    "door": [
-      {
-        "key": "Q",
-        "id": "door_check",
-        "label": "가스 확인 후 개방",
-        "effect": "open_door",
-        "check": true,
-        "hint": "문 온도·틈새 연기를 확인한 뒤 연다 (확인 시간이 든다)"
-      },
-      {
-        "key": "W",
-        "id": "door_side",
-        "label": "문 옆 벽에서 서서히",
-        "effect": "open_door",
-        "hint": "경첩 반대쪽 벽에 붙어 낮은 자세로 천천히 연다"
-      },
-      {
-        "key": "E",
-        "id": "door_force",
-        "label": "파괴 후 개방",
-        "effect": "force_door",
-        "hint": "잠긴 문 — 파괴기로 부수고 연다 (2명 이상)"
-      },
-      {
-        "key": "R",
-        "id": "door_vent",
-        "label": "상부 배연 후 개방",
-        "effect": "vent_then_open",
-        "hint": "문 너머 창을 먼저 깨 배연한 뒤 연다 (백드래프트 징후)"
-      },
-      {
-        "key": "A",
-        "id": "door_hold",
-        "label": "문 닫고 대기",
-        "effect": "hold",
-        "hint": "열지 않고 그 자리에서 대기"
       }
     ]
   },

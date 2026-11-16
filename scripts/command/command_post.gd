@@ -298,12 +298,6 @@ func _step_jobs(tick: int) -> void:
 			command.apply_zone(j.kind, j.answers, tick)
 
 
-func install_progress(j: Dictionary, tick: int) -> float:
-	if int(j.start) < 0:
-		return 0.0
-	return clampf(float(tick - int(j.start)) / maxf(1.0, _install_ticks), 0.0, 1.0)
-
-
 ## 구역을 설치할 수 있는 가까운 조: 현장에 있고 임무·운반·수관이 없고, 밖에 있으며 RIT·안전담당·구급대가 아닌 조
 func _free_crew(target: Vector2i) -> int:
 	var best := -1

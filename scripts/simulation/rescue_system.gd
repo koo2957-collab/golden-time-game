@@ -196,32 +196,6 @@ func _pick_spot(level: int, room_id: String, rng: RandomNumberGenerator) -> Vect
 
 # --- 조회 ---
 
-## p(셀 좌표) 근처의 발견된 요구조자 (구조되지 않은). 없으면 -1.
-func victim_near(level: int, p: Vector2, radius: float) -> int:
-	var best := -1
-	var best_d := radius
-	for v in victims:
-		if not v.discovered or v.level != level or v.state == Victim.State.RESCUED or v.carried_by >= 0:
-			continue
-		var d := v.pos.distance_to(p)
-		if d < best_d:
-			best_d = d
-			best = v.id
-	return best
-
-
-func downed_ff_near(level: int, p: Vector2, radius: float) -> int:
-	var best := -1
-	var best_d := radius
-	for ff in units.firefighters:
-		if not ff.incapacitated or ff.level != level or _carried_ff(ff.id):
-			continue
-		var d := ff.pos.distance_to(p)
-		if d < best_d:
-			best_d = d
-			best = ff.id
-	return best
-
 
 func task_of_crew(crew_id: int) -> RefCounted:
 	for t in searches:

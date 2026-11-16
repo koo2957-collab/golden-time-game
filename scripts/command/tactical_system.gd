@@ -7,7 +7,7 @@ extends RefCounted
 ##   철수 (withdraw): 그 조만 가장 가까운 문 밖으로
 ##   층 검색·층 진압 (search_floor·attack_floor, R7): 본 적 없는 곳은 층 단위로 맡긴다 (기획안 9-1).
 ##     층 검색은 아직 검색하지 않은 방을 가까운 곳부터 차례로, 층 진압은 그 층에서 타는 방을 찾아 차례로 진압
-##   임무 조건 (R7): 철수 잔압·화점 발견 시·요구조자 발견 시. 정해 두면 그 질문 카드 없이 그대로 한다
+##   화점 발견·요구조자 발견·공기 경보는 질문 카드로 묻는다 (임무 조건 미리 정하기는 2026-11-17에 없앴다)
 ##   직하층 확인 (check_below, P2-2): 목표 세대 바로 아래 세대를 돌며 구조를 보고 → 위 세대의 '추정 구조'로 기록 (기획안 4-2-1, SOP 202 4.4)
 ## 자동 행동도 SOP 안에서만 움직인다: 백드래프트 징후가 있는 문은 열지 않고 멈춰 보고한다 (210-4.5),
 ## 진입 명령이 없으면 입구에서 기다린다 (102-5.2). 자동화 수준은 난이도에 따라 다르다.
@@ -66,16 +66,10 @@ var level: Dictionary = LEVELS["입문"]
 var ems: EmsSystem
 ## 화점 발견 판정에 쓰는 시야
 var perception: Perception
-## 임무 조건 {조 id: {on_fire, on_victim, withdraw_air}} (키는 data/command/mission_params.json)
-var conditions: Dictionary = {}
+## 임무 수치 (data/command/mission_params.json)
 var mission_data: Dictionary = {}
 ## 진입구 (P4-2 진입 지시 기록용)
 var entries: EntryPoints
-## 문 앞 휠로 미리 정한 문 처리 {조 id: {door, effect, check, label}} (P4-2). 그 문 질문 카드 대신 쓴다
-var door_methods: Dictionary = {}
-## 문 앞 휠 항목 (data/commands.json sets.door)
-var door_specs: Array = []
-var _door_check_ticks := 100
 ## 화점진압 조가 화점실 앞에서 주수 방법을 질문 카드로 묻는가 (지휘 규칙을 켠 판, P10-2)
 var nozzle_cards := false
 var _hot_layer_c := 300.0
@@ -83,7 +77,6 @@ var _pencil_done_c := 150.0
 var _nozzle_wait_ticks := 300
 var _fire_radius := 5.0
 var _fire_seen: Dictionary = {}  # "조:방" -> true
-var _air_withdrawn: Dictionary = {}  # 조 id -> true (철수 잔압으로 철수함)
 ## 화점진압 임무를 받은 틱 {조 id: tick} — 화점에 물을 대면 지운다 (화점 못 찾음 보고, 기획안 7-3)
 var _attack_since: Dictionary = {}
 var _fire_lost_ticks := 9000
@@ -111,11 +104,8 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_water: WaterSystem, p_doors: 
 	_hot_layer_c = float(mission_data.get("nozzle_hot_layer_c", {}).get("value", 300.0))
 	_pencil_done_c = float(mission_data.get("nozzle_pencil_done_c", {}).get("value", 150.0))
 	_nozzle_wait_ticks = roundi(float(mission_data.get("nozzle_wait_s", {}).get("value", 30.0)) / SimClock.TICK_DT)
-	_door_check_ticks = roundi(float(mission_data.get("door_check_s", {}).get("value", 10.0)) / SimClock.TICK_DT)
 	_fire_lost_ticks = roundi(float(mission_data.get("fire_lost_s", {}).get("value", 900.0)) / SimClock.TICK_DT)
 	_fire_lost_vis_m = float(mission_data.get("fire_lost_visibility_m", {}).get("value", 1.0))
-	var cmds: Variant = JsonData.load_file("res://data/commands.json")
-	door_specs = cmds.get("sets", {}).get("door", []) if cmds is Dictionary else []
 
 
 func set_level(name: String) -> void:
@@ -157,7 +147,6 @@ func _order(action: String, crew_id: int, target: Vector3i, tick: int) -> bool:
 	var c := units.get_crew(crew_id)
 	if c == null or not ACTIONS.has(action):
 		return false
-	door_methods.erase(crew_id)
 	doors_sys.cancel(crew_id)
 	rescue.cancel(crew_id)
 	cancel(crew_id)
@@ -232,7 +221,6 @@ func step(tick: int) -> void:
 		_order_floor(t.floor_action, units.get_crew(t.crew_id), t.floor, tick, false)
 	for t in unit_next:
 		_next_unit_room(units.get_crew(t.crew_id), t.unit_rooms, t.unit_check, tick)
-	_check_air(tick)
 	if tick % 10 == 0:
 		_check_fire_lost(tick)
 
@@ -247,10 +235,6 @@ func _step_doors(t: Task, c: Crew, tick: int) -> void:
 		t.phase = Phase.ACT
 		return
 	var o := t.doors[0]
-	# 문 앞 휠 '문 닫고 대기': 그 문은 열지 않고 기다린다 (다른 임무를 받으면 풀림)
-	var dm: Dictionary = door_methods.get(t.crew_id, {})
-	if not dm.is_empty() and int(dm.door) == o.index and str(dm.effect) == "hold":
-		return
 	if t.door_requested:
 		if doors_sys.task_of_crew(t.crew_id) == null and not o.is_open:
 			_halt(t, c, tick, "%s을(를) 열지 못함 — 지시 바람" % _door_name(o), false, "door_failed", _door_ctx(o))
@@ -586,86 +570,6 @@ func _room_cell(room: Compartment) -> Vector3i:
 	return Vector3i(best.x, best.y, room.level)
 
 
-# --- 임무 조건 (R7) ---
-
-## 조건 지정 (CommandOrder "mission_conditions"). 빈 값은 그 항목을 바꾸지 않는다
-func set_conditions(crew_ids: Array, cond: Dictionary, tick: int) -> void:
-	for id in crew_ids:
-		var c := units.get_crew(int(id))
-		if c == null:
-			continue
-		var cur: Dictionary = conditions.get(c.id, {"on_fire": "ask", "on_victim": "ask", "withdraw_air": "alarm"})
-		for k in ["on_fire", "on_victim", "withdraw_air"]:
-			if str(cond.get(k, "")) != "":
-				cur[k] = str(cond[k])
-		conditions[c.id] = cur
-		events.add(tick, "mission_conditions", {"crew": _crew_name(c), "text": condition_text(c.id)})
-
-
-## "경보 울리면 철수 · 화점: 문 닫고 보고 · 요구조자: 즉시 구조"
-func condition_text(crew_id: int) -> String:
-	var cur: Dictionary = conditions.get(crew_id, {})
-	if cur.is_empty():
-		return ""
-	var parts: PackedStringArray = []
-	for pair in [["withdraw_air_options", "withdraw_air"], ["on_fire_options", "on_fire"], ["on_victim_options", "on_victim"]]:
-		var o := _option(pair[0], str(cur.get(pair[1], "")))
-		if not o.is_empty() and str(o.get("key", "")) != "ask":
-			parts.append(str(o.get("label", "")))
-	return " · ".join(parts)
-
-
-func _option(group: String, key: String) -> Dictionary:
-	for o: Dictionary in mission_data.get(group, []):
-		if str(o.get("key", "")) == key:
-			return o
-	return {}
-
-
-## 이 조의 임무 조건이 이 카드에 정한 행동 ("" = 카드로 묻는다)
-func condition_effect(crew_id: int, card_id: String) -> String:
-	var cur: Dictionary = conditions.get(crew_id, {})
-	if cur.is_empty():
-		return ""
-	match card_id:
-		"VICTIM-FOUND-01":
-			return str(_option("on_victim_options", str(cur.get("on_victim", "ask"))).get("effect", ""))
-		"FIRE-FOUND-01":
-			return str(_option("on_fire_options", str(cur.get("on_fire", "ask"))).get("effect", ""))
-		"AIR-ALARM-01":
-			# 철수 잔압을 정해 두었으면 경보에는 바로 철수 (201-3.7)
-			return "withdraw"
-	return ""
-
-
-func _withdraw_ratio(crew_id: int) -> float:
-	var cur: Dictionary = conditions.get(crew_id, {})
-	return float(_option("withdraw_air_options", str(cur.get("withdraw_air", "alarm"))).get("ratio", 0.0))
-
-
-## 철수 잔압: 건물 안에서 조의 가장 낮은 공기가 기준 아래로 내려가면 질문 없이 철수
-func _check_air(tick: int) -> void:
-	for id: int in conditions:
-		var ratio := _withdraw_ratio(id)
-		var c := units.get_crew(id)
-		if ratio <= 0.0 or c == null or c.leader.incapacitated:
-			continue
-		var inside := not fire.building.cell(c.leader.level, floori(c.leader.pos.x), floori(c.leader.pos.y)) in BuildingData.OUTDOOR
-		if _air_withdrawn.has(id):
-			if not inside:
-				_air_withdrawn.erase(id)
-			continue
-		var low := 1.0
-		for ff in c.members():
-			low = minf(low, ff.air_ratio())
-		if inside and low <= ratio:
-			_air_withdrawn[id] = true
-			cancel(id)
-			water.stop_spray(id, tick)
-			safety.withdraw_crew(c, tick, "withdraw")
-			events.add(tick, "mission_withdraw", {"crew": _crew_name(c), "crew_id": id, "percent": roundi(low * 100.0)})
-
-
 ## 검색 중인 조가 가까이에서 타는 칸을 보면 화점 발견 보고 (방마다 한 번). 질문 카드 FIRE-FOUND-01
 ## 화점진압 조가 오래 화점에 물을 대지 못하고 앞이 안 보이면 보고한다 (기획안 7-3 '화점 15분 못 찾음·시계 0', SOP 102-4.1)
 func _check_fire_lost(tick: int) -> void:
@@ -716,23 +620,6 @@ func _check_fire_found(t: Task, c: Crew, tick: int) -> void:
 			"room_cell": [p.x, p.y, lv], "has_hose": water.hose_of_crew(c.id) != null,
 			"action": t.floor_action if t.floor >= 0 else t.action, "target": [t.target.x, t.target.y, t.target.z]})
 		return
-
-
-## 문 앞 휠 (P4-2): 그 조가 그 문을 어떻게 다룰지 미리 정한다. 카드가 떠 있으면 CardSystem이 바로 처리한다
-func set_door_method(crew_id: int, door_index: int, spec_index: int) -> Dictionary:
-	if spec_index < 0 or spec_index >= door_specs.size():
-		return {}
-	var s: Dictionary = door_specs[spec_index]
-	var m := {"door": door_index, "effect": str(s.get("effect", "open_door")), "check": bool(s.get("check", false)),
-		"label": str(s.get("label", "")), "check_ticks": _door_check_ticks}
-	door_methods[crew_id] = m
-	return m
-
-
-## 그 조가 그 문에 미리 정한 처리 (없으면 빈 사전)
-func door_method(crew_id: int, door_index: int) -> Dictionary:
-	var m: Dictionary = door_methods.get(crew_id, {})
-	return m if not m.is_empty() and int(m.door) == door_index else {}
 
 
 ## 주수 방법 카드 문맥: 관창수가 본 화점실 상태와 (보이지 않는) 정답

@@ -114,10 +114,6 @@ func title() -> String:
 	return "%s ▸ %s" % [base, str(p.get("label", ""))]
 
 
-func parent_item() -> Dictionary:
-	return _find(sets.get(set_name, []), parent) if parent != "" else {}
-
-
 func is_enabled(item: Dictionary) -> bool:
 	if item.is_empty() or str(item.get("need", "")) == "later":
 		return false

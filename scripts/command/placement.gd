@@ -13,10 +13,6 @@ static func options(sim: SimWorld) -> Array:
 	return sim.scenario.get("approach", {}).get("options", [])
 
 
-static func default_index(sim: SimWorld) -> int:
-	return int(sim.scenario.get("approach", {}).get("default", 0))
-
-
 ## 고른 배치를 적용한다. 한 대라도 도로 밖이거나 겹치면 모두 원래 자리에 둔다
 static func apply(sim: SimWorld, index: int, tick: int) -> bool:
 	var opts := options(sim)

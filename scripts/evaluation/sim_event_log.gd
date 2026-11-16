@@ -407,14 +407,8 @@ static func describe_text(e: Dictionary) -> String:
 			text = "도면과 다름 — %s %s" % [e.floor, e.note]
 		"fire_found":
 			text = "화점 발견 — %s" % e.room
-		"mission_withdraw":
-			text = "공기 %d%% — 임무 조건에 따라 철수" % int(e.percent)
-		"mission_conditions":
-			text = "임무 조건: %s — %s" % [e.text, e.crew]
 		"tactical_next":
 			text = "다음 방 %s — %s" % [e.room, e.crew]
-		"card_condition":
-			text = "임무 조건으로 처리: %s → %s — %s" % [e.title, e.option, e.crew]
 		"crew_hold":
 			text = "현 위치 대기 — %s" % e.crew
 		"crew_report":
@@ -466,9 +460,7 @@ static func describe_text(e: Dictionary) -> String:
 		"crew_decided":
 			text = "%s 판단 — %s: %s" % [e.crew, e.title, e.option]
 		"card_preordered":
-			text = "선제지시대로 처리 — %s" % e.title
-		"preorder":
-			text = "선제지시 %s — %s" % ["지정" if e.on else "해제", e.key]
+			text = "출동 중 준비대로 처리 — %s" % e.title
 		"realism":
 			text = "난이도 — %s" % e.name
 		"phase":

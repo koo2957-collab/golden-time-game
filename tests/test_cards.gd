@@ -85,18 +85,6 @@ func test_time_limit_still_works_when_enabled() -> void:
 	assert_eq(sim.cards.log.filter(func(l: Dictionary) -> bool: return l.id == "DOOR-LOCKED-01")[0].result, "timeout", "미응답 기록")
 
 
-func test_preorder_skips_card() -> void:
-	var sim := _sim()
-	sim.issue(CommandOrder.make("preorder", [], 1, Vector3i.ZERO, {"key": "force_locked"}))
-	_attack_locked_door(sim)
-	sim.step_ticks(roundi(40.0 / SimClock.TICK_DT))
-	assert_true(not sim.cards.queue.any(func(q: CardSystem.Card) -> bool: return q.id == "DOOR-LOCKED-01"), "선제지시가 있으면 카드가 뜨지 않음")
-	var lg: Dictionary = sim.cards.log.filter(func(l: Dictionary) -> bool: return l.id == "DOOR-LOCKED-01")[0]
-	assert_eq(lg.result, "preordered", "선제지시로 기록")
-	assert_eq(lg.grade, "최선", "최선으로 처리")
-	assert_true(sim.doors.task_of(sim.fire.opening_at(Vector3i(13, 20, 1))) != null or sim.fire.opening_at(Vector3i(13, 20, 1)).is_open, "바로 파괴 개방")
-
-
 func test_queue_priority_and_overflow() -> void:
 	var sim := _sim()
 	var cs := sim.cards

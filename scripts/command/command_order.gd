@@ -15,7 +15,6 @@ extends RefCounted
 ##   evacuate:       긴급탈출 지시 (SSG 9 2.1.7, SOP 109-1.3)
 ##   par:            인원점검 (SOP 109-1.3, 200-4.1)
 ##   card_answer:    질문 카드 답 (answers.uid = 카드, value = 화면에 보인 선택지 순서)
-##   preorder:       선제지시 켜기·끄기 (answers.key, value 1 = 켬 / 0 = 끔)
 ##   all_clear:      완진 선언 (소방전술 I 8단계 ⑥, SOP 202-6). 불이 남아 있어도 막지 않고 그때 상태를 기록한다
 ##   placement:      선착 차량 배치 (value = 시나리오 approach.options index, SOP 200-3.1.1)
 ##   regroup:        분대 편성 (squad_ids = 출동대 id, value 1 = 2개 조로 나누기 / 0 = 합치기) — 팀장 둥근 버튼 (2026-11-16)
@@ -60,10 +59,6 @@ func execute(sim: SimWorld) -> void:
 			sim.phases.declare_all_clear(tick)
 		"card_answer":
 			sim.cards.answer(int(answers.get("uid", -1)), value, tick)
-		"preorder":
-			sim.cards.set_preorder(str(answers.get("key", "")), value == 1, tick)
-		"mission_conditions":
-			sim.tactical.set_conditions(answers.get("crews", []), answers, tick)
 		"transfer":
 			sim.transfer.transfer(answers, tick)
 		"loadout":

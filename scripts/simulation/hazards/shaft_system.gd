@@ -62,10 +62,6 @@ func _report(tick: int, type: String, lv: int, data: Dictionary) -> void:
 		_pending.append({"type": type, "level": lv, "data": data})
 
 
-func has_shaft() -> bool:
-	return not shaft_rooms.is_empty()
-
-
 func step(_dt: float, tick: int) -> void:
 	if shaft_rooms.is_empty():
 		return

@@ -50,10 +50,6 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_water: WaterSystem, p_rescue:
 	_quiet_ticks = roundi(params.value("end_suggest_quiet_s") / SimClock.TICK_DT)
 
 
-func reached_tick(p: Phase) -> int:
-	return int(reached.get(p, -1))
-
-
 ## 완진 선언 (CommandOrder "all_clear"). 한 번만. 선언 때의 실제 상태를 기록한다
 func declare_all_clear(tick: int) -> bool:
 	if not all_clear.is_empty() or phase < Phase.OPERATIONS:

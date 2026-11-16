@@ -25,10 +25,11 @@ func test_fatal_card_caps_grade() -> void:
 	assert_eq(rule.score, 0.0, "치명 0점")
 
 
-func test_preorder_counted_in_detail() -> void:
+## 대원 판단 장면을 꺼서 대원이 스스로 처리한 카드는 지휘관 점수에 넣지 않는다 (2026-11-17 — 예전에는 '대기 밀림' 0점)
+func test_crew_auto_cards_not_scored() -> void:
 	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH)
-	sim.cards.log = [{"grade": "최선", "result": "preordered"}, {"grade": "최선", "result": "preordered"}, {"grade": "허용", "result": "answered"}] as Array[Dictionary]
+	sim.cards.log = [{"grade": "최선", "result": "crew_auto"}, {"grade": "최선", "result": "crew_auto"}, {"grade": "허용", "result": "answered"}] as Array[Dictionary]
 	sim.end_activity("활동 종료 선언")
 	var rule: Dictionary = Evaluator.evaluate(sim).rules.filter(func(x: Dictionary) -> bool: return x.id == "command.cards")[0]
-	assert_true(str(rule.detail).contains("선제지시로 질문 2건 줄임"), "선제지시 수 (%s)" % rule.detail)
-	assert_true(absf(rule.score - 2.5 / 3.0) < 0.01, "선제지시 = 최선, 허용 = 0.5")
+	assert_true(absf(rule.score - 0.5) < 0.01, "지휘관이 답한 1건(허용)만 센다 (%s)" % rule.detail)
+	assert_true(not str(rule.detail).contains("대기 밀림"), "대원 판단은 대기 밀림이 아니다 (%s)" % rule.detail)

@@ -30,7 +30,7 @@ func _answer(sim: SimWorld, c: CardSystem.Card, grade: String) -> void:
 func test_card_set() -> void:
 	var data: Dictionary = JsonData.load_file("res://data/cards/cards.json")
 	assert_true(data.cards.size() >= 28, "카드 %d장 (기획안 7-3 아파트 약 30장)" % data.cards.size())
-	assert_true(data.preorders.size() >= 12, "선제지시 %d종" % data.preorders.size())
+	assert_true(not data.has("preorders"), "선제지시는 없앴다 (2026-11-17)")
 	var sim := _sim(APT)
 	var known := ["halt_locked", "halt_closed", "halt_backdraft", "halt_victim", "fire_found", "air_alarm", "knockdown", "arrival", "rollover_sign",
 		"jump_risk", "exposure_heating", "shaft", "sign_warning", "debris_zone", "hydrant_out", "tank_empty", "mayday", "gas_found",

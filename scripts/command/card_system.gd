@@ -5,8 +5,9 @@ extends RefCounted
 ##   대기열: 최대 queue_max장, 긴급도(긴급·중요·일반) 순, 긴급은 맨 앞. 만장이면 무전 "대기 중"으로 밀린다
 ##   제한시간: 긴급도별 초(card_params.json), 훈련 난이도는 배율. 미응답이면 카드는 사라지고 대원은 '지시 대기'로 멈춘 채
 ##   선택: CommandOrder "card_answer"로 기록(다시 하기). 선택지의 effect를 행동으로 실행한다 — 등급은 화면에 보이지 않는다
-##   선제지시: 카드의 skip_if_preordered 키가 켜져 있으면 카드 없이 '최선' 선택을 바로 실행하고 선제지시로 기록
-##   기록(log): 묻고 답한 시각, 선택, 등급, 결과(answered·timeout·preordered·overflow·unprepared) → 디브리핑
+##   기록(log): 묻고 답한 시각, 선택, 등급, 결과(answered·timeout·preordered·overflow·unprepared·delegated·crew_auto) → 디브리핑.
+##   preordered = 출동 중 예비 소방용수를 정해 두어 소화전 고장 카드 없이 옮긴 것.
+##   선제지시·임무 조건·문 앞 휠은 없앴다 (2026-11-17 — 화면에서 고를 곳이 없어 늘 비어 있던 기능)
 ##   출동 단계 카드: 출동 중 장면에서 미리 답하면(dispatch_answers) 도착했을 때 묻지 않고 그 답을 적용한다. 정하지 않았으면 unprepared
 
 const URGENCY_ORDER := {"긴급": 0, "중요": 1, "일반": 2}
@@ -53,8 +54,6 @@ var queue: Array[Card] = []
 ## 대원 판단 장면 (2026-11-14 사용자 결정): true = 플레이어가 그 조장으로서 고른다 (전 직원 훈련).
 ## false = 대원이 SOP대로(최선) 알아서 한다 (지휘관 훈련) — 장면이 뜨지 않고 보고만 온다
 var crew_judgment := true
-## 켜 둔 선제지시 키
-var preorders: Dictionary = {}
 ## 출동 중에 차 안에서 답한 카드 (2026-11-14 사용자 결정: 출동 단계 카드는 출동 중 질문 장면으로 묻는다).
 ## {카드 id: 고른 선택지 (카드 파일에 적힌 순서, -1 = 도착할 때까지 정하지 않음)}. 여기 있는 카드는 도착한 뒤에 다시 묻지 않는다
 var dispatch_answers: Dictionary = {}
@@ -119,14 +118,6 @@ func dispatch_specs() -> Array:
 func set_dispatch_answers(answers: Dictionary) -> void:
 	for id in answers:
 		dispatch_answers[str(id)] = int(answers[id])
-
-
-func set_preorder(key: String, on: bool, tick: int) -> void:
-	if on:
-		preorders[key] = true
-	else:
-		preorders.erase(key)
-	events.add(tick, "preorder", {"key": key, "on": on, "crew": "현장지휘관"})
 
 
 func step(_dt: float, tick: int) -> void:
@@ -342,34 +333,10 @@ func _raise(spec: Dictionary, e: Dictionary, tick: int) -> void:
 		if not pick.is_empty():
 			_apply(str(pick.get("effect", "")), c, tick)
 		return
-	# 임무 조건 (R7): 진입구에서 정한 조건이 있으면 카드 없이 그 행동 (등급은 같은 행동의 선택지)
-	var ce := tactical.condition_effect(c.crew_id, c.id)
-	if ce != "":
-		for o: Dictionary in opts:
-			if str(o.get("effect", "")) == ce:
-				_log(c, tick, o, "condition")
-				events.add(tick, "card_condition", {"crew": _crew_name(c.crew_id), "title": str(spec.get("title", c.id)), "option": str(o.get("text", ""))})
-				_apply(ce, c, tick)
-				return
-	# 문 앞 휠로 미리 정한 문 처리 (P4-2): 카드 없이 그대로, 등급은 같은 행동의 선택지
-	if _door_preordered(c, opts, tick):
-		return
 	# 예비 소방용수를 정해 두었으면 소화전 고장에 묻지 않고 다음 소화전으로 (P9-1)
 	if str(spec.get("trigger", "")) == "hydrant_out" and sim and sim.command.reserve_water and sim.next_hydrant(str(c.ctx.get("vehicle", "")), tick):
 		_log(c, tick, {"text": "예비 소방용수로 옮김 (출동 중 선정)", "grade": "최선", "effect": "next_hydrant"}, "preordered")
 		events.add(tick, "card_preordered", {"crew": _crew_name(c.crew_id), "title": str(spec.get("title", c.id))})
-		return
-	# 선제지시: 카드 없이 최선 선택을 바로 실행
-	var pre := str(spec.get("skip_if_preordered", ""))
-	if pre != "" and preorders.has(pre):
-		var best: Dictionary = {}
-		for o: Dictionary in opts:
-			if str(o.get("grade", "")) == "최선":
-				best = o
-		_log(c, tick, best, "preordered")
-		events.add(tick, "card_preordered", {"crew": _crew_name(c.crew_id), "title": str(spec.get("title", c.id))})
-		if not best.is_empty():
-			_apply(str(best.get("effect", "")), c, tick)
 		return
 	# 대원 판단 장면을 껐으면: 대원이 SOP대로 알아서 하고 보고만 한다 (지휘관 훈련)
 	if c.judgment() and not crew_judgment:
@@ -397,41 +364,6 @@ func _raise(spec: Dictionary, e: Dictionary, tick: int) -> void:
 		var ub: int = URGENCY_ORDER.get(b.urgency, 2)
 		return ua < ub or (ua == ub and a.uid < b.uid))
 	events.add(tick, "card_asked", {"crew": _crew_name(c.crew_id), "title": str(spec.get("title", c.id)), "urgency": c.urgency})
-
-
-## 이 카드가 문 카드이고 그 조가 그 문을 문 앞 휠로 정해 두었으면 그대로 처리하고 true
-func _door_preordered(c: Card, opts: Array, tick: int) -> bool:
-	var door := _opening(c.ctx.get("door", []))
-	if door == null or c.crew_id < 0:
-		return false
-	var m := tactical.door_method(c.crew_id, door.index)
-	if m.is_empty():
-		return false
-	tactical.door_methods.erase(c.crew_id)
-	var pick: Dictionary = {"text": str(m.label), "grade": "허용", "effect": str(m.effect)}
-	for o: Dictionary in opts:
-		if str(o.get("effect", "")) == str(m.effect):
-			pick = o.duplicate()
-			pick["text"] = "%s (문 앞 휠: %s)" % [str(o.get("text", "")), str(m.label)]
-			break
-	_log(c, tick, pick, "preordered")
-	events.add(tick, "card_preordered", {"crew": _crew_name(c.crew_id), "title": str(c.spec.get("title", c.id))})
-	if bool(m.check):
-		_delayed.append({"tick": tick + int(m.check_ticks), "effect": str(m.effect), "card": c})
-		events.add(tick, "card_info_check", {"crew": _crew_name(c.crew_id), "seconds": roundi(int(m.check_ticks) * SimClock.TICK_DT)})
-	else:
-		_apply(str(m.effect), c, tick)
-	return true
-
-
-## 문 앞 휠을 골랐을 때 그 조·그 문 카드가 이미 떠 있으면 바로 처리한다
-func preempt_door(crew_id: int, door_index: int, tick: int) -> void:
-	for c in queue.duplicate():
-		var door := _opening(c.ctx.get("door", []))
-		if c.crew_id == crew_id and door and door.index == door_index:
-			queue.erase(c)
-			_door_preordered(c, c.options, tick)
-			return
 
 
 func _matches(cond: Dictionary, ctx: Dictionary) -> bool:
@@ -756,7 +688,7 @@ func _apply(effect: String, c: Card, tick: int) -> void:
 			pass
 
 
-## 그 조가 지금 문을 열기 전에 확인하는 중이면 그 문 (정보 확인 선택지·문 앞 휠 '가스 확인 후 개방'의 기다리는 시간), 아니면 null.
+## 그 조가 지금 문을 열기 전에 확인하는 중이면 그 문 (정보 확인 선택지의 기다리는 시간), 아니면 null.
 ## 화면이 문 확인 동작(손등으로 문 온도 짚기)을 보여 줄 때 쓴다
 func checking_door(crew_id: int) -> Opening:
 	for d in _delayed:

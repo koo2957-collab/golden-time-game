@@ -13,7 +13,7 @@ const FLAME_RANGE_CELLS := 8.0
 ## 같은 조에 같은 열기 알림을 다시 띄우기까지의 틱
 const HEAT_EVENT_COOLDOWN_TICKS := 100
 ## 물러날 곳을 찾을 때 살펴볼 최대 셀 수
-const RETREAT_SEARCH_LIMIT := 600
+const RETREAT_SEARCH_LIMIT := 1500
 
 var fire: FireSim
 var units: UnitSystem
@@ -57,6 +57,8 @@ var _air_full := 0.0
 var _heat_event_tick: Dictionary = {}  # "종류:조" -> tick
 ## 열 스트레스가 이만큼 쌓이면 임무 없는 분대는 식힐 곳으로 물러나고 보고한다 (임무 중이면 보고만)
 var _stress_retreat := 0.5
+## 물러나는 조의 목적지 {crew id: 길 끝 칸}
+var _retreat_goal: Dictionary = {}
 
 
 func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, stats: ParamTable, p_events: SimEventLog) -> void:
@@ -190,7 +192,7 @@ func after_move(dt: float, tick: int) -> void:
 			continue
 		var cell := Vector2i(ff.pos.floor())
 		var room := _room_for(ff.level, cell)
-		ff.crouched = room != null and room.layer_depth > room.height - _eye_stand
+		ff.crouched = _crouch_in(room)
 		ff.crouch_factor = _crouch_speed if ff.crouched else 1.0
 		ff.heat_flux = heat_at(ff.level, cell, ff.crouched)
 		if covered.is_valid() and ff.heat_flux > 0.0 and bool(covered.call(ff.level, ff.pos)):
@@ -248,35 +250,61 @@ func _down(ff: Firefighter, reason: String, tick: int) -> void:
 
 
 ## 지금 칸이 위험하면 위험 상한의 60% 아래인 가장 가까운 칸으로 물러난다.
+## 그 방에서 대원이 낮은 자세를 하는가 (연기층이 서 있는 눈높이보다 내려옴)
+func _crouch_in(room: Compartment) -> bool:
+	return room != null and room.layer_depth > room.height - _eye_stand
+
+
+## 그 칸에 가서 서면 받을 복사열 — 그 자리의 자세(연기층에 따라 서거나 낮춤)로 본다
+func _flux_there(level: int, cell: Vector2i) -> float:
+	return heat_at(level, cell, _crouch_in(_room_for(level, cell)))
+
+
 ## 물러날 곳: 열 스트레스가 쌓이지 않는 곳(일상 복사열 아래)이 가까이 있으면 그리로, 없으면 위험 상한의 0.6 아래.
 ## (전에는 0.6 아래 첫 칸으로만 물러나 스트레스가 계속 쌓였다)
 func _retreat(c: Crew, tick: int, event_type := "heat_retreat") -> void:
 	var leader := c.leader
+	# 이미 물러나는 중이면 그대로 간다 — 틱마다 다시 명령하면 걸음을 떼기 전에 길이 새로 잡혀 제자리에 선 채
+	# 쓰러졌다 (2026-11-17 골목 주택 재발화)
+	if not leader.path.is_empty() and _retreat_goal.get(c.id, Vector3i(-1, -1, -1)) == leader.path.back():
+		return
 	var start := Vector2i(leader.pos.floor())
+	# 지금 있는 방을 벗어난다 — 가까운 '식은 칸'이 불난 방 문턱이면 뒤따르는 짝이 방 안에 남아 플래시오버에 쓰러졌다.
+	# 뒤따르는 대원 수만큼(줄 간격) 더 가서 선다
+	var here_room := fire.compartment_at(leader.level, start.x, start.y)
+	var trail: int = (c.list.size() - 1) * units.line_gap_cells
 	var queue: Array[Vector2i] = [start]
-	var seen := {start: true}
+	var depth := {start: 0}
 	var head := 0
 	var fallback := Vector2i(-1, -1)
 	var target := Vector2i(-1, -1)
+	var first_ok := -1
 	while head < queue.size() and head < RETREAT_SEARCH_LIMIT:
 		var p := queue[head]
 		head += 1
-		var q := heat_at(leader.level, p, true)
-		if q <= _routine:
+		# 늘 낮은 자세로 보면 연기층이 높아 서는 방에서 '식은 칸'을 잘못 골라 한 칸씩만 물러나다 쓰러졌다 (2026-11-17)
+		var q := _flux_there(leader.level, p)
+		var room := fire.compartment_at(leader.level, p.x, p.y)
+		if q <= _routine and (here_room == null or room != here_room):
 			target = p
-			break
+			if first_ok < 0:
+				first_ok = int(depth[p])
+			if int(depth[p]) >= first_ok + trail:
+				break
 		if fallback.x < 0 and q < _hazard * 0.6:
 			fallback = p
 		for d: Vector2i in [Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP]:
 			var n := p + d
-			if not seen.has(n) and pathfinder.passable(leader.level, n.x, n.y):
-				seen[n] = true
+			if not depth.has(n) and pathfinder.passable(leader.level, n.x, n.y):
+				depth[n] = int(depth[p]) + 1
 				queue.append(n)
 	if target.x < 0:
 		target = fallback
 	if target.x < 0 or target == start:
 		return
 	units.order_move([c.id] as Array[int], Vector3i(target.x, target.y, leader.level), pathfinder)
+	if not leader.path.is_empty():
+		_retreat_goal[c.id] = leader.path.back()
 	_heat_event(c, event_type, tick)
 
 

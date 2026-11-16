@@ -113,6 +113,32 @@ func test_heat_stressed_idle_crew_backs_off_to_cool_spot() -> void:
 	assert_true(cond.heat_at(1, Vector2i(goal.x, goal.y), true) <= routine, "간 곳은 스트레스가 쌓이지 않는 곳 (%.1f kW/㎡)" % cond.heat_at(1, Vector2i(goal.x, goal.y), true))
 
 
+## 불난 방 안에서 열기에 갇힌 분대는 실제로 걸어서 그 방을 벗어나고, 뒤따르는 짝까지 방 밖에 선다 (2026-11-17 —
+## 틱마다 후퇴 명령을 다시 내려 제자리에 선 채, 또는 문턱에서 짝을 방 안에 둔 채 쓰러졌다)
+func test_heat_retreat_leaves_the_room() -> void:
+	var sim := _sim()
+	sim.fire.opening_at(Vector3i(31, 12, 1)).is_open = true
+	sim.doors.sync_blocking()
+	sim.step_ticks(6 * 600)
+	var living := _living(sim)
+	var cond := sim.conditions
+	var hot := Vector2i(-1, -1)
+	for cell in living.cells:
+		if hot.x < 0 and sim.pathfinder.passable(1, cell.x, cell.y) and cond.heat_at(1, cell, true) >= cond.hazard_kw_m2():
+			hot = cell
+	assert_true(hot.x >= 0, "거실에 위험한 칸")
+	var c := _place(sim, 0, Vector2(hot) + Vector2(0.5, 0.5))
+	for ff in c.list:
+		ff.pos = c.leader.pos
+		ff.prev_pos = ff.pos
+		ff.level = 1
+		ff.path.clear()
+	sim.step_ticks(roundi(40.0 / SimClock.TICK_DT))
+	for ff in c.list:
+		assert_true(not ff.incapacitated, "%s 쓰러지지 않음" % ff.name)
+		assert_true(sim.fire.compartment_at(1, floori(ff.pos.x), floori(ff.pos.y)) != living, "%s 거실 밖 (%s)" % [ff.name, ff.pos])
+
+
 func test_crouch_in_smoke_slows_movement() -> void:
 	var sim := _sim()
 	sim.step_ticks(4 * 600)

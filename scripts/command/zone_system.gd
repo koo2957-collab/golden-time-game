@@ -215,4 +215,4 @@ func _crew_name(crew_id: int) -> String:
 	var c := units.get_crew(crew_id)
 	if c == null:
 		return ""
-	return "%s %d조" % [units.squads[c.squad_id].name, c.number]
+	return units.crew_name(c)

@@ -99,7 +99,7 @@ func _room_of(e: Dictionary) -> Compartment:
 
 func _crew_named(sender: String) -> Crew:
 	for c in units.crews:
-		var name := "%s %d조" % [units.squads[c.squad_id].name, c.number]
+		var name := units.crew_name(c)
 		if sender == name or sender.begins_with(name + " "):
 			return c
 	return null

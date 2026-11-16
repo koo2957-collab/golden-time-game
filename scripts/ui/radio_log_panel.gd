@@ -248,7 +248,7 @@ func _rebuild() -> void:
 
 func _crew_name(id: int) -> String:
 	var c := sim.units.get_crew(id)
-	return "%s %d조" % [sim.units.squads[c.squad_id].name, c.number] if c else ""
+	return sim.units.crew_name(c) if c else ""
 
 
 func _small(text: String, cb: Callable) -> Button:

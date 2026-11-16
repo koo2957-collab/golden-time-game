@@ -437,4 +437,4 @@ func _selected_key(ob: OptionButton, _group: String) -> String:
 
 func _crew_name(crew_id: int) -> String:
 	var c := sim.units.get_crew(crew_id)
-	return "%s %d조" % [sim.units.squads[c.squad_id].name, c.number] if c else "—"
+	return sim.units.crew_name(c) if c else "—"

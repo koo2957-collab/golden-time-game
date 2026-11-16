@@ -70,7 +70,7 @@ func step(dt: float, tick: int) -> void:
 				continue
 			_dwell[c.id] = float(_dwell.get(c.id, 0.0)) + dt
 			if float(_dwell[c.id]) >= float(office.dwell_s):
-				acquire(str(office.name), tick, "%s %d조" % [units.squads[c.squad_id].name, c.number])
+				acquire(str(office.name), tick, units.crew_name(c))
 				break
 	if perception.enabled:
 		for i in diffs.size():

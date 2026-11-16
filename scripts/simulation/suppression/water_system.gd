@@ -871,7 +871,7 @@ func _name(v: Vehicle) -> String:
 
 
 func _crew_name(c: Crew) -> String:
-	return "%s %d조" % [units.squads[c.squad_id].name, c.number]
+	return units.crew_name(c)
 
 
 ## 옥내소화전 수관: 건물 수조에서 물을 쓴다. 송수구가 연결되면 그 펌프차로 옮겨 탄다 (SOP 235, R10)

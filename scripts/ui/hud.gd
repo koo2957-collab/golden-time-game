@@ -291,7 +291,7 @@ func _refresh_selection() -> void:
 		var names: PackedStringArray = []
 		for ff in crew.members():
 			names.append("%s %s" % [ff.name, ff.rank])
-		var line := "[%s] %d조 — %s (%s)" % [squad.name, crew.number, " · ".join(names), sim.building.floor_name(crew.leader.level)]
+		var line := "[%s] %s — %s (%s)" % [squad.name, sim.units.crew_short(crew), " · ".join(names), sim.building.floor_name(crew.leader.level)]
 		line += _squad_state(squad.id)
 		var role := sim.command.safety.role_of(crew_id)
 		if role != SafetySystem.Role.NONE:

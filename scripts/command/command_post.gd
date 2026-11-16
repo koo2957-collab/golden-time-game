@@ -283,7 +283,7 @@ func _step_jobs(tick: int) -> void:
 			c = units.get_crew(pick)
 			var spot := pathfinder.nearest_walkable(1, j.target)
 			units.order_move([pick] as Array[int], Vector3i(spot.x, spot.y, 1), pathfinder)
-			events.add(tick, "zone_install_go", {"kind": ZoneSystem.KIND_NAMES.get(j.kind, j.kind), "crew": "%s %d조" % [units.squads[c.squad_id].name, c.number]})
+			events.add(tick, "zone_install_go", {"kind": ZoneSystem.KIND_NAMES.get(j.kind, j.kind), "crew": units.crew_name(c)})
 			continue
 		var at := Vector2(j.target) + Vector2(0.5, 0.5)
 		if int(j.start) < 0:

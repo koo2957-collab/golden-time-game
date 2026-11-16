@@ -1995,7 +1995,7 @@ func _talking(crew: Crew) -> bool:
 	var radios: Array = [sim.command.radio]
 	for dv in sim.command.org.divisions:
 		radios.append(dv.radio)
-	var call := "%s %d조" % [sim.units.squads[crew.squad_id].name, crew.number]
+	var call := sim.units.crew_name(crew)
 	for r in radios:
 		var m: Radio.Message = r.current
 		if m == null:

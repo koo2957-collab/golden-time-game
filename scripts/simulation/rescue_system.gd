@@ -683,7 +683,7 @@ func _is_outdoor(level: int, cell: Vector2i) -> bool:
 
 
 func _crew_name(c: Crew) -> String:
-	return "%s %d조" % [units.squads[c.squad_id].name, c.number]
+	return units.crew_name(c)
 
 
 ## CO 농도(ppm)에서 사망까지 걸리는 시간(분). 표 사이는 로그-로그 보간, 양 끝 밖은 끝 구간 기울기로 늘린다

@@ -71,7 +71,7 @@ func _get_tooltip(at_position: Vector2) -> String:
 	if i < 0:
 		return ""
 	var c := sim.units.get_crew(crews()[i])
-	return "%s %d조 · 공기 %d%%%s (%d번 키)" % [sim.units.squads[c.squad_id].name, c.number, roundi(air(c.id) * 100.0),
+	return "%s · 공기 %d%%%s (%d번 키)" % [sim.units.crew_name(c), roundi(air(c.id) * 100.0),
 		" · 질문 대기" if asking(c.id) else "", i + 1]
 
 

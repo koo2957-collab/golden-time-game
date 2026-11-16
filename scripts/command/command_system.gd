@@ -1327,7 +1327,7 @@ func _division_call(d: Organization.Division) -> String:
 
 
 func _crew_name(c: Crew) -> String:
-	return "%s %d조" % [units.squads[c.squad_id].name, c.number]
+	return units.crew_name(c)
 
 
 # --- 보고 요청 (원형 메뉴, R7c) ---

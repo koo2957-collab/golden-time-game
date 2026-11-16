@@ -334,7 +334,7 @@ func _crew_where(c: Crew) -> String:
 	var air: PackedStringArray = []
 	for ff in c.members():
 		air.append("%d%%" % roundi(ff.air_ratio() * 100.0))
-	return "%d조 %s 공기 %s" % [c.number, room.display_name() if room else fire.building.floor_name(c.leader.level), "·".join(air)]
+	return "%s %s 공기 %s" % [units.crew_short(c), room.display_name() if room else fire.building.floor_name(c.leader.level), "·".join(air)]
 
 
 func _on_par_answered(_tick: int, crew_ids: Array[int]) -> void:
@@ -393,4 +393,4 @@ func _indoor(level: int, p: Vector2) -> bool:
 
 
 func _crew_name(c: Crew) -> String:
-	return "%s %d조" % [units.squads[c.squad_id].name, c.number]
+	return units.crew_name(c)

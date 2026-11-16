@@ -100,10 +100,7 @@ func add_crew(squad: Squad, crew_data: Dictionary, spawn: Vector2i, level := 1) 
 		ff.level = level
 		ff.prev_level = level
 		firefighters.append(ff)
-		if i == 0:
-			crew.leader = ff
-		else:
-			crew.partner = ff
+		crew.list.append(ff)
 	squad.crews.append(crew)
 	crews.append(crew)
 	return crew
@@ -172,6 +169,21 @@ func squad_of_crew(crew_id: int) -> Squad:
 	return squads[c.squad_id] if c else null
 
 
+## 조 이름 — 무전·기록·화면이 모두 이것을 쓴다: "진압1 1조"
+func crew_name(c: Crew) -> String:
+	return "%s %s" % [squads[c.squad_id].name, crew_short(c)]
+
+
+## 출동대 이름 없이: "1조"
+func crew_short(c: Crew) -> String:
+	return "%d조" % c.number
+
+
+## 대원 이름: "진압1 1조 이준호"
+func ff_name(ff: Firefighter) -> String:
+	return "%s %s" % [crew_name(get_crew(ff.crew_id)), ff.name]
+
+
 func step(dt: float) -> void:
 	for ff in firefighters:
 		ff.step(dt, walk_speed_cells)
@@ -217,12 +229,16 @@ func _route_crew(c: Crew, goal: Vector3i, pathfinder: Pathfinder, via := Vector3
 	if lead_path.is_empty():
 		return
 	c.leader.set_path(lead_path)
-	if c.partner == null or lead_path.size() < 2:
-		return
-	var trail := pathfinder.find_path_outdoors(c.partner.cell3(), lead_path[0]) if outdoor else pathfinder.find_path(c.partner.cell3(), lead_path[0])
-	if trail.is_empty():
-		trail = pathfinder.find_path(c.partner.cell3(), lead_path[-2])
-	else:
-		trail.append_array(lead_path.slice(1, lead_path.size() - 1))
-	if not trail.is_empty():
-		c.partner.set_path(trail)
+	# 뒤따르는 조원: k번째는 선두 경로의 끝에서 k칸 앞까지 (줄지어 선다). 경로가 그보다 짧으면 제자리
+	for k in range(1, c.list.size()):
+		var ff: Firefighter = c.list[k]
+		var end := lead_path.size() - 1 - k
+		if end < 0:
+			break
+		var trail := pathfinder.find_path_outdoors(ff.cell3(), lead_path[0]) if outdoor else pathfinder.find_path(ff.cell3(), lead_path[0])
+		if trail.is_empty():
+			trail = pathfinder.find_path(ff.cell3(), lead_path[end])
+		else:
+			trail.append_array(lead_path.slice(1, end + 1))
+		if not trail.is_empty():
+			ff.set_path(trail)

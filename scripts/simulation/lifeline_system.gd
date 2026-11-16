@@ -88,4 +88,4 @@ func _helper_near(c: Crew) -> bool:
 
 
 func _crew_name(c: Crew) -> String:
-	return "%s %d조" % [units.squads[c.squad_id].name, c.number]
+	return units.crew_name(c)

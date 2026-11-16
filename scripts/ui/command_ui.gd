@@ -484,7 +484,7 @@ func _refresh_radio() -> void:
 	var silent: PackedStringArray = []
 	for id in sim.command.safety.par_no_response:
 		var c := sim.units.get_crew(id)
-		silent.append("%s %d조 (%s)" % [sim.units.squads[c.squad_id].name, c.number, sim.building.floor_name(c.leader.level)])
+		silent.append("%s (%s)" % [sim.units.crew_name(c), sim.building.floor_name(c.leader.level)])
 	_par_alert.text = "⚠ 인원 점검 무응답: %s — 긴급탈출 상황 선포·RIT 투입을 판단하세요" % ", ".join(silent)
 	_par_alert.visible = not silent.is_empty()
 	var bottom := board_bottom if board_bottom > 0.0 else size.y - 16.0
@@ -560,10 +560,10 @@ func _entry_text() -> String:
 		for c in squad.crews:
 			var role := cmd.safety.role_of(c.id)
 			if role != SafetySystem.Role.NONE:
-				state += " · %d조 %s%s" % [c.number, "RIT" if role == SafetySystem.Role.RIT else "안전담당", " 투입" if cmd.safety.deployed.has(c.id) else ""]
+				state += " · %s %s%s" % [sim.units.crew_short(c), "RIT" if role == SafetySystem.Role.RIT else "안전담당", " 투입" if cmd.safety.deployed.has(c.id) else ""]
 			if not sim.building.cell(c.leader.level, floori(c.leader.pos.x), floori(c.leader.pos.y)) in BuildingData.OUTDOOR:
 				var air := minf(c.leader.air_ratio(), c.partner.air_ratio() if c.partner else 1.0)
-				inside.append("%d조 %s 공기 %d%%" % [c.number, sim.building.floor_name(c.leader.level), roundi(air * 100.0)])
+				inside.append("%s %s 공기 %d%%" % [sim.units.crew_short(c), sim.building.floor_name(c.leader.level), roundi(air * 100.0)])
 		# 조별 위치·공기는 아래 팀 카드에 (R7c)
 		lines.append("%s: %s%s" % [squad.name, state, "  · 내부 %d조" % inside.size() if not inside.is_empty() else ""])
 	for u in res.upcoming(sim.clock.tick):
@@ -1257,7 +1257,7 @@ func _rebuild_role() -> void:
 			continue
 		var crew_id := c.id
 		var now := cmd.safety.role_of(crew_id)
-		var text := "%s %d조" % [sim.units.squads[c.squad_id].name, c.number]
+		var text := sim.units.crew_name(c)
 		if now != SafetySystem.Role.NONE:
 			text += "  [%s%s]" % [SafetySystem.ROLE_NAMES[now], " · 누르면 해제" if now == _role_kind else ""]
 		var give: int = SafetySystem.Role.NONE if now == _role_kind else _role_kind
@@ -1389,7 +1389,7 @@ func _refresh_team_cards() -> void:
 func team_text(crew_id: int) -> String:
 	var c := sim.units.get_crew(crew_id)
 	var squad := sim.units.squads[c.squad_id]
-	var name := "%s %d조" % [squad.name, c.number]
+	var name := sim.units.crew_name(c)
 	var inside := sim.command.interior.crew_inside(crew_id)
 	var room := sim.fire.compartment_at(c.leader.level, floori(c.leader.pos.x), floori(c.leader.pos.y))
 	var where := (room.display_name() if room else sim.building.floor_name(c.leader.level)) if inside else "밖"
@@ -1427,7 +1427,7 @@ func _team_color(crew_id: int) -> Color:
 		air = minf(air, ff.air_ratio())
 	if air < 0.3:
 		return paper_palette.get("danger", Color("f87171"))
-	var name := "%s %d조" % [sim.units.squads[c.squad_id].name, c.number]
+	var name := sim.units.crew_name(c)
 	var last := int(sim.command.last_report_tick.get(name, -1))
 	if last < 0 or (sim.clock.tick - last) * SimClock.TICK_DT > TEAM_REPORT_STALE_S:
 		return paper_palette.get("warn", WARN_COLOR)

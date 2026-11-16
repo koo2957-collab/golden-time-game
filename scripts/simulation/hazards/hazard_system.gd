@@ -151,4 +151,4 @@ func _in_room(level: int, pos: Vector2, c: Compartment) -> bool:
 
 
 func _ff_name(ff: Firefighter) -> String:
-	return "%s %d조 %s" % [units.squads[ff.squad_id].name, units.get_crew(ff.crew_id).number, ff.name]
+	return units.ff_name(ff)

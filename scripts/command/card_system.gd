@@ -876,4 +876,4 @@ func _log(c: Card, tick: int, opt: Variant, result: String) -> void:
 
 func _crew_name(crew_id: int) -> String:
 	var c := units.get_crew(crew_id)
-	return "%s %d조" % [units.squads[c.squad_id].name, c.number] if c else "현장 대원"
+	return units.crew_name(c) if c else "현장 대원"

@@ -78,8 +78,7 @@ func _collapse(c: Compartment, tick: int) -> void:
 		if fire.compartment_at(ff.level, floori(ff.pos.x), floori(ff.pos.y)) == c:
 			ff.incapacitated = true
 			ff.path.clear()
-			var crew := units.get_crew(ff.crew_id)
-			events.add(tick, "ff_down", {"crew": "%s %d조 %s" % [units.squads[ff.squad_id].name, crew.number, ff.name], "reason": "붕괴"})
+			events.add(tick, "ff_down", {"crew": units.ff_name(ff), "reason": "붕괴"})
 	for v in rescue.victims:
 		if v.alive() and v.carried_by < 0 and fire.compartment_at(v.level, floori(v.pos.x), floori(v.pos.y)) == c:
 			v.state = Victim.State.DEAD

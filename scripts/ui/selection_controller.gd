@@ -981,7 +981,7 @@ func _draw_hover() -> void:
 		draw_polyline(pts, Color(color, 0.95), 2.5 / z)
 		draw_polyline(pts, Color(1, 1, 1, 0.5), 1.0 / z)
 		name_at = p - Vector2(0, vp.pick_h_px * 0.55 / z)
-	var label := "%s %d조" % [sim.units.squads[c.squad_id].name, c.number]
+	var label := sim.units.crew_name(c)
 	draw_string(PlanStyle.font(), name_at + Vector2(-60.0 / z, 0), label, HORIZONTAL_ALIGNMENT_CENTER, 120.0 / z, maxi(8, roundi(14.0 / z)), Color(1, 1, 1, 0.95))
 
 
@@ -1227,7 +1227,7 @@ func _waiting_at(e: EntryPoints.Entry) -> String:
 		if int(sim.command.approach[id]) == e.index:
 			var c := sim.units.get_crew(id)
 			if c and not c.leader.is_moving():
-				names.append("%s %d조" % [sim.units.squads[c.squad_id].name, c.number])
+				names.append(sim.units.crew_name(c))
 	return ", ".join(names)
 
 

@@ -150,7 +150,7 @@ func build_steps() -> void:
 					if not sim.command.resources.on_scene(c.squad_id) or sim.ems.is_ems_crew(c.id):
 						continue
 					var squad := sim.units.squads[c.squad_id]
-					var crew_name := "%s %d조" % [squad.name, c.number]
+					var crew_name := sim.units.crew_name(c)
 					var kinds: Array = []
 					for k: Array in p.get("preassign", {}).get("options", []):
 						if str(k[0]) == "office" and sim.plan.office.is_empty():

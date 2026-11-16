@@ -298,11 +298,11 @@ func _room_for(level: int, cell: Vector2i) -> Compartment:
 
 
 func _crew_name(c: Crew) -> String:
-	return "%s %d조" % [units.squads[c.squad_id].name, c.number]
+	return units.crew_name(c)
 
 
 func _ff_name(ff: Firefighter) -> String:
-	return "%s %d조 %s" % [units.squads[ff.squad_id].name, units.get_crew(ff.crew_id).number, ff.name]
+	return units.ff_name(ff)
 
 
 # --- 호흡량·출구까지 필요 공기 (R9, 기획안 5-6) ---

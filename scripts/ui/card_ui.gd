@@ -315,7 +315,7 @@ static func speaker(p_sim: SimWorld, c: CardSystem.Card) -> Dictionary:
 	var halves: Dictionary = SpriteArt.config().get("portraits_half", {})
 	var kind := squad.type if squad else ""
 	return {
-		"name": "%s %d조 · %s %s" % [squad.name if squad else "", crew.number, ff.rank, ff.name],
+		"name": "%s · %s %s" % [p_sim.units.crew_name(crew), ff.rank, ff.name],
 		"where": "%s · 공기 %d%%" % [p_sim.building.floor_name(ff.level), roundi(air * 100.0)],
 		"portrait": str(portraits.get(kind, portraits.get("default", ""))),
 		"half": str(halves.get(kind, halves.get("default", ""))),

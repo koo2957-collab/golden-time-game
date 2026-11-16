@@ -52,7 +52,7 @@ static func award(sim: SimWorld, report: Dictionary, path := SAVE_PATH) -> Array
 	var good := str(report.get("grade", "D")) in ["S", "A", "B"]
 	var lines: Array = []
 	for c in sim.units.crews:
-		var crew_name := "%s %d조" % [sim.units.squads[c.squad_id].name, c.number]
+		var crew_name := sim.units.crew_name(c)
 		for ff in c.members():
 			if ff.incapacitated:
 				continue

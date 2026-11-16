@@ -166,4 +166,4 @@ func _outside_cell(o: Opening) -> Vector2i:
 
 func _crew_name(id: int) -> String:
 	var c := units.get_crew(id)
-	return "%s %d조" % [units.squads[c.squad_id].name, c.number] if c else "송풍기"
+	return units.crew_name(c) if c else "송풍기"

@@ -99,10 +99,10 @@ func receiver_of(cmd: RefCounted) -> String:
 		if c == null:
 			continue
 		if c.squad_id == squad:
-			names.append("%d조" % c.number)
+			names.append(units.crew_short(c))
 		else:
 			squad = c.squad_id
-			names.append("%s %d조" % [units.squads[c.squad_id].name, c.number])
+			names.append(units.crew_name(c))
 	return "·".join(names)
 
 

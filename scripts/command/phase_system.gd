@@ -124,7 +124,7 @@ func _report_knockdown(tick: int) -> void:
 		for c in [target, here]:
 			if c and c.ever_burned and not c.display_name() in rooms:
 				rooms.append(c.display_name())
-	var name := "%s %d조" % [units.squads[reporter.squad_id].name, reporter.number] if reporter else "현장 대원"
+	var name := units.crew_name(reporter) if reporter else "현장 대원"
 	var e := {"crew": name, "rooms": ", ".join(rooms) if not rooms.is_empty() else "화점", "crew_id": reporter.id if reporter else -1}
 	var h2 := water.hose_of_crew(reporter.id) if reporter else null
 	if h2:

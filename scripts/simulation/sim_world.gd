@@ -402,7 +402,7 @@ func _step_preassign(tick: int) -> void:
 						issue(MoveCommand.new(ids, Vector3i(near.x, near.y, lvl)))
 			"officer":
 				issue(CommandOrder.make("role", [id] as Array[int], SafetySystem.Role.OFFICER))
-		events.add(tick, "preassign_start", {"crew": "%s %d조" % [units.squads[c.squad_id].name, c.number], "task": kind})
+		events.add(tick, "preassign_start", {"crew": units.crew_name(c), "task": kind})
 
 
 ## 신고·상황실이 알려 준 발화층 (출동 지령 dispatch.fire_level → 신고된 첫 발화 지점 층 → 가장 뜨거운 구획 층)

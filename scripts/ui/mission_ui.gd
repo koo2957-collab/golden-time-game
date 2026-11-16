@@ -1,8 +1,8 @@
 class_name MissionUi
 extends Control
 ## 임무형 내부 지휘 화면 (기획안 9-1·9-2, R7c)
-##   - 우클릭 기본 임무 (2026-11-16, quick_assign): 조를 고른 채 방·외벽 층을 우클릭하면 분대 기본 임무 (진압대 화재진압·구조대 인명검색).
-##     곁의 문을 우클릭하면 문 행동. 방 임무 목록(open_room_menu)은 점검용으로 남아 있다.
+##   - 지시 창 (2026-11-16, open_order): 조를 고른 채 층을 우클릭하면 임무(분대 기본 임무가 골라져 있다) + 진입구 + 지시.
+##     임무는 층 단위 — 방 단위 지시는 없다. 곁의 문을 우클릭하면 문 행동. 방 임무 목록(open_room_menu)은 점검용으로 남아 있다.
 ##     조를 누를 때마다 뜨던 원형 메뉴는 없앴다 (2026-11-11 사용자 결정 — 명령은 명령 카드와 노란 표시로)
 ##   - 끌어다 놓기: 전술상황판의 팀 카드를 지도의 방·층에 놓으면 임무 창 → 임무(화점 진압·인명 검색) + 임무 조건
 ## 화면만 만든다. 명령은 order_issued로 내보내고 시뮬레이션이 실행한다 (다시 하기에 기록된다).
@@ -33,8 +33,16 @@ var _menu_buttons: Array[Button] = []
 ## 임무 창 (진입 지시 4단계): 받는 조들, 진입구, 기본 임무
 var _drop_crews: Array[int] = []
 var _drop_via := Vector3i(-1, -1, -1)
-## 외벽 층 우클릭: 방이 아니라 그 층 단위 임무 (quick_assign)
-var _force_floor := false
+## 지시 창 (층 우클릭): 임무·진입구를 고르고 '지시'. 화면 점검이 읽는 값 — 고른 임무, 층, 진입구 목록(가까운 순)과 고른 진입구
+const ORDER_KINDS := {"search": "인명검색", "attack": "화재진압"}
+const ORDER_KEYS := {"search": "Q", "attack": "W"}
+var order: PanelContainer
+var _order_box: VBoxContainer
+var _order_crews: Array[int] = []
+var order_level := 0
+var order_kind := ""
+var order_entries: Array[int] = []
+var order_entry := -1
 var _default_kind := ""
 var _kind_buttons: Dictionary = {}
 ## 명령 카드 (Hud와 같은 것)와 칸 누르기 (World._press_card)
@@ -68,6 +76,7 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_to_cell: Callabl
 	_ghost.visible = false
 	add_child(_ghost)
 	_build_menu()
+	_build_order()
 	# 팀장 둥근 버튼 (분대 편성)
 	radial = RadialMenu.new()
 	add_child(radial)
@@ -80,11 +89,12 @@ func _process(_delta: float) -> void:
 
 
 func is_open() -> bool:
-	return menu.visible or panel.visible or radial.visible
+	return menu.visible or panel.visible or radial.visible or order.visible
 
 
 func close_all() -> void:
 	close_menu()
+	close_order()
 	radial.close()
 	panel.visible = false
 	end_drag()
@@ -194,21 +204,196 @@ func open_room_menu(crew_ids: Array[int], target: Vector3i, via: Vector3i, scree
 		assign(id))
 
 
-## 우클릭 기본 임무 (2026-11-16): 목록 없이 바로 지시. 조건은 그 조가 쓰던 것(없으면 직전 값) 그대로.
-## 본 적 없는 방이면 층 단위, 외벽 층 우클릭은 by_floor로 층 단위
-func quick_assign(crew_ids: Array[int], target: Vector3i, via: Vector3i, kind: String, by_floor := false) -> void:
-	if crew_ids.is_empty():
+# --- 지시 창 (2026-11-16 사용자 결정): 분대를 고른 채 층을 우클릭 → 임무 + 진입구 + 지시. 임무를 주는 길은 이것 하나 ---
+
+## 층을 우클릭했다: 임무(분대 종류의 기본 임무가 골라져 있다)와 진입구(가는 중인 문, 없으면 가까운 문)를 보이고
+## Enter·'지시'로 보낸다. 건물 안 분대만이면 진입구 줄은 없다 (무전으로 지시)
+func open_order(crew_ids: Array[int], level: int, screen_pos: Vector2) -> void:
+	if crew_ids.is_empty() or not sim.building.has_level(level):
 		return
-	_drop_crews = crew_ids.duplicate()
-	_drop_crew = crew_ids[0]
-	_drop_target = target
-	_drop_via = via
-	_force_floor = by_floor
-	var cur: Dictionary = sim.tactical.conditions.get(crew_ids[0], _last)
-	for k: String in _opts:
-		_select_key(_opts[k], _groups[k], str(cur.get(k, _last[k])))
-	assign(kind)
-	_force_floor = false
+	close_all()
+	_order_crews = crew_ids.duplicate()
+	order_level = level
+	order_kind = selection.default_kind(crew_ids[0])
+	if order_kind == "":
+		order_kind = "search"
+	# 진입구: 밖에 있는 분대가 있을 때만. 가까운 순 (첫 밖의 분대 기준)
+	order_entries.clear()
+	order_entry = -1
+	var outside := -1
+	for id in crew_ids:
+		if outside < 0 and not sim.command.interior.crew_inside(id):
+			outside = id
+	if outside >= 0 and sim.entries:
+		var from: Vector2 = sim.units.get_crew(outside).leader.pos
+		var list: Array = sim.entries.list.duplicate()
+		list.sort_custom(func(a: EntryPoints.Entry, b: EntryPoints.Entry) -> bool:
+			return from.distance_to(Vector2(a.outside.x, a.outside.y)) < from.distance_to(Vector2(b.outside.x, b.outside.y)))
+		for e: EntryPoints.Entry in list:
+			order_entries.append(e.index)
+		var going: EntryPoints.Entry = selection.entry_for(outside)
+		order_entry = going.index if going else (order_entries[0] if not order_entries.is_empty() else -1)
+	_rebuild_order()
+	order.size = Vector2.ZERO
+	order.reset_size()
+	var area := get_viewport_rect().size
+	var at := screen_pos if screen_pos.x >= 0.0 else area * 0.5 - order.size * 0.5
+	order.position = Vector2(clampf(at.x + 14.0, 8.0, area.x - order.size.x - 8.0), clampf(at.y + 14.0, 8.0, area.y - order.size.y - 100.0))
+	order.visible = true
+
+
+## 지시 창에서 임무를 바꾼다 ("search"·"attack")
+func pick_order_kind(kind: String) -> void:
+	if not order.visible or not kind in ORDER_KINDS:
+		return
+	order_kind = kind
+	_rebuild_order()
+
+
+## 지시 창에서 진입구를 바꾼다 (EntryPoints 목록 index)
+func pick_order_entry(entry_index: int) -> void:
+	if not order.visible or not entry_index in order_entries:
+		return
+	order_entry = entry_index
+	_rebuild_order()
+
+
+## '지시': 그 층 단위 임무를 내린다. 초진 뒤 그 층에 보이는 불이 없으면 화재진압은 잔불정리가 된다
+func confirm_order() -> void:
+	if not order.visible or _order_crews.is_empty():
+		return
+	var crews := _order_crews.duplicate()
+	var lv := order_level
+	var names: PackedStringArray = []
+	for id in crews:
+		names.append(_crew_name(id))
+	var via := Vector3i(-1, -1, -1)
+	var via_name := ""
+	if order_entry >= 0 and order_entry < sim.entries.list.size():
+		var e: EntryPoints.Entry = sim.entries.list[order_entry]
+		via = e.outside
+		via_name = e.name
+	close_order()
+	var embers := selection.overhaul_target(lv) if order_kind == "attack" else Vector3i(-1, -1, -1)
+	if embers.x >= 0:
+		order_issued.emit(EquipmentCommand.make("overhaul", crews, -1, -1, embers))
+		notice.emit("%s, %s 잔불정리 — 초진 뒤 불이 보이지 않아 열화상으로 불씨를 찾아 정리" % [" · ".join(names), sim.building.floor_name(lv)])
+		return
+	var fp := sim.building.footprint(lv)
+	var mid := Vector2i(fp.get_center())
+	var cmd := TacticalCommand.make(order_kind + "_floor", crews, Vector3i(mid.x, mid.y, lv), via)
+	order_issued.emit(cmd)
+	notice.emit("%s, %s%s" % [" · ".join(names), "%s로 진입 — " % via_name if via_name != "" else "", sim.command.interior.order_text(cmd)])
+
+
+func close_order() -> void:
+	if order:
+		order.visible = false
+	_order_crews.clear()
+
+
+## 지시 창 내용을 다시 그린다 (임무·진입구 단추의 고른 표시)
+func _rebuild_order() -> void:
+	for ch in _order_box.get_children():
+		ch.queue_free()
+		_order_box.remove_child(ch)
+	var names: PackedStringArray = []
+	for id in _order_crews:
+		names.append(_crew_name(id))
+	var title := Label.new()
+	title.text = "%s → %s" % [" · ".join(names), sim.building.floor_name(order_level)]
+	title.add_theme_font_size_override("font_size", 17)
+	title.add_theme_color_override("font_color", Color("fde68a"))
+	_order_box.add_child(title)
+	_order_box.add_child(_order_caption("임무"))
+	var kinds := HBoxContainer.new()
+	kinds.add_theme_constant_override("separation", 6)
+	for k: String in ORDER_KINDS:
+		var b := _order_button("%s  %s" % [ORDER_KEYS[k], ORDER_KINDS[k]], k == order_kind)
+		b.custom_minimum_size = Vector2(150, 36)
+		# 단추가 자기 신호 안에서 지워지지 않게 다음 프레임에 다시 그린다
+		b.pressed.connect(func() -> void: pick_order_kind.call_deferred(k))
+		kinds.add_child(b)
+	_order_box.add_child(kinds)
+	if order_entries.is_empty():
+		_order_box.add_child(_order_caption("건물 안 분대 — 무전으로 지시합니다"))
+	else:
+		_order_box.add_child(_order_caption("진입구 (문 앞에서 진입 허가를 묻습니다)"))
+		for n in order_entries.size():
+			var e: EntryPoints.Entry = sim.entries.list[order_entries[n]]
+			var parts: PackedStringArray = [e.name]
+			var side := sim.entries.side(e)
+			if side != "":
+				parts.append(side)
+			var smoke := sim.entries.smoke_text(e)
+			if smoke != "":
+				parts.append(smoke)
+			var b := _order_button("%d  %s" % [n + 1, " · ".join(parts)], e.index == order_entry)
+			b.custom_minimum_size = Vector2(306, 34)
+			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			var ei := e.index
+			b.pressed.connect(func() -> void: pick_order_entry.call_deferred(ei))
+			_order_box.add_child(b)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_END
+	row.add_theme_constant_override("separation", 6)
+	var cancel := Button.new()
+	cancel.text = "취소 (Esc)"
+	cancel.focus_mode = Control.FOCUS_NONE
+	cancel.pressed.connect(close_order)
+	row.add_child(cancel)
+	var go := Button.new()
+	go.text = "지시 (Enter)"
+	go.focus_mode = Control.FOCUS_NONE
+	go.custom_minimum_size = Vector2(130, 38)
+	go.add_theme_color_override("font_color", Color("fde68a"))
+	go.pressed.connect(confirm_order)
+	row.add_child(go)
+	_order_box.add_child(row)
+	order.size = Vector2.ZERO
+	order.reset_size()
+
+
+func _order_caption(text: String) -> Label:
+	var lab := Label.new()
+	lab.text = text
+	lab.add_theme_font_size_override("font_size", 13)
+	lab.add_theme_color_override("font_color", Color("94a3b8"))
+	return lab
+
+
+## 고른 것은 노란 테두리·밝은 글씨 (라디오 단추처럼 하나만)
+func _order_button(text: String, on: bool) -> Button:
+	var b := Button.new()
+	b.text = ("● " if on else "○ ") + text
+	b.focus_mode = Control.FOCUS_NONE
+	if on:
+		var style := StyleBoxFlat.new()
+		style.bg_color = Color(0.98, 0.75, 0.14, 0.22)
+		style.border_color = Color("fbbf24")
+		style.set_border_width_all(2)
+		style.set_corner_radius_all(6)
+		style.set_content_margin_all(6)
+		for state in ["normal", "hover", "pressed"]:
+			b.add_theme_stylebox_override(state, style)
+		b.add_theme_color_override("font_color", Color("fde68a"))
+	return b
+
+
+func _build_order() -> void:
+	order = PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.04, 0.07, 0.12, 0.96)
+	style.border_color = Color("fbbf24")
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(12)
+	order.add_theme_stylebox_override("panel", style)
+	order.visible = false
+	_order_box = VBoxContainer.new()
+	_order_box.add_theme_constant_override("separation", 6)
+	order.add_child(_order_box)
+	add_child(order)
 
 
 ## 문 행동 (건물 안 조가 2칸 안의 문을 누름): 가스 확인 후 개방·문 옆 벽에서 개방·파괴 후 개방·문 닫고 대기 (P4-2)
@@ -272,6 +457,9 @@ func close_menu() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if order != null and order.visible:
+		_order_input(event)
+		return
 	if menu == null or not menu.visible:
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -286,6 +474,30 @@ func _input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton and event.pressed and not menu.get_global_rect().has_point(event.position):
 		close_menu()
+
+
+## 지시 창이 떠 있는 동안: Enter 지시 · Esc 취소 · 1~9 진입구 · Q/W 임무. 창 밖을 누르면 닫힌다 (그 클릭은 지도로 넘어간다)
+func _order_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		var handled := true
+		if event.keycode == KEY_ESCAPE:
+			close_order()
+		elif event.keycode in [KEY_ENTER, KEY_KP_ENTER]:
+			confirm_order()
+		elif event.keycode == KEY_Q:
+			pick_order_kind("search")
+		elif event.keycode == KEY_W:
+			pick_order_kind("attack")
+		elif event.keycode >= KEY_1 and event.keycode <= KEY_9:
+			var n: int = event.keycode - KEY_1
+			if n < order_entries.size():
+				pick_order_entry(order_entries[n])
+		else:
+			handled = false
+		if handled:
+			get_viewport().set_input_as_handled()
+	elif event is InputEventMouseButton and event.pressed and not order.get_global_rect().has_point(event.position):
+		close_order()
 
 
 func _build_menu() -> void:
@@ -434,8 +646,6 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 
 func _by_floor() -> bool:
-	if _force_floor:
-		return true
 	return sim.command.interior.enabled and not sim.command.interior.room_known(_drop_target)
 
 

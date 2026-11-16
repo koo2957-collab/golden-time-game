@@ -6,6 +6,8 @@ extends Control
 ## 층 칸 클릭 = 그 층 단면, 외부 띠 클릭 = 외부 보기(건물 외관), 막대 위 휠 = 한 칸씩. 불·연기는 본 것만 (정보 안개 규칙).
 
 signal floor_pressed(level: int, exterior: bool)
+## 층 칸을 우클릭했다 (화면 좌표) — 분대를 골랐으면 그 층 임무 지시 창이 뜬다
+signal floor_ordered(level: int, screen_pos: Vector2)
 ## 휠: 한 칸 오르내림 (+1 위, -1 아래). 순서(외부 보기 포함)는 world가 정한다
 signal floor_step(direction: int)
 
@@ -138,6 +140,12 @@ func _gui_input(event: InputEvent) -> void:
 			if not it.is_empty() and it.kind != "gap":
 				floor_pressed.emit(int(it.level), it.kind == "ground")
 			accept_event()
+		MOUSE_BUTTON_RIGHT:
+			# 분대를 고른 채 층 칸 우클릭 → 그 층 임무 지시 창 (2026-11-16)
+			var it := _row_at(event.position)
+			if not it.is_empty() and it.kind == "floor":
+				floor_ordered.emit(int(it.level), get_global_rect().position + event.position)
+			accept_event()
 		MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN:
 			floor_step.emit(1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else -1)
 			accept_event()
@@ -159,7 +167,7 @@ func _get_tooltip(at_position: Vector2) -> String:
 	elif smoke.has(lv):
 		parts.append("짙은 연기 확인")
 	parts.append("대원 %d명" % int(crews.get(lv, 0)))
-	return " · ".join(parts) + "\n클릭: 이 층 보기 · 휠: 한 층씩 오르내림 (PgUp·PgDn)"
+	return " · ".join(parts) + "\n클릭: 이 층 보기 · 우클릭: 고른 분대에게 이 층 임무 · 휠: 한 층씩 오르내림 (PgUp·PgDn)"
 
 
 func _draw() -> void:

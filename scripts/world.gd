@@ -121,8 +121,9 @@ func _ready() -> void:
 	selection.mission_target.connect(mission_ui.open_mission)
 	selection.door_menu.connect(mission_ui.open_door_menu)
 	selection.squad_menu.connect(mission_ui.open_squad_menu)
-	# 좌클릭 = 보기·고르기, 우클릭 = 지시 (2026-11-16 사용자 결정): 방·외벽 층 우클릭 = 분대 기본 임무
-	selection.quick_mission.connect(mission_ui.quick_assign)
+	# 좌클릭 = 보기·고르기, 우클릭 = 지시 (2026-11-16 사용자 결정): 층 우클릭 → 지시 창 (임무 + 진입구 + 지시)
+	selection.floor_order.connect(mission_ui.open_order)
+	hud.floor_bar.floor_ordered.connect(func(lv: int, pos: Vector2) -> void: selection.order_floor(lv, pos))
 	selection.guide_view.connect(func(lv: int, ext: bool) -> void: set_view_level(lv, ext))
 	selection.shell_picker = func(world_pos: Vector2) -> int:
 		if view_mode != ViewMode.ISO or not exterior_view:

@@ -5,8 +5,9 @@ extends Node2D
 ##   빈 곳: 외부 보기의 외벽 층 → 그 층 내부 보기, 내부 화면의 바깥 땅 → 외부 보기, 함께 보이는 다른 층 → 그 층. 대원은 움직이지 않는다
 ##   마우스를 올리면 누를 수 있는 곳(외벽 층·다른 층·바깥 땅)이 노랗게 (고른 것이 없어도)
 ## - 우클릭 (분대를 고른 채): 누른 곳에 따라
-##     방 → 분대 기본 임무 (진압대 화재진압, 구조대 인명검색 — data/commands.json default_mission). 밖의 분대는 가까운 진입구로 가서 진입 허가를 묻는다
-##     외부 보기의 외벽 층 → 그 층 단위 기본 임무 / 노란 진입구 → 그 문으로 / 바깥 땅 → 분대 이동 (밖의 분대만)
+##     층 (외벽 층·내부 화면의 그 층 아무 곳·층 막대) → 지시 창: 임무(분대 종류의 기본 임무가 골라져 있다 — data/commands.json default_mission)
+##       + 진입구(가까운 문이 골라져 있다) + 지시. 방 단위 지시는 없다 (2026-11-16 사용자 결정)
+##     노란 진입구 → 그 문 앞으로 / 바깥 땅 → 분대 이동 (밖의 분대만)
 ##     계단을 묻는 조 → 노란 계단 / 건물 안 조 곁의 문 → 문 행동 / 대상(펌프차·방수구·밸브·창·요구조자·환자) → 그 작업
 ## - 우클릭 (지휘관을 고른 채): 지휘관 이동. 아무것도 안 골랐으면 우클릭은 아무 일도 하지 않는다 (알림만)
 ## - 우클릭(차량): 이동, 소화전 점령(소화전 우클릭), 급수(물탱크차로 펌프차 우클릭)
@@ -22,8 +23,8 @@ enum Mode { NONE, ATTACK, SEARCH_AUTO, EXTERIOR, TREAT, TRANSPORT, WAYPOINT, MON
 signal witness_clicked(index: int)
 ## 화면 알림 요청 (HUD가 띄운다)
 signal notice(text: String)
-## 분대를 고른 채 방·외벽 층을 우클릭 → 기본 임무를 바로 지시 (by_floor = 층 단위)
-signal quick_mission(crew_ids: Array[int], target: Vector3i, via: Vector3i, kind: String, by_floor: bool)
+## 분대를 고른 채 층을 우클릭 (외벽 층·내부 화면의 그 층 아무 곳·층 막대) → 지시 창 (임무 + 진입구)
+signal floor_order(crew_ids: Array[int], level: int, screen_pos: Vector2)
 ## 빈 곳 좌클릭으로 보기를 바꾼다 (외벽 층 → 그 층 내부, 바깥 땅 → 외부 보기)
 signal guide_view(level: int, exterior: bool)
 ## 내부 화면에서 함께 보이는 다른 층의 빈 곳을 눌렀다 — 그 층을 지금 층으로, 화면은 제자리 (R17)
@@ -434,7 +435,7 @@ func _issue_vehicle_click(world_pos: Vector2) -> void:
 
 ## 고른 분대 우클릭 (2026-11-16): 지시했으면 true, 시킬 일이 없는 곳이면 false
 ##   계단을 묻는 조 → 그 계단 / 밖의 분대 → 대상 작업·노란 진입구 / 건물 안 조 → 곁의 문 행동
-##   → 외벽 층(층 단위 기본 임무) → 방(기본 임무) → 바깥 땅(분대 이동, 밖의 분대만)
+##   → 층(외벽 층·내부 화면의 그 층 아무 곳): 지시 창 (임무 + 진입구) → 바깥 땅(분대 이동, 밖의 분대만)
 func _issue_crew_right_click(world_pos: Vector2, screen_pos := Vector2(-1, -1)) -> bool:
 	var cell_f := projection.to_cell(world_pos)
 	var cell := Vector2i(cell_f.floor())
@@ -448,10 +449,10 @@ func _issue_crew_right_click(world_pos: Vector2, screen_pos := Vector2(-1, -1)) 
 		return true
 	var band := int(shell_picker.call(world_pos)) if shell_picker.is_valid() else -99
 	if band != -99:
-		return _quick_mission(Vector3i(cell.x, cell.y, band), true)
-	var comp := sim.fire.compartment_at(level, cell.x, cell.y)
-	if comp and sim.command.interior.indoor(level, cell_f):
-		return _quick_mission(Vector3i(cell.x, cell.y, level), false)
+		return order_floor(band, screen_pos)
+	# 내부 화면: 그 층의 건물 안 어디를 눌러도 그 층 임무 (방 단위 지시는 없다 — 2026-11-16 사용자 결정)
+	if sim.command.interior.indoor(level, cell_f):
+		return order_floor(level, screen_pos)
 	# 바깥 땅 → 분대 이동 (보이는 곳은 직접. 건물 안 조는 임무·무전으로)
 	if all_out and level == sim.building.levels()[0] and sim.building.cell(level, cell.x, cell.y) in BuildingData.OUTDOOR:
 		var goal := sim.pathfinder.nearest_walkable(level, cell)
@@ -462,35 +463,52 @@ func _issue_crew_right_click(world_pos: Vector2, screen_pos := Vector2(-1, -1)) 
 	return false
 
 
-## 분대 기본 임무 (data/commands.json default_mission): 분대 종류마다 묶어 지시. 밖의 분대는 가까운 진입구로
-func _quick_mission(target: Vector3i, by_floor: bool) -> bool:
-	var groups: Dictionary = {}
+## 고른 분대에게 그 층 임무를 준다 → 지시 창 (임무 + 진입구 + 지시). 층 막대 우클릭도 이리로 온다.
+## 건물 안 임무가 없는 대원(구급대)만 골랐으면 알림만. 처리했으면 true
+func order_floor(lv: int, screen_pos := Vector2(-1, -1)) -> bool:
+	if sim == null or mode != Mode.NONE or commander_selected or selected.is_empty() or sim.view_only:
+		return false
+	var ids: Array[int] = []
 	for id in selected:
-		var kind := default_kind(id)
-		if kind == "":
-			continue
-		if not groups.has(kind):
-			groups[kind] = [] as Array[int]
-		(groups[kind] as Array[int]).append(id)
-	if groups.is_empty():
-		notice.emit("고른 대원은 건물 안 임무가 없습니다 (구급대·차량 운전원) — 명령 카드로 지시")
+		if default_kind(id) != "":
+			ids.append(id)
+	if ids.is_empty():
+		notice.emit("고른 대원은 건물 안 임무가 없습니다 (구급대) — 오른쪽 명령 칸으로 지시")
 		return true
-	var via := Vector3i(-1, -1, -1)
-	var out := _outside_crews()
-	if not out.is_empty():
-		var e := _approach_entry_for(out[0])
-		if e:
-			via = e.outside
-	for kind: String in groups:
-		var ids: Array[int] = groups[kind]
-		if kind == "attack" and not by_floor and _overhaul_room(target):
-			# 초진 뒤 불이 보이지 않는 방에 화재진압 → 잔불정리 (기획안 9-1)
-			sim.issue(EquipmentCommand.make("overhaul", ids, -1, -1, target))
-			notice.emit("초진 뒤 불이 보이지 않는 방 → 잔불정리 (열화상으로 불씨를 찾아 정리)")
-			continue
-		quick_mission.emit(ids, target, via, kind, by_floor)
-	_mark(Vector2(target.x, target.y) + Vector2(0.5, 0.5))
+	floor_order.emit(ids, lv, screen_pos)
 	return true
+
+
+## 초진 보고 뒤 그 층에 보이는 불이 없으면: 잔불정리할 방의 칸 (탄 자리가 가장 넓고 아직 잔불정리하지 않은 방).
+## 없으면 (-1, -1, -1) — 화재진압이 그 층에서 잔불정리로 바뀐다 (기획안 9-1)
+func overhaul_target(lv: int) -> Vector3i:
+	var none := Vector3i(-1, -1, -1)
+	if sim.phases.knockdown_tick < 0:
+		return none
+	var done := {}
+	for o: Dictionary in sim.rekindle.overhaul_order:
+		done[int(o.room)] = true
+	var grid := sim.fire.grid
+	var best := none
+	var best_n := 0
+	for room in sim.fire.comps:
+		if room.level != lv or done.has(room.index):
+			continue
+		var burnt := 0
+		var cell := Vector2i(-1, -1)
+		for c in room.cells:
+			if sim.perception.enabled and not sim.perception.is_seen(lv, c.x, c.y):
+				continue
+			var st := grid.state[grid.index(lv, c.x, c.y)]
+			if st == FuelGrid.State.BURNING:
+				return none
+			if st == FuelGrid.State.BURNT:
+				burnt += 1
+				cell = c
+		if burnt > best_n:
+			best_n = burnt
+			best = Vector3i(cell.x, cell.y, lv)
+	return best
 
 
 ## 그 조의 우클릭 기본 임무 ("attack"·"search", 없으면 "")
@@ -1120,9 +1138,9 @@ func _set_selection(ids: Array[int], vehicle_ids: Array[int] = [], with_commande
 		if with_commander:
 			hint = "우클릭: 지휘관 이동"
 		elif not selected.is_empty():
-			hint = "우클릭: 방·외벽 층 = %s · 진입구 = 그 문으로 · 땅 = 이동" % _kind_label(selected[0]) \
+			hint = "우클릭: 층(외벽·내부·층 막대) = 임무 지시 · 진입구 = 문 앞으로 · 땅 = 이동" \
 				if _outside_crews().size() == selected.size() \
-				else "우클릭: 방·외벽 층 = %s(무전) · 곁의 문 = 문 행동" % _kind_label(selected[0])
+				else "우클릭: 층(외벽·내부·층 막대) = 임무 지시(무전) · 곁의 문 = 문 행동"
 		EventBus.command_mode_changed.emit(hint)
 	EventBus.selection_changed.emit(selected.duplicate())
 	EventBus.vehicle_selection_changed.emit(selected_vehicles.duplicate())
@@ -1239,16 +1257,6 @@ func _outside_crews() -> Array[int]:
 	return out
 
 
-## 우클릭 기본 임무 이름 (안내 문구용)
-func _kind_label(crew_id: int) -> String:
-	match default_kind(crew_id):
-		"attack":
-			return "화재진압"
-		"search":
-			return "인명검색"
-	return "임무 없음"
-
-
 ## 고른 조 중 계단을 묻고 있는 조 (첫 조)
 func _asking_crew() -> int:
 	for id in selected:
@@ -1280,15 +1288,14 @@ func _update_guide(mouse_world: Vector2, crew_under: int) -> void:
 			floor_lv = int(shell_picker.call(mouse_world))
 		if floor_lv == -99 and view_picker.is_valid():
 			view = view_picker.call(mouse_world)
-		if floor_lv == -99 and view.x == -99 and _guiding():
-			var comp := sim.fire.compartment_at(level, floori(cell.x), floori(cell.y))
-			if comp and sim.command.interior.indoor(level, cell):
-				room = comp.index
+		# 분대를 고른 채 지금 층의 건물 안: 우클릭하면 그 층 임무 지시 (방 단위는 없다)
+		if floor_lv == -99 and view.x == -99 and _guiding() and sim.command.interior.indoor(level, cell):
+			room = level
 	var text := ""
 	if floor_lv != -99:
 		text = "%s — 클릭: 내부 보기" % sim.building.floor_name(floor_lv)
 		if _guiding():
-			text += " · 우클릭: %s %s" % [sim.building.floor_name(floor_lv), _kind_label(selected[0])]
+			text += " · 우클릭: %s 임무 지시" % sim.building.floor_name(floor_lv)
 	if shell_hover.is_valid() and (floor_lv != _g_floor or text != _g_text):
 		shell_hover.call(floor_lv, text)
 	if entry != _g_entry or floor_lv != _g_floor or room != _g_room or stair != _g_stair or view != _g_view or text != _g_text:
@@ -1332,7 +1339,7 @@ func _stair_near(lv: int, cell: Vector2, options: Array) -> int:
 
 
 ## 밖의 조가 쓸 진입구: 가고 있는 진입구, 없으면 가장 가까운 진입구
-func _approach_entry_for(crew_id: int) -> EntryPoints.Entry:
+func entry_for(crew_id: int) -> EntryPoints.Entry:
 	var ei := int(sim.command.approach.get(crew_id, -1))
 	if ei >= 0 and ei < sim.entries.list.size():
 		return sim.entries.list[ei]
@@ -1359,7 +1366,7 @@ func _watch_guide_events() -> void:
 		if not e.type in ["floor_ask", "stair_ask"] or sim.view_only or mode != Mode.NONE:
 			continue
 		if e.type == "floor_ask":
-			EventBus.command_mode_changed.emit("진입 허가 — %s: 분대를 고르고 올라갈 층의 외벽(외부 보기)이나 방을 우클릭" % e.squad)
+			EventBus.command_mode_changed.emit("진입 허가 — %s: 분대를 고르고 맡길 층을 우클릭 (외벽·내부 화면·층 막대)" % e.squad)
 		else:
 			EventBus.command_mode_changed.emit("%s: 어느 계단으로? — %s (분대를 고르고 그 층에서 노란 계단을 우클릭)" % [e.crew, e.options])
 
@@ -1407,15 +1414,15 @@ func _draw_guide() -> void:
 				var waiting := _waiting_at(e)
 				var tip := "%s%s%s" % [sim.entries.smoke_text(e), " · " + side if side != "" else "", " · 대기: " + waiting if waiting != "" else ""]
 				draw_string(font, p + Vector2(-110, 28) / z, tip, HORIZONTAL_ALIGNMENT_CENTER, 220.0 / z, maxi(8, roundi(13.0 / z)), gold.lightened(0.4))
-	# 마우스 아래 방
-	if _g_room >= 0:
-		var comp: Compartment = sim.fire.comps[_g_room]
-		if comp.level == level:
-			_draw_cells_outline(comp.cells, Color(gold, 0.95), 3.0 / z, 0.12)
-			var known := sim.command.interior.room_known(Vector3i(comp.cells[0].x, comp.cells[0].y, comp.level))
-			var label := (comp.display_name() if known else "%s (층 단위)" % sim.building.floor_name(comp.level)) + " — 우클릭: " + _kind_label(selected[0])
-			var p := projection.to_screen(Vector2(comp.rect.get_center()), 1.2)
-			draw_string(font, p + Vector2(-140, 0) / z, label, HORIZONTAL_ALIGNMENT_CENTER, 280.0 / z, maxi(8, roundi(14.0 / z)), Color.WHITE)
+	# 마우스 아래가 지금 층의 건물 안: 그 층 바닥 테두리 + '우클릭: 임무 지시' (방 단위는 없다)
+	if _g_room >= 0 and _g_room == level:
+		var fp := Rect2(sim.building.footprint(level))
+		var pts := PackedVector2Array()
+		for c: Vector2 in [fp.position, Vector2(fp.end.x, fp.position.y), fp.end, Vector2(fp.position.x, fp.end.y), fp.position]:
+			pts.append(projection.to_screen(c, 0.05))
+		draw_polyline(pts, Color(gold, 0.6 + 0.35 * pulse), 3.0 / z)
+		var mouse := _to_world(get_viewport().get_mouse_position())
+		draw_string(font, mouse + Vector2(16, -10) / z, "%s — 우클릭: 임무 지시" % sim.building.floor_name(level), HORIZONTAL_ALIGNMENT_LEFT, -1, maxi(8, roundi(15.0 / z)), Color(gold.lightened(0.3), 0.95))
 
 
 ## 볼 곳 (좌클릭): 내부 화면에서 함께 보이는 다른 층 → 그 층 바닥 테두리, 바깥 땅 → 마우스 곁에 '외부 보기'

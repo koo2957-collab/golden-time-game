@@ -314,19 +314,22 @@ func _run() -> void:
 	# 목표 칸이 하단 콘솔·카드 뒤에 가리지 않게 화면 가운데로
 	world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(Vector2(13.5, 15.5)))
 	await process_frame
-	# 방 좌클릭은 지시가 아니다 · 방 우클릭 → 분대 기본 임무 (진압대 = 화재진압, 2026-11-16)
+	# 층 우클릭 → 지시 창 (임무 + 진입구) → Enter로 지시. 진압대는 화재진압이 골라져 있다 (2026-11-16)
 	var n_iss := sim.issued.size()
 	var mui0 = world.mission_ui
 	_click(Vector2(13.5, 15.5), MOUSE_BUTTON_RIGHT)
 	await process_frame
+	_check("조를 고른 채 층 우클릭 → 지시 창 (화재진압이 골라져 있다)", [mui0.order.visible, mui0.order_kind, mui0.order_level], [true, "attack", 1])
+	_key(KEY_ENTER)
+	await process_frame
 	var tac = sim.issued.slice(n_iss).filter(func(x): return x.command is TacticalCommand)
-	_check("조를 고른 채 방 우클릭 → 화재진압 바로 지시 (목록 없음)", [str(tac[0].command.action).begins_with("attack") if not tac.is_empty() else false,
-		tac[0].command.crew_ids if not tac.is_empty() else [], mui0.menu.visible], [true, [0, 1], false])
+	_check("Enter → 1층 화재진압 지시, 창 닫힘", [str(tac[0].command.action) if not tac.is_empty() else "",
+		tac[0].command.crew_ids if not tac.is_empty() else [], mui0.order.visible], ["attack_floor", [0, 1], false])
 	# 이 아래 점검은 예전처럼 인명검색으로 움직인 상태를 쓴다
 	if not tac.is_empty():
 		for id in [0, 1]:
 			sim.tactical.cancel(id)
-		sim.issue(TacticalCommand.make("search", [0, 1] as Array[int], tac[0].command.target, tac[0].command.via))
+		sim.issue(TacticalCommand.make("search_floor", [0, 1] as Array[int], tac[0].command.target, tac[0].command.via))
 	sim.step_ticks(700)
 
 	# 차량·수관·방수 (상황판) — 펌프차가 콘솔 뒤에 가리지 않게 화면 가운데로

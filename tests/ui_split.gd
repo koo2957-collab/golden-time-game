@@ -166,11 +166,14 @@ func _run() -> void:
 	for i in 5:
 		await process_frame
 	_check("1층의 조를 누름 → 그 조 선택, 층은 그대로", [world.view_level, sel.selected], [top, [0] as Array[int]])
-	# 1층의 조를 고른 채 2층의 방을 우클릭 → 그 방 기본 임무 (화면 그대로)
+	# 1층의 조를 고른 채 2층을 우클릭 → 2층 임무 지시 창 (화면 그대로)
 	var n0 := sim.issued.size()
 	_click(root.get_canvas_transform() * proj.to_screen(Vector2(rc) + Vector2(0.5, 0.5)), MOUSE_BUTTON_RIGHT)
 	for i in 3:
 		await process_frame
+	# 층 우클릭 → 지시 창 (임무 + 진입구) → 지시
+	_check("2층 우클릭 → 2층 지시 창", [world.mission_ui.order.visible, world.mission_ui.order_level], [true, top])
+	world.mission_ui.confirm_order()
 	var tac: Array = []
 	for i in range(n0, sim.issued.size()):
 		if sim.issued[i].command is TacticalCommand:

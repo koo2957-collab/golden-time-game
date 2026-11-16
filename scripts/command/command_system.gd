@@ -29,6 +29,8 @@ const AUTO_SLOW_TYPES: Array[String] = [
 const REPORT_PRIORITY := {
 	"air_alarm": Radio.Priority.SAFETY,
 	"heat_retreat": Radio.Priority.SAFETY,
+	"heat_stress_retreat": Radio.Priority.SAFETY,
+	"heat_stress_high": Radio.Priority.SAFETY,
 	"rollover_sign": Radio.Priority.SAFETY,
 	"backdraft_sign": Radio.Priority.SAFETY,
 	"backdraft": Radio.Priority.SAFETY,

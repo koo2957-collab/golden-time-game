@@ -82,6 +82,37 @@ func test_heat_blocks_approach_to_fully_developed_room() -> void:
 	assert_true(not sim.events.of_type("heat_blocked").is_empty() or not sim.events.of_type("heat_retreat").is_empty(), "열기 접근 제한 사건")
 
 
+## 열 스트레스가 쌓인 임무 없는 분대는 복사열이 일상 수준 아래인 곳으로 물러나 식힌다 (2026-11-17 —
+## 불이 다시 커지는 동안 위험 상한 바로 아래로만 조금씩 물러나다 쓰러졌다)
+func test_heat_stressed_idle_crew_backs_off_to_cool_spot() -> void:
+	var sim := _sim()
+	sim.fire.opening_at(Vector3i(31, 12, 1)).is_open = true
+	sim.doors.sync_blocking()
+	sim.step_ticks(8 * 600)
+	var cond := sim.conditions
+	var routine: float = 1.7
+	# 따뜻하지만(일상 수준 위) 위험 상한의 0.6 아래인 칸
+	var warm := Vector2i(-1, -1)
+	for y in sim.building.height:
+		for x in sim.building.width:
+			if warm.x < 0 and sim.pathfinder.passable(1, x, y):
+				var q := cond.heat_at(1, Vector2i(x, y), false)
+				if q > routine * 1.5 and q < cond.hazard_kw_m2() * 0.5:
+					warm = Vector2i(x, y)
+	assert_true(warm.x >= 0, "따뜻한 칸이 있다")
+	var c := _place(sim, 0, Vector2(warm) + Vector2(0.5, 0.5))
+	c.partner.pos = c.leader.pos
+	c.partner.prev_pos = c.partner.pos
+	for ff in c.list:
+		ff.path.clear()
+	c.leader.heat_stress = 0.55
+	sim.step_ticks(2)
+	assert_eq(sim.events.of_type("heat_stress_retreat").size(), 1, "열 스트레스 — 식힐 곳으로 물러남 보고")
+	assert_true(not c.leader.path.is_empty(), "물러나는 중")
+	var goal: Vector3i = c.leader.path.back()
+	assert_true(cond.heat_at(1, Vector2i(goal.x, goal.y), true) <= routine, "간 곳은 스트레스가 쌓이지 않는 곳 (%.1f kW/㎡)" % cond.heat_at(1, Vector2i(goal.x, goal.y), true))
+
+
 func test_crouch_in_smoke_slows_movement() -> void:
 	var sim := _sim()
 	sim.step_ticks(4 * 600)

@@ -52,6 +52,10 @@ static func describe_text(e: Dictionary) -> String:
 			text = "열기가 강해 더 접근할 수 없음 — %s" % e.crew
 		"heat_retreat":
 			text = "열기로 후퇴 — %s" % e.crew
+		"heat_stress_retreat":
+			text = "열 스트레스 높음 — 식힐 곳으로 물러남 — %s" % e.crew
+		"heat_stress_high":
+			text = "열 스트레스 높음 — 교대·후퇴 필요 — %s" % e.crew
 		"air_alarm":
 			text = "공기호흡기 경보 (잔량 부족) — %s" % e.crew
 		"scba_swapped":

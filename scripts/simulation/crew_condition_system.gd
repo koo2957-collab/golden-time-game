@@ -55,6 +55,8 @@ var swap_scale := 1.0
 var _swap_range: float
 var _air_full := 0.0
 var _heat_event_tick: Dictionary = {}  # "종류:조" -> tick
+## 열 스트레스가 이만큼 쌓이면 임무 없는 분대는 식힐 곳으로 물러나고 보고한다 (임무 중이면 보고만)
+var _stress_retreat := 0.5
 
 
 func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, stats: ParamTable, p_events: SimEventLog) -> void:
@@ -81,6 +83,7 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, stats
 	_air_control = stats.value("air_control_factor")
 	_detour = stats.value("exit_detour_factor")
 	_cover_factor = stats.value("cover_heat_factor")
+	_stress_retreat = stats.value("heat_stress_retreat_ratio")
 	# (_cell_m은 위에서 읽었다)
 	_walk_cells = stats.value("walk_speed_mps") / _cell_m
 	_swap_s = stats.value("scba_swap_s")
@@ -140,16 +143,34 @@ func safe_to_enter(level: int, cell: Vector2i) -> bool:
 	return heat_at(level, cell, true) < _hazard
 
 
-## 이동 전: 다음 칸이 위험하면 멈추고, 지금 칸이 위험하면 물러난다.
+## 이동 전: 다음 칸이 위험하면 멈추고, 분대원 누구든 지금 칸이 위험하면 물러난다.
+## 열 스트레스가 쌓인 대원이 있으면: 임무 없는 분대는 식힐 곳으로 물러나고, 임무 중이면 보고만 한다 (2026-11-17 —
+## 불이 다시 커지는 동안 위험 상한 바로 아래로만 조금씩 물러나다 열 스트레스로 쓰러졌다)
 func before_move(tick: int) -> void:
 	for c in units.crews:
 		var leader := c.leader
 		if leader.incapacitated:
 			continue
 		var here := Vector2i(leader.pos.floor())
-		if heat_at(leader.level, here, leader.crouched) >= _hazard:
+		var hot := false
+		var warm := false
+		var stressed := false
+		for ff in c.list:
+			if ff.incapacitated:
+				continue
+			var q := heat_at(ff.level, Vector2i(ff.pos.floor()), ff.crouched)
+			hot = hot or q >= _hazard
+			warm = warm or q > _routine
+			stressed = stressed or ff.heat_stress >= _stress_retreat
+		if hot:
 			_retreat(c, tick)
 			continue
+		if stressed and warm:
+			var idle := activity_of.is_valid() and int(activity_of.call(leader)) == 0 and not leader.is_moving()
+			if idle:
+				_retreat(c, tick, "heat_stress_retreat")
+			else:
+				_heat_event(c, "heat_stress_high", tick)
 		if leader.path.is_empty():
 			continue
 		var wp := leader.path[0]
@@ -227,25 +248,36 @@ func _down(ff: Firefighter, reason: String, tick: int) -> void:
 
 
 ## 지금 칸이 위험하면 위험 상한의 60% 아래인 가장 가까운 칸으로 물러난다.
-func _retreat(c: Crew, tick: int) -> void:
+## 물러날 곳: 열 스트레스가 쌓이지 않는 곳(일상 복사열 아래)이 가까이 있으면 그리로, 없으면 위험 상한의 0.6 아래.
+## (전에는 0.6 아래 첫 칸으로만 물러나 스트레스가 계속 쌓였다)
+func _retreat(c: Crew, tick: int, event_type := "heat_retreat") -> void:
 	var leader := c.leader
 	var start := Vector2i(leader.pos.floor())
 	var queue: Array[Vector2i] = [start]
 	var seen := {start: true}
 	var head := 0
+	var fallback := Vector2i(-1, -1)
+	var target := Vector2i(-1, -1)
 	while head < queue.size() and head < RETREAT_SEARCH_LIMIT:
 		var p := queue[head]
 		head += 1
-		if heat_at(leader.level, p, true) < _hazard * 0.6:
-			if p != start:
-				units.order_move([c.id] as Array[int], Vector3i(p.x, p.y, leader.level), pathfinder)
-				_heat_event(c, "heat_retreat", tick)
-			return
+		var q := heat_at(leader.level, p, true)
+		if q <= _routine:
+			target = p
+			break
+		if fallback.x < 0 and q < _hazard * 0.6:
+			fallback = p
 		for d: Vector2i in [Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP]:
 			var n := p + d
 			if not seen.has(n) and pathfinder.passable(leader.level, n.x, n.y):
 				seen[n] = true
 				queue.append(n)
+	if target.x < 0:
+		target = fallback
+	if target.x < 0 or target == start:
+		return
+	units.order_move([c.id] as Array[int], Vector3i(target.x, target.y, leader.level), pathfinder)
+	_heat_event(c, event_type, tick)
 
 
 func _heat_event(c: Crew, type: String, tick: int) -> void:

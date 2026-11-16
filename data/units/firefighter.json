@@ -23,7 +23,8 @@
   "heat_routine_kw_m2": {"value": 1.7, "source": "공학식", "note": "방화복 착용 시 일상 활동 가능 복사열 (문헌값, 검수 필요)"},
   "heat_hazard_kw_m2": {"value": 10, "source": "공학식", "note": "이 복사열 이상이면 접근하지 못하고 물러난다 (문헌값, 검수 필요)"},
   "heat_stress_seconds_at_hazard": {"value": 240, "source": "추정", "note": "위험 상한(10kW/㎡)에 계속 노출되면 이 시간에 행동 불능"},
-  "heat_recovery_seconds": {"value": 600, "source": "추정", "note": "열 스트레스가 최대에서 0으로 회복되는 시간 (바깥·일상 구간)"},
+  "heat_stress_retreat_ratio": {"value": 0.5, "source": "게임 설정값", "note": "열 스트레스가 이만큼 쌓이면 임무 없는 분대는 복사열이 일상 수준 아래인 곳으로 물러나 식히고, 임무 중이면 무전으로 알린다 (2026-11-17)"},
+  "heat_recovery_seconds":{"value": 600, "source": "추정", "note": "열 스트레스가 최대에서 0으로 회복되는 시간 (바깥·일상 구간)"},
   "flame_radiant_fraction": {"value": 0.3, "source": "공학식", "note": "화염 열방출 중 복사로 나가는 비율"},
 
   "flashlight_bonus_m": {"value": 0.5, "source": "추정", "note": "짙은 연기 속 랜턴은 연기 입자에 빛이 반사되어 시야를 거의 늘리지 못한다"},

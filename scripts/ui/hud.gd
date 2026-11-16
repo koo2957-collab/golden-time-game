@@ -24,7 +24,7 @@ const NOTICE_TYPES: Array[String] = [
 	"hydrant_connected", "hydrant_disconnected", "supply_connected", "hose_laid", "hose_too_short",
 	"hose_limit", "tank_empty", "vehicle_locked", "vehicle_blocked", "spray_unreachable",
 	"door_opened", "door_closed", "door_forced", "door_cannot_close", "door_unreachable",
-	"heat_blocked", "heat_retreat", "air_alarm", "scba_swapped",
+	"heat_blocked", "heat_retreat", "heat_stress_retreat", "heat_stress_high", "air_alarm", "scba_swapped",
 	"victim_found", "victim_state", "victim_rescued", "victim_recovered", "ff_rescued", "rescue_pickup",
 	"rescue_hose_crew", "exit_blocked", "search_done", "rollover_sign", "backdraft_sign", "backdraft",
 	"fgi_warning", "window_vented", "entry_wait", "entry_rejected", "entry_denied", "zone_set", "zone_rejected", "zone_warning", "triage_post_set", "victim_handover", "rescue_no_point", "triage_tagged", "withdraw", "auto_slow",

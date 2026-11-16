@@ -28,8 +28,8 @@ var _radial_pos := Vector2.ZERO
 var _menu_buttons: Array[Button] = []
 ## 지시 창 (층 우클릭): 임무·진입구를 고르고 '지시'. 화면 점검이 읽는 값 — 고른 임무, 층, 진입구 목록(가까운 순)과 고른 진입구.
 ## 직하층 확인은 세대 배치가 있는 건물(공동주택)에서만 보인다
-const ORDER_KINDS := {"search": "인명검색", "attack": "화재진압", "check_below": "직하층 확인"}
-const ORDER_KEYS := {"search": "Q", "attack": "W", "check_below": "E"}
+const ORDER_KINDS := {"mixed": "분대별 기본 임무", "search": "인명검색", "attack": "화재진압", "check_below": "직하층 확인"}
+const ORDER_KEYS := {"mixed": "D", "search": "Q", "attack": "W", "check_below": "E"}
 var order: PanelContainer
 var _order_box: VBoxContainer
 var _order_crews: Array[int] = []
@@ -150,7 +150,8 @@ func open_order(crew_ids: Array[int], level: int, screen_pos: Vector2) -> void:
 	close_all()
 	_order_crews = crew_ids.duplicate()
 	order_level = level
-	order_kind = selection.default_kind(crew_ids[0])
+	# 종류가 다른 분대를 함께 골랐으면 분대마다 제 기본 임무 (진압대 화재진압·구조대 인명검색)
+	order_kind = "mixed" if _mixed_defaults(crew_ids) else selection.default_kind(crew_ids[0])
 	if order_kind == "":
 		order_kind = "search"
 	# 진입구: 밖에 있는 분대가 있을 때만. 가까운 순 (첫 밖의 분대 기준)
@@ -190,10 +191,20 @@ func pick_order_kind(kind: String) -> void:
 ## 지시 창에 보일 임무: 인명검색·화재진압, 세대 배치가 있는 건물에서 아래층이 있으면 직하층 확인 (SOP 202 4.4)
 func order_kinds() -> Array[String]:
 	var out: Array[String] = ["search", "attack"]
+	if _mixed_defaults(_order_crews):
+		out.push_front("mixed")
 	var layout := sim.tactical.layout
 	if layout != null and not layout.units.is_empty() and sim.building.has_level(order_level - 1):
 		out.append("check_below")
 	return out
+
+
+## 고른 분대의 기본 임무가 둘 이상인가 (진압대 + 구조대를 함께 고름)
+func _mixed_defaults(crew_ids: Array[int]) -> bool:
+	var kinds := {}
+	for id in crew_ids:
+		kinds[selection.default_kind(id)] = true
+	return kinds.size() > 1
 
 
 ## 직하층 확인의 기준 칸: 그 층에서 불이 났던 방(타고 있거나 탄 자리), 없으면 층 가운데 — 그 세대 바로 아래 세대를 본다
@@ -215,37 +226,55 @@ func pick_order_entry(entry_index: int) -> void:
 	_rebuild_order()
 
 
-## '지시': 그 층 단위 임무를 내린다. 초진 뒤 그 층에 보이는 불이 없으면 화재진압은 잔불정리가 된다
+## '지시': 그 층 단위 임무를 내린다. 초진 뒤 그 층에 보이는 불이 없으면 화재진압은 잔불정리가 된다.
+## '분대별 기본 임무'면 분대 종류마다 묶어 같은 진입구로 (진압대 화재진압·구조대 인명검색)
 func confirm_order() -> void:
 	if not order.visible or _order_crews.is_empty():
 		return
 	var crews := _order_crews.duplicate()
 	var lv := order_level
+	var entry := order_entry
+	var kind := order_kind
+	close_order()
+	if kind != "mixed":
+		_issue_order(kind, crews, lv, entry)
+		return
+	var groups := {}
+	for id in crews:
+		var k := selection.default_kind(id)
+		if not groups.has(k):
+			groups[k] = [] as Array[int]
+		(groups[k] as Array[int]).append(id)
+	for k: String in groups:
+		_issue_order(k, groups[k], lv, entry)
+
+
+## 한 종류의 임무를 내린다 (entry = 진입구 목록 index, -1 = 건물 안 분대)
+func _issue_order(kind: String, crews: Array[int], lv: int, entry: int) -> void:
 	var names: PackedStringArray = []
 	for id in crews:
 		names.append(_crew_name(id))
 	var via := Vector3i(-1, -1, -1)
 	var via_name := ""
-	if order_entry >= 0 and order_entry < sim.entries.list.size():
-		var e: EntryPoints.Entry = sim.entries.list[order_entry]
+	if entry >= 0 and entry < sim.entries.list.size():
+		var e: EntryPoints.Entry = sim.entries.list[entry]
 		via = e.outside
 		via_name = e.name
-	close_order()
-	var embers := selection.overhaul_target(lv) if order_kind == "attack" else Vector3i(-1, -1, -1)
+	var embers := selection.overhaul_target(lv) if kind == "attack" else Vector3i(-1, -1, -1)
 	if embers.x >= 0:
 		# 층 단위 잔불정리 (other = 1): 그 층의 탄 방을 차례로
 		order_issued.emit(EquipmentCommand.make("overhaul", crews, -1, 1, embers))
 		notice.emit("%s, %s 잔불정리 — 초진 뒤 불이 보이지 않아 탄 방을 차례로 열화상으로 확인·정리" % [" · ".join(names), sim.building.floor_name(lv)])
 		return
-	if order_kind == "check_below":
+	if kind == "check_below":
 		var below := TacticalCommand.make("check_below", crews, _below_target(lv), via)
 		order_issued.emit(below)
 		notice.emit("%s, %s%s" % [" · ".join(names), "%s로 진입 — " % via_name if via_name != "" else "", sim.command.interior.order_text(below)])
 		return
 	# 인명검색·화재진압: 그 층으로 가서(진입구 → 진입 허가, 계단이 갈리면 질문 카드) 닿으면 층 단위 임무 (2026-11-17)
-	order_issued.emit(CommandOrder.make("floor_mission", crews, lv, Vector3i.ZERO, {"kind": order_kind, "entry": order_entry}))
+	order_issued.emit(CommandOrder.make("floor_mission", crews, lv, Vector3i.ZERO, {"kind": kind, "entry": entry}))
 	var mid := Vector2i(sim.building.footprint(lv).get_center())
-	var text := sim.command.interior.order_text(TacticalCommand.make(order_kind + "_floor", crews, Vector3i(mid.x, mid.y, lv)))
+	var text := sim.command.interior.order_text(TacticalCommand.make(kind + "_floor", crews, Vector3i(mid.x, mid.y, lv)))
 	notice.emit("%s, %s%s" % [" · ".join(names), "%s로 진입 — " % via_name if via_name != "" else "", text])
 
 
@@ -273,7 +302,7 @@ func _rebuild_order() -> void:
 	kinds.add_theme_constant_override("separation", 6)
 	for k: String in order_kinds():
 		var b := _order_button("%s  %s" % [ORDER_KEYS[k], ORDER_KINDS[k]], k == order_kind)
-		b.custom_minimum_size = Vector2(130, 36)
+		b.custom_minimum_size = Vector2(200 if k == "mixed" else 130, 36)
 		# 단추가 자기 신호 안에서 지워지지 않게 다음 프레임에 다시 그린다
 		b.pressed.connect(func() -> void: pick_order_kind.call_deferred(k))
 		kinds.add_child(b)
@@ -435,6 +464,8 @@ func _order_input(event: InputEvent) -> void:
 			pick_order_kind("attack")
 		elif event.keycode == KEY_E:
 			pick_order_kind("check_below")
+		elif event.keycode == KEY_D:
+			pick_order_kind("mixed")
 		elif event.keycode >= KEY_1 and event.keycode <= KEY_9:
 			var n: int = event.keycode - KEY_1
 			if n < order_entries.size():

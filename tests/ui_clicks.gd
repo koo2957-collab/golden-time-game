@@ -230,6 +230,24 @@ func _run() -> void:
 	sel._right_click_at(proj.to_screen(Vector2(-40, -40)), Vector2(600, 300))
 	_check("분대 고른 채 지도 밖 우클릭 → 지시 없음 (지휘관도 그대로)", sim.issued.size() - n0, 0)
 
+	# 10-1) 진압대 + 구조대를 함께 골라 층 우클릭 → '분대별 기본 임무'가 골라져 있고, 지시하면 분대마다 제 임무
+	for k in crew.list.size():
+		crew.list[k].path.clear()
+	sim.tactical.tasks.clear()
+	var both: Array[int] = [crew.id, attack_crew.id]
+	sel._set_selection(both, [] as Array[int])
+	n0 = sim.issued.size()
+	sel.order_floor(up, Vector2(600, 300))
+	await process_frame
+	_check("진압대 + 구조대 → 분대별 기본 임무가 골라져 있다", [mui.order.visible, mui.order_kind], [true, "mixed"])
+	mui.confirm_order()
+	var fm := _issued_since(sim, n0).filter(func(c): return c is CommandOrder and c.action == "floor_mission")
+	var kinds := {}
+	for c in fm:
+		for id in c.squad_ids:
+			kinds[id] = str(c.answers.kind)
+	_check("구조대는 인명검색, 진압대는 화재진압", [kinds.get(crew.id, ""), kinds.get(attack_crew.id, "")], ["search", "attack"])
+
 	# 11) 층 막대에 올리면 노란 테두리
 	var fb = world.hud.floor_bar
 	var row: Dictionary = fb._rows.filter(func(it): return it.kind == "floor" and it.level == up)[0]

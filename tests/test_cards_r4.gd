@@ -105,3 +105,33 @@ func test_upper_attack_cards_and_rollover() -> void:
 	var c := _card(h, "ROLLOVER-01")
 	assert_true(c != null and c.urgency == "긴급", "롤오버 카드 (긴급)")
 	assert_true(c.crew_id >= 0, "가까운 조가 묻는다")
+
+
+## 밖에서 현관을 열고 있는 분대에게 롤오버 카드 '화점실 문을 닫고 냉각'(수관 없음)을 답해도 현관 개방이 끊기지 않는다
+## (2026-11-17 — 집 안쪽 문을 닫으러 가다 닿지 못하고 현관 작업까지 끊겨 '문을 열지 못함'으로 멈췄다)
+func test_rollover_close_door_keeps_outside_entry() -> void:
+	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)
+	sim.command.resources.clear_schedule()
+	var c := sim.units.get_crew(0)
+	sim.issue(TacticalCommand.make("attack", [0] as Array[int], Vector3i(12, 17, 1)))
+	var door_task := false
+	for i in 3000:
+		sim.step_ticks(1)
+		if sim.doors.task_of_crew(0) != null and not sim.command.interior.crew_inside(0):
+			door_task = true
+			break
+	assert_true(door_task, "밖에서 현관 개방 작업 중")
+	if not door_task:
+		return
+	sim.events.add(sim.clock.tick, "rollover_sign", {"room": sim.fire.compartment_at(1, 12, 17).display_name(), "crew": sim.units.crew_name(c), "crew_id": 0})
+	sim.step_ticks(2)
+	var card := _card(sim, "ROLLOVER-01")
+	if card:
+		for i in card.options.size():
+			if str(card.options[i].get("effect", "")) in ["close_room_door", "cool_and_close"]:
+				sim.cards.answer(card.uid, i, sim.clock.tick)
+				break
+	sim.step_ticks(20)
+	var failed := sim.events.of_type("tactical_halt").any(func(e: Dictionary) -> bool: return str(e.get("kind", "")) == "door_failed")
+	assert_true(not failed, "현관을 열지 못함으로 멈추지 않는다")
+	assert_true(sim.doors.task_of_crew(0) != null or sim.fire.opening_at(Vector3i(13, 20, 1)).is_open, "현관 개방을 이어 간다")

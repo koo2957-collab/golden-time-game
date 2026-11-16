@@ -1,7 +1,7 @@
 {
   "note": "대원 능력·한계 수치. source: 교재 = 소방전술 I, 공학식 = 화재공학 상관식·문헌, 추정 = 현장 검수 필요.",
   "walk_speed_mps": {"value": 1.2, "unit": "m/s", "source": "추정", "note": "개인보호장비 착용 상태의 일반 보행 속도"},
-  "line_gap_m": {"value": 1.0, "unit": "m", "source": "게임 설정값", "note": "분대가 줄지어 걷고 설 때 앞사람과의 간격 (2026-11-17: 0.5m는 대원 그림이 겹쳐 한 덩어리로 보였다)"},
+  "line_gap_m": {"value": 0.5, "unit": "m", "source": "게임 설정값", "note": "분대가 줄지어 걷고 설 때 앞사람과의 간격. 2026-11-17에 1m로 넓혀 보았으나 문 파괴·주수 방법 카드·짝 따라오기 등 짝이 바로 옆(한 칸)에 있다고 보는 규칙들의 시간이 어긋나 되돌림 — 겹쳐 보이는 문제는 그리는 쪽에서만 벌린다(남은 일)"},
   "crouch_speed_factor": {"value": 0.5, "source": "추정", "note": "연기층이 내려와 낮은 자세로 이동할 때의 속도 비율 (SOP 201-3.3)"},
   "eye_height_standing_m": {"value": 1.6, "source": "추정"},
   "eye_height_crouched_m": {"value": 0.9, "source": "추정"},

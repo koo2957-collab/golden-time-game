@@ -530,7 +530,9 @@ func _apply(effect: String, c: Card, tick: int) -> void:
 			if r:
 				if effect == "cool_and_close" and water.hose_of_crew(c.crew_id):
 					water.start_spray(c.crew_id, _cell(c.ctx.get("room_cell", [])), HoseLine.Pattern.FOG, tick)
-				else:
+				elif sim == null or sim.command.interior.crew_inside(c.crew_id):
+					# 화점실 문은 건물 안에서만 닫으러 간다 — 밖의 분대에게 보내면 닿지 못하고, 하던 현관 개방 작업까지 끊겨
+					# 임무가 '문을 열지 못함'으로 멈췄다 (2026-11-17)
 					var d := _door_of(r, crew)
 					if d:
 						doors.request(c.crew_id, Vector3i(d.cells[0].x, d.cells[0].y, d.level), false, tick)

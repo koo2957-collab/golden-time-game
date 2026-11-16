@@ -263,26 +263,119 @@ func squad_of_crew(crew_id: int) -> Squad:
 	return squads[c.squad_id] if c else null
 
 
-## 분대가 조 하나로 같이 움직이는가 (나누지 않은 분대)
+## 분대가 조 하나로 같이 움직이는가 (나누지 않은 분대 — 한 명 보내기로 나간 1인 조는 세지 않는다)
 func whole_squad(c: Crew) -> bool:
-	return squads[c.squad_id].crews.size() == 1
+	var n := 0
+	for x in squads[c.squad_id].crews:
+		if not x.solo:
+			n += 1
+	return n == 1
 
 
-## 조 이름 — 무전·기록·화면이 모두 이것을 쓴다: 나누지 않은 분대는 "진압2", 나뉜 조는 "진압1 1조"
+## 조 이름 — 무전·기록·화면이 모두 이것을 쓴다: 나누지 않은 분대는 "진압2", 나뉜 조는 "진압1 1조",
+## 한 명 보내기로 나간 대원은 "진압1 정우진 대원". 합쳐져 비어 있는 조는 합쳐진 조의 이름
 func crew_name(c: Crew) -> String:
-	if whole_squad(c):
-		return squads[c.squad_id].name
+	if c.list.is_empty() and c.merged_into != null:
+		return crew_name(c.merged_into)
+	if c.solo or whole_squad(c):
+		return ("%s %s" % [squads[c.squad_id].name, crew_short(c)]) if c.solo else squads[c.squad_id].name
 	return "%s %s" % [squads[c.squad_id].name, crew_short(c)]
 
 
-## 출동대 이름 없이: "1조" (나누지 않은 분대는 "분대")
+## 출동대 이름 없이: "1조" (나누지 않은 분대는 "분대", 나간 대원은 "정우진 대원")
 func crew_short(c: Crew) -> String:
+	if c.list.is_empty() and c.merged_into != null:
+		return crew_short(c.merged_into)
+	if c.solo:
+		return "%s 대원" % c.list[0].name
 	return "분대" if whole_squad(c) else "%d조" % c.number
 
 
-## 대원 이름: "진압1 1조 이준호"
+## 대원 이름: "진압1 1조 이준호" (나간 대원은 "진압1 정우진 대원")
 func ff_name(ff: Firefighter) -> String:
-	return "%s %s" % [crew_name(get_crew(ff.crew_id)), ff.name]
+	var c := get_crew(ff.crew_id)
+	if c.solo:
+		return crew_name(c)
+	return "%s %s" % [crew_name(c), ff.name]
+
+
+## 그 출동대에서 한 명 보내기로 나가 있는 1인 조 (없으면 null)
+func solo_of(squad: Squad) -> Crew:
+	for c in squad.crews:
+		if c.solo:
+			return c
+	return null
+
+
+## 그 출동대의 본대 조들 (나간 1인 조를 뺀 것)
+func main_crews(squad: Squad) -> Array[Crew]:
+	var out: Array[Crew] = []
+	for c in squad.crews:
+		if not c.solo:
+			out.append(c)
+	return out
+
+
+## 한 명 보내기에서 나갈 사람: 팀장·선두가 아닌 마지막 조원 (진압 = 관창보조2). 없으면 null
+func detach_candidate(from: Crew) -> Firefighter:
+	for k in range(from.list.size() - 1, 0, -1):
+		var ff: Firefighter = from.list[k]
+		if not ff.officer and not ff.incapacitated:
+			return ff
+	return null
+
+
+## 한 명 보내기: from 조에서 한 명을 떼어 1인 조를 만든다 → 그 1인 조 (보낼 사람이 없으면 null)
+func detach_member(squad: Squad, from: Crew) -> Crew:
+	var ff := detach_candidate(from)
+	if ff == null:
+		return null
+	var s: Crew = squad.solo_spare
+	if s == null:
+		s = Crew.new()
+		s.id = _crew_by_id.size()
+		_crew_by_id[s.id] = s
+		s.squad_id = squad.id
+		s.solo = true
+		s.number = 9
+	squad.solo_spare = null
+	s.merged_into = null
+	s.home_crew = from
+	s.home_index = from.list.find(ff)
+	var rest: Array[Firefighter] = from.list.duplicate()
+	rest.erase(ff)
+	from.list = rest
+	var one: Array[Firefighter] = [ff]
+	s.list = one
+	s.items.clear()
+	s.thermal_camera = false
+	ff.crew_id = s.id
+	ff.path.clear()
+	squad.crews.append(s)
+	crews.append(s)
+	return s
+
+
+## 복귀: 나간 대원이 원래 조의 제자리로 돌아간다. 들고 온 장비는 그 조의 것이 된다
+func attach_member(squad: Squad, s: Crew) -> bool:
+	if not s.solo or s.list.is_empty() or s.home_crew == null or s.home_crew.list.is_empty():
+		return false
+	var home: Crew = s.home_crew
+	var ff: Firefighter = s.list[0]
+	var all: Array[Firefighter] = home.list.duplicate()
+	all.insert(clampi(s.home_index, 1, all.size()), ff)
+	home.list = all
+	ff.crew_id = home.id
+	for item in s.items:
+		if not item in home.items:
+			home.items.append(item)
+	var none: Array[Firefighter] = []
+	s.list = none
+	s.merged_into = home
+	squad.crews.erase(s)
+	crews.erase(s)
+	squad.solo_spare = s
+	return true
 
 
 func step(dt: float) -> void:

@@ -414,6 +414,8 @@ func regroup_reason(squad_id: int, split: bool) -> String:
 		return "아직 현장에 없음"
 	if _regroup_pending.has(squad_id):
 		return "앞의 편성 지시가 전달되는 중"
+	if units.solo_of(squad) != null:
+		return "한 명이 나가 있음 — 복귀시킨 뒤에"
 	if split:
 		if squad.crews.size() != 1:
 			return "이미 나뉘어 있음"
@@ -492,6 +494,303 @@ func _names(c: Crew) -> String:
 	for ff in c.list:
 		out.append(ff.name)
 	return "·".join(out)
+
+
+# --- 한 명 보내기 · 복귀 (2026-11-16 결정 — docs/decisions.md '분대') ---
+# 분대가 건물 밖에 있을 때만, 밖의 임무만: 급수 지원(water_help)·방재실·관리실 연락(office)·장비 가져오기(fetch).
+# 2인 1조는 대원의 기본 행동이라 나간 한 명은 건물에 들어가지 않는다. 임무가 끝나면 스스로 돌아온다.
+
+const SOLO_PATH := "res://data/commands.json"
+## 나가 있는 대원 {1인 조 id: {task, label, phase, squad, vehicle, item, until, worked, retry}}
+var solos: Dictionary = {}
+var _solo_specs: Array = []
+
+
+## 1인 임무 목록 (data/commands.json sets.solo): [{id, label, hint, item}]
+func solo_specs() -> Array:
+	if _solo_specs.is_empty():
+		var d: Variant = JsonData.load_file(SOLO_PATH)
+		if d is Dictionary:
+			_solo_specs = d.get("sets", {}).get("solo", [])
+	return _solo_specs
+
+
+func solo_spec(task: String) -> Dictionary:
+	for s: Dictionary in solo_specs():
+		if str(s.id) == task:
+			return s
+	return {}
+
+
+## 나간 대원의 임무 이름 (이름표용, 없으면 "")
+func solo_label(crew_id: int) -> String:
+	var e: Dictionary = solos.get(crew_id, {})
+	if e.is_empty():
+		return ""
+	return "복귀 중" if str(e.phase) == "return" else str(e.label)
+
+
+func _outdoor(ff: Firefighter) -> bool:
+	return building.cell(ff.level, floori(ff.pos.x), floori(ff.pos.y)) in BuildingData.OUTDOOR
+
+
+## 급수를 도울 차량: 운전원 작업 중이거나 곧 할 차 → 물탱크차 → 그 출동대 첫 차 → 아무 차. 가까운 순
+func _solo_vehicle(squad: Squad, from: Vector2) -> Vehicle:
+	var best: Vehicle = null
+	var best_score := INF
+	for v in units.vehicles:
+		if v.away:
+			continue
+		var rank := 3.0
+		if not v.work.is_empty() or v.pending_hydrant >= 0 or v.pending_supply >= 0:
+			rank = 0.0
+		elif v.type == "물탱크차":
+			rank = 1.0
+		elif v.squad_id == squad.id:
+			rank = 2.0
+		var score := rank * 100000.0 + v.pos.distance_to(from)
+		if score < best_score:
+			best_score = score
+			best = v
+	return best
+
+
+## 한 명 보내기를 할 수 없는 이유 ("" = 할 수 있다)
+func solo_reason(squad_id: int, task: String) -> String:
+	if squad_id < 0 or squad_id >= units.squads.size():
+		return "없는 출동대"
+	var squad := units.squads[squad_id]
+	if command.resources.is_en_route(squad_id) or squad.crews.is_empty():
+		return "아직 현장에 없음"
+	if _regroup_pending.has(squad_id):
+		return "앞의 편성 지시가 전달되는 중"
+	if units.solo_of(squad) != null:
+		return "이미 한 명이 나가 있음 — 복귀한 뒤에"
+	var mains := units.main_crews(squad)
+	if mains.size() != 1:
+		return "2개 조로 나뉘어 있음 — 2명 조에서는 한 명을 보낼 수 없음 (혼자 남는다)"
+	var from := mains[0]
+	var able := from.list.filter(func(ff: Firefighter) -> bool: return not ff.incapacitated).size()
+	if able < 3:
+		return "2명 조에서는 한 명을 보낼 수 없음 (혼자 남는다)"
+	if units.detach_candidate(from) == null:
+		return "보낼 대원이 없음"
+	if from.list.any(func(ff: Firefighter) -> bool: return ff.aboard):
+		return "차량·승강기에 타고 있음"
+	if from.list.any(func(ff: Firefighter) -> bool: return not _outdoor(ff)):
+		return "분대가 건물 안에 있음 — 밖에 있을 때만 한 명을 보낼 수 있음 (2인 1조)"
+	if rescue.task_of_crew(from.id) is RescueSystem.CarryTask:
+		return "구조대상자를 옮기는 중"
+	var spec := solo_spec(task)
+	if spec.is_empty():
+		return "없는 임무"
+	match task:
+		"water_help":
+			if _solo_vehicle(squad, from.leader.pos) == null:
+				return "도울 차량이 없음"
+		"office":
+			if plan.office.is_empty():
+				return "이 건물에는 방재실·관리실이 없음"
+			if plan.known:
+				return "도면은 이미 얻었음"
+			var oc: Vector2i = plan.office.cell
+			if not building.cell(int(plan.office.level), oc.x, oc.y) in BuildingData.OUTDOOR:
+				return "%s이(가) 건물 안에 있음 — 한 명만 보낼 수 없음 (분대로 보내기)" % str(plan.office.name)
+		"fetch":
+			var item := str(spec.get("item", ""))
+			if from.has_item(item):
+				return "이미 가지고 있음"
+			if units.vehicles.all(func(v: Vehicle) -> bool: return v.away):
+				return "가져올 차량이 없음"
+	return ""
+
+
+## 한 명 보내기 지시 (CommandOrder "solo"): 무전으로 지시하고, 닿으면 한 명이 떨어져 나가 임무를 시작한다
+func order_solo(squad_id: int, task: String, tick: int) -> bool:
+	var why := solo_reason(squad_id, task)
+	var label := str(solo_spec(task).get("label", task))
+	if why != "":
+		var who := units.squads[squad_id].name if squad_id >= 0 and squad_id < units.squads.size() else ""
+		events.add(tick, "solo_rejected", {"squad": who, "task": label, "reason": why})
+		return false
+	var squad := units.squads[squad_id]
+	_regroup_pending[squad_id] = true
+	command.radio.send(Radio.Priority.TACTICS, CommandSystem.COMMANDER, squad.name, "한 명을 보내 %s 하라." % str(solo_spec(task).get("order", label)), tick, _on_solo.bind(squad_id, task))
+	return true
+
+
+func _on_solo(tick: int, squad_id: int, task: String) -> void:
+	_regroup_pending.erase(squad_id)
+	var squad := units.squads[squad_id]
+	var spec := solo_spec(task)
+	var label := str(spec.get("label", task))
+	var why := solo_reason(squad_id, task)
+	if why != "":
+		events.add(tick, "solo_rejected", {"squad": squad.name, "task": label, "reason": why})
+		return
+	var s: Crew = units.detach_member(squad, units.main_crews(squad)[0])
+	if s == null:
+		return
+	solos[s.id] = {"task": task, "label": label, "phase": "go", "squad": squad_id, "vehicle": -1, "item": str(spec.get("item", "")),
+		"until": -1, "worked": false, "retry": 0}
+	command._decide(tick, "한 명 보내기 — %s: %s" % [units.crew_name(s), label])
+	events.add(tick, "solo_sent", {"squad": squad.name, "crew": units.crew_name(s), "crew_id": s.id, "task": label})
+	command.radio.send(Radio.Priority.TACTICS, units.crew_name(s), CommandSystem.COMMANDER, "%s 가겠음." % label, tick)
+
+
+## 복귀 지시 (CommandOrder "recall")
+func recall_reason(squad_id: int) -> String:
+	if squad_id < 0 or squad_id >= units.squads.size():
+		return "없는 출동대"
+	var s := units.solo_of(units.squads[squad_id])
+	if s == null:
+		return "나가 있는 대원이 없음"
+	if str(solos.get(s.id, {}).get("phase", "")) == "return":
+		return "이미 돌아오는 중"
+	return ""
+
+
+func order_recall(squad_id: int, tick: int) -> bool:
+	var why := recall_reason(squad_id)
+	if why != "":
+		var who := units.squads[squad_id].name if squad_id >= 0 and squad_id < units.squads.size() else ""
+		events.add(tick, "solo_rejected", {"squad": who, "task": "복귀", "reason": why})
+		return false
+	var s := units.solo_of(units.squads[squad_id])
+	command.radio.send(Radio.Priority.TACTICS, CommandSystem.COMMANDER, units.crew_name(s), "분대로 복귀하라.", tick, _on_recall.bind(s.id))
+	return true
+
+
+func _on_recall(tick: int, crew_id: int) -> void:
+	if solos.has(crew_id) and str(solos[crew_id].phase) != "return":
+		_solo_return(crew_id, tick, "복귀 지시")
+
+
+func _solo_return(crew_id: int, tick: int, why: String) -> void:
+	var e: Dictionary = solos[crew_id]
+	e.phase = "return"
+	e.retry = 0
+	var s := units.get_crew(crew_id)
+	events.add(tick, "solo_done", {"crew": units.crew_name(s), "task": str(e.label), "why": why})
+
+
+## 나가 있는 대원의 진행 (매 틱): 가기 → 일하기 → 돌아오기 → 분대에 합류
+func _step_solos(tick: int) -> void:
+	if solos.is_empty():
+		return
+	var second := roundi(1.0 / SimClock.TICK_DT)
+	for id: int in solos.keys():
+		var s := units.get_crew(id)
+		if s == null or s.list.is_empty():
+			solos.erase(id)
+			continue
+		var ff: Firefighter = s.list[0]
+		var e: Dictionary = solos[id]
+		if ff.incapacitated:
+			continue
+		var squad := units.squads[int(e.squad)]
+		if str(e.phase) == "return":
+			_step_solo_return(s, ff, e, squad, tick, second)
+			continue
+		match str(e.task):
+			"water_help":
+				var v := units.get_vehicle(int(e.vehicle))
+				# 일이 있는 차가 따로 생기면 그 차로 옮긴다 (1초마다 살핀다)
+				if tick % second == 0 and (v == null or (v.work.is_empty() and v.pending_hydrant < 0 and v.pending_supply < 0)):
+					var better := _solo_vehicle(squad, ff.pos)
+					if better != null and better != v:
+						v = better
+						e.vehicle = v.id
+						e.phase = "go"
+				if v == null:
+					continue
+				if not v.work.is_empty():
+					e.worked = true
+				elif bool(e.worked) and v.pending_hydrant < 0 and v.pending_supply < 0:
+					_solo_return(id, tick, "급수 연결 끝")
+					continue
+				if v.distance_to_body(ff.pos) > 2.5 or ff.level != v.level:
+					if not ff.is_moving() and tick >= int(e.retry):
+						e.retry = tick + second
+						_solo_go_vehicle(s, v)
+				else:
+					e.phase = "work"
+			"office":
+				if plan.known:
+					_solo_return(id, tick, "도면 확보")
+					continue
+				var oc: Vector2i = plan.office.cell
+				var at := Vector2(oc) + Vector2(0.5, 0.5)
+				if (ff.level != int(plan.office.level) or ff.pos.distance_to(at) > PlanIntel.OFFICE_RADIUS * 0.7) and not ff.is_moving() and tick >= int(e.retry):
+					e.retry = tick + second
+					var near := pathfinder.nearest_walkable(int(plan.office.level), oc)
+					if near != Pathfinder.NO_CELL:
+						units.order_move([id] as Array[int], Vector3i(near.x, near.y, int(plan.office.level)), pathfinder, Vector3i(-1, -1, -1), true)
+				elif not ff.is_moving():
+					e.phase = "work"
+			"fetch":
+				var v := units.get_vehicle(int(e.vehicle))
+				if v == null:
+					var vs := units.vehicles_of_squad(squad.id)
+					v = vs[0] if not vs.is_empty() else _solo_vehicle(squad, ff.pos)
+					if v == null:
+						_solo_return(id, tick, "가져올 차량이 없음")
+						continue
+					e.vehicle = v.id
+				if int(e.until) >= 0:
+					if tick >= int(e.until):
+						s.items.append(str(e.item))
+						events.add(tick, "equipment_fetched", {"crew": units.crew_name(s), "item": str(e.label)})
+						_solo_return(id, tick, "장비 챙김")
+				elif v.distance_to_body(ff.pos) > 2.5 or ff.level != v.level:
+					if not ff.is_moving() and tick >= int(e.retry):
+						e.retry = tick + second
+						_solo_go_vehicle(s, v)
+				elif not ff.is_moving():
+					# 혼자 꺼내므로 2배 (기획안 6-1 작업 시간)
+					e.phase = "work"
+					e.until = tick + roundi(doors.fetch_seconds() * 2.0 / SimClock.TICK_DT)
+
+
+func _solo_go_vehicle(s: Crew, v: Vehicle) -> void:
+	var near := pathfinder.nearest_walkable(v.level, Vector2i(v.closest_body_point(s.leader.pos).floor()))
+	if near != Pathfinder.NO_CELL:
+		units.order_move([s.id] as Array[int], Vector3i(near.x, near.y, v.level), pathfinder, Vector3i(-1, -1, -1), true)
+
+
+## 돌아오기: 분대 선두가 밖에 있으면 그 곁으로, 건물 안에 있으면 가장 가까운 출구 앞에서 기다린다 (들어가지 않는다).
+## 선두 곁(2.5칸)에 닿으면 합류하고, 들고 온 장비는 분대의 것이 된다
+func _step_solo_return(s: Crew, ff: Firefighter, e: Dictionary, squad: Squad, tick: int, second: int) -> void:
+	var home: Crew = s.home_crew
+	if home == null or home.list.is_empty():
+		return
+	var lead := home.leader
+	if lead.level == ff.level and lead.pos.distance_to(ff.pos) <= 2.5 and _outdoor(ff):
+		var who := units.crew_name(s)
+		var carried := not s.items.is_empty()
+		if units.attach_member(squad, s):
+			solos.erase(s.id)
+			events.add(tick, "solo_back", {"squad": squad.name, "crew": who, "crew_id": home.id, "task": str(e.label), "item": str(e.label) if carried else ""})
+			command.radio.send(Radio.Priority.TACTICS, who, CommandSystem.COMMANDER, "분대 복귀." if not carried else "%s — 분대에 전달, 복귀." % str(e.label), tick)
+		return
+	if ff.is_moving() or tick < int(e.retry):
+		return
+	e.retry = tick + second
+	var goal := Vector3i(floori(lead.pos.x), floori(lead.pos.y), lead.level)
+	if not _outdoor(lead) or lead.aboard:
+		# 분대가 건물 안: 가장 가까운 출구 앞까지만
+		var best := Vector3i(-1, -1, -1)
+		var best_d := INF
+		for x in rescue.exit_cells():
+			var d := Vector2(x.x, x.y).distance_to(lead.pos) + absi(x.z - lead.level) * 1000.0
+			if d < best_d and building.cell(x.z, x.x, x.y) in BuildingData.OUTDOOR:
+				best_d = d
+				best = x
+		if best.x < 0:
+			return
+		goal = best
+	if Vector2(goal.x + 0.5, goal.y + 0.5).distance_to(ff.pos) > 1.5 or goal.z != ff.level:
+		units.order_move([s.id] as Array[int], goal, pathfinder, Vector3i(-1, -1, -1), true)
 
 
 ## 도착 후 임무 미리 정하기 (P9-1): {조 id: attack·search·office·officer}. 그 조가 차에서 내리면 바로 지시한다
@@ -766,6 +1065,7 @@ func _step() -> void:
 	rescue.step_after_fire(dt, clock.tick)
 	command.step(dt, clock.tick)
 	_step_preassign(clock.tick)
+	_step_solos(clock.tick)
 	if clock.tick % PERCEPTION_EVERY_TICKS == 0:
 		perception.update(clock.tick)
 		_check_door_clues(clock.tick)

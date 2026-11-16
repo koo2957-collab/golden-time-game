@@ -310,7 +310,7 @@ func _free_crew(target: Vector2i) -> int:
 	var best_d := INF
 	for cr in units.crews:
 		var s := units.squads[cr.squad_id]
-		if not command.resources.on_scene(s.id) or cr.leader.aboard or cr.leader.incapacitated or s.type == "구급대":
+		if cr.solo or not command.resources.on_scene(s.id) or cr.leader.aboard or cr.leader.incapacitated or s.type == "구급대":
 			continue
 		if command.tactical.task_of_crew(cr.id) != null or command.rescue.task_of_crew(cr.id) != null or command.water.hose_of_crew(cr.id) != null:
 			continue

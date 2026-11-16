@@ -1526,7 +1526,10 @@ func _draw_unit(ff: Firefighter, alpha: float) -> void:
 		_draw_figure(p, scale, body_color, SpriteArt.helmet_color(squad.type))
 	var label := proj.to_screen(p, UNIT_LABEL_M * scale)
 	# 이름표: 나뉜 조는 사람마다 조 번호, 나누지 않은 분대는 말하는 사람(팀장) 위에만 분대 이름 (2026-11-16)
-	if not sim.units.whole_squad(crew):
+	if crew.solo:
+		# 한 명 보내기로 나간 대원: 맡은 임무 (급수 지원·방재실 연락·장비 가져오기·복귀 중)
+		draw_string(PlanStyle.font(), label + Vector2(-60, 0), sim.solo_label(crew.id), HORIZONTAL_ALIGNMENT_CENTER, 120, 12, Color("fde68a"))
+	elif not sim.units.whole_squad(crew):
 		draw_string(PlanStyle.font(), label + Vector2(-30, 0), str(crew.number) + _role_tag(crew), HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color.WHITE)
 	elif ff == crew.speaker():
 		draw_string(PlanStyle.font(), label + Vector2(-45, 0), squad.name + _role_tag(crew), HORIZONTAL_ALIGNMENT_CENTER, 90, 12, Color.WHITE)

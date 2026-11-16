@@ -342,6 +342,8 @@ func _click_select(world_pos: Vector2, add: bool, screen_pos := Vector2(-1, -1))
 func _box_select(add: bool) -> void:
 	var ids: Array[int] = []
 	for c in sim.units.crews:
+		if c.solo:
+			continue
 		for ff in c.members():
 			if ff.level == level and not ff.aboard and _drag_rect.has_point(projection.to_screen(ff.pos)):
 				ids.append(c.id)
@@ -741,6 +743,9 @@ func crews_under(world_pos: Vector2) -> Array[int]:
 	var nearest := -1
 	var nearest_d := vp.pick_magnet_px
 	for c in sim.units.crews:
+		# 한 명 보내기로 나간 대원은 고를 수 없다 (대원은 조작하지 않는다)
+		if c.solo:
+			continue
 		var pts: Array[Vector2] = []
 		for ff in c.members():
 			if ff.level != level or ff.aboard or not _crew_visible(ff):

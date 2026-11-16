@@ -159,6 +159,11 @@ func set_fetch_s(s: float) -> void:
 	_fetch_s = s
 
 
+## 차량에서 장비를 꺼내는 시간 (2인 기준, 초)
+func fetch_seconds() -> float:
+	return _fetch_s
+
+
 func _go_vehicle(c: Crew, v: Vehicle) -> void:
 	var near := pathfinder.nearest_walkable(v.level, Vector2i(v.closest_body_point(c.leader.pos).floor()))
 	if near != Pathfinder.NO_CELL:

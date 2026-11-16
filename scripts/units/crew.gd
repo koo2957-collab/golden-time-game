@@ -14,6 +14,11 @@ var list: Array[Firefighter] = []
 ## 다른 조에 합쳐져 비어 있으면 그 조 (UnitSystem.merge_squad). 이 조 id를 아직 들고 있는 곳이
 ## 선두를 물어도 합쳐진 조의 선두를 돌려준다 — 빈 조는 UnitSystem.crews 에 없다
 var merged_into: Crew
+## 한 명 보내기로 떨어져 나온 1인 조인가 (2026-11-16 결정: 분대가 밖에 있을 때 밖의 임무만 — 급수 지원·방재실 연락·장비 가져오기).
+## 플레이어가 고르거나 명령할 수 없고, 임무가 끝나면 돌아갈 조(home_crew)의 home_index 자리로 복귀한다
+var solo := false
+var home_crew: Crew
+var home_index := -1
 ## 선두 = 조원 첫째 (경로를 따라가는 사람)
 var leader: Firefighter:
 	get:

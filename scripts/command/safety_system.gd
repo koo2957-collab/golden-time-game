@@ -108,6 +108,9 @@ func order_role(crew_id: int, role: Role, sender: String, tick: int) -> bool:
 	var c := units.get_crew(crew_id)
 	if c == null or role_of(crew_id) == role or _role_pending.has(crew_id):
 		return false
+	# 한 명 보내기로 나간 대원에게는 안전 임무를 맡기지 않는다 (RIT는 2명 이상)
+	if c.solo and role != Role.NONE:
+		return false
 	_role_pending[crew_id] = role
 	var body := "%s 임무 해제, 원래 임무로 복귀하라." % ROLE_NAMES[role_of(crew_id)] if role == Role.NONE \
 		else "%s로 지정한다. 다른 임무는 맡지 말고 지휘소 부근에서 대기하라." % ROLE_NAMES[role]

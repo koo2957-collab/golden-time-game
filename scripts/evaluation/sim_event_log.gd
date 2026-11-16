@@ -279,6 +279,18 @@ static func describe_text(e: Dictionary) -> String:
 			text = "분대 합치기 — %s" % e.squad
 		"regroup_rejected":
 			text = "%s 불가 (%s) — %s" % [e.what, e.reason, e.squad]
+		"solo_sent":
+			text = "한 명 보내기 — %s: %s" % [e.crew, e.task]
+		"solo_done":
+			text = "%s — %s, 분대로 복귀 (%s)" % [e.crew, e.task, e.why]
+		"solo_back":
+			text = "분대 복귀 — %s%s" % [e.crew, " (%s 전달)" % e.item if str(e.item) != "" else ""]
+		"solo_rejected":
+			text = "%s 불가 (%s) — %s" % [e.task, e.reason, e.squad]
+		"solo_order_rejected":
+			text = "%s은(는) 임무 중인 한 명 — 직접 명령할 수 없음 (팀장 둥근 버튼의 '복귀')" % e.crew
+		"work_helped":
+			text = "%s %s — %s이(가) 도와 둘이서 (남은 시간 절반)" % [e.vehicle, e.work, e.crew]
 		"role_reserved":
 			text = "%s은 다른 임무를 받지 않음 (SSG 9 1.2.2) — %s" % [e.role, e.crew]
 		"rit_deployed":

@@ -519,6 +519,15 @@ func gate(commands: Array, tick: int) -> Array:
 	for cmd in commands:
 		if not _role_allows(cmd, tick):
 			continue
+		# 한 명 보내기로 나간 대원에게는 직접 명령하지 않는다 (대원은 조작하지 않는다 — 2026-11-16 결정)
+		var solo_crew := ""
+		for id in InteriorOrders.crews_of(cmd):
+			var sc := units.get_crew(id)
+			if sc != null and sc.solo:
+				solo_crew = _crew_name(sc)
+		if solo_crew != "":
+			events.add(tick, "solo_order_rejected", {"crew": solo_crew})
+			continue
 		var why := interior.reject_reason(cmd)
 		if why != "":
 			interior.rejected += 1

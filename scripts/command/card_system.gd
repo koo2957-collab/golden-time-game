@@ -490,7 +490,7 @@ func _nearest_crew(p: Vector2, level := -1, type := "") -> int:
 	var best_d := INF
 	for cr in units.crews:
 		var s := units.squads[cr.squad_id]
-		if cr.leader.incapacitated or cr.leader.aboard or (type != "" and s.type != type) or s.type == "구급대":
+		if cr.solo or cr.leader.incapacitated or cr.leader.aboard or (type != "" and s.type != type) or s.type == "구급대":
 			continue
 		if sim.command.resources.is_en_route(s.id):
 			continue
@@ -696,7 +696,7 @@ func _apply(effect: String, c: Card, tick: int) -> void:
 				var best := -1
 				var best_d := INF
 				for cr in units.crews:
-					if cr.id == sim.vent.crew_id or cr.leader.incapacitated or cr.leader.aboard or cr.leader.level != w.level:
+					if cr.solo or cr.id == sim.vent.crew_id or cr.leader.incapacitated or cr.leader.aboard or cr.leader.level != w.level:
 						continue
 					if units.squads[cr.squad_id].type == "구급대" or sim.command.safety.reserved(cr.id):
 						continue

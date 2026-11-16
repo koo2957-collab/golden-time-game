@@ -555,6 +555,15 @@ func _step_work(dt: float, tick: int) -> void:
 		if v.is_moving():
 			v.work = {}
 			continue
+		# 혼자 하던 중에 도울 대원이 차 옆에 오면 그때부터 둘이서 — 남은 시간이 절반 (한 명 보내기 '급수 지원', 2026-11-16)
+		if int(v.work.get("people", 1)) == 1 and int(v.work.get("helper", -1)) < 0:
+			var helper := _helper_crew(v)
+			if helper >= 0:
+				v.work.people = 2
+				v.work.helper = helper
+				v.work.remain = float(v.work.remain) * 0.5
+				v.work.total = float(v.work.total) * 0.5
+				events.add(tick, "work_helped", {"vehicle": _name(v), "work": str(v.work.label), "crew": _crew_name(units.get_crew(helper)), "driver": v.driver_label()})
 		v.work.remain = float(v.work.remain) - dt
 		if float(v.work.remain) > SimClock.EPSILON:
 			continue

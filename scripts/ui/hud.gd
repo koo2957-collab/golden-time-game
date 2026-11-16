@@ -31,7 +31,7 @@ const NOTICE_TYPES: Array[String] = [
 	"squad_dispatched", "staging_full", "order_en_route", "span_warning", "division_set", "division_cleared",
 	"face_seen", "site_info_found", "clue_found", "witness_arrived", "statement", "ask_too_far", "ask_cancelled",
 	"command_post", "report_updated", "overhaul_start", "rekindle",
-	"emergency_cleared", "evacuation_ordered", "par_done", "par_no_response", "role_assigned", "role_reserved", "rit_deployed", "squad_split", "squad_merged", "regroup_rejected",
+	"emergency_cleared", "evacuation_ordered", "par_done", "par_no_response", "role_assigned", "role_reserved", "rit_deployed", "squad_split", "squad_merged", "regroup_rejected", "solo_sent", "solo_done", "solo_back", "solo_rejected", "solo_order_rejected", "work_helped",
 	"entry_factors", "order_unseen", "exit_air_low", "indoor_hydrant_empty", "command_unit_arrived", "command_transferred", "lifeline_laid", "crew_disoriented", "crew_reoriented", "victim_refuge", "elevator_ride", "elevator_arrived", "elevator_far", "elevator_too_high", "monitor_start", "monitor_no_target", "monitor_too_far", "monitor_crew_inside", "ppv_start", "ppv_no_door", "ppv_no_exhaust", "ppv_fire_push", "ppv_exhaust_order", "ppv_exhaust_none", "command_post_set", "post_danger", "forward_set", "command_mode", "zone_install_go", "zone_no_crew", "aerial_deploying", "aerial_deployed", "aerial_stowed", "aerial_debris", "aerial_out_of_reach", "aerial_no_target", "aerial_no_window", "aerial_busy", "aerial_rescue_start", "aerial_no_feed", "fire_not_found", "evac_priority", "rit_misused", "tanker_idle", "hose_to_outlet", "plan_acquired", "panel_fire_floor", "plan_diff_found",
 ]
 ## 알림으로도 띄우는 무전 우선순위

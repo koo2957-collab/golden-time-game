@@ -1255,7 +1255,7 @@ func _rebuild_role() -> void:
 		_role_box.remove_child(c)
 		c.queue_free()
 	for c in sim.units.crews:
-		if not cmd.resources.on_scene(c.squad_id):
+		if c.solo or not cmd.resources.on_scene(c.squad_id):
 			continue
 		var crew_id := c.id
 		var now := cmd.safety.role_of(crew_id)

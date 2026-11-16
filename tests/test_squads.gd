@@ -240,6 +240,111 @@ func test_regroup_order_by_radio() -> void:
 	assert_eq(sim.units.crew_name(whole), "구조1", "분대 이름")
 
 
+## 한 명 보내기 지시를 내리고 그 1인 조가 생길 때까지 기다린다 → 1인 조 (없으면 null)
+func _send_solo(sim: SimWorld, squad: Squad, task: String) -> Crew:
+	sim.issue(CommandOrder.make("solo", [squad.id] as Array[int], 0, Vector3i.ZERO, {"task": task}))
+	_until(sim, func() -> bool: return sim.units.solo_of(squad) != null, 60.0)
+	return sim.units.solo_of(squad)
+
+
+func test_solo_water_help_and_return() -> void:
+	var sim := SimWorld.from_scenario(SQUAD_SCENARIO)
+	sim.command.resources.clear_schedule()
+	var squad := sim.units.squad_by_key("pump1")
+	var main := squad.crews[0]
+	var who: Firefighter = sim.units.detach_candidate(main)
+	assert_true(who == main.list[2] and who.role == "관창보조", "나갈 사람 = 마지막 조원(관창보조2)")
+	# 물탱크차가 혼자 소화전을 점령하기 시작한다
+	var tanker: Vehicle = null
+	for v in sim.units.vehicles:
+		if v.type == "물탱크차":
+			tanker = v
+	tanker.pos = Vector2(sim.building.hydrants[0]) + Vector2(0.5, 2.0)
+	sim.water.connect_hydrant(tanker.id, 0, 0)
+	assert_eq(int(tanker.work.people), 1, "운전원 혼자 시작")
+	var alone_s := float(tanker.work.remain)
+	var solo := _send_solo(sim, squad, "water_help")
+	assert_true(solo != null and solo.solo and solo.list.size() == 1 and solo.leader == who, "한 명이 떨어져 나간다")
+	assert_eq(main.list.size(), 2, "분대에는 2명이 남는다")
+	assert_eq(sim.units.crew_name(solo), "진압1 %s 대원" % who.name, "나간 대원 이름")
+	assert_eq(sim.units.crew_name(main), "진압1", "남은 분대는 그대로 분대 이름")
+	assert_eq(sim.solo_label(solo.id), "급수 지원", "이름표에 맡은 임무")
+	# 나간 대원에게는 직접 명령할 수 없다
+	sim.issue(MoveCommand.new([solo.id] as Array[int], Vector3i(8, 26, 1)))
+	sim.step_ticks(2)
+	assert_eq(sim.events.of_type("solo_order_rejected").size(), 1, "나간 대원에게 내린 명령은 거절")
+	# 또 한 명은 보낼 수 없다 (이미 나가 있고, 남은 조는 2명)
+	assert_true(sim.solo_reason(squad.id, "water_help") != "", "한 번에 한 명만")
+	# 차 옆에 닿으면 그때부터 둘이서 — 남은 시간이 절반
+	assert_true(_until(sim, func() -> bool: return tanker.work.is_empty() or int(tanker.work.people) == 2, 120.0), "차에 닿아 돕는다")
+	assert_eq(sim.events.of_type("work_helped").size(), 1, "도움 기록")
+	var started := sim.clock.tick
+	assert_true(_until(sim, func() -> bool: return tanker.work.is_empty(), alone_s), "혼자 할 때보다 빨리 끝난다 (%d틱)" % (sim.clock.tick - started))
+	assert_eq(tanker.hydrant, 0, "소화전 연결")
+	# 일이 끝나면 스스로 돌아와 합류한다
+	assert_true(_until(sim, func() -> bool: return sim.units.solo_of(squad) == null, 120.0), "스스로 복귀")
+	assert_true(main.list.size() == 3 and main.list[2] == who and who.crew_id == main.id, "제자리로 돌아온다")
+	assert_true(not sim.units.crew_active(solo.id) and sim.solos.is_empty(), "1인 조는 비었다")
+	assert_eq(sim.events.of_type("solo_back").size(), 1, "복귀 기록")
+
+
+func test_solo_only_from_outside_and_three_people() -> void:
+	var sim := SimWorld.from_scenario(SQUAD_SCENARIO)
+	sim.command.resources.clear_schedule()
+	var pump := sim.units.squad_by_key("pump1")
+	var rescue := sim.units.squad_by_key("rescue1")
+	# 주택에는 방재실이 없다
+	assert_true(sim.solo_reason(pump.id, "office").contains("방재실"), "방재실 없는 건물 (%s)" % sim.solo_reason(pump.id, "office"))
+	# 구조대는 방화문 파괴기를 이미 가지고 있다
+	assert_true(sim.solo_reason(rescue.id, "fetch").contains("이미"), "이미 가진 장비")
+	assert_eq(sim.solo_reason(pump.id, "fetch"), "", "진압 분대는 가져올 수 있다")
+	# 분대가 건물 안에 있으면 한 명을 보낼 수 없다 (2인 1조)
+	var room: Compartment = null
+	for r in sim.fire.comps:
+		if r.level == 2 and (room == null or r.cells.size() > room.cells.size()):
+			room = r
+	@warning_ignore("integer_division")
+	var cell: Vector2i = room.cells[room.cells.size() / 2]
+	var at := pump.crews[0].leader.pos
+	for ff in pump.crews[0].list:
+		ff.pos = Vector2(cell) + Vector2(0.5, 0.5)
+		ff.level = 2
+	assert_true(sim.solo_reason(pump.id, "fetch").contains("건물 안"), "건물 안의 분대")
+	sim.issue(CommandOrder.make("solo", [pump.id] as Array[int], 0, Vector3i.ZERO, {"task": "fetch"}))
+	sim.step_ticks(2)
+	assert_true(sim.events.of_type("solo_rejected").size() == 1 and sim.units.solo_of(pump) == null, "거절하고 이유를 알린다")
+	for ff in pump.crews[0].list:
+		ff.pos = at
+		ff.level = 1
+	# 나뉜 2명 조에서는 보낼 수 없다
+	sim.units.split_squad(rescue)
+	assert_true(sim.solo_reason(rescue.id, "water_help").contains("2명"), "2명 조")
+	# 한 명이 나가 있으면 나누기·합치기도 안 된다
+	sim.units.merge_squad(rescue, rescue.crews[0], true)
+	var solo := _send_solo(sim, rescue, "water_help")
+	assert_true(solo != null, "4명 분대에서 한 명")
+	assert_true(sim.regroup_reason(rescue.id, true).contains("나가 있음"), "한 명이 나가 있으면 나누지 않는다")
+	# 복귀 지시
+	sim.issue(CommandOrder.make("recall", [rescue.id] as Array[int]))
+	assert_true(_until(sim, func() -> bool: return sim.units.solo_of(rescue) == null, 120.0), "복귀 지시로 돌아온다")
+	assert_eq(rescue.crews[0].list.size(), 4, "다시 4명")
+
+
+func test_solo_fetches_equipment_for_the_squad() -> void:
+	var sim := SimWorld.from_scenario(SQUAD_SCENARIO)
+	sim.command.resources.clear_schedule()
+	var squad := sim.units.squad_by_key("pump1")
+	var main := squad.crews[0]
+	assert_true(not main.has_item("fire_door_breaker"), "진압 분대는 방화문 파괴기가 없다")
+	var solo := _send_solo(sim, squad, "fetch")
+	assert_true(solo != null, "한 명이 가지러 간다")
+	assert_true(_until(sim, func() -> bool: return sim.units.solo_of(squad) == null, 240.0), "가져와서 합류")
+	assert_true(main.has_item("fire_door_breaker"), "분대가 방화문 파괴기를 갖는다")
+	assert_eq(main.list.size(), 3, "다시 3명")
+	var back := sim.events.of_type("solo_back")
+	assert_true(back.size() == 1 and str(back[0].item) != "", "전달 기록 (%s)" % [back])
+
+
 func test_commander_alights_from_passenger_door() -> void:
 	var sim := SimWorld.from_scenario(SQUAD_SCENARIO)
 	var res := sim.command.resources

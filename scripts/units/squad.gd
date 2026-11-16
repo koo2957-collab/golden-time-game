@@ -13,5 +13,7 @@ var color := Color.WHITE
 var crews: Array[Crew] = []
 ## 합쳐서 비어 있는 조 (다시 나눌 때 같은 조 id로 되살린다). 없으면 null
 var spare: Crew
+## 복귀해서 비어 있는 1인 조 (한 명 보내기 — 다시 보낼 때 같은 조 id로 되살린다). 없으면 null
+var solo_spare: Crew
 ## 처음 나눌 때의 조원 순서 (대원 id) — 둘 다 쉬는 채로 합치면 이 순서로 되돌린다
 var home: Array[int] = []

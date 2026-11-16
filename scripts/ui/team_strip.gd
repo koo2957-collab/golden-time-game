@@ -26,7 +26,8 @@ func setup(p_sim: SimWorld) -> void:
 func crews() -> Array[int]:
 	var out: Array[int] = []
 	for c in sim.units.crews:
-		if not sim.command.resources.is_en_route(c.squad_id) and not c.leader.aboard:
+		# 한 명 보내기로 나간 대원은 줄에 없다 (고르거나 명령하지 않는다)
+		if not c.solo and not sim.command.resources.is_en_route(c.squad_id) and not c.leader.aboard:
 			out.append(c.id)
 	return out
 

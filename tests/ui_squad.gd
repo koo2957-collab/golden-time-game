@@ -94,7 +94,7 @@ func _run() -> void:
 	sel._click_select(inv * o_screen, false, o_screen)
 	_check("고른 분대의 팀장을 다시 누르면 둥근 버튼", ui.radial.visible, true)
 	_check("항목: 나누기 · 한 명 보내기 · 복귀", ui.radial_ids.duplicate(), ["split", "detach", "recall"])
-	_check("한 명 보내기·복귀는 아직 회색", ui.radial.items.size() == 3 and not ui.radial.items[1].enabled and not ui.radial.items[2].enabled, true)
+	_check("한 명 보내기는 켜짐, 복귀는 회색(나간 대원 없음)", ui.radial.items.size() == 3 and ui.radial.items[1].enabled and not ui.radial.items[2].enabled, true)
 	await process_frame
 	root.get_texture().get_image().save_png("user://shot_squad_wheel.png")
 	_check("나누기 고르기", ui.radial.pick("split"), true)
@@ -141,6 +141,47 @@ func _run() -> void:
 	_check("고른 지휘관을 다시 누르면 선착 분대 둥근 버튼", [ui.radial.visible, ui.radial.title.begins_with(sim.units.squads[0].name)], [true, true])
 	_check("3명 분대는 나누기 회색", not ui.radial.items.is_empty() and not ui.radial.items[0].enabled, true)
 	ui.radial.close()
+	# 한 명 보내기: 둥근 버튼 → 임무 목록 → 급수 지원 → 한 명이 떨어져 나간다 → 복귀
+	all.clear()
+	all.append_array(squad.crews[0].list)
+	for i in all.size():
+		all[i].level = lv
+		all[i].pos = Vector2(30.5 + i * 3.0, 36.5)
+		all[i].prev_pos = all[i].pos
+		all[i].path.clear()
+	await process_frame
+	xf = sel.get_canvas_transform()
+	inv = xf.affine_inverse()
+	o_screen = xf * proj.to_screen(officer.pos, proj.pick_height_m)
+	sel._set_selection([crew.id] as Array[int], [] as Array[int])
+	await process_frame
+	sel._click_select(inv * o_screen, false, o_screen)
+	_check("한 명 보내기 고르면 임무 목록", [ui.radial.pick("detach"), ui.menu.visible, ui.menu_ids.duplicate()], [true, true, ["water_help", "office", "fetch"]])
+	ui.pick("water_help")
+	for i in 600:
+		if sim.units.solo_of(squad) != null:
+			break
+		await process_frame
+	var solo: Crew = sim.units.solo_of(squad)
+	_check("한 명이 나간다 (분대 3명 + 1명)", [solo != null, squad.crews[0].list.size()], [true, 3])
+	if solo != null:
+		var s_world: Vector2 = proj.to_screen(solo.leader.pos, proj.pick_height_m)
+		_check("나간 대원은 고를 수 없다", sel.crews_under(s_world).has(solo.id), false)
+		_check("팀 초상 줄에 없다", world.hud.team_strip.crews().has(solo.id), false)
+		await process_frame
+		xf = sel.get_canvas_transform()
+		inv = xf.affine_inverse()
+		o_screen = xf * proj.to_screen(officer.pos, proj.pick_height_m)
+		sel._set_selection([crew.id] as Array[int], [] as Array[int])
+		await process_frame
+		sel._click_select(inv * o_screen, false, o_screen)
+		_check("나가 있으면 복귀가 켜지고 한 명 보내기는 회색", ui.radial.items.size() == 3 and not ui.radial.items[1].enabled and ui.radial.items[2].enabled, true)
+		_check("복귀 고르기", ui.radial.pick("recall"), true)
+		for i in 3000:
+			if sim.units.solo_of(squad) == null:
+				break
+			await process_frame
+		_check("분대로 돌아온다 (4명)", [sim.units.solo_of(squad) == null, squad.crews[0].list.size()], [true, 4])
 	print("결과: %s (실패 %d)" % ["통과" if _failed == 0 else "실패", _failed])
 	quit(1 if _failed > 0 else 0)
 

@@ -27,6 +27,7 @@ var menu_ids: Array[String] = []
 var radial: RadialMenu
 var radial_ids: Array[String] = []
 var _radial_squad := -1
+var _radial_pos := Vector2.ZERO
 var _menu_buttons: Array[Button] = []
 ## 임무 창 (진입 지시 4단계): 받는 조들, 진입구, 기본 임무
 var _drop_crews: Array[int] = []
@@ -95,7 +96,8 @@ func open_squad_menu(squad_id: int, screen_pos: Vector2) -> void:
 		return
 	var squad := sim.units.squads[squad_id]
 	_radial_squad = squad_id
-	var split_now := squad.crews.size() >= 2
+	_radial_pos = screen_pos
+	var split_now := sim.units.main_crews(squad).size() >= 2
 	var items: Array[Dictionary] = []
 	for it: Dictionary in CommandCard.load_sets().get("squad", []):
 		var id := str(it.id)
@@ -107,6 +109,10 @@ func open_squad_menu(squad_id: int, screen_pos: Vector2) -> void:
 			why = "다음 작업에서"
 		elif id in ["split", "merge"]:
 			why = sim.regroup_reason(squad_id, id == "split")
+		elif id == "detach":
+			why = _detach_reason(squad_id)
+		elif id == "recall":
+			why = sim.recall_reason(squad_id)
 		items.append({"id": id, "label": str(it.label), "enabled": why == "", "tip": str(it.get("hint", "")) if why == "" else "%s — %s" % [str(it.label), why]})
 	radial_ids.clear()
 	for it in items:
@@ -114,13 +120,46 @@ func open_squad_menu(squad_id: int, screen_pos: Vector2) -> void:
 	radial.open(screen_pos, "%s · 분대 편성" % squad.name, items)
 
 
+## 한 명 보내기를 할 수 없는 이유: 맡길 수 있는 임무가 하나라도 있으면 "" (임무별 이유는 목록에서 보인다)
+func _detach_reason(squad_id: int) -> String:
+	var first := ""
+	for s: Dictionary in sim.solo_specs():
+		var why := sim.solo_reason(squad_id, str(s.id))
+		if why == "":
+			return ""
+		if first == "":
+			first = why
+	return first if first != "" else "맡길 임무가 없음"
+
+
 func _on_squad_pick(id: String) -> void:
-	if _radial_squad < 0 or not id in ["split", "merge"]:
+	if _radial_squad < 0:
 		return
 	var squad := sim.units.squads[_radial_squad]
-	order_issued.emit(CommandOrder.make("regroup", [_radial_squad] as Array[int], 1 if id == "split" else 0))
-	notice.emit("%s: %s 지시" % [squad.name, "2개 조로 나누기" if id == "split" else "합치기"])
+	var ids: Array[int] = [_radial_squad]
+	match id:
+		"split", "merge":
+			order_issued.emit(CommandOrder.make("regroup", ids, 1 if id == "split" else 0))
+			notice.emit("%s: %s 지시" % [squad.name, "2개 조로 나누기" if id == "split" else "합치기"])
+		"recall":
+			order_issued.emit(CommandOrder.make("recall", ids))
+			notice.emit("%s: 나간 대원 복귀 지시" % squad.name)
+		"detach":
+			open_solo_menu(_radial_squad, _radial_pos)
 
+
+## 한 명 보내기: 맡길 임무 고르기 (커서 곁 목록). 못 맡기는 임무는 회색이고 올리면 이유가 보인다
+func open_solo_menu(squad_id: int, screen_pos: Vector2) -> void:
+	var squad := sim.units.squads[squad_id]
+	var items: Array[Dictionary] = []
+	var specs := sim.solo_specs()
+	for k in specs.size():
+		var s: Dictionary = specs[k]
+		var why := sim.solo_reason(squad_id, str(s.id))
+		items.append({"id": str(s.id), "label": "%d  %s" % [k + 1, str(s.label)], "enabled": why == "", "tip": str(s.get("hint", "")) if why == "" else why})
+	open_menu("%s · 한 명 보내기" % squad.name, items, screen_pos, func(id: String) -> void:
+		order_issued.emit(CommandOrder.make("solo", [squad_id] as Array[int], 0, Vector3i.ZERO, {"task": id}))
+		notice.emit("%s: 한 명 보내기 — %s" % [squad.name, str(sim.solo_spec(id).get("label", id))]))
 
 # --- 대상 메뉴 (P4-5) ---
 
@@ -257,7 +296,7 @@ func support_crew(crew_id: int) -> int:
 	var best := -1
 	var best_d := INF
 	for h in sim.units.crews:
-		if h.id == crew_id or h.leader.incapacitated or h.leader.aboard or sim.command.interior.crew_inside(h.id):
+		if h.solo or h.id == crew_id or h.leader.incapacitated or h.leader.aboard or sim.command.interior.crew_inside(h.id):
 			continue
 		if sim.command.resources.is_en_route(h.squad_id) or sim.command.safety.role_of(h.id) != SafetySystem.Role.NONE:
 			continue

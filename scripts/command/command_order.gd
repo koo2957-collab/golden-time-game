@@ -19,6 +19,8 @@ extends RefCounted
 ##   all_clear:      완진 선언 (소방전술 I 8단계 ⑥, SOP 202-6). 불이 남아 있어도 막지 않고 그때 상태를 기록한다
 ##   placement:      선착 차량 배치 (value = 시나리오 approach.options index, SOP 200-3.1.1)
 ##   regroup:        분대 편성 (squad_ids = 출동대 id, value 1 = 2개 조로 나누기 / 0 = 합치기) — 팀장 둥근 버튼 (2026-11-16)
+##   solo:           한 명 보내기 (squad_ids = 출동대 id, answers.task = water_help·office·fetch — data/commands.json sets.solo)
+##   recall:         나간 대원 복귀 (squad_ids = 출동대 id)
 ##   role:           안전 임무 지정 (squad_ids = 조 id, value = SafetySystem.Role: 0 해제 / 1 RIT / 2 현장안전담당)
 ##   approach:       진입구로 가기 (squad_ids = 조 id, value = 진입구 index). 허가 전이면 문 앞에서 허가를 묻는다 (P4-5)
 ##   floor:          층으로 가기 (squad_ids = 조 id, value = 층, answers.entry = 밖의 조가 쓸 진입구 index 또는 -1)
@@ -108,6 +110,12 @@ func execute(sim: SimWorld) -> void:
 		"regroup":
 			for id in squad_ids:
 				sim.order_regroup(id, value == 1, tick)
+		"solo":
+			for id in squad_ids:
+				sim.order_solo(id, str(answers.get("task", "")), tick)
+		"recall":
+			for id in squad_ids:
+				sim.order_recall(id, tick)
 		"approach":
 			cmd.order_approach(squad_ids, sim.entries.list[value] if value >= 0 and value < sim.entries.list.size() else null, tick)
 		"floor":

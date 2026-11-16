@@ -62,6 +62,29 @@ func test_floor_overhaul_continues_room_by_room() -> void:
 	assert_eq(rk.next_floor_room(1, Vector2.ZERO), Vector3i(-1, -1, -1), "남은 방 없음")
 
 
+## 지시 창 화재진압 (floor_mission): 초진 뒤 그 층에 보이는 불이 없으면 층에 닿았을 때 층 잔불정리로 바뀐다
+## (2026-11-17 — 전에는 화면 쪽에서 바로 잔불정리 명령을 내려 진입구·진입 허가를 건너뛰었다)
+func test_floor_mission_attack_becomes_overhaul_after_knockdown() -> void:
+	var sim := _doused_sim()
+	sim.perception.enabled = false
+	sim.phases.knockdown_tick = sim.clock.tick
+	assert_true(sim.floor_overhaul_target(1, Vector2(14.5, 15.5)).x >= 0, "잔불정리할 방이 있다")
+	sim.issue(CommandOrder.make("floor_mission", [0] as Array[int], 1, Vector3i.ZERO, {"kind": "attack", "entry": -1}))
+	var started := false
+	for i in roundi(120.0 / SimClock.TICK_DT):
+		sim.step_ticks(1)
+		if not sim.events.of_type("overhaul_start").is_empty():
+			started = true
+			break
+	assert_true(started, "층에 닿자 잔불정리 시작")
+	assert_true(sim.rekindle.tasks.any(func(t: RekindleSystem.OverhaulTask) -> bool: return t.crew_id == 0 and t.floor == 1), "층 단위 잔불정리 작업")
+	var attack := sim.events.of_type("tactical_start").filter(func(e: Dictionary) -> bool: return str(e.get("action", "")) == "진압")
+	assert_eq(attack.size(), 0, "화재진압(방수)으로 시작하지 않는다")
+	# 불이 보이면 그대로 화재진압
+	var sim2 := _doused_sim()
+	assert_eq(sim2.floor_overhaul_target(1, Vector2.ZERO), Vector3i(-1, -1, -1), "초진 전에는 잔불정리 아님")
+
+
 func test_thermal_spot_and_overhaul() -> void:
 	var sim := _doused_sim()
 	var rk := sim.rekindle

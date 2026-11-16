@@ -457,22 +457,10 @@ func order_floor(lv: int, screen_pos := Vector2(-1, -1)) -> bool:
 ## 고른 첫 분대에서 가까운 곳 — 그 뒤는 RekindleSystem이 그 층을 차례로 잇는다). 없으면 (-1, -1, -1).
 ## 화재진압이 그 층에서 잔불정리로 바뀐다 (기획안 9-1)
 func overhaul_target(lv: int) -> Vector3i:
-	var none := Vector3i(-1, -1, -1)
-	if sim.phases.knockdown_tick < 0:
-		return none
-	var grid := sim.fire.grid
-	for room in sim.fire.comps:
-		if room.level != lv:
-			continue
-		for c in room.cells:
-			if sim.perception.enabled and not sim.perception.is_seen(lv, c.x, c.y):
-				continue
-			if grid.state[grid.index(lv, c.x, c.y)] == FuelGrid.State.BURNING:
-				return none
 	var from := Vector2(sim.building.footprint(lv).get_center())
 	if not selected.is_empty():
 		from = sim.units.get_crew(selected[0]).leader.pos
-	return sim.rekindle.next_floor_room(lv, from)
+	return sim.floor_overhaul_target(lv, from)
 
 
 ## 그 조의 우클릭 기본 임무 ("attack"·"search", 없으면 "")

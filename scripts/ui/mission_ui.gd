@@ -260,22 +260,24 @@ func _issue_order(kind: String, crews: Array[int], lv: int, entry: int) -> void:
 		var e: EntryPoints.Entry = sim.entries.list[entry]
 		via = e.outside
 		via_name = e.name
-	var embers := selection.overhaul_target(lv) if kind == "attack" else Vector3i(-1, -1, -1)
-	if embers.x >= 0:
-		# 층 단위 잔불정리 (other = 1): 그 층의 탄 방을 차례로
-		order_issued.emit(EquipmentCommand.make("overhaul", crews, -1, 1, embers))
-		notice.emit("%s, %s 잔불정리 — 초진 뒤 불이 보이지 않아 탄 방을 차례로 열화상으로 확인·정리" % [" · ".join(names), sim.building.floor_name(lv)])
-		return
 	if kind == "check_below":
 		var below := TacticalCommand.make("check_below", crews, _below_target(lv), via)
 		order_issued.emit(below)
 		notice.emit("%s, %s%s" % [" · ".join(names), "%s로 진입 — " % via_name if via_name != "" else "", sim.command.interior.order_text(below)])
 		return
-	# 인명검색·화재진압: 그 층으로 가서(진입구 → 진입 허가, 계단이 갈리면 질문 카드) 닿으면 층 단위 임무 (2026-11-17)
+	# 인명검색·화재진압: 그 층으로 가서(진입구 → 진입 허가, 계단이 갈리면 질문 카드) 닿으면 층 단위 임무 (2026-11-17).
+	# 초진 뒤 그 층에 보이는 불이 없으면 닿았을 때 화재진압이 층 잔불정리로 바뀐다 (CommandSystem.floor_overhaul)
 	order_issued.emit(CommandOrder.make("floor_mission", crews, lv, Vector3i.ZERO, {"kind": kind, "entry": entry}))
 	var mid := Vector2i(sim.building.footprint(lv).get_center())
 	var text := sim.command.interior.order_text(TacticalCommand.make(kind + "_floor", crews, Vector3i(mid.x, mid.y, lv)))
+	if _overhaul_now(kind, lv):
+		text = "%s 잔불정리 — 초진 뒤 불이 보이지 않아 탄 방을 차례로 열화상으로 확인·정리" % sim.building.floor_name(lv)
 	notice.emit("%s, %s%s" % [" · ".join(names), "%s로 진입 — " % via_name if via_name != "" else "", text])
+
+
+## 지금 내리면 화재진압이 잔불정리가 되는가 (초진 뒤 그 층에 보이는 불이 없고 탄 방이 남음)
+func _overhaul_now(kind: String, lv: int) -> bool:
+	return kind == "attack" and selection.overhaul_target(lv).x >= 0
 
 
 func close_order() -> void:
@@ -301,7 +303,10 @@ func _rebuild_order() -> void:
 	var kinds := HBoxContainer.new()
 	kinds.add_theme_constant_override("separation", 6)
 	for k: String in order_kinds():
-		var b := _order_button("%s  %s" % [ORDER_KEYS[k], ORDER_KINDS[k]], k == order_kind)
+		var label: String = ORDER_KINDS[k]
+		if _overhaul_now(k, order_level):
+			label = "잔불정리"
+		var b := _order_button("%s  %s" % [ORDER_KEYS[k], label], k == order_kind)
 		b.custom_minimum_size = Vector2(200 if k == "mixed" else 130, 36)
 		# 단추가 자기 신호 안에서 지워지지 않게 다음 프레임에 다시 그린다
 		b.pressed.connect(func() -> void: pick_order_kind.call_deferred(k))

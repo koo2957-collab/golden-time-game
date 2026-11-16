@@ -257,8 +257,37 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.doors.on_door_approach = sim.hazards.on_door_approach
 	sim.doors.window_break_s = hazard_params.value("window_break_s")
 	sim.doors.set_fetch_s(sim._fetch_s)
+	# 층 임무 '화재진압'이 그 층에 닿았을 때 보이는 불이 없으면 잔불정리로 바뀐다
+	sim.command.floor_overhaul = sim._start_floor_overhaul
 	sim.perception.update(0)
 	return sim
+
+
+## 초진 보고 뒤 그 층에 보이는 불이 없으면: 처음 잔불정리할 방의 칸 (탄 자리가 있고 아직 잔불정리하지 않은 방 중
+## from에서 가까운 곳 — 그 뒤는 RekindleSystem이 그 층을 차례로 잇는다). 없으면 (-1, -1, -1). (기획안 9-1)
+func floor_overhaul_target(lv: int, from: Vector2) -> Vector3i:
+	var none := Vector3i(-1, -1, -1)
+	if phases.knockdown_tick < 0:
+		return none
+	var grid := fire.grid
+	for room in fire.comps:
+		if room.level != lv:
+			continue
+		for c in room.cells:
+			if perception.enabled and not perception.is_seen(lv, c.x, c.y):
+				continue
+			if grid.state[grid.index(lv, c.x, c.y)] == FuelGrid.State.BURNING:
+				return none
+	return rekindle.next_floor_room(lv, from)
+
+
+## 층 임무 화재진압이 그 층에 닿았을 때: 잔불정리할 곳이 있으면 층 단위 잔불정리를 시작하고 true
+func _start_floor_overhaul(crew_id: int, lv: int, tick: int) -> bool:
+	var c := units.get_crew(crew_id)
+	if c == null:
+		return false
+	var target := floor_overhaul_target(lv, c.leader.pos)
+	return target.x >= 0 and rekindle.order_overhaul(crew_id, target, tick, true)
 
 
 ## 시나리오 파일(data/scenarios/*.json)로 시뮬레이션을 만든다.

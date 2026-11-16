@@ -164,6 +164,8 @@ var floor_goals: Dictionary = {}
 var stair_asks: Dictionary = {}
 ## 층에 닿으면 시작할 층 단위 임무 {crew id: "search"·"attack"} (지시 창 floor_mission, 2026-11-17)
 var floor_missions: Dictionary = {}
+## 층 임무 화재진압이 닿았을 때 잔불정리로 바꾸는 곳 (crew id, 층, tick) -> 바꿨으면 true (SimWorld가 넣는다)
+var floor_overhaul: Callable
 ## 계단실 (SimWorld가 만든다)
 var stairs: StairCores
 var exposure: ExposureSystem
@@ -1583,6 +1585,8 @@ func _step_floor_goals(tick: int) -> void:
 		if c.leader.level == goal and not c.leader.is_moving() and (mission == "" or _indoor(c.leader.level, c.leader.pos)):
 			clear_floor_goal(id)
 			events.add(tick, "floor_reached", {"crew": _crew_name(c), "crew_id": id, "level": goal})
+			if mission == "attack" and floor_overhaul.is_valid() and floor_overhaul.call(id, goal, tick):
+				continue
 			if mission != "" and tactical:
 				var mid := Vector2i(fire.building.footprint(goal).get_center())
 				tactical.order(mission + "_floor", id, Vector3i(mid.x, mid.y, goal), tick)

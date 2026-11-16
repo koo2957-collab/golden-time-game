@@ -172,6 +172,9 @@ func _run() -> void:
 	world._press_card("BACK")
 	_check("고르기를 끝내면 첫 칸", card.parent, "")
 	# 층 우클릭 → 지시 창: 진압대는 화재진압, 가까운 진입구 → 지시하면 그 문을 거쳐 층 단위 화재진압
+	# 차에 탄 분대에게는 지시가 나가지 않는다 (2026-11-17) — 내린 것으로 둔다
+	for ff in sim.units.get_crew(crew_id).members():
+		ff.aboard = false
 	var ent = sim.entries.list[0]
 	var mui = world.mission_ui
 	var n_issued := sim.issued.size()

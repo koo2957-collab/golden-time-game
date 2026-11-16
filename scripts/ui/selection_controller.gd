@@ -34,6 +34,8 @@ signal floor_clicked(level: int)
 signal squad_menu(squad_id: int, screen_pos: Vector2)
 
 const DRAG_THRESHOLD_PX := 6.0
+## 안전구역을 지정하면 이어서 환자 집결지 찍기로 넘어간다 (구조자 둘 곳 카드에서 시작했을 때 — 지휘관 명령 칸을 다시 찾지 않게)
+var casualty_after_safe := false
 ## 마우스를 올린 조 (기획안 9-3: 잡힐 조의 윤곽이 빛나고 이름이 뜬다). 없으면 -1
 var hover_crew := -1
 var _last_pick := -1
@@ -136,6 +138,7 @@ func begin_mode(p_mode: Mode) -> void:
 
 func cancel_mode() -> void:
 	_zone_from = Vector2(-1, -1)
+	casualty_after_safe = false
 	if mode != Mode.NONE:
 		mode = Mode.NONE
 		EventBus.command_mode_changed.emit("")
@@ -564,7 +567,11 @@ func _zone_click(event: InputEventMouseButton, world_pos: Vector2) -> bool:
 			if r.size.x <= 2 and r.size.y <= 2:
 				r = sim.zones.default_safe(a)
 			sim.issue(CommandOrder.make("zone", [], 0, Vector3i.ZERO, {"kind": "safe", "rect": [r.position.x, r.position.y, r.size.x, r.size.y]}))
+			var chain := casualty_after_safe
 			cancel_mode()
+			if chain:
+				begin_mode(Mode.ZONE_CASUALTY)
+				notice.emit("이제 안전구역 안에 환자 집결지를 클릭하세요")
 		return true
 	# 진입통제선: 첫 클릭은 한 끝, 두 번째 클릭으로 지정
 	if not event.pressed:

@@ -135,6 +135,69 @@ func test_floor_mission_starts_on_arrival() -> void:
 	assert_true(not sim.command.floor_missions.has(2), "시작하면 지운다")
 
 
+## 진입 절차를 마쳤는데 문 앞에서 멈췄으면(열기에 막힘 등) 그 자리에서 층 임무를 시작한다 (2026-11-17 —
+## 전에는 안에 들어서기만 기다려 아무 보고 없이 멈춰 있었다: 튜토리얼 거실 현관)
+func test_floor_mission_starts_at_door_when_blocked() -> void:
+	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)
+	open_all_doors(sim)
+	var c := sim.units.get_crew(0)
+	var e: EntryPoints.Entry = sim.entries.main_entries()[0]
+	_place(c, e.level, Vector2i(e.outside.x, e.outside.y))
+	sim.issue(CommandOrder.make("floor_mission", [0] as Array[int], e.level, Vector3i.ZERO, {"kind": "attack", "entry": e.index}))
+	sim.step_ticks(1)
+	assert_true(sim.command.floor_missions.has(0), "층 임무 받음")
+	# 문은 열렸고 허가도 났는데(진입구 단계 끝) 안으로 못 들어가고 밖에 서 있다
+	sim.command.approach.erase(0)
+	_place(c, e.level, Vector2i(e.outside.x, e.outside.y))
+	assert_true(_until(sim, func() -> bool: return sim.tactical.task_of_crew(0) != null, 3.0), "문 앞에서 화재진압 시작")
+	assert_true(sim.events.of_type("floor_reached").is_empty(), "층에 '닿음'으로 기록하지는 않는다")
+
+
+## 층 검색은 그 조가 있는 건물 안에서만 — 화재 건물 1층 검색이 옆집으로 넘어가지 않는다 (2026-11-17)
+func test_floor_search_stays_in_building() -> void:
+	var sim := SimWorld.from_scenario("res://data/scenarios/tutorial_basics.json", false)
+	var exposure := sim.fire.comps.filter(func(r: Compartment) -> bool: return r.level == 1 and sim.fire.is_exposure_comp(r))
+	assert_true(not exposure.is_empty(), "튜토리얼에는 옆집이 있다")
+	for r in sim.fire.comps:
+		if r.level == 1 and not sim.fire.is_exposure_comp(r):
+			r.searched_tick = 0
+	var c := sim.units.get_crew(1)
+	var e: EntryPoints.Entry = sim.entries.main_entries()[0]
+	_place(c, e.level, Vector2i(e.outside.x, e.outside.y))
+	assert_true(sim.tactical._next_floor_room(c, "search_floor", 1) == null, "화재 건물을 다 검색하면 끝 (옆집으로 가지 않음)")
+
+
+## 대기 중 출동대에 내린 명령은 투입 무전을 기다린다. 무전이 곧바로 닿아 이미 투입됐으면 바로 실행한다
+## (2026-11-17 — 줄에 넣기 전에 풀려 영영 남던 것: 튜토리얼 구급대 처치가 실행되지 않음)
+func test_held_order_released_when_squad_already_committed() -> void:
+	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)
+	var c := sim.units.get_crew(0)
+	var cmd := MoveCommand.new([0] as Array[int], Vector3i(c.leader.cell3().x + 2, c.leader.cell3().y, c.leader.level))
+	sim.command._held.append({"cmd": cmd, "wait": [c.squad_id] as Array[int], "release": 0})
+	assert_true(not sim.command.resources.is_staged(c.squad_id), "이미 현장 투입된 출동대")
+	sim.step_ticks(2)
+	assert_eq(sim.command.held_count(), 0, "기다리지 않고 실행")
+
+
+## 안전구역을 지시하면(설치 전) 그 안에 환자 집결지를 바로 찍을 수 있다 (2026-11-17)
+func test_casualty_point_inside_planned_safe_zone() -> void:
+	var sim := SimWorld.from_scenario("res://data/scenarios/tutorial_basics.json", false)
+	var z := sim.zones
+	var r := Rect2i()
+	for y in range(0, sim.building.height, 4):
+		for x in range(0, sim.building.width, 4):
+			var cand := Rect2i(x, y, 6, 6)
+			if r.size.x == 0 and z.safe_reject_reason(cand) == "":
+				r = cand
+	assert_true(r.size.x > 0, "건물 밖 안전구역 자리")
+	assert_eq(z.point_reject_reason(r.get_center()), "안전구역을 먼저 지정하세요", "안전구역 전")
+	sim.issue(CommandOrder.make("zone", [], 0, Vector3i.ZERO, {"kind": "safe", "rect": [r.position.x, r.position.y, r.size.x, r.size.y]}))
+	sim.step_ticks(1)
+	assert_true(not z.has_safe(), "아직 설치 전")
+	assert_eq(z.point_reject_reason(r.get_center()), "", "설치 전이라도 지시한 안전구역 안이면 된다")
+	assert_eq(z.point_reject_reason(r.position - Vector2i(3, 3)), "안전구역 안에만 놓을 수 있음", "밖은 안 된다")
+
+
 func test_unseen_stairs_crew_picks_nearest() -> void:
 	var sim := SimWorld.from_scenario(BASEMENT, false)
 	open_all_doors(sim)

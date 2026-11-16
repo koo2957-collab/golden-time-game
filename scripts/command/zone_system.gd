@@ -16,6 +16,8 @@ var events: SimEventLog
 
 ## 안전구역 (칸, 1층 바깥). size가 0이면 없음
 var safe := Rect2i()
+## 지시했지만 아직 설치 중인 안전구역 — 그 안에는 환자 집결지를 바로 찍을 수 있다 (설치를 기다리지 않게, 2026-11-17)
+var planned_safe := Rect2i()
 ## 환자 집결지 (칸). x < 0이면 없음
 var casualty := Vector2i(-1, -1)
 ## 진입통제선 두 끝 (칸 좌표). 비어 있으면 없음
@@ -46,6 +48,11 @@ func _init(p_building: BuildingData, p_units: UnitSystem, p_falls: FallSystem, t
 
 func has_safe() -> bool:
 	return safe.size.x > 0 and safe.size.y > 0
+
+
+## 안전구역이 있거나 지시해 설치 중인가 (환자 집결지를 찍을 수 있다)
+func safe_ordered() -> bool:
+	return has_safe() or (planned_safe.size.x > 0 and planned_safe.size.y > 0)
 
 
 func in_safe(cell: Vector2i) -> bool:
@@ -128,9 +135,9 @@ func safe_warning(r: Rect2i) -> String:
 
 ## 환자 집결지·분류소로 쓸 수 없는 이유 ("" = 됨)
 func point_reject_reason(cell: Vector2i) -> String:
-	if not has_safe():
+	if not safe_ordered():
 		return "안전구역을 먼저 지정하세요"
-	if not in_safe(cell):
+	if not in_safe(cell) and not planned_safe.has_point(cell):
 		return "안전구역 안에만 놓을 수 있음"
 	return ""
 

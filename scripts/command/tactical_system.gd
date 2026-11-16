@@ -514,8 +514,11 @@ func _next_floor_room(c: Crew, action: String, lv: int) -> Compartment:
 	var fire_rooms := _fire_rooms(lv) if search else {}
 	var best: Compartment = null
 	var best_d := INF
+	# 층 임무는 그 조가 있는 건물 안에서만 — 화재 건물의 층 검색이 옆집으로 넘어가지 않게 (2026-11-17)
+	var here := fire.compartment_at(c.leader.level, floori(c.leader.pos.x), floori(c.leader.pos.y))
+	var in_exposure := fire.is_exposure_comp(here)
 	for room in fire.comps:
-		if room.level != lv or room.cells.is_empty():
+		if room.level != lv or room.cells.is_empty() or fire.is_exposure_comp(room) != in_exposure:
 			continue
 		if search and room.searched_tick >= 0:
 			continue

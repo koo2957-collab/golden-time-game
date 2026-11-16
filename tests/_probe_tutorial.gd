@@ -172,12 +172,41 @@ func _act(i: int, step: Dictionary) -> void:
 				"activities": ["인명검색", "내부 진입 진압"], "strategy": CommandSystem.Strategy.OFFENSIVE, "support": "불필요", "access": "진입 가능, 회차 불가"}))
 		"360° 둘러보기":
 			sim.issue(CommandOrder.make("survey"))
+		"분대 나누기":
+			# 구조1을 고르고 팀장을 다시 눌러 '2개 조로 나누기' (2026-11-17 안내판 문구대로)
+			var rescue := -1
+			for s in sim.units.squads:
+				if s.type == "구조대" and sim.command.resources.on_scene(s.id) and not s.crews.is_empty() and not s.crews[0].leader.aboard:
+					rescue = s.id
+			if rescue < 0:
+				done = false
+			else:
+				sim.issue(CommandOrder.make("regroup", [rescue] as Array[int], 1))
 		"RIT 지정":
-			sim.issue(CommandOrder.make("role", [_crew_of_type("진압대", 1)] as Array[int], SafetySystem.Role.RIT))
+			sim.issue(CommandOrder.make("role", [_crew_of_type("구조대", 1)] as Array[int], SafetySystem.Role.RIT))
 		"화점진압 지시 · 진입 허가":
-			sim.issue(TacticalCommand.make("attack", [_crew_of_type("진압대", 0)] as Array[int], fire_cell))
+			# 층 우클릭 → 지시 창 (화재진압 · 가까운 진입구) → Enter
+			sim.issue(CommandOrder.make("floor_mission", [_crew_of_type("진압대", 0)] as Array[int], fire_cell.z, Vector3i.ZERO, {"kind": "attack", "entry": -1}))
 		"인명검색 (구조대)":
-			sim.issue(TacticalCommand.make("search", [_crew_of_type("구조대", 0)] as Array[int], Vector3i(floori(v.pos.x), floori(v.pos.y), v.level)))
+			sim.issue(CommandOrder.make("floor_mission", [_crew_of_type("구조대", 0)] as Array[int], v.level, Vector3i.ZERO, {"kind": "search", "entry": -1}))
+		"구조":
+			# 구조자 둘 곳 카드 → 안전구역(건물 밖 끌기) → 환자 집결지(그 안 클릭)
+			if sim.events.of_type("rescue_no_point").is_empty():
+				done = false
+			else:
+				# 플레이어처럼 건물 밖 빈 땅을 고른다: 차량 자리 근처에서 건물과 겹치지 않는 곳
+				var r: Rect2i = sim.zones.default_safe(Vector2i(sim.command.commander.pos.floor()))
+				for veh in sim.units.vehicles:
+					for dy in range(0, 12, 2):
+						var cand: Rect2i = sim.zones.default_safe(Vector2i(veh.pos.floor()) + Vector2i(0, dy))
+						if sim.zones.safe_reject_reason(cand) == "":
+							r = cand
+							break
+					if sim.zones.safe_reject_reason(r) == "":
+						break
+				sim.issue(CommandOrder.make("zone", [], 0, Vector3i.ZERO, {"kind": "safe", "rect": [r.position.x, r.position.y, r.size.x, r.size.y]}))
+				var cc := r.get_center()
+				sim.issue(CommandOrder.make("zone", [], 0, Vector3i.ZERO, {"kind": "casualty", "cell": [cc.x, cc.y]}))
 		"구급대 처치":
 			var ems := _crew_of_type("구급대", 0)
 			if ems < 0 or v.state != Victim.State.RESCUED:
@@ -185,8 +214,9 @@ func _act(i: int, step: Dictionary) -> void:
 			else:
 				sim.issue(EquipmentCommand.make("ems_treat", [ems] as Array[int], -1, v.id))
 		"잔불정리·2차 검색":
-			sim.issue(EquipmentCommand.make("overhaul", [_crew_of_type("진압대", 0)] as Array[int], -1, -1, fire_cell))
-			sim.issue(TacticalCommand.make("search", [_crew_of_type("구조대", 0)] as Array[int], fire_cell))
+			# 진압대로 불난 층 우클릭 → 화재진압(초진 뒤라 잔불정리), 구조대로 그 층 우클릭 → 인명검색
+			sim.issue(CommandOrder.make("floor_mission", [_crew_of_type("진압대", 0)] as Array[int], fire_cell.z, Vector3i.ZERO, {"kind": "attack", "entry": -1}))
+			sim.issue(CommandOrder.make("floor_mission", [_crew_of_type("구조대", 0)] as Array[int], fire_cell.z, Vector3i.ZERO, {"kind": "search", "entry": -1}))
 		"완진 선언":
 			sim.issue(CommandOrder.make("all_clear"))
 		"인원점검":

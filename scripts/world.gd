@@ -273,8 +273,9 @@ func _process_sim(delta: float) -> void:
 	# 구조자 둘 곳 카드에서 '환자 집결지 지정'을 골랐다 → 바로 구역 지정 (P10-2 ⓒ)
 	if sim and sim.rescue.zone_prompt:
 		sim.rescue.zone_prompt = false
-		selection.begin_mode(SelectionController.Mode.ZONE_CASUALTY if sim.zones.has_safe() else SelectionController.Mode.ZONE_SAFE)
-		hud.show_notice("구조한 조가 입구에서 기다립니다 — %s" % ("안전구역 안에 환자 집결지를 찍으세요" if sim.zones.has_safe() else "먼저 안전구역을 끌어서 지정하세요 (그다음 지휘관 명령 칸 '구역'의 환자 집결지)"))
+		selection.begin_mode(SelectionController.Mode.ZONE_CASUALTY if sim.zones.safe_ordered() else SelectionController.Mode.ZONE_SAFE)
+		selection.casualty_after_safe = not sim.zones.safe_ordered()
+		hud.show_notice("구조한 조가 입구에서 기다립니다 — %s" % ("안전구역 안에 환자 집결지를 찍으세요" if sim.zones.safe_ordered() else "먼저 건물 밖을 끌어서 안전구역을 지정하세요 — 이어서 환자 집결지를 찍습니다"))
 	if sim and sim.view_only:
 		# 리플레이 보기: 한 틱씩 진행하며 기록된 명령을 그 틱에 넣는다
 		for i in sim.clock.consume(delta):
@@ -953,7 +954,7 @@ func _commander_command(id: String) -> bool:
 		"zone_safe":
 			selection.begin_mode(SelectionController.Mode.ZONE_SAFE)
 		"zone_casualty":
-			if not sim.zones.has_safe():
+			if not sim.zones.safe_ordered():
 				hud.show_notice("안전구역을 먼저 지정하세요 (지휘관 명령 칸 '구역'의 안전구역)")
 			else:
 				selection.begin_mode(SelectionController.Mode.ZONE_CASUALTY)

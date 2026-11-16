@@ -105,8 +105,10 @@ func next_floor_room(lv: int, from: Vector2) -> Vector3i:
 	var grid := fire.grid
 	var best := Vector3i(-1, -1, -1)
 	var best_d := INF
+	# from이 있는 건물 안에서만 (밖이면 화재 건물) — 층 잔불정리가 옆집으로 넘어가지 않게
+	var in_exposure := fire.is_exposure_comp(fire.compartment_at(lv, floori(from.x), floori(from.y)))
 	for room in fire.comps:
-		if room.level != lv or room.overhauled_tick >= 0 or room.cells.is_empty():
+		if room.level != lv or room.overhauled_tick >= 0 or room.cells.is_empty() or fire.is_exposure_comp(room) != in_exposure:
 			continue
 		# 가구 칸까지 본다 (구획의 걷는 칸 목록에는 가구 칸이 없을 수 있다 — FuelGrid.room_cells)
 		var burnt := false

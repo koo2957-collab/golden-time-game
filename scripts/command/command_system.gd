@@ -514,6 +514,12 @@ func gate(commands: Array, tick: int) -> Array:
 	var ready: Array = []
 	var still: Array[Dictionary] = []
 	for h in _held:
+		# 이미 투입된 출동대는 기다리지 않는다 — 투입 무전이 곧바로 닿으면(_commit 안에서) 이 명령을 줄에 넣기 전에
+		# 풀어 주는 일이 지나가 버려 명령이 영영 남았다 (2026-11-17 튜토리얼 점검: 구급대 처치가 실행되지 않음)
+		var w: Array[int] = h.wait
+		for id in w.duplicate():
+			if not resources.is_staged(id):
+				w.erase(id)
 		if h.wait.is_empty() and tick >= h.release and not h.get("radio", false):
 			ready.append(h.cmd)
 		else:
@@ -778,6 +784,9 @@ func order_zone(kind: String, answers: Dictionary, tick: int) -> bool:
 		return false
 	if warn != "":
 		events.add(tick, "zone_warning", {"kind": name, "reason": warn})
+	if kind == "safe":
+		var sr: Array = answers.rect
+		zones.planned_safe = Rect2i(int(sr[0]), int(sr[1]), int(sr[2]), int(sr[3]))
 	_decide(tick, "%s 지정 — %s" % [name, where])
 	radio.send(Radio.Priority.TACTICS, COMMANDER, "각 출동대", "%s 지정, %s." % [name, where], tick, _on_zone_sent.bind(kind, answers))
 	return true
@@ -1582,9 +1591,17 @@ func _step_floor_goals(tick: int) -> void:
 			continue
 		# 층 임무가 있으면 건물 안에 들어선 뒤에 닿은 것으로 본다 (1층 임무는 진입 허가 뒤 문 안에서 시작)
 		var mission := str(floor_missions.get(id, ""))
-		if c.leader.level == goal and not c.leader.is_moving() and (mission == "" or _indoor(c.leader.level, c.leader.pos)):
+		var indoor := _indoor(c.leader.level, c.leader.pos)
+		var reached := c.leader.level == goal and not c.leader.is_moving() and (mission == "" or indoor)
+		# 진입 절차(허가·문 열기)를 마쳤는데 문 앞에서 멈췄다 (열기에 막힘 등): 그 자리에서 임무를 시작한다 —
+		# 화재진압은 수관을 펴 문 앞에서 방수하며 들어가고, 못 가면 임무가 '지시 바람'으로 알린다.
+		# 전에는 안에 들어서기만 기다려 아무 보고 없이 멈춰 있었다 (2026-11-17 튜토리얼 점검에서 찾음)
+		var stuck := mission != "" and not indoor and not c.leader.is_moving() and not approach.has(id) \
+			and not _entry_waiting.has(id) and (doors == null or doors.task_of_crew(id) == null)
+		if reached or stuck:
 			clear_floor_goal(id)
-			events.add(tick, "floor_reached", {"crew": _crew_name(c), "crew_id": id, "level": goal})
+			if reached:
+				events.add(tick, "floor_reached", {"crew": _crew_name(c), "crew_id": id, "level": goal})
 			if mission == "attack" and floor_overhaul.is_valid() and floor_overhaul.call(id, goal, tick):
 				continue
 			if mission != "" and tactical:

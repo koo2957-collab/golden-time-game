@@ -712,6 +712,41 @@
       "debrief": "갇힌 사람의 119 신고는 상황실을 거쳐 들어온다. 신고된 세대가 곧 검색 우선 위치이므로 그 층·세대로 구조조를 보낸다."
     },
     {
+      "id": "STAIR-01",
+      "title": "진입 계단",
+      "phase": "진입",
+      "trigger": "stair_ask",
+      "asker": "진입 조",
+      "urgency": "중요",
+      "text": "{crew}: 계단 두 곳 확인 — {options}. {floor}으로 어느 계단을 쓸까요?",
+      "options": [
+        {"text": "{stair_a}으로 올라가라", "effect": "stair_a", "grade": "최선"},
+        {"text": "{stair_b}으로 올라가라", "effect": "stair_b", "grade": "최선"}
+      ],
+      "variants": [
+        {
+          "if": {"best": "a"},
+          "options": [
+            {"text": "{stair_a}으로 올라가라", "effect": "stair_a", "grade": "최선"},
+            {"text": "{stair_b}으로 올라가라", "effect": "stair_b", "grade": "오답"}
+          ]
+        },
+        {
+          "if": {"best": "b"},
+          "options": [
+            {"text": "{stair_a}으로 올라가라", "effect": "stair_a", "grade": "오답"},
+            {"text": "{stair_b}으로 올라가라", "effect": "stair_b", "grade": "최선"}
+          ]
+        }
+      ],
+      "sop_ref": [
+        "SOP 107 3.1④",
+        "SOP 223 1.3"
+      ],
+      "source": "교재 (진입은 바람이 불어오는 급기측 — SOP 107 3.1④, 연기는 계단실로 올라가 급기측·배기측이 갈린다 — SOP 223 1.3)",
+      "debrief": "계단이 둘이면 바람이 불어오는 급기측 계단으로 올라간다. 배기측 계단은 연기와 열이 빠져나오는 길이라 진입대원이 열기를 정면으로 맞는다."
+    },
+    {
       "id": "STAIR-SMOKE-01",
       "title": "계단실 연기 — 주민 안내",
       "phase": "상황평가",

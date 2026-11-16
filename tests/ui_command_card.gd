@@ -180,8 +180,9 @@ func _run() -> void:
 	_check("층 우클릭 → 지시 창 (화재진압·가까운 진입구)", [mui.order.visible, mui.order_kind, mui.order_entry >= 0], [true, "attack", true])
 	var chosen: EntryPoints.Entry = sim.entries.list[mui.order_entry]
 	mui.confirm_order()
-	var tcmd = sim.issued.filter(func(x): return x.command is TacticalCommand).back().command if sim.issued.size() > n_issued else null
-	_check("지시 → 고른 진입구를 거치는 층 단위 화재진압", [str(tcmd.action) if tcmd else "", tcmd.via == chosen.outside if tcmd else false], ["attack_floor", true])
+	var fm := sim.issued.slice(n_issued).filter(func(x): return x.command is CommandOrder and x.command.action == "floor_mission")
+	var tcmd = fm.back().command if not fm.is_empty() else null
+	_check("지시 → 고른 진입구로 가는 층 단위 화재진압", [str(tcmd.answers.kind) if tcmd else "", int(tcmd.answers.entry) if tcmd else -2], ["attack", chosen.index])
 	# 건물 안 조: 시킬 일이 없는 곳을 우클릭하면 아무 지시도 없다 (지휘관도 그대로). 문 앞 목록은 없앴다 (2026-11-17)
 	var inner: Opening = null
 	for o in sim.fire.openings:

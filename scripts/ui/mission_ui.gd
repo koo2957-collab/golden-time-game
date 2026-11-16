@@ -236,13 +236,16 @@ func confirm_order() -> void:
 		order_issued.emit(EquipmentCommand.make("overhaul", crews, -1, 1, embers))
 		notice.emit("%s, %s 잔불정리 — 초진 뒤 불이 보이지 않아 탄 방을 차례로 열화상으로 확인·정리" % [" · ".join(names), sim.building.floor_name(lv)])
 		return
-	var fp := sim.building.footprint(lv)
-	var mid := Vector2i(fp.get_center())
-	var cmd := TacticalCommand.make(order_kind + "_floor", crews, Vector3i(mid.x, mid.y, lv), via)
 	if order_kind == "check_below":
-		cmd = TacticalCommand.make("check_below", crews, _below_target(lv), via)
-	order_issued.emit(cmd)
-	notice.emit("%s, %s%s" % [" · ".join(names), "%s로 진입 — " % via_name if via_name != "" else "", sim.command.interior.order_text(cmd)])
+		var below := TacticalCommand.make("check_below", crews, _below_target(lv), via)
+		order_issued.emit(below)
+		notice.emit("%s, %s%s" % [" · ".join(names), "%s로 진입 — " % via_name if via_name != "" else "", sim.command.interior.order_text(below)])
+		return
+	# 인명검색·화재진압: 그 층으로 가서(진입구 → 진입 허가, 계단이 갈리면 질문 카드) 닿으면 층 단위 임무 (2026-11-17)
+	order_issued.emit(CommandOrder.make("floor_mission", crews, lv, Vector3i.ZERO, {"kind": order_kind, "entry": order_entry}))
+	var mid := Vector2i(sim.building.footprint(lv).get_center())
+	var text := sim.command.interior.order_text(TacticalCommand.make(order_kind + "_floor", crews, Vector3i(mid.x, mid.y, lv)))
+	notice.emit("%s, %s%s" % [" · ".join(names), "%s로 진입 — " % via_name if via_name != "" else "", text])
 
 
 func close_order() -> void:

@@ -8,7 +8,7 @@ extends Node2D
 ##     층 (외벽 층·내부 화면의 그 층 아무 곳·층 막대) → 지시 창: 임무(분대 종류의 기본 임무가 골라져 있다 — data/commands.json default_mission)
 ##       + 진입구(가까운 문이 골라져 있다) + 지시. 방 단위 지시는 없다 (2026-11-16 사용자 결정)
 ##     노란 진입구 → 그 문 앞으로 / 바깥 땅 → 분대 이동 (밖의 분대만)
-##     계단을 묻는 조 → 노란 계단 / 건물 안 조 곁의 문 → 문 행동 / 대상(펌프차·방수구·밸브·창·요구조자·환자) → 그 작업
+##     대상(펌프차·방수구·밸브·창·요구조자·환자) → 그 작업. 계단·문 처리는 대원이 질문 카드로 묻는다 (2026-11-17)
 ## - 우클릭 (지휘관을 고른 채): 지휘관 이동. 아무것도 안 골랐으면 우클릭은 아무 일도 하지 않는다 (알림만)
 ## - 우클릭(차량): 이동, 소화전 점령(소화전 우클릭), 급수(물탱크차로 펌프차 우클릭)
 ## - 관계인 클릭: 진술 창 (witness_clicked)
@@ -105,7 +105,6 @@ var _g_view := Vector2i(-99, 0)
 var _g_text := ""
 var _defaults: Dictionary = {}
 var _g_room := -1
-var _g_stair := -1
 var _g_events := 0
 var _room_edges: Dictionary = {}  # 구획 index -> PackedVector2Array (칸 좌표 선분 쌍)
 
@@ -404,14 +403,12 @@ func _issue_vehicle_click(world_pos: Vector2) -> void:
 
 
 ## 고른 분대 우클릭 (2026-11-16): 지시했으면 true, 시킬 일이 없는 곳이면 false
-##   계단을 묻는 조 → 그 계단 / 밖의 분대 → 대상 작업·노란 진입구
-##   → 층(외벽 층·내부 화면의 그 층 아무 곳): 지시 창 (임무 + 진입구) → 바깥 땅(분대 이동, 밖의 분대만).
-##   문 앞 목록은 없앴다 (2026-11-17) — 문 처리는 대원이 문 앞에서 질문 카드로 묻는다
+##   밖의 분대 → 대상 작업·노란 진입구 → 층(외벽 층·내부 화면의 그 층 아무 곳): 지시 창 (임무 + 진입구)
+##   → 바깥 땅(분대 이동, 밖의 분대만).
+##   문 앞 목록·계단 클릭은 없앴다 (2026-11-17) — 문 처리·계단은 대원이 질문 카드로 묻는다
 func _issue_crew_right_click(world_pos: Vector2, screen_pos := Vector2(-1, -1)) -> bool:
 	var cell_f := projection.to_cell(world_pos)
 	var cell := Vector2i(cell_f.floor())
-	if _stair_order(cell_f):
-		return true
 	var all_out := _outside_crews().size() == selected.size()
 	if all_out and _issue_target_click(world_pos):
 		return true
@@ -479,23 +476,6 @@ func default_kind(crew_id: int) -> String:
 	return str(_defaults.get(sim.units.squads[c.squad_id].type, ""))
 
 
-## 계단을 묻는 조를 고른 채 노란 계단을 우클릭 → 그 계단으로 (처리했으면 true)
-func _stair_order(cell_f: Vector2) -> bool:
-	var ask := _asking_crew()
-	if ask < 0 or int(sim.command.stair_asks[ask].level) != level:
-		return false
-	var core := _stair_near(level, cell_f, sim.command.stair_asks[ask].cores)
-	if core < 0:
-		return false
-	var ids: Array[int] = []
-	for id in selected:
-		if sim.command.stair_asks.has(id) and int(sim.command.stair_asks[id].level) == level:
-			ids.append(id)
-	sim.issue(CommandOrder.make("stair", ids, core))
-	var sd: String = sim.command.stairs.side(level, core, sim.exposure)
-	notice.emit("%s으로 — %s" % [sim.command.stairs.label(level, core), sd if sd != "" else "무전 지시"])
-	_mark(sim.command.stairs.center(level, core))
-	return true
 
 
 ## 밖의 분대 우클릭 대상: 환자·요구조자·노란 진입구·방수구·밸브·매트·창·승강기·문·펌프차 (처리했으면 true)
@@ -1043,33 +1023,19 @@ func _outside_crews() -> Array[int]:
 	return out
 
 
-## 고른 조 중 계단을 묻고 있는 조 (첫 조)
-func _asking_crew() -> int:
-	for id in selected:
-		if sim.command.stair_asks.has(id):
-			return id
-	return -1
-
-
 ## 마우스 아래의 누를 수 있는 것 (매 프레임, 가볍게).
-## 볼 곳(외벽 층·다른 층·바깥 땅)은 늘 노랗게 (좌클릭). 분대를 고르면 우클릭 대상(계단·진입구·방)도 노랗게
+## 볼 곳(외벽 층·다른 층·바깥 땅)은 늘 노랗게 (좌클릭). 분대를 고르면 우클릭 대상(진입구·층)도 노랗게.
+## 계단은 지도에서 고르지 않는다 — 갈리면 질문 카드(STAIR-01)로 묻는다 (2026-11-17)
 func _update_guide(mouse_world: Vector2, crew_under: int) -> void:
 	var entry: EntryPoints.Entry = null
 	var floor_lv := -99
 	var view := Vector2i(-99, 0)
 	var room := -1
-	var stair := -1
 	var over_map := crew_under < 0 and mode == Mode.NONE
 	var cell := projection.to_cell(mouse_world)
-	if over_map and _guiding():
-		var ask := _asking_crew()
-		if ask >= 0:
-			var a: Dictionary = sim.command.stair_asks[ask]
-			if int(a.level) == level:
-				stair = _stair_near(level, cell, a.cores)
-		if stair < 0 and _outside_crews().size() == selected.size() and sim.entries:
-			entry = _entry_near(cell)
-	if over_map and stair < 0 and entry == null:
+	if over_map and _guiding() and _outside_crews().size() == selected.size() and sim.entries:
+		entry = _entry_near(cell)
+	if over_map and entry == null:
 		if shell_picker.is_valid():
 			floor_lv = int(shell_picker.call(mouse_world))
 		if floor_lv == -99 and view_picker.is_valid():
@@ -1084,13 +1050,12 @@ func _update_guide(mouse_world: Vector2, crew_under: int) -> void:
 			text += " · 우클릭: %s 임무 지시" % sim.building.floor_name(floor_lv)
 	if shell_hover.is_valid() and (floor_lv != _g_floor or text != _g_text):
 		shell_hover.call(floor_lv, text)
-	if entry != _g_entry or floor_lv != _g_floor or room != _g_room or stair != _g_stair or view != _g_view or text != _g_text:
+	if entry != _g_entry or floor_lv != _g_floor or room != _g_room or view != _g_view or text != _g_text:
 		_g_entry = entry
 		_g_floor = floor_lv
 		_g_view = view
 		_g_text = text
 		_g_room = room
-		_g_stair = stair
 		queue_redraw()
 	elif _guiding() or view.x != -99:
 		queue_redraw()  # 깜빡임
@@ -1106,21 +1071,6 @@ func _entry_near(cell: Vector2) -> EntryPoints.Entry:
 		if d <= best_d:
 			best_d = d
 			best = e
-	return best
-
-
-func _stair_near(lv: int, cell: Vector2, options: Array) -> int:
-	var st: StairCores = sim.command.stairs
-	var hit: int = st.core_at(lv, Vector2i(cell.floor()))
-	if hit >= 0 and hit in options:
-		return hit
-	var best := -1
-	var best_d := 2.5
-	for i: int in options:
-		var d := cell.distance_to(st.center(lv, i))
-		if d < best_d:
-			best_d = d
-			best = i
 	return best
 
 
@@ -1149,15 +1099,14 @@ func _watch_guide_events() -> void:
 	while _g_events < entries.size():
 		var e := entries[_g_events]
 		_g_events += 1
-		if not e.type in ["floor_ask", "stair_ask"] or sim.view_only or mode != Mode.NONE:
+		if e.type != "floor_ask" or sim.view_only or mode != Mode.NONE:
 			continue
+		# 계단 묻기는 질문 카드(STAIR-01)가 맡는다 — 여기서는 층 묻기만 안내한다
 		if e.type == "floor_ask":
 			EventBus.command_mode_changed.emit("진입 허가 — %s: 분대를 고르고 맡길 층을 우클릭 (외벽·내부 화면·층 막대)" % e.squad)
-		else:
-			EventBus.command_mode_changed.emit("%s: 어느 계단으로? — %s (분대를 고르고 그 층에서 노란 계단을 우클릭)" % [e.crew, e.options])
 
 
-## 노랗게: 진입구(밖의 조), 계단(묻는 조), 마우스 아래 방
+## 노랗게: 진입구(밖의 조), 마우스 아래 층
 func _draw_guide() -> void:
 	if sim == null or projection == null:
 		return
@@ -1169,19 +1118,6 @@ func _draw_guide() -> void:
 	_draw_view_hover(z, font, pulse, gold)
 	if not _guiding():
 		return
-	# 계단 고르기
-	var ask := _asking_crew()
-	if ask >= 0:
-		var a: Dictionary = sim.command.stair_asks[ask]
-		if int(a.level) == level:
-			var st: StairCores = sim.command.stairs
-			for i: int in a.cores:
-				var hot := i == _g_stair
-				_draw_cells_outline(st.cores(level)[i], Color(gold, 0.95 if hot else 0.55 + 0.3 * pulse), (4.0 if hot else 2.5) / z, 0.3 if hot else 0.12 * pulse)
-				var sd: String = st.side(level, i, sim.exposure)
-				var p := projection.to_screen(st.center(level, i), 1.4)
-				draw_string(font, p + Vector2(-90, 0) / z, st.label(level, i) + (" · " + sd if sd != "" else ""), HORIZONTAL_ALIGNMENT_CENTER, 180.0 / z, maxi(8, roundi(15.0 / z)), Color.WHITE if hot else gold.lightened(0.4))
-			return
 	# 진입구 (밖의 조가 있을 때)
 	if not _outside_crews().is_empty() and sim.entries:
 		for e in sim.entries.list:

@@ -176,9 +176,9 @@ func _run() -> void:
 	world.mission_ui.confirm_order()
 	var tac: Array = []
 	for i in range(n0, sim.issued.size()):
-		if sim.issued[i].command is TacticalCommand:
+		if sim.issued[i].command is CommandOrder and sim.issued[i].command.action == "floor_mission":
 			tac.append(sim.issued[i].command)
-	_check("조를 고른 채 2층 방을 우클릭 → 그 층 임무, 화면 그대로", [tac.size(), tac[0].target.z if not tac.is_empty() else -1, world.view_level], [1, top, top])
+	_check("조를 고른 채 2층 방을 우클릭 → 그 층 임무, 화면 그대로", [tac.size(), tac[0].value if not tac.is_empty() else -1, world.view_level], [1, top, top])
 	sel.cancel_mode()
 	sel._set_selection([] as Array[int], [] as Array[int])
 	world.set_view_level(low, false)

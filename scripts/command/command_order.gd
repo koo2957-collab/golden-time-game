@@ -24,6 +24,8 @@ extends RefCounted
 ##   role:           안전 임무 지정 (squad_ids = 조 id, value = SafetySystem.Role: 0 해제 / 1 RIT / 2 현장안전담당)
 ##   approach:       진입구로 가기 (squad_ids = 조 id, value = 진입구 index). 허가 전이면 문 앞에서 허가를 묻는다 (P4-5)
 ##   floor:          층으로 가기 (squad_ids = 조 id, value = 층, answers.entry = 밖의 조가 쓸 진입구 index 또는 -1)
+##   floor_mission:  층 임무 (squad_ids = 조 id, value = 층, answers.kind = search·attack, answers.entry = 진입구 index 또는 -1).
+##                   floor처럼 그 층으로 가고(계단이 갈리면 STAIR-01 카드), 닿으면 층 단위 임무 — 지시 창 (2026-11-17)
 ##   stair:          계단 고르기 답 (squad_ids = 조 id, value = 그 층 계단 index)
 ##   entry_all:      동시 진입 허가 — 진입 허가를 묻는 출동대 모두 (P4-5)
 ##   dispatch_answers: 출동 중 장면에서 답한 출동 단계 카드 (answers.cards = {카드 id: 선택지 순서, -1 = 정하지 않음})
@@ -124,6 +126,14 @@ func execute(sim: SimWorld) -> void:
 			if ei >= 0 and ei < sim.entries.list.size():
 				e = sim.entries.list[ei]
 			cmd.order_floor(squad_ids, value, e, tick)
+		"floor_mission":
+			# 지시 창 (2026-11-17): 그 층으로 가서(밖의 분대는 고른 진입구 → 진입 허가, 계단이 갈리면 질문 카드) 닿으면 층 단위 임무.
+			# answers: kind = "search"·"attack", entry = 진입구 index (-1 = 가까운 문)
+			var fe: EntryPoints.Entry = null
+			var fei := int(answers.get("entry", -1))
+			if fei >= 0 and fei < sim.entries.list.size():
+				fe = sim.entries.list[fei]
+			cmd.order_floor_mission(squad_ids, value, fe, str(answers.get("kind", "search")), tick)
 		"stair":
 			for id in squad_ids:
 				cmd.order_stair(id, value, tick)

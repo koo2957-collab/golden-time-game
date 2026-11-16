@@ -162,6 +162,8 @@ var watch := ""
 var floor_goals: Dictionary = {}
 ## 어느 계단으로 갈지 묻고 답을 기다리는 조 {crew id: {level: 지금 층, goal: 갈 층, cores: [계단 index]}}
 var stair_asks: Dictionary = {}
+## 층에 닿으면 시작할 층 단위 임무 {crew id: "search"·"attack"} (지시 창 floor_mission, 2026-11-17)
+var floor_missions: Dictionary = {}
 ## 계단실 (SimWorld가 만든다)
 var stairs: StairCores
 var exposure: ExposureSystem
@@ -1434,6 +1436,16 @@ func order_floor(crew_ids: Array, level: int, e: EntryPoints.Entry, tick: int) -
 			func(t: int) -> void: _set_floor_goal([id], level, t))
 
 
+## 지시 창의 층 임무 (2026-11-17): 그 층으로 보내고(order_floor — 진입구·진입 허가·계단 묻기), 닿으면 층 단위 임무를 시작한다
+func order_floor_mission(crew_ids: Array, level: int, e: EntryPoints.Entry, kind: String, tick: int) -> void:
+	if not fire.building.has_level(level) or not kind in ["search", "attack"]:
+		return
+	order_floor(crew_ids, level, e, tick)
+	for id in crew_ids:
+		if units.get_crew(int(id)) != null:
+			floor_missions[int(id)] = kind
+
+
 ## 진입구 앞에서 진입 허가를 기다리는 출동대 (P4-5 동시 진입)
 func waiting_squads() -> Array[int]:
 	var out: Array[int] = []
@@ -1564,9 +1576,14 @@ func _step_floor_goals(tick: int) -> void:
 		if c == null or c.leader.incapacitated:
 			clear_floor_goal(id)
 			continue
-		if c.leader.level == goal and not c.leader.is_moving():
+		# 층 임무가 있으면 건물 안에 들어선 뒤에 닿은 것으로 본다 (1층 임무는 진입 허가 뒤 문 안에서 시작)
+		var mission := str(floor_missions.get(id, ""))
+		if c.leader.level == goal and not c.leader.is_moving() and (mission == "" or _indoor(c.leader.level, c.leader.pos)):
 			clear_floor_goal(id)
 			events.add(tick, "floor_reached", {"crew": _crew_name(c), "crew_id": id, "level": goal})
+			if mission != "" and tactical:
+				var mid := Vector2i(fire.building.footprint(goal).get_center())
+				tactical.order(mission + "_floor", id, Vector3i(mid.x, mid.y, goal), tick)
 			continue
 		if c.leader.is_moving() or stair_asks.has(id) or not _indoor(c.leader.level, c.leader.pos):
 			continue
@@ -1594,7 +1611,16 @@ func _step_floor_goals(tick: int) -> void:
 			for i in known:
 				var sd: String = stairs.side(lv, i, exposure)
 				names.append(stairs.label(lv, i) + (" (%s)" % sd if sd != "" else ""))
-			events.add(tick, "stair_ask", {"crew": _crew_name(c), "crew_id": id, "level": goal, "options": " · ".join(names)})
+			# 질문 카드(STAIR-01)용: 앞의 두 계단과 급기측 계단 (SOP 107 3.1④ — 진입은 급기측. 바람이 없으면 둘 다 허용)
+			var a: int = known[0]
+			var b: int = known[1]
+			var best := ""
+			if stairs.side(lv, a, exposure) == "급기측":
+				best = "a"
+			elif stairs.side(lv, b, exposure) == "급기측":
+				best = "b"
+			events.add(tick, "stair_ask", {"crew": _crew_name(c), "crew_id": id, "level": goal, "options": " · ".join(names),
+				"floor": fire.building.floor_name(goal), "stair_a": names[0], "stair_b": names[1], "core_a": a, "core_b": b, "best": best})
 			radio.send(Radio.Priority.TACTICS, _crew_name(c), COMMANDER, "계단 %d곳 확인 — %s. %s으로 어느 계단을 쓸까요?" % [known.size(), " · ".join(names), fire.building.floor_name(goal)], tick)
 			continue
 		# 아는 계단이 하나면 그 계단, 아직 못 봤으면 가장 가까운 계단 (대원 스스로)
@@ -1609,10 +1635,11 @@ func _step_floor_goals(tick: int) -> void:
 		_route_by_stair(c, pick, goal)
 
 
-## 다른 명령을 받으면 층 목표를 지운다 (MoveCommand·TacticalCommand)
+## 다른 명령을 받으면 층 목표를 지운다 (MoveCommand·TacticalCommand). 층에 닿은 뒤 시작할 임무도 지운다
 func clear_floor_goal(id: int) -> void:
 	approach.erase(id)
 	floor_goals.erase(id)
+	floor_missions.erase(id)
 	stair_asks.erase(id)
 	_floor_routed.erase(id)
 

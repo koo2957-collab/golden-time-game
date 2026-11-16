@@ -322,14 +322,15 @@ func _run() -> void:
 	_check("조를 고른 채 층 우클릭 → 지시 창 (화재진압이 골라져 있다)", [mui0.order.visible, mui0.order_kind, mui0.order_level], [true, "attack", 1])
 	_key(KEY_ENTER)
 	await process_frame
-	var tac = sim.issued.slice(n_iss).filter(func(x): return x.command is TacticalCommand)
-	_check("Enter → 1층 화재진압 지시, 창 닫힘", [str(tac[0].command.action) if not tac.is_empty() else "",
-		tac[0].command.crew_ids if not tac.is_empty() else [], mui0.order.visible], ["attack_floor", [0, 1], false])
+	var tac = sim.issued.slice(n_iss).filter(func(x): return x.command is CommandOrder and x.command.action == "floor_mission")
+	_check("Enter → 1층 화재진압 지시 (그 층으로 가서 임무), 창 닫힘", [str(tac[0].command.answers.kind) if not tac.is_empty() else "",
+		tac[0].command.squad_ids if not tac.is_empty() else [], mui0.order.visible], ["attack", [0, 1], false])
 	# 이 아래 점검은 예전처럼 인명검색으로 움직인 상태를 쓴다
 	if not tac.is_empty():
 		for id in [0, 1]:
 			sim.tactical.cancel(id)
-		sim.issue(TacticalCommand.make("search_floor", [0, 1] as Array[int], tac[0].command.target, tac[0].command.via))
+		var e0: EntryPoints.Entry = sim.entries.list[int(tac[0].command.answers.entry)] if int(tac[0].command.answers.entry) >= 0 else sim.entries.list[0]
+		sim.issue(TacticalCommand.make("search_floor", [0, 1] as Array[int], Vector3i(13, 15, 1), e0.outside))
 	sim.step_ticks(700)
 
 	# 차량·수관·방수 (상황판) — 펌프차가 콘솔 뒤에 가리지 않게 화면 가운데로
@@ -392,7 +393,7 @@ func _run() -> void:
 	await _mission(KEY_Q, Vector2(24.5, 17.5))
 	_check("층 우클릭 → 지시 창 Q(인명검색) → Enter", [sel.mode, world.mission_ui.order.visible], [sel.Mode.NONE, false])
 	sim.step_ticks(1)
-	var searches := sim.command_log.entries.filter(func(c): return c is TacticalCommand and str(c.action).begins_with("search"))
+	var searches := sim.command_log.entries.filter(func(c): return c is CommandOrder and c.action == "floor_mission" and str(c.answers.kind) == "search")
 	_check("지시 창 → 인명검색 임무", searches.size() >= 1, true)
 
 	# 지휘관 명령 칸 지원 ▸ 단위대 지정 → 단위대 창. 조를 고른 채로 눌러도 된다 (칸은 늘 보인다)
@@ -476,8 +477,8 @@ func _run() -> void:
 	_check("팀 명령 카드 (구조대도 같음)", world.hud.card.set_name, "team")
 	await _mission(KEY_Q, Vector2(24.5, 17.5))
 	sim.step_ticks(1)
-	var tacts := sim.command_log.entries.filter(func(c): return c is TacticalCommand)
-	_check("진압대 → 층 진압, 구조대 → 층 검색 (지시 창)", tacts.slice(-2).map(func(c): return c.action), ["attack_floor", "search_floor"])
+	var tacts := sim.command_log.entries.filter(func(c): return c is CommandOrder and c.action == "floor_mission")
+	_check("진압대 → 층 진압, 구조대 → 층 검색 (지시 창)", tacts.slice(-2).map(func(c): return str(c.answers.kind)), ["attack", "search"])
 	_check("RECEO 상태판", cui._receo_label.text.contains("R 구조"), true)
 	# 지휘관 명령 칸 안전 ▸ RIT 지정 → 조 누르기, 안전 ▸ 인원 점검
 	hud_board["rit"].pressed.emit()
@@ -557,8 +558,8 @@ func _run() -> void:
 			await process_frame
 			await _mission(KEY_W, rc, 2)
 			sim.step_ticks(1)
-			var lt = sim.command_log.entries.filter(func(c): return c is TacticalCommand)
-			_check("본 적 없는 방 W → 층 진압", lt[-1].action if not lt.is_empty() else "", "attack_floor")
+			var lt = sim.command_log.entries.filter(func(c): return c is CommandOrder and c.action == "floor_mission")
+			_check("2층 우클릭 → 지시 창 W → 2층 화재진압", [str(lt[-1].answers.kind) if not lt.is_empty() else "", lt[-1].value if not lt.is_empty() else -1], ["attack", 2])
 			world.set_view_level(1)
 	# 건물 안 조 (P4-5): 좌클릭은 고르기만, 명령은 명령 카드 단축키 — A 대기 → W 보고 요청·Q 대기
 	var mui = world.mission_ui

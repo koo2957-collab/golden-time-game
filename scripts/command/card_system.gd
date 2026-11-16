@@ -233,6 +233,9 @@ func _trigger_of(e: Dictionary) -> String:
 			return ""
 		"stair_smoke_seen":
 			return "stair_smoke"
+		"stair_ask":
+			# 층으로 가는 조가 아는 계단이 둘 이상 — 어느 계단으로? (2026-11-17: 계단 클릭 대신 질문 카드)
+			return "stair_ask"
 		"victim_found":
 			var alive := 0
 			for v in rescue.victims:
@@ -306,6 +309,13 @@ func _raise(spec: Dictionary, e: Dictionary, tick: int) -> void:
 			c.urgency = str(v.get("urgency", c.urgency))
 	c.text = c.text.format(c.ctx)
 	c.monologue = str(spec.get("monologue", "")).format(c.ctx)
+	# 선택지 글에도 문맥을 넣는다 (계단 카드의 계단 이름 등 — 중괄호가 없는 글은 그대로)
+	var formatted: Array = []
+	for o: Dictionary in opts:
+		var f := o.duplicate()
+		f["text"] = str(o.get("text", "")).format(c.ctx)
+		formatted.append(f)
+	opts = formatted
 	c.options = _shuffled(opts, c.uid)
 	c.asked_tick = tick
 	# 출동 중에 이미 답한 카드: 묻지 않고 그 답대로. 정하지 않고 도착했으면 준비하지 않은 것으로 남긴다 (등급 없음)
@@ -518,6 +528,10 @@ func _apply(effect: String, c: Card, tick: int) -> void:
 	var action := str(c.ctx.get("action", ""))
 	var target := _cell(c.ctx.get("target", []))
 	match effect:
+		"stair_a", "stair_b":
+			# 계단 카드 답 (STAIR-01): 그 계단으로 간다 — 무전으로 알리고 받으면 그 계단으로 (CommandSystem.order_stair)
+			if sim:
+				sim.command.order_stair(c.crew_id, int(c.ctx.get("core_a" if effect == "stair_a" else "core_b", 0)), tick)
 		"reserve_water":
 			if sim:
 				sim.command.reserve_water = true

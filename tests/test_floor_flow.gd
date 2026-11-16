@@ -78,6 +78,63 @@ func test_two_stairs_ask_and_use_chosen_one() -> void:
 	assert_true(sim.command.decisions.any(func(d: Dictionary) -> bool: return str(d.decision).contains(st.label(lv, far))), "판단 기록에 계단")
 
 
+## 계단이 둘이면 질문 카드(STAIR-01)로 묻고, 카드 답대로 그 계단으로 간다 (2026-11-17: 계단 클릭 대신 카드)
+func test_two_stairs_card_routes_by_answer() -> void:
+	var sim := SimWorld.from_scenario(BASEMENT, false)
+	open_all_doors(sim)
+	sim.command.interior.plan_known = true
+	sim.cards.crew_judgment = true
+	var st := sim.command.stairs
+	var lv: int = sim.building.levels()[0]
+	var goal := lv + 1
+	var options := st.toward(lv, goal)
+	var c := sim.units.get_crew(0)
+	var near := sim.pathfinder.nearest_walkable(lv, Vector2i(st.center(lv, options[0]).floor()) + Vector2i(1, 1))
+	_place(c, lv, near)
+	sim.issue(CommandOrder.make("floor", [0] as Array[int], goal))
+	var card := func() -> CardSystem.Card:
+		for q in sim.cards.queue:
+			if q.id == "STAIR-01":
+				return q
+		return null
+	assert_true(_until(sim, func() -> bool: return card.call() != null, 15.0), "계단이 둘이면 계단 카드")
+	var q: CardSystem.Card = card.call()
+	var texts: Array = q.options.map(func(o: Dictionary) -> String: return str(o.text))
+	assert_true(texts.any(func(t: String) -> bool: return t.contains("A계단")) and texts.any(func(t: String) -> bool: return t.contains("B계단")), "선택지에 계단 이름 (%s)" % [texts])
+	# 먼 계단(options[1])을 고른다
+	var far: int = options[1]
+	var pick := -1
+	for i in q.options.size():
+		if str(q.options[i].text).contains(st.label(lv, far)):
+			pick = i
+	sim.cards.answer(q.uid, pick, sim.clock.tick)
+	var far_cells: Array = st.cores(lv)[far]
+	var seen := {"far": false}
+	var ok := _until(sim, func() -> bool:
+		if c.leader.level == lv and Vector2i(c.leader.pos.floor()) in far_cells:
+			seen.far = true
+		return not sim.events.of_type("floor_reached").is_empty(), 180.0)
+	assert_true(ok and seen.far, "카드에서 고른 계단으로 위층 도착 (도착 %s, 고른 계단 지남 %s)" % [ok, seen.far])
+
+
+## 지시 창의 층 임무 (floor_mission): 그 층에 닿으면 층 단위 임무를 시작한다
+func test_floor_mission_starts_on_arrival() -> void:
+	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)
+	open_all_doors(sim)
+	var lv: int = sim.building.levels()[0]
+	var c := sim.units.get_crew(2)
+	var st: Array = sim.command.stairs.cores(lv)[0]
+	_place(c, lv, sim.pathfinder.nearest_walkable(lv, Vector2i(st[0]) + Vector2i(2, 0)))
+	sim.issue(CommandOrder.make("floor_mission", [2] as Array[int], lv + 1, Vector3i.ZERO, {"kind": "search", "entry": -1}))
+	sim.step_ticks(1)
+	assert_true(sim.command.floor_missions.has(2), "층에 닿으면 할 임무")
+	assert_true(sim.tactical.task_of_crew(2) == null, "아직 임무 시작 전 (층으로 가는 중)")
+	assert_true(_until(sim, func() -> bool: return sim.tactical.task_of_crew(2) != null, 120.0), "층에 닿으면 임무 시작")
+	var t := sim.tactical.task_of_crew(2)
+	assert_eq([t.floor_action, t.floor], ["search_floor", lv + 1], "그 층 검색")
+	assert_true(not sim.command.floor_missions.has(2), "시작하면 지운다")
+
+
 func test_unseen_stairs_crew_picks_nearest() -> void:
 	var sim := SimWorld.from_scenario(BASEMENT, false)
 	open_all_doors(sim)

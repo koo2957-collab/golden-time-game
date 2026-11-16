@@ -137,9 +137,10 @@ func _run() -> void:
 	_check("진입구 목록 전부 · 가까운 문이 골라져 있다", [mui.order_entries.size(), mui.order_entry, mui.order_entries[0]], [sim.entries.list.size(), nearest.index, nearest.index])
 	root.get_texture().get_image().save_png("user://shot_order.png")
 	_key(KEY_ENTER)
-	var tac := _issued_since(sim, n0).filter(func(c): return c is TacticalCommand)
-	_check("Enter → 그 층 인명검색 (고른 진입구를 거쳐), 창 닫힘", [tac.size(), str(tac[0].action) if not tac.is_empty() else "",
-		tac[0].via if not tac.is_empty() else Vector3i.ZERO, tac[0].target.z if not tac.is_empty() else -1, mui.order.visible], [1, "search_floor", nearest.outside, up, false])
+	# 지시 = floor_mission: 고른 진입구로 그 층에 가서(진입 허가·계단 카드) 닿으면 층 단위 임무 (2026-11-17)
+	var tac := _issued_since(sim, n0).filter(func(c): return c is CommandOrder and c.action == "floor_mission")
+	_check("Enter → 그 층 인명검색 (고른 진입구로), 창 닫힘", [tac.size(), str(tac[0].answers.kind) if not tac.is_empty() else "",
+		int(tac[0].answers.entry) if not tac.is_empty() else -2, tac[0].value if not tac.is_empty() else -1, mui.order.visible], [1, "search", nearest.index, up, false])
 
 	# 5) 진압대는 화재진압이 골라져 있다. 진입구·임무를 바꿔 지시할 수 있다 (숫자키 = 진입구, Q·W = 임무)
 	var attack_crew: Crew = sim.units.squads[0].crews[0]
@@ -160,8 +161,8 @@ func _run() -> void:
 	_key(KEY_W)
 	var picked_entry: EntryPoints.Entry = sim.entries.list[mui.order_entry]
 	mui.confirm_order()
-	tac = _issued_since(sim, n0).filter(func(c): return c is TacticalCommand)
-	_check("지시 → 화재진압, 바꾼 진입구로", [str(tac[0].action) if not tac.is_empty() else "", tac[0].via if not tac.is_empty() else Vector3i.ZERO], ["attack_floor", picked_entry.outside])
+	tac = _issued_since(sim, n0).filter(func(c): return c is CommandOrder and c.action == "floor_mission")
+	_check("지시 → 화재진압, 바꾼 진입구로", [str(tac[0].answers.kind) if not tac.is_empty() else "", int(tac[0].answers.entry) if not tac.is_empty() else -2], ["attack", picked_entry.index])
 	# Esc로 취소하면 지시 없음
 	n0 = sim.issued.size()
 	sel._right_click_at(room_pos, Vector2(600, 300))
@@ -190,8 +191,8 @@ func _run() -> void:
 	sel._right_click_at(band_pos, Vector2(600, 300))
 	_check("외벽 3층 우클릭 → 3층 지시 창", [mui.order.visible, mui.order_level], [true, up + 1])
 	mui.confirm_order()
-	tac = _issued_since(sim, n0).filter(func(c): return c is TacticalCommand)
-	_check("지시 → 3층 층 단위 인명검색", [tac.size(), str(tac[0].action) if not tac.is_empty() else "", tac[0].target.z if not tac.is_empty() else -1], [1, "search_floor", up + 1])
+	tac = _issued_since(sim, n0).filter(func(c): return c is CommandOrder and c.action == "floor_mission")
+	_check("지시 → 3층 층 단위 인명검색", [tac.size(), str(tac[0].answers.kind) if not tac.is_empty() else "", tac[0].value if not tac.is_empty() else -1], [1, "search", up + 1])
 	var bar = world.hud.floor_bar
 	var bar_row: Dictionary = bar._rows.filter(func(it): return it.kind == "floor" and it.level == up)[0]
 	var rc := InputEventMouseButton.new()

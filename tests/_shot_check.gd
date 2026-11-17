@@ -1,0 +1,262 @@
+extends SceneTree
+## 사용자 확인용 비교 캡처 (점검용, 테스트 목록에 넣지 않음, 2026-11-17 — docs/test_guides/2026-11-17_check.md):
+##   godot --path . -s res://tests/_shot_check.gd -- 저장폴더 [모드]
+## 모드: all (기본) = 팀장 표시·분대 간격 0.5m/1m·임무 완료 카드와 '대기' 표시 / officer = 팀장 표시만 (옛 커밋에서 파란 띠를 찍을 때) /
+##       wave = 창가 요구조자 구조 요청 (B8, 필로티 시나리오)
+## 시계를 멈추고 상태를 손으로 만든다 — 실제 진행 화면이 아니라 견본이다.
+
+
+func _initialize() -> void:
+	_run.call_deferred()
+
+
+func _save(out: String, name: String) -> void:
+	for i in 8:
+		await process_frame
+	root.get_texture().get_image().save_png(out + name + ".png")
+
+
+func _run() -> void:
+	var args := OS.get_cmdline_user_args()
+	var out: String = (args[0] if not args.is_empty() else OS.get_user_data_dir()) + "/"
+	var mode: String = args[1] if args.size() > 1 else "all"
+	var gm = root.get_node_or_null("GameManager")
+	gm.scenario_path = "res://data/scenarios/stage1_2_piloti.json" if mode == "wave" else "res://data/scenarios/sop214_1_day_living.json"
+	gm.skip_menu = true
+	root.add_child(load("res://scenes/main/main.tscn").instantiate())
+	for i in 10:
+		await process_frame
+	var world = root.get_node("Main/World")
+	world.confine_mouse(false)
+	world.camera.edge_scroll = false
+	world.hud.command_ui.close_all()
+	var sim: SimWorld = world.sim
+	sim.decision_pause = false
+	world.hud.card_ui.pauses = Callable()
+	if world.hud.tutorial_ui:
+		world.hud.tutorial_ui.visible = false
+	var d = world.hud.command_ui.dispatch
+	d.skip()
+	sim.issue(CommandOrder.make("arrive", [], 0, Vector3i.ZERO, {"gap_s": 1.0}))
+	for i in 120:
+		sim.step_ticks(10)
+		sim.cards.queue.clear()
+		await process_frame
+	for i in 600:
+		if not world.camera.locked:
+			break
+		await process_frame
+	world.hud.command_ui.close_all()
+	world.hud.card_ui.visible = false
+	var sel = world.selection
+	var proj = world.projection()
+	if mode == "wave":
+		await _wave(world, sim, out)
+		quit()
+		return
+	if mode == "more":
+		await _more(world, sim, out)
+		quit()
+		return
+	# 1) 팀장 표시: 4명 분대(구조대)를 크게 — 고르지 않음 / 고름
+	var squad_crew: Crew = null
+	for c in sim.units.crews:
+		if c.list.size() >= 4 and not c.leader.aboard:
+			squad_crew = c
+			if sim.units.squads[c.squad_id].type == "구조대":
+				break
+	if squad_crew == null:
+		squad_crew = sim.units.crews[0]
+	var spot := squad_crew.leader.pos
+	sel._set_selection([] as Array[int], [] as Array[int])
+	world.camera.zoom = Vector2(2.2, 2.2)
+	world.camera.position = proj.to_screen(spot, 1.0)
+	root.warp_mouse(Vector2(10, 10))
+	sim.clock.paused = true
+	await _save(out, "A_officer")
+	sel._set_selection([squad_crew.id] as Array[int], [] as Array[int])
+	await _save(out, "A_officer_selected")
+	sel._set_selection([] as Array[int], [] as Array[int])
+	if mode == "officer":
+		print("저장 ", out)
+		quit()
+		return
+	# 2) 분대 간격: 같은 자리로 걸어가 선 모습 — 0.5m(지금) / 1m(그림만 벌린 모습 견본)
+	sim.clock.paused = false
+	var goal := Vector3i(floori(spot.x) + 4, floori(spot.y), squad_crew.leader.level)
+	for gap: int in [sim.units.line_gap_cells, sim.units.line_gap_cells * 2]:
+		sim.units.line_gap_cells = gap
+		for k in 2:
+			sim.units.order_move([squad_crew.id] as Array[int], goal - Vector3i(6 * (1 - k), 0, 0), sim.pathfinder)
+			for i in 200:
+				sim.step_ticks(2)
+				sim.cards.queue.clear()
+				if squad_crew.members().all(func(f: Firefighter) -> bool: return not f.is_moving()):
+					break
+		world.camera.position = proj.to_screen(squad_crew.leader.pos, 1.0)
+		# 칸 하나 = 0.5m
+		await _save(out, "B_gap_%dcm" % (gap * 50))
+	sim.units.line_gap_cells = 2
+	# 3) 임무 완료 카드와 '대기': 2층 검색을 마친 구조 분대
+	var top: int = sim.building.levels().max()
+	var room: Compartment = null
+	for r in sim.fire.comps:
+		if r.level == top and not sim.fire.is_exposure_comp(r):
+			r.searched_tick = 0
+			if room == null and r.cells.size() >= 4:
+				room = r
+	if room:
+		var cell := sim.tactical._room_cell(room)
+		for ff in squad_crew.members():
+			ff.path.clear()
+			ff.level = top
+			ff.prev_level = top
+			ff.pos = Vector2(cell.x, cell.y) + Vector2(0.5, 0.5)
+			ff.prev_pos = ff.pos
+		sim.cards.queue.clear()
+		sim.tactical.order("search_floor", squad_crew.id, Vector3i(0, 0, top), sim.clock.tick)
+		for i in 100:
+			sim.step_ticks(1)
+			sim.cards.queue = sim.cards.queue.filter(func(q: CardSystem.Card) -> bool: return q.id == "MISSION-DONE-01")
+			if not sim.cards.queue.is_empty():
+				break
+		sim.clock.paused = true
+		world.set_view_level(top, false)
+		world.camera.zoom = Vector2(1.4, 1.4)
+		world.camera.position = proj.to_screen(squad_crew.leader.pos, 1.0)
+		world.hud.card_ui.visible = true
+		await _save(out, "E_mission_done_card")
+		world.hud.card_ui.visible = false
+		await _save(out, "E_idle_tag")
+	print("저장 ", out, " · 분대 ", sim.units.crew_name(squad_crew), " ", squad_crew.list.size(), "명")
+	quit()
+
+
+## A7 인명검색 이동 · A8 무전 보고(서서·낮은 자세) · A9 응급처치 · A10 들것 이송 — _shot_actions.gd는 조가 4개 이상일 때만 찍는데
+## 분대 편성 뒤에는 도착 직후 분대가 둘이라 빠진다. 있는 두 분대로 찍는다 (모드 more)
+func _place(crew: Crew, at: Vector2, gap := Vector2(1, 0)) -> void:
+	var k := 0
+	for ff in crew.members():
+		ff.aboard = false
+		ff.level = 1
+		ff.pos = at + gap * k
+		ff.prev_pos = ff.pos
+		ff.path.clear()
+		k += 1
+
+
+func _more(world, sim: SimWorld, out: String) -> void:
+	sim.cards.queue.clear()
+	sim.clock.paused = true
+	var crews := sim.units.crews
+	var a: Crew = crews[0]
+	var b: Crew = crews[1] if crews.size() > 1 else crews[0]
+	var proj = world.projections[world.ViewMode.ISO]
+	world.camera.zoom = Vector2(2.4, 2.4)
+	# A7: 검색하며 동쪽으로 걸어가는 중
+	_place(b, Vector2(40.5, 35.5), Vector2(-0.8, 0))
+	b.leader.prev_pos = b.leader.pos - Vector2(0.05, 0.0)
+	var st := RescueSystem.SearchTask.new()
+	st.crew_id = b.id
+	st.level = 1
+	sim.rescue.searches.append(st)
+	world.camera.position = proj.to_screen(Vector2(40.0, 34.5))
+	await _save(out, "shot_actions_search")
+	sim.rescue.searches.clear()
+	# A8: 서서 무전 / 낮은 자세 무전
+	_place(a, Vector2(36.5, 30.5), Vector2(-1.2, 0))
+	_place(b, Vector2(40.5, 33.5), Vector2(-1.2, 0))
+	var m := Radio.Message.new()
+	m.sender = sim.units.crew_name(a)
+	m.receiver = "현장지휘관"
+	m.body = "보고 시험"
+	sim.command.radio.current = m
+	world.camera.position = proj.to_screen(Vector2(38.0, 32.0))
+	await _save(out, "shot_actions_radio")
+	b.leader.crouched = true
+	var m2 := Radio.Message.new()
+	m2.sender = sim.units.crew_name(b)
+	m2.receiver = "현장지휘관"
+	m2.body = "보고 시험"
+	m2.data = {"crew_id": b.id}
+	sim.command.radio.current = m2
+	await _save(out, "shot_actions_radio_low")
+	sim.command.radio.current = null
+	b.leader.crouched = false
+	if sim.rescue.victims.is_empty():
+		return
+	# A2·A3: a 분대 2인 운반(서서) / b 분대 끌기(낮은 자세), 둘 다 서쪽으로
+	var slots := [[a, Vector2(38.5, 30.5), false, 0], [b, Vector2(38.5, 35.5), true, 1]]
+	for s: Array in slots:
+		var c: Crew = s[0]
+		var vi: int = s[3]
+		if vi >= sim.rescue.victims.size() or c == null:
+			continue
+		_place(c, s[1])
+		c.leader.crouched = s[2]
+		var v: Victim = sim.rescue.victims[vi]
+		v.discovered = true
+		v.level = 1
+		v.pos = c.leader.pos
+		v.carried_by = c.id
+		var t := RescueSystem.CarryTask.new()
+		t.crew_id = c.id
+		t.kind = "victim"
+		t.target_id = v.id
+		t.carrying = true
+		sim.rescue.carries.append(t)
+		for l in world.iso_view.layers:
+			l._facing[c.leader.id] = 4
+	world.camera.position = proj.to_screen(Vector2(38.5, 33.0))
+	await _save(out, "shot_actions_carry")
+	sim.rescue.carries.clear()
+	for v in sim.rescue.victims:
+		v.carried_by = -1
+	b.leader.crouched = false
+	# A9·A10: a 분대를 잠시 구급대로 보고(그림만) 처치 / 들것 이송. b 분대는 멀리 비켜 둔다
+	_place(b, Vector2(46.5, 38.5), Vector2(-1.0, 0))
+	var sq: Squad = sim.units.squads[a.squad_id]
+	var old_type := sq.type
+	sq.type = "구급대"
+	var vic: Victim = sim.rescue.victims[0]
+	vic.state = Victim.State.RESCUED
+	vic.carried_by = -1
+	vic.level = 1
+	vic.pos = Vector2(36.5, 31.5)
+	_place(a, Vector2(35.8, 31.5), Vector2(0, 1.0))
+	var pt := EmsSystem.Patient.new()
+	pt.victim_id = vic.id
+	pt.crew_id = a.id
+	pt.stage = EmsSystem.Stage.TREATING
+	pt.treat_start_tick = 0
+	pt.treat_left = 999.0
+	sim.ems.patients.append(pt)
+	world.camera.position = proj.to_screen(Vector2(36.5, 31.5))
+	await _save(out, "shot_actions_aid")
+	pt.stage = EmsSystem.Stage.CARRYING
+	vic.carried_by = a.id
+	_place(a, Vector2(36.5, 31.5), Vector2(1.0, 0))
+	a.leader.prev_pos = a.leader.pos - Vector2(0.05, 0.0)
+	await _save(out, "shot_actions_cot")
+	sim.ems.patients.erase(pt)
+	vic.carried_by = -1
+	sq.type = old_type
+	print("저장 ", out, " · A7·A8·A9·A10")
+
+
+## 창가 요구조자 (B8): 그 층 내부 보기에서 요구조자를 크게
+func _wave(world, sim: SimWorld, out: String) -> void:
+	for v in sim.rescue.victims:
+		if v.jumper:
+			v.discovered = true
+			world.set_view_level(v.level, false)
+			for i in 10:
+				await process_frame
+			var lay = world.iso_view.current_live if world.iso_view.current_live else world.iso_view.layers[0]
+			world.camera.zoom = Vector2(2.4, 2.4)
+			world.camera.position = lay.proj.to_screen(v.pos, 1.0) if "proj" in lay else world.camera.position
+			sim.clock.paused = true
+			await _save(out, "M_B8_wave")
+			print("저장 ", out, " · 창가 요구조자 ", v.label())
+			return
+	print("창가 요구조자 없음")

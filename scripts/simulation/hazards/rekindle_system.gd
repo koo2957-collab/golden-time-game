@@ -235,14 +235,19 @@ func _step_tasks(dt: float, tick: int) -> void:
 		fire.comps[t.room].water_applied_l += _overhaul_water
 		fire.comps[t.room].water_damage_l += _overhaul_water * _overhaul_damage
 		overhaul_order.append({"room": room.display_name(), "level": room.level, "tick": tick})
-		events.add(tick, "overhaul_done", {"crew": _crew_name(c), "room": room.display_name(), "embers": n})
+		# final: 그 분대의 임무가 끝났다 — CardSystem이 잠시 뒤에도 할 일이 없으면 다음 지시를 묻는다 (2026-11-17)
+		var done := {"crew": _crew_name(c), "room": room.display_name(), "embers": n}
+		if t.floor < 0:
+			done.merge({"crew_id": c.id, "final": true})
+		events.add(tick, "overhaul_done", done)
 		# 층 단위: 같은 층의 다음 탄 방으로. 남은 방이 없으면 층 잔불정리 완료 보고
 		if t.floor >= 0:
 			var next := next_floor_room(t.floor, lead.pos)
 			if next.x >= 0:
 				order_overhaul(t.crew_id, next, tick, true)
 			else:
-				events.add(tick, "tactical_done", {"crew": _crew_name(c), "text": "%s 잔불정리 완료" % fire.building.floor_name(t.floor)})
+				events.add(tick, "tactical_done", {"crew": _crew_name(c), "text": "%s 잔불정리 완료" % fire.building.floor_name(t.floor),
+					"crew_id": c.id, "final": true})
 
 
 func _vented(c: Compartment) -> bool:

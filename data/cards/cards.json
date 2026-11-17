@@ -835,6 +835,60 @@
       "once": true
     },
     {
+      "id": "MISSION-DONE-01",
+      "title": "임무 완료 — 다음 지시",
+      "phase": "지휘",
+      "trigger": "mission_done",
+      "asker": "임무 분대",
+      "urgency": "일반",
+      "multi": true,
+      "note": "임무를 마친 분대가 할 일 없이 서 있으면 묻는다 (2026-11-17 사용자 결정 — 완료 보고 → 철수·대기·추가 임무). {next}는 지휘관이 아는 정보로 고른 다음 임무 (SimWorld.next_task: 진압대는 본 불 → 잔불정리 → 검색, 그 밖은 검색 화점층 → 직상층 → 최상층). 공기는 card_params mission_done_air_low_ratio",
+      "text": "{crew}: {done}. 공기 {air}. 다음 지시 바랍니다.",
+      "options": [
+        {"text": "{next}", "grade": "최선", "effect": "next_task"},
+        {"text": "밖으로 나와 공기 보충·대기", "grade": "허용", "effect": "withdraw"},
+        {"text": "현 위치에서 대기", "grade": "허용", "effect": "stand_by"}
+      ],
+      "variants": [
+        {
+          "if": {"air_low": true},
+          "options": [
+            {"text": "밖으로 나와 공기 보충·대기 (교대조 투입)", "grade": "최선", "effect": "withdraw"},
+            {"text": "{next}", "grade": "오답", "effect": "next_task"},
+            {"text": "현 위치에서 대기", "grade": "오답", "effect": "stand_by"}
+          ]
+        },
+        {
+          "if": {"has_next": false},
+          "text": "{crew}: {done}. 공기 {air}. 더 할 일이 보이지 않습니다. 다음 지시 바랍니다.",
+          "options": [
+            {"text": "밖으로 나와 공기 보충·대기", "grade": "최선", "effect": "withdraw"},
+            {"text": "현 위치에서 대기", "grade": "허용", "effect": "stand_by"}
+          ]
+        },
+        {
+          "if": {"has_next": false, "air_low": true},
+          "text": "{crew}: {done}. 공기 {air}. 더 할 일이 보이지 않습니다. 다음 지시 바랍니다.",
+          "options": [
+            {"text": "밖으로 나와 공기 보충·대기", "grade": "최선", "effect": "withdraw"},
+            {"text": "현 위치에서 대기", "grade": "오답", "effect": "stand_by"}
+          ]
+        },
+        {
+          "if": {"inside": false},
+          "text": "{crew}: {done}. 다음 지시 바랍니다.",
+          "options": [
+            {"text": "{next}", "grade": "최선", "effect": "next_task"},
+            {"text": "현 위치에서 대기", "grade": "허용", "effect": "stand_by"}
+          ]
+        }
+      ],
+      "sop_ref": [
+        "SOP 201-3.7"
+      ],
+      "debrief": "임무를 마치면 지휘관에게 보고하고 다음 지시를 받는다. 공기가 절반 아래로 줄었으면 다음 임무보다 밖으로 나와 공기를 채우고 교대조를 넣는다. 할 일 없이 위험구역에 머무르지 않는다."
+    },
+    {
       "id": "ALL-CLEAR-CHECK-01",
       "title": "완진 판단",
       "phase": "잔불정리",

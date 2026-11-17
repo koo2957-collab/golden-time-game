@@ -64,6 +64,8 @@ const FOG_NO_PLAN_ALPHA := 0.95
 const THERMAL_UNKNOWN := Color(0.03, 0.03, 0.05)
 ## 낮은 자세 대원의 키 비율
 const CROUCH_SCALE := 0.62
+## 할 일 없이 서 있는 분대의 '대기' 글자 (팀 줄 TeamStrip.IDLE_COLOR와 같은 색)
+const IDLE_TAG := TeamStrip.IDLE_COLOR
 
 ## 외부 보기 (R16): 1층 바깥 + 건물 외관. 1층 외벽은 천장 높이까지 세우고, 위층은 층마다 쌓은 외관(창 상태)으로 그린다.
 ## 층이 많으면 위층 높이를 줄여(최소 SHELL_MIN_FLOOR_M) 전체가 SHELL_CAP_M 안에 들어오게 한다 — 교육용 표시.
@@ -1536,6 +1538,9 @@ func _draw_unit(ff: Firefighter, alpha: float) -> void:
 	# 팀장(분대 지휘관): 머리 위 ★ (선착대장은 파란 헬멧 지휘관 캐릭터라 따로)
 	if ff.officer:
 		PlanStyle.draw_star(self, label + Vector2(0, -20), 7.0)
+	# 할 일 없이 서 있는 분대: 앞사람 머리 위 '대기' (임무 완료 뒤 다음 지시를 기다림, 2026-11-17)
+	if ff == crew.leader and not crew.solo and not sim.ems.is_ems_crew(crew.id) and sim.squad_idle(crew.id):
+		draw_string(PlanStyle.font(), label + Vector2(-30, -32), "대기", HORIZONTAL_ALIGNMENT_CENTER, 60, 12, IDLE_TAG)
 	_draw_air_bar(label + Vector2(0, 4), ff)
 
 

@@ -10,6 +10,7 @@ signal jump(crew_id: int)
 const SIZE := 46.0
 const GAP := 8.0
 const RING := 4.0
+const IDLE_COLOR := Color("7dd3fc")
 
 var sim: SimWorld
 var selected: Array[int] = []
@@ -73,7 +74,7 @@ func _get_tooltip(at_position: Vector2) -> String:
 		return ""
 	var c := sim.units.get_crew(crews()[i])
 	return "%s · 공기 %d%%%s (%d번 키)" % [sim.units.crew_name(c), roundi(air(c.id) * 100.0),
-		" · 질문 대기" if asking(c.id) else "", i + 1]
+		" · 질문 대기" if asking(c.id) else (" · 임무 없음 (대기)" if idle(c.id) else ""), i + 1]
 
 
 ## 조원 중 낮은 쪽 공기 비율
@@ -88,6 +89,11 @@ func air(crew_id: int) -> float:
 ## 이 조가 낸 질문 카드가 답을 기다리는가
 func asking(crew_id: int) -> bool:
 	return sim.cards.queue.any(func(q: CardSystem.Card) -> bool: return q.crew_id == crew_id)
+
+
+## 할 일 없이 서 있는가 (구급대는 처치·이송을 따로 보여 주므로 빼고)
+func idle(crew_id: int) -> bool:
+	return not sim.ems.is_ems_crew(crew_id) and sim.squad_idle(crew_id)
 
 
 func _draw() -> void:
@@ -123,5 +129,8 @@ func _draw() -> void:
 		if asking(c.id):
 			draw_circle(r.position + Vector2(SIZE - 8, 8), 9.0, Color("fde047"))
 			draw_string(font, r.position + Vector2(SIZE - 12, 13), "?", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.BLACK)
+		elif idle(c.id):
+			# 할 일 없이 서 있는 분대 (노는 일꾼 알림처럼 — 다음 임무를 줄 분대를 한눈에, 2026-11-17)
+			draw_string(font, Vector2(r.end.x - 24, r.end.y + 14), "대기", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, IDLE_COLOR)
 		if down:
 			draw_string(font, center + Vector2(-6, -8), "X", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("ef4444"))

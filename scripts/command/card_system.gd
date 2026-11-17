@@ -70,6 +70,10 @@ var timed := false
 var _recall_s := 20.0
 var _queue_max := 3
 var _event_index := 0
+## 임무 완료를 보고한 분대 {조 id: {tick, text}} — 잠시 뒤에도 할 일이 없으면 다음 지시를 묻는다 (MISSION-DONE-01, 2026-11-17)
+var _done_watch: Dictionary = {}
+var _done_confirm_ticks := 30
+var _air_low_ratio := 0.5
 var _next_uid := 1
 var _seed := 0
 ## 이어서 할 일: 창 배연이 끝나면 문을 열고 임무를 다시 시작 [{crew, window, door, action, target}]
@@ -96,6 +100,8 @@ func _init(p_units: UnitSystem, p_tactical: TacticalSystem, p_doors: DoorSystem,
 	timed = params.value("time_limit_enabled") > 0.0
 	_recall_s = params.value("recall_s")
 	_queue_max = int(params.value("queue_max"))
+	_done_confirm_ticks = roundi(params.value("mission_done_confirm_s") / SimClock.TICK_DT)
+	_air_low_ratio = params.value("mission_done_air_low_ratio")
 
 
 func active() -> Card:
@@ -122,6 +128,7 @@ func set_dispatch_answers(answers: Dictionary) -> void:
 
 func step(_dt: float, tick: int) -> void:
 	_scan_events(tick)
+	_check_done(tick)
 	if tick % 10 == 0:
 		_check_pending_smoke(tick)
 	_step_followups(tick)
@@ -170,20 +177,62 @@ func _scan_events(tick: int) -> void:
 	while _event_index < list.size():
 		var e: Dictionary = list[_event_index]
 		_event_index += 1
+		# 임무를 마친 분대: 바로 묻지 않고 잠시 지켜본다 (층 임무가 다음 방으로 이어지거나 구조자 인계 뒤 원래 임무로 돌아가면 묻지 않는다)
+		if bool(e.get("final", false)) and int(e.get("crew_id", -1)) >= 0:
+			_done_watch[int(e.crew_id)] = {"tick": tick, "text": _done_text(e)}
 		var trigger := _trigger_of(e)
-		if trigger == "":
+		if trigger != "":
+			_raise_trigger(trigger, e, tick)
+
+
+## 그 트리거의 카드를 묻는다. 같은 트리거에 카드가 여러 장이면 모두 묻는다 (once 카드는 한 판에 한 번)
+func _raise_trigger(trigger: String, e: Dictionary, tick: int) -> void:
+	for spec: Dictionary in cards:
+		if str(spec.get("trigger", "")) != trigger:
 			continue
-		# 같은 트리거에 카드가 여러 장이면 모두 묻는다 (once 카드는 한 판에 한 번)
-		for spec: Dictionary in cards:
-			if str(spec.get("trigger", "")) != trigger:
-				continue
-			# 스테이지 전용 카드 (R14): stages에 지금 시나리오의 스테이지가 있어야 묻는다
-			if spec.has("stages") and not (sim and str(sim.scenario.get("meta", {}).get("stage", "")) in spec.stages):
-				continue
-			if bool(spec.get("once", false)) and log.any(func(l: Dictionary) -> bool: return l.id == str(spec.id)) \
-					or not bool(spec.get("multi", false)) and queue.any(func(q: Card) -> bool: return q.id == str(spec.id)):
-				continue
-			_raise(spec, e, tick)
+		# 스테이지 전용 카드 (R14): stages에 지금 시나리오의 스테이지가 있어야 묻는다
+		if spec.has("stages") and not (sim and str(sim.scenario.get("meta", {}).get("stage", "")) in spec.stages):
+			continue
+		if bool(spec.get("once", false)) and log.any(func(l: Dictionary) -> bool: return l.id == str(spec.id)) \
+				or not bool(spec.get("multi", false)) and queue.any(func(q: Card) -> bool: return q.id == str(spec.id)):
+			continue
+		_raise(spec, e, tick)
+
+
+## 완료 보고 글 (카드 첫머리): "2층 검색 완료", "거실 화염 진압, 방수 중지", "어린이 구조 완료"
+func _done_text(e: Dictionary) -> String:
+	match str(e.type):
+		"victim_rescued", "victim_recovered":
+			return "%s 이송 완료" % str(e.get("who", "구조대상자"))
+		"overhaul_done":
+			return "%s 잔불정리 완료" % str(e.get("room", ""))
+	return str(e.get("text", "임무 완료"))
+
+
+## 임무를 마치고 잠시 지나도 할 일 없이 서 있는 분대에게 다음 지시를 묻는다 (MISSION-DONE-01).
+## 밖에 있고 다음 임무도 없으면 묻지 않는다 (위험구역이 아니고 고를 것이 '대기'뿐)
+func _check_done(tick: int) -> void:
+	if sim == null:
+		return
+	for id: int in _done_watch.keys():
+		var w: Dictionary = _done_watch[id]
+		if tick < int(w.tick) + _done_confirm_ticks:
+			continue
+		_done_watch.erase(id)
+		if not sim.squad_idle(id) or queue.any(func(q: Card) -> bool: return q.crew_id == id and str(q.spec.get("trigger", "")) == "mission_done"):
+			continue
+		var c := units.get_crew(id)
+		var inside := sim.command.interior.crew_inside(id)
+		var air := 1.0
+		for ff in c.members():
+			air = minf(air, ff.air_ratio())
+		var next: Dictionary = sim.next_task(id)
+		if not inside and next.is_empty():
+			continue
+		_raise_trigger("mission_done", {"type": "mission_done", "crew_id": id, "crew": _crew_name(id), "done": str(w.text),
+			"air": "%d%%" % roundi(air * 100.0), "air_low": inside and air < _air_low_ratio, "inside": inside,
+			"has_next": not next.is_empty(), "next": str(next.get("text", "")), "next_kind": str(next.get("kind", "")),
+			"next_level": int(next.get("level", -1))}, tick)
 
 
 ## 연기 찬 계단실을 누군가 보게 되면 그때 보고 (계단실 연기 카드)
@@ -519,6 +568,14 @@ func _apply(effect: String, c: Card, tick: int) -> void:
 			rescue.cancel(c.crew_id)
 		"withdraw":
 			tactical.order("withdraw", c.crew_id, Vector3i.ZERO, tick)
+		"stand_by":
+			# 임무 완료 카드: 그 자리에서 대기 (팀 칸 A 대기와 같다)
+			tactical.order("hold", c.crew_id, Vector3i.ZERO, tick)
+		"next_task":
+			# 임무 완료 카드: 카드를 물을 때 고른 다음 임무 — 지시 창 층 임무와 같은 길(층 이동·진입구·계단 카드)
+			var kind := str(c.ctx.get("next_kind", ""))
+			if sim and kind != "":
+				sim.command.order_floor_mission([c.crew_id], int(c.ctx.get("next_level", -1)), null, kind, tick)
 		"overhaul":
 			var room := _cell(c.ctx.get("room_cell", []))
 			rekindle.order_overhaul(c.crew_id, room, tick)

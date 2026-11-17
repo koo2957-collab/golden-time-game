@@ -17,6 +17,7 @@ const HAZARD_PARAMS_PATH := "res://data/fire/hazard_params.json"
 const RADIO_PARAMS_PATH := "res://data/command/radio_params.json"
 const SURVEY_PARAMS_PATH := "res://data/command/survey_params.json"
 const SAFETY_PARAMS_PATH := "res://data/command/safety_params.json"
+const COMMANDS_PATH := "res://data/commands.json"
 ## 시야는 이 틱마다 다시 계산한다 (0.3초)
 const PERCEPTION_EVERY_TICKS := 3
 
@@ -30,6 +31,8 @@ var units: UnitSystem
 var unit_layout: UnitAssembly
 ## 도어체크를 이미 보고한 문 (opening index)
 var _door_clues_reported: Dictionary = {}
+## 출동대 종류 → 기본 임무 (data/commands.json, 처음 쓸 때 읽는다)
+var _default_missions: Dictionary = {}
 var fire: FireSim
 var water: WaterSystem
 var doors: DoorSystem
@@ -259,6 +262,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.doors.set_fetch_s(sim._fetch_s)
 	# 층 임무 '화재진압'이 그 층에 닿았을 때 보이는 불이 없으면 잔불정리로 바뀐다
 	sim.command.floor_overhaul = sim._start_floor_overhaul
+	sim.tactical.knockdown_tick = func() -> int: return sim.phases.knockdown_tick
 	sim.perception.update(0)
 	return sim
 
@@ -288,6 +292,97 @@ func _start_floor_overhaul(crew_id: int, lv: int, tick: int) -> bool:
 		return false
 	var target := floor_overhaul_target(lv, c.leader.pos)
 	return target.x >= 0 and rekindle.order_overhaul(crew_id, target, tick, true)
+
+
+## 임무를 마친 분대에게 줄 다음 임무 (완료 보고 카드 MISSION-DONE-01의 '다음 임무', 2026-11-17).
+## 지휘관이 아는 정보로만 고른다: 본 불(seen_burning_rooms)·잔불정리할 곳·검색을 마치지 않은 층.
+##   기본 임무가 화재진압인 분대(진압대): 본 불이 있는 가까운 층 → 초진 뒤 잔불정리할 층 → 검색
+##   그 밖: 검색 — 화점층 → 직상층 → 최상층 → 나머지 (SOP 202-3.1.2). 초진 뒤에는 2차 검색
+## {kind: "attack"·"search", level, text} — 없으면 {}. 옆 건물에 들어가 있는 분대는 지휘관이 정한다
+func next_task(crew_id: int) -> Dictionary:
+	var c := units.get_crew(crew_id)
+	if c == null or c.solo or ems.is_ems_crew(crew_id):
+		return {}
+	var here := fire.compartment_at(c.leader.level, floori(c.leader.pos.x), floori(c.leader.pos.y))
+	if here and fire.is_exposure_comp(here):
+		return {}
+	var lv := c.leader.level
+	var near_first := building.levels().duplicate()
+	near_first.sort_custom(func(a: int, b: int) -> bool: return absi(a - lv) < absi(b - lv) or (absi(a - lv) == absi(b - lv) and a > b))
+	if _default_mission(c) == "attack":
+		var best := -1
+		var cleared: Dictionary = _cleared_levels()
+		for r in seen_burning_rooms():
+			# 화점 진압 완료를 보고받은 층은 마지막 모습이 '타는 중'으로 남아 있어도 뺀다 (그 뒤 화점 발견·재발화 보고가 없으면)
+			if cleared.has(r.level):
+				continue
+			if best < 0 or absi(r.level - lv) < absi(best - lv):
+				best = r.level
+		if best >= 0:
+			return {"kind": "attack", "level": best, "text": "%s 화재진압" % building.floor_name(best)}
+		if phases.knockdown_tick >= 0:
+			for l: int in near_first:
+				if floor_overhaul_target(l, c.leader.pos).x >= 0:
+					return {"kind": "attack", "level": l, "text": "%s 잔불정리" % building.floor_name(l)}
+	var fl := fire_floor_reported()
+	var levels := building.levels()
+	var order: Array = [fl, fl + 1, levels.max()]
+	for l: int in levels:
+		order.append(l)
+	var after := phases.knockdown_tick
+	for l: int in order:
+		if not building.has_level(l):
+			continue
+		for room in fire.comps:
+			if room.level == l and not room.cells.is_empty() and not fire.is_exposure_comp(room) and not tactical.room_searched(room, after):
+				return {"kind": "search", "level": l, "text": "%s %s" % [building.floor_name(l), "2차 검색" if after >= 0 else "인명검색"]}
+	return {}
+
+
+## 화점 진압 완료를 보고받은 층 {층: 틱} — 그 뒤에 그 층의 화점 발견·재발화 보고가 오면 다시 뺀다 (2026-11-17:
+## 방금 끈 방이 연기 때문에 '마지막으로 본 모습 = 타는 중'으로 남아 다음 임무로 같은 층 화재진압을 권하던 것)
+func _cleared_levels() -> Dictionary:
+	var out := {}
+	for e in events.entries:
+		match str(e.type):
+			"tactical_done":
+				if bool(e.get("final", false)) and str(e.get("mission", "")) == "attack":
+					out[int(e.level)] = int(e.tick)
+			"fire_found", "rekindle":
+				var room := _comp_named(str(e.get("room", "")))
+				if room and out.has(room.level) and int(e.tick) > int(out[room.level]):
+					out.erase(room.level)
+	return out
+
+
+func _comp_named(name: String) -> Compartment:
+	for c in fire.comps:
+		if c.display_name() == name:
+			return c
+	return null
+
+
+## 그 분대가 할 일 없이 서 있는가 — 임무·운반·문 작업·잔불정리·층 이동·진입구 접근·방수·걷기가 없고 현장에 내려 있음.
+## 완료 보고 카드(CardSystem)와 화면의 '대기' 표시가 같이 쓴다 (2026-11-17)
+func squad_idle(crew_id: int) -> bool:
+	var c := units.get_crew(crew_id)
+	if c == null or c.solo or c.leader.incapacitated or c.leader.aboard or c.leader.is_moving():
+		return false
+	if tactical.task_of_crew(crew_id) or rescue.task_of_crew(crew_id) or doors.task_of_crew(crew_id) or rekindle.task_of_crew(crew_id):
+		return false
+	var h := water.hose_of_crew(crew_id)
+	if h and h.flowing:
+		return false
+	return not command.floor_goals.has(crew_id) and not command.approach.has(crew_id) and not command.resources.is_en_route(c.squad_id)
+
+
+## 출동대 종류의 기본 임무 (data/commands.json default_mission — 진압대 attack, 구조대 search)
+func _default_mission(c: Crew) -> String:
+	if _default_missions.is_empty():
+		var data: Variant = JsonData.load_file(COMMANDS_PATH)
+		if data is Dictionary and data.get("default_mission", {}).get("by_type") is Dictionary:
+			_default_missions = data.default_mission.by_type
+	return str(_default_missions.get(units.squads[c.squad_id].type, ""))
 
 
 ## 시나리오 파일(data/scenarios/*.json)로 시뮬레이션을 만든다.

@@ -417,9 +417,10 @@ func _complete(t: CarryTask, c: Crew, tick: int, where := "") -> void:
 			v.state_at_rescue = v.state
 			v.state = Victim.State.RESCUED
 			v.rescued_tick = tick
-			events.add(tick, "victim_rescued", {"who": v.label(), "state": Victim.STATE_NAMES[v.state_at_rescue], "by": _crew_name(c)})
+			# final: 옮기기를 마쳤다 — 층 임무가 이어지지 않고 할 일이 없으면 CardSystem이 다음 지시를 묻는다 (2026-11-17)
+			events.add(tick, "victim_rescued", {"who": v.label(), "state": Victim.STATE_NAMES[v.state_at_rescue], "by": _crew_name(c), "crew_id": c.id, "final": true})
 		else:
-			events.add(tick, "victim_recovered", {"who": v.label()})
+			events.add(tick, "victim_recovered", {"who": v.label(), "crew_id": c.id, "final": true})
 	else:
 		events.add(tick, "ff_rescued", {"who": _target_name(t)})
 

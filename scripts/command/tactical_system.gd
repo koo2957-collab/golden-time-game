@@ -89,6 +89,10 @@ var reported_rooms: Dictionary = {}
 const SEARCH_RANK_GAP := 1000.0
 ## 직하층 확인으로 얻은 추정 구조 {위 세대 이름: {from: 아래 세대, variant: 아래 세대 변형, furnish, tick}} — 지휘관이 아는 정보
 var unit_estimates: Dictionary = {}
+## 초진 틱 (PhaseSystem.knockdown_tick, SimWorld가 넣는다 — 2차 검색 판정)
+var knockdown_tick: Callable
+## 층 검색을 받은 틱 {조 id: tick} — 초진 뒤에 받았으면 2차 검색
+var _search_since: Dictionary = {}
 
 
 func _init(p_fire: FireSim, p_units: UnitSystem, p_water: WaterSystem, p_doors: DoorSystem, p_rescue: RescueSystem, p_events: SimEventLog) -> void:
@@ -301,13 +305,22 @@ func _step_working(t: Task, c: Crew, tick: int) -> void:
 			if level.auto_stop and not _room_burning(t.room):
 				water.stop_spray(t.crew_id, tick)
 				t.phase = Phase.DONE
-				events.add(tick, "tactical_done", {"crew": _crew_name(c), "text": "%s 화염 진압, 방수 중지" % fire.comps[t.room].display_name()})
+				var e := {"crew": _crew_name(c), "text": "%s 화염 진압, 방수 중지" % fire.comps[t.room].display_name()}
+				# 방 하나 임무면 여기서 임무가 끝난다 (층 임무는 다음 방으로) — 카드가 다음 지시를 묻는다
+				if t.floor < 0:
+					e.merge(_final(c, "attack", fire.comps[t.room].level))
+				events.add(tick, "tactical_done", e)
 		"search":
 			if rescue.task_of_crew(t.crew_id) is RescueSystem.SearchTask:
 				return
 			t.phase = Phase.DONE
 			var v := _victim_in_room(t.room)
 			if v == null:
+				# 방 하나 검색: 아무도 없으면 그렇게 보고하고 끝 (예전에는 말없이 끝났다, 2026-11-17)
+				if t.floor < 0 and t.unit_check.is_empty():
+					var e := {"crew": _crew_name(c), "text": "%s 검색 완료 — 이상 없음" % fire.comps[t.room].display_name()}
+					e.merge(_final(c, "search", fire.comps[t.room].level))
+					events.add(tick, "tactical_done", e)
 				return
 			if level.auto_rescue:
 				if rescue.order_rescue(t.crew_id, "victim", v.id, tick):
@@ -441,14 +454,17 @@ func _crew_name(c: Crew) -> String:
 ## 층 임무의 다음 방을 맡긴다. first: 처음 받은 명령 (아니면 방 하나를 마친 뒤)
 func _order_floor(action: String, c: Crew, lv: int, tick: int, first: bool) -> bool:
 	var floor_name := fire.building.floor_name(lv)
+	if first and action == "search_floor":
+		_search_since[c.id] = tick
 	var room := _next_floor_room(c, action, lv)
 	if room == null:
 		if action == "attack_floor" and first:
 			events.add(tick, "tactical_halt", {"crew": _crew_name(c), "reason": "%s 화점을 찾지 못함 — 지시 바람" % floor_name,
 				"safety": false, "kind": "no_fire", "crew_id": c.id, "action": action, "target": [0, 0, lv]})
 		else:
-			events.add(tick, "tactical_done", {"crew": _crew_name(c),
-				"text": "%s %s 완료" % [floor_name, "검색" if action == "search_floor" else "화점 진압"]})
+			var e := {"crew": _crew_name(c), "text": "%s %s 완료" % [floor_name, "검색" if action == "search_floor" else "화점 진압"]}
+			e.merge(_final(c, "search" if action == "search_floor" else "attack", lv))
+			events.add(tick, "tactical_done", e)
 		return not first or action == "search_floor"
 	var t := Task.new()
 	t.crew_id = c.id
@@ -492,7 +508,7 @@ func _next_unit_room(c: Crew, rooms: Array[int], check: Dictionary, tick: int) -
 		var below := layout.unit_named(str(check.below))
 		unit_estimates[check.above] = {"from": check.below, "variant": below.get("variant", ""), "furnish": below.get("furnish", ""), "tick": tick}
 		events.add(tick, "below_checked", {"crew": _crew_name(c), "above": check.above, "below": check.below,
-			"text": "%s 확인 — %s도 같은 구조로 추정" % [check.below, check.above]})
+			"text": "%s 확인 — %s도 같은 구조로 추정" % [check.below, check.above], "crew_id": c.id, "final": true})
 		return
 	var rest := rooms.duplicate()
 	var room := fire.comps[rest.pop_front()]
@@ -520,7 +536,7 @@ func _next_floor_room(c: Crew, action: String, lv: int) -> Compartment:
 	for room in fire.comps:
 		if room.level != lv or room.cells.is_empty() or fire.is_exposure_comp(room) != in_exposure:
 			continue
-		if search and room.searched_tick >= 0:
+		if search and room_searched(room, _search_since.get(c.id, -1)):
 			continue
 		if action == "attack_floor" and not _room_burning(room.index):
 			continue
@@ -531,6 +547,21 @@ func _next_floor_room(c: Crew, action: String, lv: int) -> Compartment:
 			best_d = d
 			best = room
 	return best
+
+
+## 검색을 마친 방인가. 초진 뒤에 받은 검색(ordered_tick ≥ 초진)은 2차 검색이라 초진 전에 한 검색은 치지 않는다
+## (소방전술 I 8단계 ⑤, SOP 202-6.3 — 예전에는 초진 전에 검색한 층을 다시 보내면 바로 '검색 완료'로 끝났다, 2026-11-17)
+func room_searched(room: Compartment, ordered_tick: int) -> bool:
+	var k := knockdown_tick.call() as int if knockdown_tick.is_valid() else -1
+	if k >= 0 and ordered_tick >= k:
+		return room.searched_tick >= k
+	return room.searched_tick >= 0
+
+
+## 임무가 끝났다는 표시 (완료 보고 사건에 붙인다 — CardSystem이 잠시 뒤 할 일 없이 서 있으면 다음 지시를 묻는다).
+## mission·level: 무엇을 어느 층에서 마쳤나 — 화점 진압 완료를 보고한 층은 지휘관이 '불이 꺼졌다'고 안다 (SimWorld.next_task)
+func _final(c: Crew, mission: String, lv: int) -> Dictionary:
+	return {"crew_id": c.id, "final": true, "mission": mission, "level": lv}
 
 
 ## 층 안 검색 순서 (SOP 202-3.1.2 화점실 → 인근실 → 연소층): 0 구조대상자가 있다고 들은 방(관계인 진술) →

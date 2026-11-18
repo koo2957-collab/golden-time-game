@@ -1,6 +1,6 @@
 {
   "note_scene": "scene: judgment = 조장의 판단 장면 (2026-11-14 사용자 결정) — 대원이 스스로 판단할 일이라 지휘관에게 묻는 무전이 아니라 조장의 속말(monologue)과 반쪽 얼굴 그림으로 보여 준다. 플레이어가 그 조장으로서 고르고, 고른 대로 그 조가 움직인 뒤 지휘관에게 보고가 간다. 대원 판단 장면을 끄면(지휘관 훈련) 대원이 SOP대로(최선) 알아서 한다. 없으면 지휘관에게 오는 무전",
-  "note": "질문 카드 (기획안 7장). 카드 1장 = SOP 조항 1개. trigger: halt_locked·halt_closed·halt_backdraft·halt_victim(전술 명령이 멈춘 자리), air_alarm, knockdown, arrival, rollover_sign, jump_risk, exposure_heating, shaft, sign_warning, debris_zone, hydrant_out, tank_empty, mayday, gas_found, victim_trapped, triage_urgent, stair_smoke, attack_upper, victims_many, stair_ask(계단이 둘 이상 갈림 — STAIR-01, 2026-11-17), search_mark, end_suggested, fire_found, rescue_no_point(집결지 없이 구조자가 입구 밖에 나옴, P10-2), triage_needed(걷지 못하는 구조자 START 분류, P10-2), nozzle_choice(화점진압 조가 화점실 앞에서 주수 방법, P10-2), equipment_missing(없는 장비, P4-1), entry_request(입구에서 진입 허가 요청 — 사건의 verdict로 variants를 고른다, P10-2). multi: true면 같은 카드가 여러 장(출동대마다) 떠 있을 수 있다. once: 한 판에 한 번. 선택지 time_cost_sec + then: 정보 확인(시간을 쓴 뒤 then 행동). text·variants의 {이름}은 사건 값으로 채운다 (crew·door_name·victim_name·state·air). effect: reserve_water(예비 소방용수 — 소화전 고장 시 다음 소화전으로)·relay_all(관계자 조치: 가스 차단·발화 위치)·relay_fire(발화 위치만)·force_door·open_door·vent_then_open·rescue_victim·resume·withdraw·overhaul·flood·hold·close_then_resume(화재실 문 닫고 검색 계속)·attack_found(찾은 화점 진압)·halt_here(하던 일 멈춤). grade: 최선·허용·오답·치명 (화면에는 보이지 않음). stages: 그 스테이지 시나리오에서만 묻는다(R14). 교관이 문구·등급·해설을 고칠 수 있다. 선제지시·임무 조건·문 앞 휠은 2026-11-17에 없앴다(화면에서 고를 곳이 없었다).",
+  "note": "질문 카드 (기획안 7장). 카드 1장 = SOP 조항 1개. trigger: halt_locked·halt_closed·halt_backdraft·halt_victim(전술 명령이 멈춘 자리)·halt_no_fire(층 화재진압을 갔는데 그 층에 불이 없음 — FIRE-NONE-01, 2026-11-18),air_alarm, knockdown, arrival, rollover_sign, jump_risk, exposure_heating, shaft, sign_warning, debris_zone, hydrant_out, tank_empty, mayday, gas_found, victim_trapped, triage_urgent, stair_smoke, attack_upper, victims_many, stair_ask(계단이 둘 이상 갈림 — STAIR-01, 2026-11-17), search_mark, end_suggested, fire_found, rescue_no_point(집결지 없이 구조자가 입구 밖에 나옴, P10-2), triage_needed(걷지 못하는 구조자 START 분류, P10-2), nozzle_choice(화점진압 조가 화점실 앞에서 주수 방법, P10-2), equipment_missing(없는 장비, P4-1), entry_request(입구에서 진입 허가 요청 — 사건의 verdict로 variants를 고른다, P10-2). multi: true면 같은 카드가 여러 장(출동대마다) 떠 있을 수 있다. once: 한 판에 한 번. 선택지 time_cost_sec + then: 정보 확인(시간을 쓴 뒤 then 행동). text·variants의 {이름}은 사건 값으로 채운다 (crew·door_name·victim_name·state·air). effect: reserve_water(예비 소방용수 — 소화전 고장 시 다음 소화전으로)·relay_all(관계자 조치: 가스 차단·발화 위치)·relay_fire(발화 위치만)·force_door·open_door·vent_then_open·rescue_victim·resume·withdraw·overhaul·flood·hold·close_then_resume(화재실 문 닫고 검색 계속)·attack_found(찾은 화점 진압)·halt_here(하던 일 멈춤). grade: 최선·허용·오답·치명 (화면에는 보이지 않음). stages: 그 스테이지 시나리오에서만 묻는다(R14). 교관이 문구·등급·해설을 고칠 수 있다. 선제지시·임무 조건·문 앞 휠은 2026-11-17에 없앴다(화면에서 고를 곳이 없었다).",
   "cards": [
     {
       "id": "DOOR-LOCKED-01",
@@ -1757,6 +1757,60 @@
       ],
       "debrief": "시계가 없고 오래 화점을 찾지 못하면 공기 고갈·고립 위험이 커진다. 진입 금지 요소로 보고 빼낸 뒤 교대조로 바꾼다.",
       "multi": true
+    },
+    {
+      "id": "FIRE-NONE-01",
+      "title": "화점을 찾지 못함 — 다음 지시",
+      "phase": "지휘",
+      "trigger": "halt_no_fire",
+      "asker": "진압 분대",
+      "urgency": "일반",
+      "multi": true,
+      "note": "층 화재진압을 지시받았는데 그 층에 불이 없을 때 (2026-11-18 — 전에는 '화점을 찾지 못함' 무전만 하고 서 있었다). 문맥과 등급은 임무 완료 카드(MISSION-DONE-01)와 같다: {next}는 지휘관이 아는 정보로 고른 다음 임무이고, 불이 없다고 보고한 이 층은 화재진압 후보에서 빠진다. 밖에 있고 다음 임무도 없으면 묻지 않는다. 문구·등급은 현장 검수 필요",
+      "text": "{crew}: {floor} 화점을 찾지 못했습니다. 공기 {air}. 지시 바랍니다.",
+      "options": [
+        {"text": "{next}", "grade": "최선", "effect": "next_task"},
+        {"text": "밖으로 나와 공기 보충·대기", "grade": "허용", "effect": "withdraw"},
+        {"text": "현 위치에서 대기", "grade": "허용", "effect": "stand_by"}
+      ],
+      "variants": [
+        {
+          "if": {"air_low": true},
+          "options": [
+            {"text": "밖으로 나와 공기 보충·대기 (교대조 투입)", "grade": "최선", "effect": "withdraw"},
+            {"text": "{next}", "grade": "오답", "effect": "next_task"},
+            {"text": "현 위치에서 대기", "grade": "오답", "effect": "stand_by"}
+          ]
+        },
+        {
+          "if": {"has_next": false},
+          "text": "{crew}: {floor} 화점을 찾지 못했습니다. 공기 {air}. 다른 곳에도 불이 보이지 않습니다. 지시 바랍니다.",
+          "options": [
+            {"text": "밖으로 나와 공기 보충·대기", "grade": "최선", "effect": "withdraw"},
+            {"text": "현 위치에서 대기", "grade": "허용", "effect": "stand_by"}
+          ]
+        },
+        {
+          "if": {"has_next": false, "air_low": true},
+          "text": "{crew}: {floor} 화점을 찾지 못했습니다. 공기 {air}. 다른 곳에도 불이 보이지 않습니다. 지시 바랍니다.",
+          "options": [
+            {"text": "밖으로 나와 공기 보충·대기", "grade": "최선", "effect": "withdraw"},
+            {"text": "현 위치에서 대기", "grade": "오답", "effect": "stand_by"}
+          ]
+        },
+        {
+          "if": {"inside": false},
+          "text": "{crew}: {floor} 화점을 찾지 못했습니다. 지시 바랍니다.",
+          "options": [
+            {"text": "{next}", "grade": "최선", "effect": "next_task"},
+            {"text": "현 위치에서 대기", "grade": "허용", "effect": "stand_by"}
+          ]
+        }
+      ],
+      "sop_ref": [
+        "SOP 201-3.7"
+      ],
+      "debrief": "지시받은 층에 화점이 없으면 임의로 다른 곳을 찾아다니지 않고 지휘관에게 보고해 다음 지시를 받는다. 지휘관은 보고된 정보(신고 내용·다른 분대의 화점 발견 보고)로 다음 임무를 정한다. 공기가 절반 아래로 줄었으면 밖으로 나와 공기를 채우고 교대조를 넣는다."
     },
     {
       "id": "RIT-HELP-01",

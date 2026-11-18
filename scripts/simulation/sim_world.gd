@@ -340,7 +340,8 @@ func next_task(crew_id: int) -> Dictionary:
 
 
 ## 화점 진압 완료를 보고받은 층 {층: 틱} — 그 뒤에 그 층의 화점 발견·재발화 보고가 오면 다시 뺀다 (2026-11-17:
-## 방금 끈 방이 연기 때문에 '마지막으로 본 모습 = 타는 중'으로 남아 다음 임무로 같은 층 화재진압을 권하던 것)
+## 방금 끈 방이 연기 때문에 '마지막으로 본 모습 = 타는 중'으로 남아 다음 임무로 같은 층 화재진압을 권하던 것).
+## 화재진압하러 갔다가 '화점을 찾지 못함'을 보고한 층도 같다 (2026-11-18)
 func _cleared_levels() -> Dictionary:
 	var out := {}
 	for e in events.entries:
@@ -348,6 +349,10 @@ func _cleared_levels() -> Dictionary:
 			"tactical_done":
 				if bool(e.get("final", false)) and str(e.get("mission", "")) == "attack":
 					out[int(e.level)] = int(e.tick)
+			"tactical_halt":
+				var t: Array = e.get("target", [])
+				if str(e.get("kind", "")) == "no_fire" and t.size() >= 3:
+					out[int(t[2])] = int(e.tick)
 			"fire_found", "rekindle":
 				var room := _comp_named(str(e.get("room", "")))
 				if room and out.has(room.level) and int(e.tick) > int(out[room.level]):

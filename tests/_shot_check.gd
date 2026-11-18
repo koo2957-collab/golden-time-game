@@ -2,7 +2,7 @@ extends SceneTree
 ## 사용자 확인용 비교 캡처 (점검용, 테스트 목록에 넣지 않음, 2026-11-17 — docs/test_guides/2026-11-17_check.md):
 ##   godot --path . -s res://tests/_shot_check.gd -- 저장폴더 [모드]
 ## 모드: all (기본) = 팀장 표시·분대 간격 0.5m/1m·임무 완료 카드와 '대기' 표시 / officer = 팀장 표시만 (옛 커밋에서 파란 띠를 찍을 때) /
-##       wave = 창가 요구조자 구조 요청 (B8, 필로티 시나리오)
+##       wave = 창가 요구조자 구조 요청 (B8, 필로티 시나리오) / more = 분대가 둘일 때 A2·A3·A7~A10 / nofire = 화점을 찾지 못함 카드
 ## 시계를 멈추고 상태를 손으로 만든다 — 실제 진행 화면이 아니라 견본이다.
 
 
@@ -56,6 +56,10 @@ func _run() -> void:
 		return
 	if mode == "more":
 		await _more(world, sim, out)
+		quit()
+		return
+	if mode == "nofire":
+		await _no_fire(world, sim, out)
 		quit()
 		return
 	# 1) 팀장 표시: 4명 분대(구조대)를 크게 — 고르지 않음 / 고름
@@ -242,6 +246,47 @@ func _more(world, sim: SimWorld, out: String) -> void:
 	vic.carried_by = -1
 	sq.type = old_type
 	print("저장 ", out, " · A7·A8·A9·A10")
+
+
+## 화점을 찾지 못함 카드 (FIRE-NONE-01, 모드 nofire): 진압 분대를 불이 없는 맨 위층에 세우고 그 층 화재진압을 지시한다
+func _no_fire(world, sim: SimWorld, out: String) -> void:
+	var top: int = sim.building.levels().max()
+	var crew: Crew = null
+	for c in sim.units.crews:
+		if sim._default_mission(c) == "attack" and not c.leader.aboard:
+			crew = c
+			break
+	var room: Compartment = null
+	for r in sim.fire.comps:
+		if r.level == top and not sim.fire.is_exposure_comp(r) and r.cells.size() >= 4:
+			room = r
+			break
+	if crew == null or room == null:
+		print("진압 분대 또는 맨 위층 방 없음")
+		return
+	var cell := sim.tactical._room_cell(room)
+	for ff in crew.members():
+		ff.path.clear()
+		ff.level = top
+		ff.prev_level = top
+		ff.pos = Vector2(cell.x, cell.y) + Vector2(0.5, 0.5)
+		ff.prev_pos = ff.pos
+	sim.cards.queue.clear()
+	sim.tactical.order("attack_floor", crew.id, Vector3i(0, 0, top), sim.clock.tick)
+	for i in 20:
+		sim.step_ticks(1)
+		sim.cards.queue = sim.cards.queue.filter(func(q: CardSystem.Card) -> bool: return q.id == "FIRE-NONE-01")
+		if not sim.cards.queue.is_empty():
+			break
+	sim.clock.paused = true
+	world.set_view_level(top, false)
+	world.camera.zoom = Vector2(1.4, 1.4)
+	world.camera.position = world.projection().to_screen(crew.leader.pos, 1.0)
+	world.hud.card_ui.visible = true
+	await _save(out, "E_no_fire_card")
+	for q in sim.cards.queue:
+		print("카드: ", q.text, " / ", q.options.map(func(o: Dictionary) -> String: return "%s(%s)" % [o.text, o.grade]))
+	print("저장 ", out, " · 화점을 찾지 못함 카드 ", sim.cards.queue.size(), "장")
 
 
 ## 창가 요구조자 (B8): 그 층 내부 보기에서 요구조자를 크게

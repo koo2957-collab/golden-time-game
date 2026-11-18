@@ -216,6 +216,84 @@ func test_exterior_cover_without_flames_keeps_spraying() -> void:
 	assert_true(not h.flowing and sim.tactical._exterior.is_empty(), "대기 명령 → 방수 중지, 지켜보기 끝")
 
 
+func _none_card(sim: SimWorld, id: int) -> CardSystem.Card:
+	for q in sim.cards.queue:
+		if q.id == "FIRE-NONE-01" and q.crew_id == id:
+			return q
+	return null
+
+
+## 그 층의 방 한 칸을 '타는 것을 봤다'로 둔다 (지휘관이 아는 불)
+func _mark_seen_burning(sim: SimWorld, lv: int) -> void:
+	for r in sim.fire.comps:
+		if r.level == lv and not sim.fire.is_exposure_comp(r) and r.cells.size() >= 4:
+			var i := sim.fire.grid.index(lv, r.cells[0].x, r.cells[0].y)
+			sim.perception.seen_tick[i] = 0
+			sim.perception.seen_burning[i] = 1
+			return
+
+
+## 층 화재진압을 갔는데 그 층에 불이 없으면 '화점을 찾지 못함' 카드로 다음 지시를 묻는다 (전에는 무전만 하고 서 있었다, 2026-11-18).
+## 불이 없다고 보고한 층은 마지막 모습이 '타는 중'이어도 다음 임무로 권하지 않는다
+func test_no_fire_floor_asks_next_order() -> void:
+	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)
+	open_all_doors(sim)
+	var lv: int = sim.building.levels()[0]
+	var top: int = sim.building.levels().max()
+	var c := _attack_crew(sim)
+	_place_inside(sim, c, top)
+	_mark_seen_burning(sim, top)
+	_mark_seen_burning(sim, lv)
+	assert_eq(int(sim.next_task(c.id).get("level", -1)), top, "보고 전: 본 불이 있는 가까운 층(지금 층)을 권한다")
+	assert_true(not sim.tactical.order("attack_floor", c.id, Vector3i(0, 0, top), sim.clock.tick), "그 층에 불이 없어 임무를 시작하지 못한다")
+	assert_true(sim.events.of_type("tactical_halt").any(func(e: Dictionary) -> bool: return str(e.get("kind", "")) == "no_fire"), "화점을 찾지 못함 보고")
+	sim.step_ticks(2)
+	var q := _none_card(sim, c.id)
+	assert_true(q != null, "화점을 찾지 못함 카드")
+	if q == null:
+		return
+	var texts: Array = q.options.map(func(o: Dictionary) -> String: return str(o.text))
+	assert_true(q.text.contains(sim.building.floor_name(top)) and q.text.contains("화점을 찾지 못") and q.text.contains("공기"), "층·내용·공기 (%s)" % q.text)
+	assert_true(_option(q, "next_task") >= 0 and _option(q, "withdraw") >= 0 and _option(q, "stand_by") >= 0, "다음 임무·철수·대기 (%s)" % [texts])
+	var next: Dictionary = q.options[_option(q, "next_task")]
+	assert_true(str(next.text).contains(sim.building.floor_name(lv)) and str(next.text).contains("화재진압"), "다음 임무는 불을 본 다른 층 — 불이 없다고 보고한 층은 뺀다 (%s)" % [texts])
+	assert_eq(str(next.grade), "최선", "공기가 넉넉하면 다음 임무가 최선")
+	sim.cards.answer(q.uid, _option(q, "next_task"), sim.clock.tick)
+	assert_eq(str(sim.command.floor_missions.get(c.id, "")), "attack", "그 층 화재진압 임무를 받는다")
+
+
+## 화점을 찾지 못했는데 공기가 절반 아래면 철수가 최선. 밖에 있고 권할 임무도 없으면 묻지 않고 보고만 한다
+func test_no_fire_air_low_and_outside_without_next() -> void:
+	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)
+	open_all_doors(sim)
+	var lv: int = sim.building.levels()[0]
+	var top: int = sim.building.levels().max()
+	var c := _attack_crew(sim)
+	_place_inside(sim, c, top)
+	_mark_seen_burning(sim, lv)
+	for ff in c.members():
+		ff.air_l = ff.air_capacity * 0.3
+	sim.tactical.order("attack_floor", c.id, Vector3i(0, 0, top), sim.clock.tick)
+	sim.step_ticks(2)
+	var q := _none_card(sim, c.id)
+	assert_true(q != null, "화점을 찾지 못함 카드")
+	if q:
+		assert_eq(str(q.options[_option(q, "withdraw")].grade), "최선", "공기 부족 → 철수가 최선")
+		assert_eq(str(q.options[_option(q, "next_task")].grade), "오답", "공기 부족인데 다음 임무는 오답")
+	# 밖에 있고, 아는 불도 검색할 곳도 없다
+	var sim2 := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)
+	var c2 := _attack_crew(sim2)
+	_place_at_front(c2)
+	for l in sim2.building.levels():
+		_mark_searched(sim2, l)
+		sim2.events.add(0, "tactical_done", {"crew": "시험", "text": "시험", "final": true, "mission": "attack", "level": l})
+	sim2.tactical.order("attack_floor", c2.id, Vector3i(0, 0, top), sim2.clock.tick)
+	sim2.step_ticks(2)
+	assert_true(sim2.events.of_type("tactical_halt").any(func(e: Dictionary) -> bool: return str(e.get("kind", "")) == "no_fire"), "보고는 한다")
+	assert_true(sim2.next_task(c2.id).is_empty(), "다음 임무 없음")
+	assert_true(_none_card(sim2, c2.id) == null, "밖에서 권할 임무가 없으면 묻지 않는다")
+
+
 ## 초진 뒤에 받은 층 검색은 2차 검색 — 초진 전에 검색한 방도 다시 본다 (전에는 바로 '검색 완료'로 끝났다)
 func test_floor_search_after_knockdown_is_secondary() -> void:
 	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)

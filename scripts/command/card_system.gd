@@ -221,18 +221,25 @@ func _check_done(tick: int) -> void:
 		_done_watch.erase(id)
 		if not sim.squad_idle(id) or queue.any(func(q: Card) -> bool: return q.crew_id == id and str(q.spec.get("trigger", "")) == "mission_done"):
 			continue
-		var c := units.get_crew(id)
-		var inside := sim.command.interior.crew_inside(id)
-		var air := 1.0
-		for ff in c.members():
-			air = minf(air, ff.air_ratio())
-		var next: Dictionary = sim.next_task(id)
-		if not inside and next.is_empty():
+		var ctx := _next_ctx(id)
+		if not bool(ctx.inside) and not bool(ctx.has_next):
 			continue
-		_raise_trigger("mission_done", {"type": "mission_done", "crew_id": id, "crew": _crew_name(id), "done": str(w.text),
-			"air": "%d%%" % roundi(air * 100.0), "air_low": inside and air < _air_low_ratio, "inside": inside,
-			"has_next": not next.is_empty(), "next": str(next.get("text", "")), "next_kind": str(next.get("kind", "")),
-			"next_level": int(next.get("level", -1))}, tick)
+		ctx.merge({"type": "mission_done", "crew_id": id, "crew": _crew_name(id), "done": str(w.text)})
+		_raise_trigger("mission_done", ctx, tick)
+
+
+## '다음 지시'를 묻는 카드의 문맥 (임무 완료 MISSION-DONE-01 · 화점 못 찾음 FIRE-NONE-01): 공기·안에 있는가·다음 임무.
+## 다음 임무는 지휘관이 아는 정보로 고른다 (SimWorld.next_task)
+func _next_ctx(crew_id: int) -> Dictionary:
+	var c := units.get_crew(crew_id)
+	var inside := sim.command.interior.crew_inside(crew_id)
+	var air := 1.0
+	for ff in c.members():
+		air = minf(air, ff.air_ratio())
+	var next: Dictionary = sim.next_task(crew_id)
+	return {"air": "%d%%" % roundi(air * 100.0), "air_low": inside and air < _air_low_ratio, "inside": inside,
+		"has_next": not next.is_empty(), "next": str(next.get("text", "")), "next_kind": str(next.get("kind", "")),
+		"next_level": int(next.get("level", -1))}
 
 
 ## 연기 찬 계단실을 누군가 보게 되면 그때 보고 (계단실 연기 카드)
@@ -250,6 +257,11 @@ func _check_pending_smoke(tick: int) -> void:
 func _trigger_of(e: Dictionary) -> String:
 	match str(e.type):
 		"tactical_halt":
+			# 화점 못 찾음 (FIRE-NONE-01): 밖에 있고 권할 다음 임무도 없으면 보고만 한다 (고를 것이 '대기'뿐)
+			if str(e.get("kind", "")) == "no_fire" and sim and units.get_crew(int(e.get("crew_id", -1))):
+				var ctx := _next_ctx(int(e.crew_id))
+				if not bool(ctx.inside) and not bool(ctx.has_next):
+					return ""
 			return "halt_" + str(e.get("kind", ""))
 		"air_alarm":
 			return "air_alarm"
@@ -465,6 +477,12 @@ func _resolve(c: Card) -> void:
 		"tanker_arrived":
 			if not c.ctx.has("vehicle"):
 				c.ctx["vehicle"] = "%s 물탱크차" % str(c.ctx.get("squad", ""))
+		"halt_no_fire":
+			# 화점 못 찾음: 그 층 이름과 다음 지시 문맥 (그 층은 이제 '불 없음'으로 알아 다음 임무 후보에서 빠진다 — SimWorld._cleared_levels)
+			var t: Array = c.ctx.get("target", [])
+			c.ctx["floor"] = fire.building.floor_name(int(t[2])) if t.size() >= 3 else "그 층"
+			if units.get_crew(c.crew_id):
+				c.ctx.merge(_next_ctx(c.crew_id))
 
 
 func _room_named(name: String) -> Compartment:

@@ -156,6 +156,66 @@ func test_cleared_floor_not_suggested_for_attack() -> void:
 	assert_eq(str(sim.next_task(c.id).get("kind", "")), "attack", "그 뒤 화점 발견 보고 → 다시 화재진압")
 
 
+func _attack_crew(sim: SimWorld) -> Crew:
+	for c in sim.units.crews:
+		if sim._default_mission(c) == "attack":
+			return c
+	return sim.units.get_crew(0)
+
+
+## 현관 밖에 세운다 (개발용 단독주택: 현관 13,20 — 그 남쪽 마당)
+func _place_at_front(c: Crew) -> void:
+	var k := 0
+	for ff in c.members():
+		ff.path.clear()
+		ff.level = 1
+		ff.prev_level = 1
+		ff.pos = Vector2(13.5 + k, 22.5)
+		ff.prev_pos = ff.pos
+		k += 1
+
+
+## 외부 방수: 물줄기가 닿는 곳의 불꽃이 사라지면 방수를 멈추고 완료 보고 → 할 일 없는 분대가 된다 (전에는 끝없이 쐈다, 2026-11-18)
+func test_exterior_spray_reports_done_when_flames_gone() -> void:
+	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)
+	open_all_doors(sim)
+	var c := _attack_crew(sim)
+	_place_at_front(c)
+	sim.issue(TacticalCommand.make("exterior", [c.id] as Array[int], Vector3i(13, 15, 1)))
+	sim.step_ticks(1)
+	var h := sim.water.hose_of_crew(c.id)
+	assert_true(h != null and h.flowing, "외부 방수 시작")
+	assert_true(_until(sim, func() -> bool: return h.flame_tick >= 0, 200.0), "물줄기가 불꽃에 닿는다")
+	assert_true(sim.events.of_type("tactical_done").is_empty(), "불꽃이 있는 동안은 계속 쏜다")
+	var done := func() -> bool:
+		return sim.events.of_type("tactical_done").any(func(e: Dictionary) -> bool: return str(e.get("mission", "")) == "exterior" and bool(e.get("final", false)))
+	assert_true(_until(sim, done, 400.0), "불꽃이 사라지면 완료 보고")
+	assert_true(not h.flowing, "방수 중지")
+	var e: Dictionary = sim.events.of_type("tactical_done").back()
+	assert_true(str(e.text).contains("외부 방수") and int(e.crew_id) == c.id and int(e.level) == 1, "보고 내용 (%s)" % e)
+	assert_true(_until(sim, func() -> bool: return sim.squad_idle(c.id), 10.0), "할 일 없이 서 있음 → 다음 지시 카드·'대기' 표시로 이어진다")
+	assert_true(sim.tactical._exterior.is_empty(), "지켜보기 끝")
+	assert_true(_until(sim, func() -> bool: return _card(sim, c.id) != null, 10.0), "잠시 뒤 다음 지시 카드")
+	var q := _card(sim, c.id)
+	assert_true(q.text.contains("외부 방수") and _option(q, "next_task") >= 0, "카드에 완료 내용과 다음 임무 (%s)" % q.text)
+
+
+## 경계관창(불꽃이 없는 곳을 식히는 외부 방수)은 스스로 끝내지 않는다. 다른 명령을 받으면 지켜보기를 그만둔다
+func test_exterior_cover_without_flames_keeps_spraying() -> void:
+	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)
+	var c := _attack_crew(sim)
+	_place_at_front(c)
+	# 불에서 먼 마당 쪽 (불꽃이 닿지 않는 곳)
+	sim.issue(TacticalCommand.make("exterior", [c.id] as Array[int], Vector3i(16, 24, 1)))
+	sim.step_ticks(roundi(90.0 / SimClock.TICK_DT))
+	var h := sim.water.hose_of_crew(c.id)
+	assert_true(h != null and h.flowing and h.flame_tick < 0, "불꽃 없는 곳에 계속 방수")
+	assert_true(sim.events.of_type("tactical_done").is_empty(), "완료 보고 없음")
+	sim.issue(TacticalCommand.make("hold", [c.id] as Array[int]))
+	sim.step_ticks(2)
+	assert_true(not h.flowing and sim.tactical._exterior.is_empty(), "대기 명령 → 방수 중지, 지켜보기 끝")
+
+
 ## 초진 뒤에 받은 층 검색은 2차 검색 — 초진 전에 검색한 방도 다시 본다 (전에는 바로 '검색 완료'로 끝났다)
 func test_floor_search_after_knockdown_is_secondary() -> void:
 	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)

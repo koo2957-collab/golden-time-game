@@ -93,6 +93,10 @@ var unit_estimates: Dictionary = {}
 var knockdown_tick: Callable
 ## 층 검색을 받은 틱 {조 id: tick} — 초진 뒤에 받았으면 2차 검색
 var _search_since: Dictionary = {}
+## 외부 방수 중인 조 {조 id: 목표 Vector3i} — 물줄기가 닿는 곳의 불꽃이 사라진 채 exterior_done_s가 지나면 방수를 멈추고 완료 보고.
+## 불꽃을 한 번도 못 본 방수(경계관창 — 달궈지는 창 냉각)는 끝내지 않는다 (2026-11-18)
+var _exterior: Dictionary = {}
+var _exterior_done_ticks := 100
 
 
 func _init(p_fire: FireSim, p_units: UnitSystem, p_water: WaterSystem, p_doors: DoorSystem, p_rescue: RescueSystem, p_events: SimEventLog) -> void:
@@ -110,6 +114,7 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_water: WaterSystem, p_doors: 
 	_nozzle_wait_ticks = roundi(float(mission_data.get("nozzle_wait_s", {}).get("value", 30.0)) / SimClock.TICK_DT)
 	_fire_lost_ticks = roundi(float(mission_data.get("fire_lost_s", {}).get("value", 900.0)) / SimClock.TICK_DT)
 	_fire_lost_vis_m = float(mission_data.get("fire_lost_visibility_m", {}).get("value", 1.0))
+	_exterior_done_ticks = roundi(float(mission_data.get("exterior_done_s", {}).get("value", 10.0)) / SimClock.TICK_DT)
 
 
 func set_level(name: String) -> void:
@@ -128,6 +133,7 @@ func task_of_crew(crew_id: int) -> Task:
 
 func cancel(crew_id: int) -> void:
 	tasks = tasks.filter(func(t: Task) -> bool: return t.crew_id != crew_id)
+	_exterior.erase(crew_id)
 
 
 ## 고수준 명령 시작
@@ -165,7 +171,10 @@ func _order(action: String, crew_id: int, target: Vector3i, tick: int) -> bool:
 		return true
 	if action == "exterior":
 		events.add(tick, "tactical_start", {"crew": _crew_name(c), "action": ACTIONS[action]})
-		return water.start_spray(crew_id, target, HoseLine.Pattern.STRAIGHT, tick)
+		if not water.start_spray(crew_id, target, HoseLine.Pattern.STRAIGHT, tick):
+			return false
+		_exterior[crew_id] = target
+		return true
 	if action in ["attack", "attack_floor"] and not _attack_since.has(crew_id):
 		_attack_since[crew_id] = tick
 	if action in ["search_floor", "attack_floor"]:
@@ -225,8 +234,28 @@ func step(tick: int) -> void:
 		_order_floor(t.floor_action, units.get_crew(t.crew_id), t.floor, tick, false)
 	for t in unit_next:
 		_next_unit_room(units.get_crew(t.crew_id), t.unit_rooms, t.unit_check, tick)
+	_step_exterior(tick)
 	if tick % 10 == 0:
 		_check_fire_lost(tick)
+
+
+## 외부 방수: 물줄기가 닿는 곳에 있던 불꽃이 사라진 채 잠시 지나면 방수를 멈추고 완료 보고 → 카드가 다음 지시를 묻는다.
+## 밖에서는 닿는 곳만 안다 — 방 안쪽에 불이 남아 있을 수 있어 '화점 진압'이 아니라 '닿는 곳의 불꽃 소멸'로 보고한다.
+## 다른 명령·철수로 방수가 끝났거나 목표가 바뀌었으면 지켜보지 않는다. 자동화 수준 상급(auto_stop 꺼짐)은 화점진압처럼 스스로 멈추지 않는다
+func _step_exterior(tick: int) -> void:
+	for id: int in _exterior.keys():
+		var c := units.get_crew(id)
+		var h := water.hose_of_crew(id)
+		if c == null or c.leader.incapacitated or h == null or not h.flowing or h.target != (_exterior[id] as Vector3i):
+			_exterior.erase(id)
+			continue
+		if not level.auto_stop or h.flame_tick < 0 or tick - h.flame_tick < _exterior_done_ticks:
+			continue
+		_exterior.erase(id)
+		water.stop_spray(id, tick)
+		var e := {"crew": _crew_name(c), "text": "%s 외부 방수 — 닿는 곳의 불꽃 소멸, 방수 중지" % fire.building.floor_name(h.target.z)}
+		e.merge(_final(c, "exterior", h.target.z))
+		events.add(tick, "tactical_done", e)
 
 
 # --- 단계 ---

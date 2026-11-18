@@ -351,6 +351,7 @@ func start_spray(crew_id: int, target: Vector3i, pattern: HoseLine.Pattern, tick
 	h.aim = Vector2(target.x + 0.5, target.y + 0.5)
 	h.approaching = false
 	h.next_advance_tick = tick
+	h.flame_tick = -1
 	if h.to_outlet:
 		# 아직 방수구로 가는 중: 닿아서 연결한 뒤 방수 위치로 간다 (_connect_at_outlet)
 		h.approaching = true
@@ -731,7 +732,9 @@ func _apply_sprays(dt: float, tick: int) -> void:
 		if leader.level != h.target.z:
 			h.blocked = true
 			continue
-		if not _sweep(h, leader, dt):
+		if _sweep(h, leader, dt):
+			h.flame_tick = tick
+		else:
 			_advance(h, units.get_crew(h.crew_id), tick)
 		var trace := _trace(leader.level, leader.pos, h.aim, _range[h.pattern])
 		h.impact = trace.impact
@@ -774,6 +777,7 @@ func _apply_sprays(dt: float, tick: int) -> void:
 			grid.apply_water(i, share, _fuel_eff[h.pattern], fire.comps)
 			if was_burning:
 				wasted -= share
+				h.flame_tick = tick
 		if comp and comp.t_upper < _damage_temp:
 			comp.water_damage_l += maxf(0.0, wasted)
 

@@ -30,6 +30,9 @@ var aim := Vector2.ZERO
 ## 물이 닿는 지점 (셀 좌표)과 벽 등에 막혔는지
 var impact := Vector2.ZERO
 var blocked := false
+## 물줄기가 닿는 곳(훑을 화점 또는 물이 퍼지는 자리)에 불꽃이 있던 마지막 틱 (-1 = 이번 방수에서는 아직 없음).
+## 외부 방수 완료 판정에 쓴다 (TacticalSystem, 2026-11-18)
+var flame_tick := -1
 ## 수관 준비·결합이 끝나는 틱 / 방수 개시(압력) 틱 (기획안 6-1). 그 전에는 물이 나오지 않는다
 var ready_tick := 0
 var water_tick := 0

@@ -62,6 +62,10 @@ func _run() -> void:
 		await _no_fire(world, sim, out)
 		quit()
 		return
+	if mode == "hose":
+		await _hose(world, sim, out)
+		quit()
+		return
 	# 1) 팀장 표시: 4명 분대(구조대)를 크게 — 고르지 않음 / 고름
 	var squad_crew: Crew = null
 	for c in sim.units.crews:
@@ -246,6 +250,57 @@ func _more(world, sim: SimWorld, out: String) -> void:
 	vic.carried_by = -1
 	sq.type = old_type
 	print("저장 ", out, " · A7·A8·A9·A10")
+
+
+## 소방호스 그림 (모드 hose — docs/motions.md D1·D2·D4): 진압 분대가 펌프차에서 현관 앞까지 수관을 깔고,
+## 물이 차기 전(납작한 띠)과 찬 뒤(통통한 관)를 같은 자리에서 찍는다
+func _hose(world, sim: SimWorld, out: String) -> void:
+	var crew: Crew = null
+	for c in sim.units.crews:
+		if sim._default_mission(c) == "attack" and not c.leader.aboard:
+			crew = c
+			break
+	if crew == null:
+		print("진압 분대 없음")
+		return
+	sim.clock.paused = false
+	var pump := sim.water._nearest_pump(crew.leader.pos)
+	if sim.water.hose_of_crew(crew.id) == null and not sim.water.lay_hose(crew.id, pump, sim.clock.tick):
+		print("수관 연장 실패")
+		return
+	var h := sim.water.hose_of_crew(crew.id)
+	# 건물에 가리지 않게 길을 따라 동쪽으로 20m쯤 간 뒤 건물 쪽으로 꺾는다 (결합구 하나와 꺾인 곳이 보이게)
+	var start := h.points[0]
+	for leg: Vector2i in [Vector2i(start.x + 40, start.y + 3), Vector2i(start.x + 44, start.y - 3)]:
+		var goal := sim.pathfinder.nearest_walkable(1, leg)
+		sim.units.order_move([crew.id] as Array[int], Vector3i(goal.x, goal.y, 1), sim.pathfinder)
+		for i in 600:
+			sim.step_ticks(2)
+			sim.cards.queue.clear()
+			if not crew.leader.is_moving():
+				break
+	sim.clock.paused = true
+	# 수관 양 끝의 가운데를 화면 가운데에
+	var a := h.points[0]
+	var b := h.points[h.points.size() - 1]
+	var mid := (Vector2(a.x, a.y) + Vector2(b.x, b.y)) * 0.5
+	print("수관 ", a, " → ", b, " · 관창수 ", crew.leader.pos)
+	# 가까이 볼 곳: 첫 결합구 (1본 = 15m 지점)
+	var run: Dictionary = HoseDraw.runs(h, 1, 1.2, 4)[0]
+	var joint := HoseDraw.point_at(run, sim.water.hose_length_cells())
+	world.camera.zoom = Vector2(1.0, 1.0)
+	world.camera.position = world.projection().to_screen(mid, 0.0)
+	root.warp_mouse(Vector2(10, 10))
+	h.water_tick = 1 << 40
+	await _save(out, "D_hose_flat")
+	h.water_tick = 0
+	await _save(out, "D_hose_round")
+	world.camera.zoom = Vector2(3.0, 3.0)
+	world.camera.position = world.projection().to_screen(joint, 0.0)
+	await _save(out, "D_hose_round_close")
+	h.water_tick = 1 << 40
+	await _save(out, "D_hose_flat_close")
+	print("저장 ", out, " · 수관 ", snappedf(h.length_cells() * sim.building.cell_size_m, 0.1), "m · 점 ", h.points.size())
 
 
 ## 화점을 찾지 못함 카드 (FIRE-NONE-01, 모드 nofire): 진압 분대를 불이 없는 맨 위층에 세우고 그 층 화재진압을 지시한다

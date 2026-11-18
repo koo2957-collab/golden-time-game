@@ -16,7 +16,6 @@ const PATH_LINE := Color(1, 1, 1, 0.45)
 const UNIT_OUTLINE := Color("0e1319")
 const UNIT_TEXT := Color.WHITE
 const LANE_LINE := Color(0.9, 0.85, 0.6, 0.35)
-const HOSE_COLOR := Color("e8dcc0")
 ## 소화전 흡수관 · 물탱크차 급수관
 const SUPPLY_LINE := Color("64b5f6")
 const HYDRANT_COLOR := Color("e53935")

@@ -1,0 +1,15 @@
+{
+  "note": "소방호스 그리기 (docs/motions.md '라. 소방호스 표현' D1·D2·D4, 2026-11-18). 화면에만 쓰고 시뮬레이션과는 상관없다. 호스는 띠(선)로 그린다: 물이 차기 전에는 넓고 납작한 띠, 찬 뒤에는 좁고 통통한 관. 폭은 실제 40mm 호스(지름 4cm, 접힌 폭 = 지름 × π/2 ≈ 6.3cm)를 화면에서 보이게 키운 값이고, 납작:둥근 = π/2 비율은 지킨다. 결합구 간격(1본 15m)은 data/fire/fire_params.json hose_length_m.",
+  "flat_width_m": {"value": 0.16, "source": "화면 설정", "note": "납작한 호스(송수 전) 띠 폭 — 실제 접힌 폭 6.3cm의 약 2.5배 (화면 1m = 51px에서 약 8px)"},
+  "round_width_m": {"value": 0.10, "source": "화면 설정", "note": "부푼 호스(송수 뒤) 폭 — 실제 지름 4cm의 2.5배. 납작할 때보다 좁다 (공학: 접힌 폭 = 지름 × π/2)"},
+  "flat_color": {"value": "#cfc5a8", "source": "화면 설정", "note": "납작한 호스 색 (바랜 베이지 — 힘없이 놓인 천)"},
+  "flat_edge_color": {"value": "#8f8669", "source": "화면 설정", "note": "납작한 호스 가장자리 (접힌 솔기)"},
+  "round_color": {"value": "#f2e6c4", "source": "화면 설정", "note": "부푼 호스 색 (밝은 베이지 — 팽팽한 관)"},
+  "round_shade_color": {"value": "#5b5136", "source": "화면 설정", "note": "부푼 호스 아래쪽 그늘 (통통해 보이게)"},
+  "round_highlight_color": {"value": "#ffffff", "source": "화면 설정", "note": "부푼 호스 위쪽 밝은 줄"},
+  "coupling_color": {"value": "#b8c0c8", "source": "화면 설정", "note": "결합구(금속 고리) 색"},
+  "coupling_edge_color": {"value": "#2b3138", "source": "화면 설정", "note": "결합구 테두리"},
+  "coupling_radius_m": {"value": 0.09, "source": "화면 설정", "note": "결합구 반지름 — 호스보다 조금 굵게"},
+  "corner_radius_m": {"value": 0.6, "source": "화면 설정", "note": "꺾이는 곳을 둥글리는 반지름 (화재1 연장 유의사항 ③ '꺾인 부분은 넓게 벌려서'). 옆 구간이 짧으면 그 절반까지만"},
+  "corner_steps": {"value": 4, "source": "화면 설정", "note": "꺾이는 곳 하나를 몇 조각으로 둥글릴지 (많을수록 매끈하고 무겁다)"}
+}

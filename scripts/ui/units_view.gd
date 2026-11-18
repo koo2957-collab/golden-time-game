@@ -188,18 +188,13 @@ func _draw_smoke_plumes() -> void:
 			draw_circle(at + Vector2(sin(t + k) * 5.0, -f * 30.0), (6.0 + f * 12.0) * (0.6 + 0.4 * strength), Color(PlanStyle.SMOKE_PLUME, PlanStyle.SMOKE_PLUME.a * (1.0 - f) * strength))
 
 
+## 수관 (입체 화면과 같은 그림 — HoseDraw)
 func _draw_hoses() -> void:
+	var to_screen := func(p: Vector2) -> Vector2: return PlanStyle.to_px(p)
+	var cell_m := sim.building.cell_size_m
+	var one: float = sim.water.hose_length_cells()
 	for h in sim.water.hoses:
-		var pts := PackedVector2Array()
-		for p in h.points:
-			if p.z == level:
-				pts.append(PlanStyle.to_px(Vector2(p.x + 0.5, p.y + 0.5)))
-			else:
-				if pts.size() >= 2:
-					draw_polyline(pts, PlanStyle.HOSE_COLOR, 2.5)
-				pts.clear()
-		if pts.size() >= 2:
-			draw_polyline(pts, PlanStyle.HOSE_COLOR, 2.5)
+		HoseDraw.draw(self, h, level, to_screen, PlanStyle.CELL_PX / cell_m, cell_m, sim.water.water_head_cells(h, sim.clock.tick), one)
 
 
 func _draw_vehicle(v: Vehicle, alpha: float) -> void:

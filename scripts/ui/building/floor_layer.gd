@@ -2363,18 +2363,12 @@ func _draw_air_bar(at: Vector2, ff: Firefighter) -> void:
 
 # --- 차량·수관·방수 ---
 
+## 수관: 물이 차기 전에는 납작한 띠, 찬 뒤에는 통통한 관, 1본마다 결합구 (HoseDraw — docs/motions.md D1·D2·D4)
 func _draw_hoses() -> void:
+	var to_screen := func(p: Vector2) -> Vector2: return proj.to_screen(p, 0.03)
+	var one: float = sim.water.hose_length_cells()
 	for h in sim.water.hoses:
-		var pts := PackedVector2Array()
-		for p in h.points:
-			if p.z == level:
-				pts.append(proj.to_screen(Vector2(p.x + 0.5, p.y + 0.5), 0.03))
-			else:
-				if pts.size() >= 2:
-					draw_polyline(pts, PlanStyle.HOSE_COLOR, 2.5)
-				pts.clear()
-		if pts.size() >= 2:
-			draw_polyline(pts, PlanStyle.HOSE_COLOR, 2.5)
+		HoseDraw.draw(self, h, level, to_screen, IsoProjection.PX_PER_M, sim.building.cell_size_m, sim.water.water_head_cells(h, sim.clock.tick), one)
 
 
 func _draw_vehicle(v: Vehicle, alpha: float) -> void:

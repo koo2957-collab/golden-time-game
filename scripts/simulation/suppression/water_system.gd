@@ -377,6 +377,17 @@ func _approach(h: HoseLine, c: Crew, tick: int) -> bool:
 	return true
 
 
+## 호스 1본 길이 (칸) — 화면의 결합구 간격
+func hose_length_cells() -> float:
+	return float(_tt.get("hose_length_m", 15.0)) / _cell_m
+
+
+## 물머리 위치 (펌프차 쪽 끝부터 잰 거리, 칸): 거기까지 물이 찼다 — 화면이 그 앞은 부푼 호스, 뒤는 납작한 호스로 그린다.
+## 지금은 방수 개시 시각(water_tick)에 한 번에 찬다 (물이 차오르는 것은 docs/motions.md D3)
+func water_head_cells(h: HoseLine, tick: int) -> float:
+	return h.length_cells() if tick >= h.water_tick else 0.0
+
+
 func stop_spray(crew_id: int, tick: int) -> void:
 	var h := hose_of_crew(crew_id)
 	if h and h.flowing:

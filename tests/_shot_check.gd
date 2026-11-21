@@ -382,7 +382,19 @@ func _hose_slack(world, sim: SimWorld, h: HoseLine, out: String) -> void:
 	await _save(out, "D_hose_slack_plan")
 	h.max_cells = h.length_cells()
 	await _save(out, "D_hose_taut_plan")
+	# 급수 호스 (2026-11-21): 물탱크차에서 펌프차 후면 보수구로 — 펌프차 몸통에 걸리면 돌아간다
+	h.max_cells = h.length_cells() * 2.0
+	for t in sim.units.vehicles:
+		if t.transfer_lpm > 0.0 and t.id != v.id and not t.away:
+			t.supply_to = v.id
+			break
+	world.camera.zoom = Vector2(1.5, 1.5)
+	world.camera.position = world.projection().to_screen(v.pos + v.heading * v.length_cells * 0.5)
+	await _save(out, "D_supply_plan")
 	world.set_view_mode(0)
+	world.camera.zoom = Vector2(1.5, 1.5)
+	world.camera.position = world.projection().to_screen(v.pos, 0.0)
+	await _save(out, "D_supply")
 
 
 ## 화점을 찾지 못함 카드 (FIRE-NONE-01, 모드 nofire): 진압 분대를 불이 없는 맨 위층에 세우고 그 층 화재진압을 지시한다

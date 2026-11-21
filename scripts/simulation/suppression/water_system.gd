@@ -56,6 +56,8 @@ var _low_warned: Dictionary = {}
 const LOW_TANK_RATIO := 0.25
 var _hydrant_range: float
 var _supply_range: float
+## 수관 시작점: 펌프차 후면에서 이만큼 뒤 (칸)
+var _port_behind: float
 var _drag_factor: float
 var _damage_temp: float
 var _range := {}  # Pattern -> 셀
@@ -86,6 +88,7 @@ func _init(p_building: BuildingData, p_units: UnitSystem, p_pathfinder: Pathfind
 	_hydrant_range = config.value("hydrant_range_m") / _cell_m
 	_supply_range = config.value("supply_range_m") / _cell_m
 	_drag_factor = config.value("hose_drag_speed_factor")
+	_port_behind = config.value("hose_port_behind_m") / _cell_m
 	indoor_tank_l = p_building.indoor_tank_l
 	_damage_temp = config.value("water_damage_temp_c")
 	_range[HoseLine.Pattern.STRAIGHT] = config.value("straight_range_m") / _cell_m
@@ -307,13 +310,21 @@ func _connect_at_outlet(h: HoseLine, c: Crew, tick: int) -> void:
 		_approach(h, c, tick)
 
 
-## 수관 연장: 펌프차에서 조장(관창수) 위치까지 호스를 깐다.
+## 수관이 시작하는 칸: 펌프차 후면 방수구 바로 뒤 (2026-11-21 — 예전에는 차 가운데)
+func hose_start_cell(v: Vehicle) -> Vector2i:
+	var rear: Vector2 = v.rear_point(_port_behind)
+	var cell := pathfinder.nearest_walkable(v.level, Vector2i(floori(rear.x), floori(rear.y)))
+	# 차 뒤가 지도 밖이면 차 자리에서
+	return cell if cell != Pathfinder.NO_CELL else pathfinder.nearest_walkable(v.level, v.cell())
+
+
+## 수관 연장: 펌프차 후면 방수구에서 조장(관창수) 위치까지 호스를 깐다.
 func lay_hose(crew_id: int, vehicle_id: int, tick: int) -> bool:
 	var c := units.get_crew(crew_id)
 	var v := units.get_vehicle(vehicle_id)
 	if c == null or v == null or not v.is_pump() or hose_of_crew(crew_id) != null:
 		return false
-	var start := pathfinder.nearest_walkable(v.level, v.cell())
+	var start := hose_start_cell(v)
 	var path := pathfinder.find_path(Vector3i(start.x, start.y, v.level), c.leader.cell3())
 	if path.is_empty():
 		return false

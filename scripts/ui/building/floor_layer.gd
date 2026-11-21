@@ -1801,7 +1801,7 @@ func _door_opener(crew: Crew, art: SpriteArt.SpriteSet) -> int:
 ## 운전원 작업 (2026-11-16 사용자 결정, SOP 205): 차가 소화전 점령·급수 연결을 하는 동안만 운전원이 내려 직접 호스를 연결한다.
 ## 진행률 구간마다 동작·자리(data/art.json driver_steps). 사람마다 {anim, k, frame, pos, depth}:
 ## driver = 이 차 운전원, helper = 둘이서 할 때 차 옆 조의 조장(차 쪽 결합), other = 급수받는 펌프차 운전원.
-## hose_a·hose_b = 굴려 펴는 중·편 뒤의 호스 선. 작업이 없으면 빈 것
+## hose = 굴려 펴는 중·편 뒤의 호스가 놓인 길 (셀 좌표 점들). 작업이 없으면 빈 것
 func _driver_layout(v: Vehicle) -> Dictionary:
 	if v == null or v.work.is_empty() or v.away or thermal:
 		return {}
@@ -1826,14 +1826,15 @@ func _driver_layout(v: Vehicle) -> Dictionary:
 		if hi < 0 or hi >= sim.building.hydrants.size():
 			return {}
 		b = Vector2(sim.building.hydrants[hi]) + Vector2(0.5, 0.5)
-		a = v.closest_body_point(b)
+		# 차 쪽 결합 자리: 펌프차는 후면 보수구 (2026-11-21)
+		a = HoseDraw.intake_point(v, b)
 		b_body = b
 	else:
 		other_v = sim.units.get_vehicle(int(v.work.target))
 		if other_v == null:
 			return {}
-		a = v.closest_body_point(other_v.pos)
-		b = other_v.closest_body_point(v.pos)
+		b = HoseDraw.intake_point(other_v, v.pos)
+		a = HoseDraw.intake_point(v, b)
 		b_body = other_v.pos
 	var prog := sim.water.work_progress(v)
 	var out := {}
@@ -1851,11 +1852,10 @@ func _driver_layout(v: Vehicle) -> Dictionary:
 	# 호스 선: 굴려 펴는 동안 시작점에서 쭉 늘어나고, 편 뒤에는 끝까지
 	var roll: Array = plan.get("roll", [])
 	if roll.size() == 2 and prog >= float(roll[0]):
-		var start := b if kind == "hydrant" else a
-		var end := a if kind == "hydrant" else b
+		# 소화전 급수는 소화전에서 차 쪽으로, 물탱크차 급수는 물탱크차에서 펌프차 쪽으로 편다 (차 몸통에 걸리면 돌아가는 길 — HoseDraw.supply_route)
+		var route: PackedVector2Array = HoseDraw.supply_route(v, b, sim.building.cell_size_m) if kind == "hydrant" else HoseDraw.supply_route(other_v, a, sim.building.cell_size_m)
 		var f := clampf((prog - float(roll[0])) / maxf(0.001, float(roll[1]) - float(roll[0])), 0.0, 1.0)
-		out.hose_a = start
-		out.hose_b = start.lerp(end, f)
+		out.hose = HoseDraw.cut(route, f)
 	return out
 
 
@@ -3305,12 +3305,22 @@ func _draw_route_lines(alpha: float) -> void:
 	_draw_hoses()
 	if level == _first_level:
 		for line in UnitsView.supply_lines(sim):
-			draw_line(proj.to_screen(line[0], 0.05), proj.to_screen(line[1], 0.05), PlanStyle.SUPPLY_LINE, 4.0)
+			_draw_supply_hose(line)
 		# 운전원이 연결하는 중인 호스: 첫 결합한 곳에서 운전원(또는 연장이 끝났으면 다음 결합 자리)까지
 		for v in sim.units.vehicles:
 			var dl := _driver_layout(v)
-			if not dl.is_empty() and dl.has("hose_a"):
-				draw_line(proj.to_screen(dl.hose_a, 0.05), proj.to_screen(dl.hose_b, 0.05), PlanStyle.SUPPLY_LINE, 4.0)
+			if not dl.is_empty() and dl.has("hose"):
+				_draw_supply_hose(dl.hose)
+
+
+## 급수 호스 (소화전·물탱크차 → 차): 셀 좌표 점들을 이은 선
+func _draw_supply_hose(line: PackedVector2Array) -> void:
+	if line.size() < 2:
+		return
+	var px := PackedVector2Array()
+	for p in line:
+		px.append(proj.to_screen(p, 0.05))
+	draw_polyline(px, PlanStyle.SUPPLY_LINE, 4.0)
 
 
 ## 색 겹 (ghost_mode 4, 2026-11-12 사용자 결정 — 정적인 것은 무채색, 움직이는 것만 색):

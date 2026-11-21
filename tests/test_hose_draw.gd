@@ -151,15 +151,106 @@ func test_hose_starts_at_vehicle_rear_port() -> void:
 		back_cells.append(Vector3i(10 - k, 10, 1))
 	var back := HoseDraw.port_of(_hose(back_cells), v, 0.25, 1.0)
 	assert_eq(back.port, Vector2(10.5 - v.length_cells * 0.5, 10.5), "뒤로 나가면 후면 가운데")
-	assert_true(not back.has("port_corner"), "돌아갈 모서리 없음")
 	var back_run: Dictionary = HoseDraw.runs(_hose(back_cells), 1, 1.2, 4, back)[0]
 	assert_eq(back_run.pts[0], back.port, "후면에서 시작")
 	assert_eq(back_run.pts[back_run.pts.size() - 1], Vector2(-9.5, 10.5), "관창 쪽 끝")
 	for p: Vector2 in back_run.pts:
 		assert_true(p.x <= 3.5001 and absf(p.y - 10.5) < 0.001, "차 뒤로 곧게 (%s)" % p)
+	# 차 뒤에서 시작해 차를 뚫고 앞으로 가는 길 (길 찾기는 차를 피하지 않는다): 차 몸통 밑을 지나지 않고 옆을 돌아간다
+	var through_cells: Array = []
+	for k in 31:
+		through_cells.append(Vector3i(2 + k, 10, 1))
+	var through := _hose(through_cells)
+	var through_lay := HoseDraw.port_of(through, v, 0.25, 1.0)
+	var through_run: Dictionary = HoseDraw.runs(through, 1, 1.2, 4, through_lay)[0]
+	assert_eq(through_run.pts[0], through_lay.port, "후면에서 시작")
+	assert_eq(through_run.pts[through_run.pts.size() - 1], Vector2(32.5, 10.5), "관창 쪽 끝")
+	assert_true(absf(float(through_run.dist[through_run.dist.size() - 1]) - through.length_cells()) < 0.001, "끝 거리 = 시뮬레이션 길이")
+	for k in range(1, through_run.pts.size()):
+		assert_true(through_run.dist[k] > through_run.dist[k - 1], "거리는 늘기만 한다")
+	# 호스를 따라 촘촘히 짚어 본다 (점 사이의 선도 차에 걸리지 않아야 한다)
+	var beside := false
+	var inside := 0
+	for s in 601:
+		var p := HoseDraw.point_at(through_run, through.length_cells() * s / 600.0)
+		if s > 0 and v.contains(p):
+			inside += 1
+		beside = beside or (absf(p.x - 10.5) < 3.0 and absf(p.y - 10.5) > v.width_cells * 0.5)
+	assert_eq(inside, 0, "차 몸통 밑을 지나지 않는다")
+	assert_true(beside, "차 옆을 따라 간다")
 	# 차에서 떨어진 곳에서 시작하는 호스 (차가 자리를 옮긴 뒤): 방수구로 잇지 않는다
 	var far := _hose([Vector3i(40, 10, 1), Vector3i(41, 10, 1), Vector3i(42, 10, 1)])
 	assert_true(HoseDraw.port_of(far, v, 0.25, 1.0).is_empty(), "멀리서 시작하면 그대로")
+
+
+## 급수 호스(소화전·물탱크차)가 차에 붙는 자리: 펌프차는 후면 보수구 — 호스가 오는 쪽 끝, 그 밖의 차는 가장 가까운 차체 둘레
+func test_supply_hose_connects_at_pump_rear() -> void:
+	var pump := Vehicle.new()
+	pump.pos = Vector2(10.5, 10.5)
+	pump.heading = Vector2.RIGHT
+	pump.nozzle_lpm = 275.0
+	var ratio := float(HoseDraw.style().intake_across_ratio)
+	assert_true(ratio > 0.0 and ratio <= 0.5, "보수구는 후면 폭 안에")
+	for south: bool in [true, false]:
+		var side := 1.0 if south else -1.0
+		# 차 옆, 앞쪽에 있는 소화전
+		var hydrant := Vector2(14.5, 10.5 + side * 5.0)
+		var at := HoseDraw.intake_point(pump, hydrant)
+		assert_eq(at, Vector2(10.5 - pump.length_cells * 0.5, 10.5 + side * pump.width_cells * ratio), "후면, 소화전 쪽 끝 (%s)" % ("남" if south else "북"))
+		# 호스는 차 뒤로 돌아 후면에 붙는다 — 차 몸통 밑을 지나지 않는다 (차에 붙는 끝점은 뺀다)
+		var route := HoseDraw.supply_route(pump, hydrant, 0.5)
+		assert_eq(route[0], hydrant, "소화전에서 시작")
+		assert_eq(route[route.size() - 1], at, "후면 보수구에서 끝")
+		var inside := 0
+		for k in range(1, route.size()):
+			for s in range(1, 20):
+				if pump.contains(route[k - 1].lerp(route[k], s / 20.0)):
+					inside += 1
+		assert_eq(inside, 0, "급수 호스가 차 몸통을 지나지 않는다")
+	# 물탱크차(관창 없음)는 예전처럼 가장 가까운 차체 둘레
+	var tanker := Vehicle.new()
+	tanker.pos = Vector2(-10.5, 10.5)
+	tanker.heading = Vector2.RIGHT
+	var into := HoseDraw.intake_point(pump, tanker.pos)
+	assert_eq(into, Vector2(3.5, 10.5), "뒤에 선 물탱크차에서 오면 후면 가운데")
+	assert_eq(HoseDraw.intake_point(tanker, into), tanker.closest_body_point(into), "물탱크차 쪽은 가장 가까운 곳 (앞머리)")
+	assert_eq(HoseDraw.supply_route(pump, Vector2(-3.5, 10.5), 0.5), PackedVector2Array([Vector2(-3.5, 10.5), into]), "걸리는 것이 없으면 곧게")
+	# 물탱크차가 펌프차 앞에 서 있으면: 급수 호스는 펌프차 몸통을 뚫지 않고 옆을 돌아 후면으로 간다
+	var ahead := Vector2(20.5, 10.5)
+	var around := HoseDraw.supply_route(pump, ahead, 0.5)
+	assert_true(around.size() >= 4, "돌아가는 길 (%d점)" % around.size())
+	assert_eq(around[0], ahead, "급수하는 차 쪽 끝")
+	assert_eq(around[around.size() - 1], Vector2(3.5, 10.5), "받는 쪽 끝은 펌프차 후면")
+	var under := 0
+	for k in range(1, around.size()):
+		for s in range(1, 20):
+			if pump.contains(around[k - 1].lerp(around[k], s / 20.0)):
+				under += 1
+	assert_eq(under, 0, "펌프차 몸통 밑을 지나지 않는다")
+	# 굴려 펴는 중: 길의 앞부분만
+	var half := HoseDraw.cut(around, 0.5)
+	assert_eq(half[0], ahead, "펴기 시작한 곳")
+	var full_len := 0.0
+	var half_len := 0.0
+	for k in range(1, around.size()):
+		full_len += around[k - 1].distance_to(around[k])
+	for k in range(1, half.size()):
+		half_len += half[k - 1].distance_to(half[k])
+	assert_true(absf(half_len - full_len * 0.5) < 0.001, "절반만 폈다 (%.1f / %.1f칸)" % [half_len, full_len])
+	assert_eq(HoseDraw.cut(around, 1.0), around, "다 폈다")
+	# 실제 화면에 그리는 선: 소화전을 점령한 펌프차
+	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)
+	var v: Vehicle = null
+	for cand in sim.units.vehicles:
+		if cand.is_pump() and v == null:
+			v = cand
+	assert_true(v != null and not sim.building.hydrants.is_empty(), "펌프차와 소화전")
+	v.hydrant = 0
+	var lines := UnitsView.supply_lines(sim)
+	assert_eq(lines.size(), 1, "급수 호스 한 줄")
+	var end: Vector2 = lines[0][lines[0].size() - 1]
+	assert_eq(lines[0][0], Vector2(sim.building.hydrants[0]) + Vector2(0.5, 0.5), "소화전에서 시작")
+	assert_true(absf((end - v.pos).dot(v.heading) + v.length_cells * 0.5) < 0.001, "차 쪽 끝은 후면")
 
 
 ## D5 시뮬레이션: 펌프차에서 건물 안까지 깐 호스 — 방수구에서 시작, 방수구 옆과 건물 앞에 굽이, 문은 곧게 지나고, 팽팽하면 편다
@@ -169,6 +260,10 @@ func test_layout_slack_at_port_and_before_building() -> void:
 	var h := sim.water.hose_of_crew(0)
 	var v := sim.units.get_vehicle(h.vehicle_id)
 	var b := sim.building
+	# 호스 길이는 펌프차 후면 방수구 바로 뒤에서부터 잰다 (2026-11-21 — 예전에는 차 가운데)
+	var first := Vector2(h.points[0].x + 0.5, h.points[0].y + 0.5)
+	assert_true(not v.contains(first) and first.distance_to(v.rear_point()) <= 2.0, "수관은 차 후면 바로 뒤에서 시작 (%s, 후면 %s)" % [first, v.rear_point()])
+	assert_eq(Vector2i(h.points[0].x, h.points[0].y), sim.water.hose_start_cell(v), "시작 칸")
 	# 불난 건물 출입문 바로 앞까지 길을 찾고, 문과 그 안쪽 한 칸을 이어 건물 안까지 깐 호스를 만든다 (문이 닫혀 있어도 되게)
 	var door := Vector2i(-1, -1)
 	var out_dir := Vector2i.ZERO

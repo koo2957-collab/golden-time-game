@@ -112,6 +112,12 @@ func footprint(at: Vector2 = pos) -> PackedVector2Array:
 	return PackedVector2Array([at - f - s, at + f - s, at + f + s, at - f + s])
 
 
+## 차 후면 가운데에서 behind(셀)만큼 뒤, 옆으로 across(셀, 진행 방향의 오른쪽이 +)만큼 비킨 점.
+## 펌프차는 후면 셔터 안에 동작 패널·방수구·보수구가 있다 (2026-11-21 사용자·현직 소방관) — 호스는 여기서 나오고 들어간다
+func rear_point(behind: float = 0.0, across: float = 0.0, at: Vector2 = pos) -> Vector2:
+	return at - heading * (length_cells * 0.5 + behind) + Vector2(-heading.y, heading.x) * across
+
+
 func contains(p: Vector2) -> bool:
 	return Geometry2D.is_point_in_polygon(p, footprint())
 

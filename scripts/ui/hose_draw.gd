@@ -58,7 +58,7 @@ static func _close(out: Array[Dictionary], pts: PackedVector2Array, dist: Packed
 	var slack_from := dist[0]
 	# 0) 호스가 시작하는 조각: 차 몸통 밑을 지나는 점을 버리고 후면 방수구에서 나오게 한다 (D5)
 	if lay.has("port") and dist[0] <= 0.0001:
-		var joined := with_port(pts, dist, lay.port, lay.port_out, lay.body, lay.get("port_corner"))
+		var joined := with_port(pts, dist, lay.port, lay.port_out, lay.body, lay.get("port_corner"), lay.get("port_front"))
 		pts = joined.pts
 		dist = joined.dist
 		slack_from = joined.from
@@ -98,51 +98,85 @@ static func _close(out: Array[Dictionary], pts: PackedVector2Array, dist: Packed
 	out.append({"pts": rp, "dist": rd, "slack_from": slack_from})
 
 
-## 호스의 시작을 펌프차 방수구로 옮긴다 (D5 — 그림만): 방수구(port) → 그 바로 바깥(port_out) → 차 몸통(body)에 걸리지 않고
-## 이을 수 있는 점부터는 원래 길. 곧장 이으면 차에 걸려 길을 많이 버려야 할 때는 차 뒤 모서리 바깥(corner)을 돌아서 잇는다.
-## 거리는 방수구가 0이고 이어지는 점부터는 원래 거리 그대로다 (결합구·물머리 자리가 바뀌지 않는다).
+## 호스의 시작을 펌프차 후면 방수구로 옮기고, 차 몸통 밑을 지나지 않게 한다 (D5 — 그림만. 길 찾기는 차를 피하지 않는다):
+## 방수구(port) → 그 바로 바깥(port_out) → 원래 길. 차 몸통(body) 안의 점은 버리고, 그 사이를 이은 선이 차에 걸리면
+## 차 모서리 바깥(corner = 뒤 모서리, front = 앞 모서리)을 돌아간다.
+## 거리는 방수구가 0이고 원래 길의 점은 원래 거리 그대로다 (결합구·물머리 자리가 바뀌지 않는다) — 끼워 넣은 점은 그 사이를 나눈다.
 ## from = 방수구 바로 바깥의 거리 — 거기서부터 여유 호스 굽이를 둘 수 있다
-static func with_port(pts: PackedVector2Array, dist: PackedFloat32Array, port: Vector2, port_out: Vector2, body: PackedVector2Array, corner: Variant = null) -> Dictionary:
-	var lead := PackedVector2Array([port, port_out])
-	var k := _join_index(pts, port_out, body)
-	if corner is Vector2:
-		var around := _join_index(pts, corner, body)
-		if around < k:
-			k = around
-			lead.append(corner)
-	# 앞머리(방수구 ~ 이어지는 점 앞)의 거리: 0에서 시작해 이어지는 점의 거리보다 작게 고르게 나눈다
-	var lead_len := 0.0
-	for i in range(1, lead.size()):
-		lead_len += lead[i - 1].distance_to(lead[i])
-	lead_len += lead[lead.size() - 1].distance_to(pts[k])
-	var scale := minf(1.0, dist[k] / lead_len) if lead_len > 0.0 and dist[k] > 0.0 else 0.0
-	var np := PackedVector2Array([lead[0]])
-	var nd := PackedFloat32Array([0.0])
-	for i in range(1, lead.size()):
-		np.append(lead[i])
-		nd.append(maxf(nd[i - 1] + lead[i - 1].distance_to(lead[i]) * scale, nd[i - 1] + 0.01))
-	for i in range(k, pts.size()):
-		np.append(pts[i])
-		nd.append(maxf(dist[i], nd[nd.size() - 1] + 0.01))
+static func with_port(pts: PackedVector2Array, dist: PackedFloat32Array, port: Vector2, port_out: Vector2, body: PackedVector2Array,
+		corner: Variant = null, front: Variant = null) -> Dictionary:
+	# 1) 차 몸통 안의 점을 버린다 (남긴 점의 원래 번호를 기억한다)
+	var kp := PackedVector2Array()
+	var kd := PackedFloat32Array()
+	var ki := PackedInt32Array()
+	for i in pts.size():
+		if not Geometry2D.is_point_in_polygon(pts[i], body) or i == pts.size() - 1:
+			kp.append(pts[i])
+			kd.append(dist[i])
+			ki.append(i)
+	# 2) 방수구 바깥에서 원래 길로: 곧장 이으면 차에 걸릴 때는 모서리를 돌고,
+	#    아니면 가까워지는 동안의 점은 건너뛴다 (되돌아가는 갈고리가 생기지 않게)
+	var np := PackedVector2Array([port, port_out])
+	var nd := PackedFloat32Array([0.0, -1.0])
+	var k := 0
+	if _crosses(port_out, kp[0], body):
+		for via in _detour(port_out, kp[0], body, corner, front):
+			np.append(via)
+			nd.append(-1.0)
+	else:
+		while k + 1 < kp.size() and port_out.distance_squared_to(kp[k + 1]) < port_out.distance_squared_to(kp[k]) and not _crosses(port_out, kp[k + 1], body):
+			k += 1
+	# 3) 차례로 잇는다. 점을 버린 곳에서 이은 선이 차에 걸리면 모서리 바깥을 돈다
+	for i in range(k, kp.size()):
+		if i > k and ki[i] != ki[i - 1] + 1 and _crosses(kp[i - 1], kp[i], body):
+			for via in _detour(kp[i - 1], kp[i], body, corner, front):
+				np.append(via)
+				nd.append(-1.0)
+		np.append(kp[i])
+		nd.append(kd[i])
+	# 4) 끼워 넣은 점(-1)의 거리: 앞뒤 원래 점의 거리 사이를 화면 길이 비율로 나눈다
+	var known := 0
+	for j in range(1, np.size()):
+		if nd[j] < 0.0:
+			continue
+		if j - known > 1:
+			var total := 0.0
+			for m in range(known + 1, j + 1):
+				total += np[m - 1].distance_to(np[m])
+			var gone := 0.0
+			for m in range(known + 1, j):
+				gone += np[m - 1].distance_to(np[m])
+				nd[m] = lerpf(nd[known], nd[j], gone / total if total > 0.0 else 0.0)
+		known = j
+	for j in range(1, np.size()):
+		nd[j] = maxf(nd[j], nd[j - 1] + 0.01)
 	return {"pts": np, "dist": nd, "from": nd[1]}
 
 
-## from에서 차 몸통에 걸리지 않고 이을 수 있는 점들 가운데 가장 가까운 점의 번호 (길이 그 옆을 지나가면 거기서 잇는다 —
-## 되돌아가는 갈고리가 생기지 않게). 없으면 마지막 점
-static func _join_index(pts: PackedVector2Array, from: Vector2, body: PackedVector2Array) -> int:
-	var k := -1
-	var best := INF
-	for i in pts.size():
-		if Geometry2D.is_point_in_polygon(pts[i], body) or not Geometry2D.intersect_polyline_with_polygon(PackedVector2Array([from, pts[i]]), body).is_empty():
-			if k >= 0:
-				break
-			continue
-		var gap := from.distance_squared_to(pts[i])
-		if gap >= best:
-			break
-		best = gap
-		k = i
-	return k if k >= 0 else pts.size() - 1
+## a와 b를 이은 선이 차 몸통에 걸리는가
+static func _crosses(a: Vector2, b: Vector2, body: PackedVector2Array) -> bool:
+	if a.is_equal_approx(b):
+		return false
+	return not Geometry2D.intersect_polyline_with_polygon(PackedVector2Array([a, b]), body).is_empty()
+
+
+## a에서 b로 차 몸통을 피해 가려면 거쳐야 하는 모서리 바깥 점들 (뒤 모서리·앞 모서리 가운데 걸리지 않는 가장 짧은 조합). 없으면 빈 것
+static func _detour(a: Vector2, b: Vector2, body: PackedVector2Array, rear: Variant, front: Variant) -> PackedVector2Array:
+	var options: Array[PackedVector2Array] = []
+	if rear is Vector2:
+		options.append(PackedVector2Array([rear]))
+	if front is Vector2:
+		options.append(PackedVector2Array([front]))
+	if rear is Vector2 and front is Vector2:
+		options.append(PackedVector2Array([rear, front]))
+		options.append(PackedVector2Array([front, rear]))
+	for via in options:
+		var line := PackedVector2Array([a])
+		line.append_array(via)
+		line.append(b)
+		if Geometry2D.intersect_polyline_with_polygon(line, body).is_empty():
+			return via
+	return PackedVector2Array()
 
 
 ## 점들을 따라 잰 실제 길이 (칸, 첫 점 0)
@@ -237,10 +271,11 @@ static func entry_dist(h: HoseLine, building: BuildingData) -> float:
 	return -1.0
 
 
-## 펌프차 후면 방수구 {port, port_out, port_corner, body} (칸 좌표) — 펌프차는 후면 셔터 안에 동작 패널과 방수구가 있다
-## (2026-11-21 사용자·현직 소방관). 방수구는 후면 가운데에서 호스가 나가는 쪽으로 across_ratio × 차 폭만큼 비켜 있다.
-## port_out = 방수구에서 clear_cells만큼 뒤, port_corner = 호스가 나가는 쪽 뒤 모서리 바깥 (차 옆을 따라 앞으로 갈 때 돌아가는 곳).
-## 호스가 옆으로 벗어나지 않으면 가운데에 두고 모서리는 없다. 호스가 차에서 떨어진 곳에서 시작하면 빈 것 (차가 자리를 옮긴 뒤 등)
+## 펌프차 후면 방수구 {port, port_out, port_corner, port_front, body} (칸 좌표) — 펌프차는 후면 셔터 안에 동작 패널과 방수구가 있다
+## (2026-11-21 사용자·현직 소방관). 방수구는 후면 가운데에서 호스가 나가는 쪽으로 across_ratio × 차 폭만큼 비켜 있다
+## (호스가 옆으로 벗어나지 않으면 가운데). port_out = 방수구에서 clear_cells만큼 뒤,
+## port_corner·port_front = 호스가 나가는 쪽의 뒤·앞 모서리 바깥 (차 옆을 따라 앞으로 갈 때 돌아가는 곳).
+## 호스가 차에서 떨어진 곳에서 시작하면 빈 것 (차가 자리를 옮긴 뒤 등)
 static func port_of(h: HoseLine, v: Vehicle, across_ratio: float, clear_cells: float) -> Dictionary:
 	if h.points.is_empty() or h.points[0].z != v.level:
 		return {}
@@ -256,11 +291,59 @@ static func port_of(h: HoseLine, v: Vehicle, across_ratio: float, clear_cells: f
 		if absf(across) > v.width_cells * 0.5 + clear_cells:
 			side = signf(across)
 			break
-	var rear := v.pos - v.heading * v.length_cells * 0.5
-	var at := rear + side_dir * side * v.width_cells * across_ratio
-	var out := {"port": at, "port_out": at - v.heading * clear_cells, "body": v.footprint()}
-	if side != 0.0:
-		out.port_corner = rear - v.heading * clear_cells + side_dir * side * (v.width_cells * 0.5 + clear_cells)
+	var shift := side * v.width_cells * across_ratio
+	# 돌아갈 모서리: 호스가 나가는 쪽 (옆으로 벗어나지 않으면 오른쪽)
+	var edge := (side if side != 0.0 else 1.0) * (v.width_cells * 0.5 + clear_cells)
+	return {
+		"port": v.rear_point(0.0, shift),
+		"port_out": v.rear_point(clear_cells, shift),
+		"port_corner": v.rear_point(clear_cells, edge),
+		"port_front": v.pos + v.heading * (v.length_cells * 0.5 + clear_cells) + side_dir * edge,
+		"body": v.footprint(),
+	}
+
+
+## 급수 호스가 차에 붙는 자리 (칸 좌표): 펌프차는 후면 보수구 — 후면에서 호스가 오는 쪽 끝 (2026-11-21 사용자·현직 소방관).
+## 그 밖의 차(물탱크차 등)는 예전처럼 가장 가까운 차체 둘레
+static func intake_point(v: Vehicle, toward: Vector2) -> Vector2:
+	if not v.is_pump():
+		return v.closest_body_point(toward)
+	var across := (toward - v.pos).dot(Vector2(-v.heading.y, v.heading.x))
+	return v.rear_point(0.0, signf(across) * v.width_cells * float(style().get("intake_across_ratio", 0.45)))
+
+
+## 급수 호스가 놓이는 길 (칸 좌표): from(소화전·급수하는 차 쪽 끝)에서 차의 급수 자리(intake_point)까지.
+## 곧게 이으면 펌프차 몸통에 걸릴 때는 (예: 앞에 선 물탱크차에서 올 때) 차 모서리 바깥을 돌아 후면으로 간다
+static func supply_route(v: Vehicle, from: Vector2, cell_m: float) -> PackedVector2Array:
+	var into := intake_point(v, from)
+	var body := v.footprint()
+	if not v.is_pump() or not _crosses(from, into, body):
+		return PackedVector2Array([from, into])
+	var clear := float(style().get("port_clear_m", 0.8)) / cell_m
+	var side_dir := Vector2(-v.heading.y, v.heading.x)
+	var side := signf((from - v.pos).dot(side_dir))
+	var edge := (side if side != 0.0 else 1.0) * (v.width_cells * 0.5 + clear)
+	var behind := into - v.heading * clear
+	var out := PackedVector2Array([from])
+	if _crosses(from, behind, body):
+		out.append_array(_detour(from, behind, body, v.rear_point(clear, edge), v.pos + v.heading * (v.length_cells * 0.5 + clear) + side_dir * edge))
+	out.append(behind)
+	out.append(into)
+	return out
+
+
+## 길의 앞부분만 (전체 길이의 f, 0~1) — 호스를 굴려 펴는 중인 모습
+static func cut(pts: PackedVector2Array, f: float) -> PackedVector2Array:
+	var geo := _lengths(pts)
+	var upto := geo[geo.size() - 1] * clampf(f, 0.0, 1.0)
+	var out := PackedVector2Array([pts[0]])
+	for k in range(1, pts.size()):
+		if geo[k] <= upto:
+			out.append(pts[k])
+			continue
+		var span := geo[k] - geo[k - 1]
+		out.append(pts[k - 1].lerp(pts[k], (upto - geo[k - 1]) / span if span > 0.0 else 0.0))
+		break
 	return out
 
 
@@ -409,10 +492,13 @@ static func draw(ci: CanvasItem, h: HoseLine, level: int, to_screen: Callable, p
 		# 결합구: 호스 방향으로 놓인 짧은 금속 원통 (물이 찬 쪽은 호스와 같이 떠 있다)
 		var half := float(st.get("coupling_length_m", 0.2)) / cell_m * 0.5
 		var joint_w := round_w * float(st.get("coupling_width_ratio", 1.5))
+		# 결합구 길이는 화면에 놓인 길이로 잰다 (방수구 앞머리는 거리가 눌려 있다)
+		var geo := _lengths(run.pts)
 		for d in couplings(run, length_cells):
 			var raise := lift if d < head_cells else Vector2.ZERO
-			var a: Vector2 = to_screen.call(point_at(run, maxf(d0, d - half))) + raise
-			var b: Vector2 = to_screen.call(point_at(run, minf(d1, d + half))) + raise
+			var g := _map(run.dist, geo, d)
+			var a: Vector2 = to_screen.call(point_at(run, _map(geo, run.dist, maxf(0.0, g - half)))) + raise
+			var b: Vector2 = to_screen.call(point_at(run, _map(geo, run.dist, minf(geo[geo.size() - 1], g + half)))) + raise
 			if a.distance_to(b) < 1.0:
 				continue
 			var n := (b - a).normalized().orthogonal()

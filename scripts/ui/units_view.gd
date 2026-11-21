@@ -71,7 +71,10 @@ func _draw() -> void:
 			if not v.away:
 				_draw_vehicle(v, alpha)
 		for line in supply_lines(sim):
-			draw_line(PlanStyle.to_px(line[0]), PlanStyle.to_px(line[1]), PlanStyle.SUPPLY_LINE, 4.0)
+			var px := PackedVector2Array()
+			for p in line:
+				px.append(PlanStyle.to_px(p))
+			draw_polyline(px, PlanStyle.SUPPLY_LINE, 4.0)
 	for o in sim.building.outlets:
 		if o.z == level:
 			var oc := PlanStyle.to_px(Vector2(o.x, o.y) + Vector2(0.5, 0.5))
@@ -322,16 +325,18 @@ func _draw_path(ff: Firefighter, alpha: float) -> void:
 		draw_polyline(points, PlanStyle.PATH_LINE, 1.5)
 
 
-## 소화전 흡수관과 물탱크차 급수관: [시작점, 끝점] (셀 좌표) 목록
-static func supply_lines(p_sim: SimWorld) -> Array[Array]:
-	var lines: Array[Array] = []
+## 소화전 흡수관과 물탱크차 급수관이 놓인 길 (셀 좌표 점들) 목록 — 소화전(급수하는 차) 쪽에서 받는 차 쪽으로.
+## 펌프차 쪽은 후면 보수구에 붙고, 차 몸통에 걸리면 돌아간다 (HoseDraw.supply_route, 2026-11-21)
+static func supply_lines(p_sim: SimWorld) -> Array[PackedVector2Array]:
+	var lines: Array[PackedVector2Array] = []
+	var cell_m := p_sim.building.cell_size_m
 	for v in p_sim.units.vehicles:
 		if v.hydrant >= 0:
 			var h := Vector2(p_sim.building.hydrants[v.hydrant]) + Vector2(0.5, 0.5)
-			lines.append([h, v.closest_body_point(h)])
+			lines.append(HoseDraw.supply_route(v, h, cell_m))
 		if v.supply_to >= 0:
 			var p := p_sim.units.get_vehicle(v.supply_to)
-			lines.append([v.closest_body_point(p.pos), p.closest_body_point(v.pos)])
+			lines.append(HoseDraw.supply_route(p, HoseDraw.intake_point(v, HoseDraw.intake_point(p, v.pos)), cell_m))
 	return lines
 
 

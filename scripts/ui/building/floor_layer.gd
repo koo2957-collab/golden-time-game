@@ -1833,7 +1833,8 @@ func _driver_layout(v: Vehicle) -> Dictionary:
 		other_v = sim.units.get_vehicle(int(v.work.target))
 		if other_v == null:
 			return {}
-		b = HoseDraw.intake_point(other_v, v.pos)
+		# 물탱크차 후면에서 펌프차 후면으로 (두 차 모두 후면에 결합 — 2026-11-21)
+		b = HoseDraw.intake_point(other_v, v.rear_point())
 		a = HoseDraw.intake_point(v, b)
 		b_body = other_v.pos
 	var prog := sim.water.work_progress(v)
@@ -1852,8 +1853,8 @@ func _driver_layout(v: Vehicle) -> Dictionary:
 	# 호스 선: 굴려 펴는 동안 시작점에서 쭉 늘어나고, 편 뒤에는 끝까지
 	var roll: Array = plan.get("roll", [])
 	if roll.size() == 2 and prog >= float(roll[0]):
-		# 소화전 급수는 소화전에서 차 쪽으로, 물탱크차 급수는 물탱크차에서 펌프차 쪽으로 편다 (차 몸통에 걸리면 돌아가는 길 — HoseDraw.supply_route)
-		var route: PackedVector2Array = HoseDraw.supply_route(v, b, sim.building.cell_size_m) if kind == "hydrant" else HoseDraw.supply_route(other_v, a, sim.building.cell_size_m)
+		# 소화전 급수는 소화전에서 차 쪽으로, 물탱크차 급수는 물탱크차에서 펌프차 쪽으로 편다 (차 몸통에 걸리면 돌아가는 길 — HoseDraw.supply_route·supply_between)
+		var route: PackedVector2Array = HoseDraw.supply_route(v, b, sim.building.cell_size_m) if kind == "hydrant" else HoseDraw.supply_between(v, other_v, sim.building.cell_size_m)
 		var f := clampf((prog - float(roll[0])) / maxf(0.001, float(roll[1]) - float(roll[0])), 0.0, 1.0)
 		out.hose = HoseDraw.cut(route, f)
 	return out

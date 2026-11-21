@@ -207,13 +207,36 @@ func test_supply_hose_connects_at_pump_rear() -> void:
 				if pump.contains(route[k - 1].lerp(route[k], s / 20.0)):
 					inside += 1
 		assert_eq(inside, 0, "급수 호스가 차 몸통을 지나지 않는다")
-	# 물탱크차(관창 없음)는 예전처럼 가장 가까운 차체 둘레
+	# 물탱크차도 후면에서 호스가 나온다 (2026-11-21 사용자). 물을 싣지 않는 차는 가장 가까운 차체 둘레
 	var tanker := Vehicle.new()
 	tanker.pos = Vector2(-10.5, 10.5)
 	tanker.heading = Vector2.RIGHT
-	var into := HoseDraw.intake_point(pump, tanker.pos)
+	tanker.transfer_lpm = 180.0
+	var into := HoseDraw.intake_point(pump, tanker.rear_point())
 	assert_eq(into, Vector2(3.5, 10.5), "뒤에 선 물탱크차에서 오면 후면 가운데")
-	assert_eq(HoseDraw.intake_point(tanker, into), tanker.closest_body_point(into), "물탱크차 쪽은 가장 가까운 곳 (앞머리)")
+	assert_eq(HoseDraw.intake_point(tanker, into), Vector2(-17.5, 10.5), "물탱크차 쪽도 후면")
+	var plain := Vehicle.new()
+	plain.pos = Vector2(-10.5, 10.5)
+	plain.heading = Vector2.RIGHT
+	assert_eq(HoseDraw.intake_point(plain, into), plain.closest_body_point(into), "물을 싣지 않는 차는 가장 가까운 곳")
+	# 물탱크차 → 펌프차: 물탱크차 후면에서 나와 물탱크차를 돌아 펌프차 후면으로 — 어느 차 몸통도 지나지 않는다
+	for place: Vector2 in [Vector2(-10.5, 10.5), Vector2(30.5, 10.5), Vector2(10.5, 20.5)]:
+		tanker.pos = place
+		for facing: Vector2 in [Vector2.RIGHT, Vector2.LEFT]:
+			tanker.heading = facing
+			var between := HoseDraw.supply_between(tanker, pump, 0.5)
+			var what := "물탱크차 %s·%s" % [place, "→" if facing == Vector2.RIGHT else "←"]
+			assert_true(absf((between[0] - tanker.pos).dot(tanker.heading) + tanker.length_cells * 0.5) < 0.001, "물탱크차 후면에서 시작 (%s)" % what)
+			assert_true(absf((between[between.size() - 1] - pump.pos).dot(pump.heading) + pump.length_cells * 0.5) < 0.001, "펌프차 후면에서 끝 (%s)" % what)
+			var hit := 0
+			for k in range(1, between.size()):
+				for s in range(1, 20):
+					var q := between[k - 1].lerp(between[k], s / 20.0)
+					if pump.contains(q) or tanker.contains(q):
+						hit += 1
+			assert_eq(hit, 0, "두 차의 몸통을 지나지 않는다 (%s)" % what)
+	tanker.pos = Vector2(-10.5, 10.5)
+	tanker.heading = Vector2.RIGHT
 	assert_eq(HoseDraw.supply_route(pump, Vector2(-3.5, 10.5), 0.5), PackedVector2Array([Vector2(-3.5, 10.5), into]), "걸리는 것이 없으면 곧게")
 	# 물탱크차가 펌프차 앞에 서 있으면: 급수 호스는 펌프차 몸통을 뚫지 않고 옆을 돌아 후면으로 간다
 	var ahead := Vector2(20.5, 10.5)

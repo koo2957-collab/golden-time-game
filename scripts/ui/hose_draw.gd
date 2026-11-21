@@ -303,21 +303,26 @@ static func port_of(h: HoseLine, v: Vehicle, across_ratio: float, clear_cells: f
 	}
 
 
-## 급수 호스가 차에 붙는 자리 (칸 좌표): 펌프차는 후면 보수구 — 후면에서 호스가 오는 쪽 끝 (2026-11-21 사용자·현직 소방관).
-## 그 밖의 차(물탱크차 등)는 예전처럼 가장 가까운 차체 둘레
+## 물을 싣는 차인가 (펌프차·물탱크차) — 급수 호스가 후면에 붙는 차
+static func has_rear_panel(v: Vehicle) -> bool:
+	return v.is_pump() or v.transfer_lpm > 0.0
+
+
+## 급수 호스가 차에 붙는 자리 (칸 좌표): 펌프차·물탱크차는 후면(보수구·방수구) — 후면에서 호스가 오는 쪽 끝
+## (2026-11-21 사용자·현직 소방관: 펌프차 후면에 동작 패널, 물탱크차도 같다). 그 밖의 차는 가장 가까운 차체 둘레
 static func intake_point(v: Vehicle, toward: Vector2) -> Vector2:
-	if not v.is_pump():
+	if not has_rear_panel(v):
 		return v.closest_body_point(toward)
 	var across := (toward - v.pos).dot(Vector2(-v.heading.y, v.heading.x))
 	return v.rear_point(0.0, signf(across) * v.width_cells * float(style().get("intake_across_ratio", 0.45)))
 
 
 ## 급수 호스가 놓이는 길 (칸 좌표): from(소화전·급수하는 차 쪽 끝)에서 차의 급수 자리(intake_point)까지.
-## 곧게 이으면 펌프차 몸통에 걸릴 때는 (예: 앞에 선 물탱크차에서 올 때) 차 모서리 바깥을 돌아 후면으로 간다
+## 곧게 이으면 차 몸통에 걸릴 때는 (예: 앞에 선 차에서 올 때) 차 모서리 바깥을 돌아 후면으로 간다
 static func supply_route(v: Vehicle, from: Vector2, cell_m: float) -> PackedVector2Array:
 	var into := intake_point(v, from)
 	var body := v.footprint()
-	if not v.is_pump() or not _crosses(from, into, body):
+	if not has_rear_panel(v) or not _crosses(from, into, body):
 		return PackedVector2Array([from, into])
 	var clear := float(style().get("port_clear_m", 0.8)) / cell_m
 	var side_dir := Vector2(-v.heading.y, v.heading.x)
@@ -329,6 +334,21 @@ static func supply_route(v: Vehicle, from: Vector2, cell_m: float) -> PackedVect
 		out.append_array(_detour(from, behind, body, v.rear_point(clear, edge), v.pos + v.heading * (v.length_cells * 0.5 + clear) + side_dir * edge))
 	out.append(behind)
 	out.append(into)
+	return out
+
+
+## 차에서 차로 가는 급수 호스의 길 (물탱크차 → 펌프차): src 후면에서 나와 dst 후면으로 — 두 차의 몸통을 모두 돌아간다
+static func supply_between(src: Vehicle, dst: Vehicle, cell_m: float) -> PackedVector2Array:
+	var into := intake_point(dst, src.rear_point())
+	# src 쪽: 받는 차의 급수 자리를 보고 나가는 길 (뒤집으면 src 후면에서 시작)
+	var out := supply_route(src, into, cell_m)
+	out.reverse()
+	out.remove_at(out.size() - 1)
+	# dst 쪽: src를 벗어난 마지막 점에서 받는 차의 후면까지
+	var last := out[out.size() - 1]
+	var tail := supply_route(dst, last, cell_m)
+	for k in range(1, tail.size()):
+		out.append(tail[k])
 	return out
 
 

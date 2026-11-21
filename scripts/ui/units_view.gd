@@ -326,7 +326,7 @@ func _draw_path(ff: Firefighter, alpha: float) -> void:
 
 
 ## 소화전 흡수관과 물탱크차 급수관이 놓인 길 (셀 좌표 점들) 목록 — 소화전(급수하는 차) 쪽에서 받는 차 쪽으로.
-## 펌프차 쪽은 후면 보수구에 붙고, 차 몸통에 걸리면 돌아간다 (HoseDraw.supply_route, 2026-11-21)
+## 펌프차·물탱크차는 후면에 붙고, 차 몸통에 걸리면 돌아간다 (HoseDraw.supply_route·supply_between, 2026-11-21)
 static func supply_lines(p_sim: SimWorld) -> Array[PackedVector2Array]:
 	var lines: Array[PackedVector2Array] = []
 	var cell_m := p_sim.building.cell_size_m
@@ -336,7 +336,7 @@ static func supply_lines(p_sim: SimWorld) -> Array[PackedVector2Array]:
 			lines.append(HoseDraw.supply_route(v, h, cell_m))
 		if v.supply_to >= 0:
 			var p := p_sim.units.get_vehicle(v.supply_to)
-			lines.append(HoseDraw.supply_route(p, HoseDraw.intake_point(v, HoseDraw.intake_point(p, v.pos)), cell_m))
+			lines.append(HoseDraw.supply_between(v, p, cell_m))
 	return lines
 
 

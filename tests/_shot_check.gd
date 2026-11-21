@@ -269,9 +269,9 @@ func _hose(world, sim: SimWorld, out: String) -> void:
 		print("수관 연장 실패")
 		return
 	var h := sim.water.hose_of_crew(crew.id)
-	# 건물에 가리지 않게 길을 따라 동쪽으로 20m쯤 간 뒤 건물 쪽으로 꺾는다 (결합구 하나와 꺾인 곳이 보이게)
+	# 건물에 가리지 않게 길을 따라 동쪽으로 35m쯤 간 뒤 건물 쪽으로 꺾는다 (둘째 결합구와 꺾인 곳이 탁 트인 곳에 보이게)
 	var start := h.points[0]
-	for leg: Vector2i in [Vector2i(start.x + 40, start.y + 3), Vector2i(start.x + 44, start.y - 3)]:
+	for leg: Vector2i in [Vector2i(start.x + 40, start.y + 3), Vector2i(start.x + 44, start.y - 3), Vector2i(start.x + 58, start.y - 3), Vector2i(start.x + 58, start.y + 4)]:
 		var goal := sim.pathfinder.nearest_walkable(1, leg)
 		sim.units.order_move([crew.id] as Array[int], Vector3i(goal.x, goal.y, 1), sim.pathfinder)
 		for i in 600:
@@ -285,20 +285,29 @@ func _hose(world, sim: SimWorld, out: String) -> void:
 	var b := h.points[h.points.size() - 1]
 	var mid := (Vector2(a.x, a.y) + Vector2(b.x, b.y)) * 0.5
 	print("수관 ", a, " → ", b, " · 관창수 ", crew.leader.pos)
-	# 가까이 볼 곳: 첫 결합구 (1본 = 15m 지점)
+	# 가까이 볼 곳: 둘째 결합구 (2본 = 30m 지점, 호스가 그보다 짧으면 첫 결합구)
 	var run: Dictionary = HoseDraw.runs(h, 1, 1.2, 4)[0]
-	var joint := HoseDraw.point_at(run, sim.water.hose_length_cells())
+	var one := sim.water.hose_length_cells()
+	var joint_d := one * 2.0 if h.length_cells() > one * 2.0 + 4.0 else one
+	var joint := HoseDraw.point_at(run, joint_d)
 	world.camera.zoom = Vector2(1.0, 1.0)
 	world.camera.position = world.projection().to_screen(mid, 0.0)
 	root.warp_mouse(Vector2(10, 10))
-	h.water_tick = 1 << 40
+	h.charged = false
+	h.water_head = 0.0
 	await _save(out, "D_hose_flat")
-	h.water_tick = 0
+	# 물이 반쯤 찬 모습 (D3): 물머리 앞은 부풀고 뒤는 납작
+	h.water_head = h.length_cells() * 0.5
+	await _save(out, "D_hose_filling")
+	h.water_head = h.length_cells()
 	await _save(out, "D_hose_round")
 	world.camera.zoom = Vector2(3.0, 3.0)
 	world.camera.position = world.projection().to_screen(joint, 0.0)
 	await _save(out, "D_hose_round_close")
-	h.water_tick = 1 << 40
+	# 물머리가 결합구를 막 지난 모습
+	h.water_head = joint_d + 3.0
+	await _save(out, "D_hose_filling_close")
+	h.water_head = 0.0
 	await _save(out, "D_hose_flat_close")
 	print("저장 ", out, " · 수관 ", snappedf(h.length_cells() * sim.building.cell_size_m, 0.1), "m · 점 ", h.points.size())
 

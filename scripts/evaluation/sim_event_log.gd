@@ -78,6 +78,8 @@ static func describe_text(e: Dictionary) -> String:
 			text = "%s %s 시작 — 약 %d초 (%d인, 호스 %d본) %s" % [e.vehicle, e.work, e.seconds, e.people, e.lengths, e.driver]
 		"hose_resupply":
 			text = "호스가 모자랍니다 — 차량에서 더 가져옵니다 (%s, %d본째)" % [e.crew, e.lengths]
+		"hose_charged":
+			text = "수관 충수 완료 (%d본 약 %dm) — %s" % [e.lengths, e.meters, e.crew]
 		"door_check_seen":
 			text = "%s 현관문에 도어체크가 걸려 있습니다 — 안에 사람이 있을 수 있습니다 (%s)" % [e.unit, e.crew]
 		"victim_found":

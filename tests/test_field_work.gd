@@ -62,11 +62,24 @@ func test_hose_prep_and_water_start() -> void:
 	sim.step_ticks(1)
 	var h := sim.water.hose_of_crew(0)
 	assert_true(h != null, "수관 연장")
-	assert_eq(h.water_tick - 0, roundi((20.0 + 2 * 5.0 + 10.0) / SimClock.TICK_DT), "수관 준비 20 + 결합 2×5 + 방수 개시 10초 뒤 물")
+	var ready := roundi((20.0 + 2 * 5.0) / SimClock.TICK_DT)
+	assert_eq(h.ready_tick - 0, ready, "수관 준비 20 + 결합 2×5초 뒤부터 송수")
 	var pump := sim.units.vehicles[0]
 	var tank0 := pump.tank_l
-	sim.step_ticks(roundi(30.0 / SimClock.TICK_DT))
+	sim.step_ticks(ready - sim.clock.tick)
+	assert_eq(h.water_head, 0.0, "준비가 끝나기 전에는 물이 들어가지 않는다")
+	assert_true(not h.charged, "충수 전")
 	assert_eq(pump.tank_l, tank0, "물이 나오기 전에는 탱크가 줄지 않음")
+	# 예비 송수 (2026-11-18): 물머리가 펌프차 쪽부터 나아가 관창에 닿아야 물이 나간다. 걸리는 시간 = 호스 안 부피 ÷ 송수량
+	sim.step_ticks(10)
+	assert_true(h.water_head > 0.0 and h.water_head < h.length_cells(), "차오르는 중 (%.1f / %.1f칸)" % [h.water_head, h.length_cells()])
+	var meters := h.length_cells() * sim.building.cell_size_m
+	var liters := meters * PI * 0.02 * 0.02 * 1000.0
+	var fill_s := liters / 200.0 * 60.0
+	assert_true(absf(sim.water.charge_seconds(h.length_cells()) - fill_s) < 0.05, "충수 시간 = 부피(40mm, %.0fL) ÷ 분당 200L = %.1f초" % [liters, fill_s])
+	sim.step_ticks(ceili(fill_s / SimClock.TICK_DT))
+	assert_true(h.charged, "물머리가 관창에 닿음")
+	assert_eq(sim.events.of_type("hose_charged").size(), 1, "수관 충수 완료 보고 (한 번)")
 	assert_true(absf(crew.leader.speed_factor - 0.8) < 0.01, "수관을 끄는 조는 0.8배 속도")
 
 

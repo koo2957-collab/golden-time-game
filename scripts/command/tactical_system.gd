@@ -644,7 +644,7 @@ func _check_fire_lost(tick: int) -> void:
 			_attack_since.erase(crew_id)
 			continue
 		var h := water.hose_of_crew(crew_id)
-		if h and h.flowing and not h.approaching and tick >= h.water_tick and not h.blocked and h.flow_fraction > 0.0:
+		if h and h.flowing and not h.approaching and h.charged and not h.blocked and h.flow_fraction > 0.0:
 			_attack_since.erase(crew_id)
 			continue
 		var since: int = _attack_since[crew_id]

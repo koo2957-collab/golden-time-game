@@ -39,16 +39,18 @@ func _attack(sim: SimWorld, crew_id: int, spot: Vector2, pattern := "straight") 
 	sim.issue(EquipmentCommand.make("spray", [crew_id] as Array[int], -1, p, Vector3i(12, 16, 1)))
 
 
-## 수관 준비·결합·방수 개시(기획안 6-1)가 끝나 물이 나갈 때까지
+## 수관 준비·결합(기획안 6-1)이 끝나고 물머리가 관창에 닿아 물이 나갈 때까지 (예비 송수, 2026-11-18)
 func _wait_water(sim: SimWorld, crews: Array) -> void:
 	sim.step_ticks(1)
-	var until := 0
-	for id in crews:
-		var h := sim.water.hose_of_crew(id)
-		if h:
-			until = maxi(until, h.water_tick)
-	if until > sim.clock.tick:
-		sim.step_ticks(until - sim.clock.tick)
+	for i in 3000:
+		var ready := true
+		for id in crews:
+			var h := sim.water.hose_of_crew(id)
+			if h and not h.charged:
+				ready = false
+		if ready:
+			return
+		sim.step_ticks(1)
 
 
 func test_vehicles_loaded() -> void:
@@ -98,10 +100,9 @@ func test_tank_runs_dry_without_supply() -> void:
 	var sim := _sim()
 	_attack(sim, 0, Vector2(17.5, 13.5))
 	var pump := sim.units.vehicles[PUMP]
-	# 수관 준비·결합·방수 개시(약 40초, 기획안 6-1) 뒤부터 물이 나간다
-	sim.step_ticks(1)
-	var start := sim.water.hose_of_crew(0).water_tick
-	sim.step_ticks(start + 600 - sim.clock.tick)
+	# 수관 준비·결합(기획안 6-1)과 충수가 끝난 뒤부터 물이 나간다
+	_wait_water(sim, [0])
+	sim.step_ticks(600)
 	assert_true(absf(pump.tank_l - (2800.0 - 275.0)) < 2.0, "40mm 1선은 1분에 275L 사용 (결과 %.0fL)" % pump.tank_l)
 	sim.step_ticks(600 * 9 + 120)
 	assert_true(pump.tank_l < 1.0, "급수 없이 약 10분 11초면 탱크 소진 (기획안 5-4)")
@@ -230,7 +231,7 @@ func test_water_does_not_pass_walls() -> void:
 	h.aim = Vector2(27.5, 17.5)
 	h.flowing = true
 	h.next_advance_tick = 1 << 30  # 이 테스트에서는 '진압하며 전진'을 끈다
-	h.water_tick = sim.clock.tick
+	h.charged = true
 	h.ready_tick = sim.clock.tick
 	sim.step_ticks(50)
 	assert_true(h.blocked, "벽에 막힘")

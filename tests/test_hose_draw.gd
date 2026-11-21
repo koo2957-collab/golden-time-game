@@ -79,11 +79,27 @@ func test_couplings_every_length() -> void:
 	assert_true(HoseDraw.couplings(run, 0.0).is_empty(), "길이를 모르면 그리지 않는다")
 
 
-## 시뮬레이션: 방수 개시 전에는 물머리 0, 뒤에는 호스 끝 (화면이 납작 → 부푼 호스로 바꾼다)
-func test_sim_water_head_and_length() -> void:
+## 시뮬레이션: 물머리가 펌프차 쪽부터 나아가고(그 앞은 부푼 호스, 뒤는 납작한 호스), 한 번 찬 호스는 끌고 가도 차 있다
+func test_sim_water_head_advances() -> void:
 	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)
 	assert_true(sim.water.hose_length_cells() > 0.0, "1본 길이 (칸)")
 	assert_true(sim.water.lay_hose(0, 0, 0), "수관 연장")
 	var h := sim.water.hose_of_crew(0)
-	assert_eq(sim.water.water_head_cells(h, h.water_tick - 1), 0.0, "방수 개시 전: 납작")
-	assert_true(absf(sim.water.water_head_cells(h, h.water_tick) - h.length_cells()) < 0.001, "방수 개시 뒤: 끝까지 참")
+	assert_eq(h.water_head, 0.0, "연장 직후: 납작")
+	sim.step_ticks(h.ready_tick - sim.clock.tick + 5)
+	var early := h.water_head
+	assert_true(early > 0.0, "준비가 끝나면 물이 들어가기 시작")
+	for i in 3000:
+		if h.charged:
+			break
+		sim.step_ticks(1)
+	assert_true(h.charged and absf(h.water_head - h.length_cells()) < 0.001, "끝까지 참")
+	# 찬 호스를 끌고 더 간다
+	var lead := sim.units.get_crew(0).leader
+	var goal := sim.pathfinder.nearest_walkable(lead.level, Vector2i(floori(lead.pos.x) + 8, floori(lead.pos.y)))
+	var before := h.length_cells()
+	sim.units.order_move([0] as Array[int], Vector3i(goal.x, goal.y, lead.level), sim.pathfinder)
+	sim.step_ticks(100)
+	assert_true(h.length_cells() > before, "호스가 늘어남 (%.1f → %.1f칸)" % [before, h.length_cells()])
+	assert_true(h.charged and absf(h.water_head - h.length_cells()) < 0.001, "끌고 가도 차 있다")
+	assert_eq(sim.events.of_type("hose_charged").size(), 1, "충수 완료 보고는 한 번")

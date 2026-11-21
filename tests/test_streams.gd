@@ -44,8 +44,10 @@ func _water_used(pattern: HoseLine.Pattern) -> float:
 func _wait_water(sim: SimWorld, crew_id: int) -> void:
 	sim.step_ticks(1)
 	var h := sim.water.hose_of_crew(crew_id)
-	if h and h.water_tick > sim.clock.tick:
-		sim.step_ticks(h.water_tick - sim.clock.tick)
+	for i in 3000:
+		if h == null or h.charged:
+			return
+		sim.step_ticks(1)
 
 
 func test_pencil_uses_less_water() -> void:

@@ -39,6 +39,7 @@ const REPORT_PRIORITY := {
 	"victim_found": Radio.Priority.VICTIM,
 	"door_check_seen": Radio.Priority.VICTIM,
 	"hose_resupply": Radio.Priority.TACTICS,
+	"hose_charged": Radio.Priority.TACTICS,
 	"steam_mix": Radio.Priority.SAFETY,
 	"firebrand_ignition": Radio.Priority.KEY_FACTOR,
 	"flow_short": Radio.Priority.KEY_FACTOR,
@@ -391,7 +392,7 @@ func entry_verdict(c: Crew, tick: int) -> Dictionary:
 	var hose_text := "수관 없음"
 	var h: HoseLine = water.hose_of_crew(c.id) if water else null
 	if h:
-		hose_text = "수관 충수 완료" if tick >= h.water_tick else "수관 충수 전"
+		hose_text = "수관 충수 완료" if h.charged else "수관 충수 전"
 	var out := {"verdict": "grant", "reason": "준비 완료·진입 금지 요소 없음", "factors": factors, "hose": hose_text}
 	if effective_strategy() == Strategy.DEFENSIVE:
 		out.verdict = "deny"
@@ -415,7 +416,7 @@ func entry_verdict(c: Crew, tick: int) -> Dictionary:
 	if h and h.to_outlet:
 		hose_text = "방수구 호스 가방 휴대"
 		out.hose = hose_text
-	if task and task.action in ["attack", "attack_floor"] and not standpipe and (h == null or tick < h.water_tick):
+	if task and task.action in ["attack", "attack_floor"] and not standpipe and (h == null or not h.charged):
 		out.verdict = "wait"
 		out.reason = "진압 임무인데 %s — 물이 찬 수관으로 진입" % hose_text
 		return out

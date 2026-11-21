@@ -62,6 +62,8 @@ var _range := {}  # Pattern -> 셀
 ## 주수 형태별 물 사용 비율 (펜슬링은 끊어 쏜다)
 var _flow := {HoseLine.Pattern.STRAIGHT: 1.0, HoseLine.Pattern.FOG: 1.0}
 var _cover_cells := 5.0
+## 호스에 물이 차오르는 속도 (칸/초)
+var _charge_cells_per_s := 0.0
 var _radius := {}
 var _fuel_eff := {}
 var _gas_eff := {}
@@ -102,6 +104,9 @@ func _init(p_building: BuildingData, p_units: UnitSystem, p_pathfinder: Pathfind
 		_gas_eff[pair[0]] = config.value(pair[1] + "_gas_eff")
 		_flow[pair[0]] = config.value(pair[1] + "_flow_factor")
 	_cover_cells = config.value("cover_protect_m") / _cell_m
+	# 물머리 속도 (칸/초) = 송수량 ÷ 호스 1m의 부피 (D3). 40mm면 1m에 약 1.26L, 1본 15m에 약 19L
+	var liters_per_m := PI * pow(config.value("hose_diameter_mm") / 2000.0, 2.0) * 1000.0
+	_charge_cells_per_s = config.value("hose_charge_lpm") / 60.0 / liters_per_m / _cell_m
 
 
 # --- 조회 ---
@@ -265,7 +270,6 @@ func lay_hose_outlet(crew_id: int, outlet: int, tick: int, report := true) -> bo
 		h.to_outlet = true
 		h.points = [Vector3i(start.x, start.y, o.z)] as Array[Vector3i]
 		h.ready_tick = 1 << 40
-		h.water_tick = 1 << 40
 		hoses.append(h)
 		units.order_move([crew_id] as Array[int], Vector3i(start.x, start.y, o.z), pathfinder)
 		events.add(tick, "hose_to_outlet", {"crew": _crew_name(c), "level": building.floor_name(o.z)})
@@ -382,10 +386,40 @@ func hose_length_cells() -> float:
 	return float(_tt.get("hose_length_m", 15.0)) / _cell_m
 
 
-## 물머리 위치 (펌프차 쪽 끝부터 잰 거리, 칸): 거기까지 물이 찼다 — 화면이 그 앞은 부푼 호스, 뒤는 납작한 호스로 그린다.
-## 지금은 방수 개시 시각(water_tick)에 한 번에 찬다 (물이 차오르는 것은 docs/motions.md D3)
-func water_head_cells(h: HoseLine, tick: int) -> float:
-	return h.length_cells() if tick >= h.water_tick else 0.0
+## 호스가 다 차는 데 걸리는 시간 (초) = 호스 안 부피 ÷ 송수량. length_cells: 호스 길이 (칸)
+func charge_seconds(length_cells: float) -> float:
+	return length_cells / _charge_cells_per_s if _charge_cells_per_s > 0.0 else 0.0
+
+
+## 예비 송수 (화재1 제4장 제9절 "호스 연장이 끝나기 직전부터 서서히 송수", docs/motions.md D3):
+## 수관 준비·결합이 끝나면 운전원이 스스로 송수한다. 물머리가 펌프차 쪽부터 나아가 관창에 닿으면 충수 완료를 보고한다.
+## 한 번 찬 호스는 끌고 가도 차 있다. 물을 줄 곳(탱크·옥내 수조)이 비었으면 차오르지 않는다.
+## 호스를 채우는 물(40mm 1본 약 19L)은 탱크 잔량에서 빼지 않는다 (탱크 2,800L에 견주어 작다 — 단순화)
+func _update_charge(dt: float, tick: int) -> void:
+	for h in hoses:
+		if h.to_outlet:
+			continue
+		var length := h.length_cells()
+		if h.charged:
+			h.water_head = length
+			continue
+		h.water_head = minf(h.water_head, length)
+		if tick < h.ready_tick or not _source_has_water(h):
+			continue
+		h.water_head = minf(length, h.water_head + _charge_cells_per_s * dt)
+		if h.water_head >= length - SimClock.EPSILON:
+			h.charged = true
+			var c := units.get_crew(h.crew_id)
+			events.add(tick, "hose_charged", {"crew": _crew_name(c), "crew_id": c.id,
+				"lengths": ceili(length / maxf(0.01, hose_length_cells()) - 0.01), "meters": roundi(length * _cell_m)})
+
+
+## 그 수관에 물을 줄 곳에 물이 있는가 (펌프차 탱크 또는 옥내소화전 수조)
+func _source_has_water(h: HoseLine) -> bool:
+	if h.vehicle_id == INDOOR:
+		return indoor_tank_l > 0.0
+	var v := units.get_vehicle(h.vehicle_id)
+	return v != null and v.tank_l > EMPTY_TANK_L
 
 
 func stop_spray(crew_id: int, tick: int) -> void:
@@ -476,6 +510,7 @@ func step(dt: float, tick: int) -> void:
 		c.applied_lpm = 0.0
 	_update_pending(tick)
 	_update_hoses(tick)
+	_update_charge(dt, tick)
 	_update_supply(dt, tick)
 	_apply_sprays(dt, tick)
 
@@ -601,7 +636,9 @@ func _set_hose_timing(h: HoseLine, c: Crew, tick: int, outlet: bool) -> void:
 	if c.able_workers() <= 1:
 		prep *= 2.0
 	h.ready_tick = tick + roundi(prep / SimClock.TICK_DT)
-	h.water_tick = h.ready_tick + roundi(float(_tt.get("water_start_s", 10.0)) / SimClock.TICK_DT)
+	# 준비가 끝나면 운전원이 서서히 송수한다 — 물머리가 관창에 닿을 때까지는 방수가 안 된다 (_update_charge)
+	h.water_head = 0.0
+	h.charged = false
 	h.carried_loads = 1
 
 
@@ -700,7 +737,7 @@ func _update_supply(dt: float, tick: int) -> void:
 			continue
 		var flowing: Array[HoseLine] = []
 		for h in hoses_of_vehicle(v.id):
-			if h.flowing and not h.approaching and tick >= h.water_tick and tick >= h.resupply_until:
+			if h.flowing and not h.approaching and h.charged and tick >= h.resupply_until:
 				flowing.append(h)
 		if flowing.is_empty():
 			continue
@@ -738,7 +775,7 @@ func _apply_sprays(dt: float, tick: int) -> void:
 			if not leader.is_moving():
 				h.approaching = false
 			continue
-		if h.flow_fraction <= 0.0 or tick < h.water_tick or tick < h.resupply_until:
+		if h.flow_fraction <= 0.0 or not h.charged or tick < h.resupply_until:
 			continue
 		if leader.level != h.target.z:
 			h.blocked = true

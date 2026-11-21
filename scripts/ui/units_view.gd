@@ -194,7 +194,7 @@ func _draw_hoses() -> void:
 	var cell_m := sim.building.cell_size_m
 	var one: float = sim.water.hose_length_cells()
 	for h in sim.water.hoses:
-		HoseDraw.draw(self, h, level, to_screen, PlanStyle.CELL_PX / cell_m, cell_m, sim.water.water_head_cells(h, sim.clock.tick), one)
+		HoseDraw.draw(self, h, level, to_screen, PlanStyle.CELL_PX / cell_m, cell_m, h.water_head, one)
 
 
 func _draw_vehicle(v: Vehicle, alpha: float) -> void:

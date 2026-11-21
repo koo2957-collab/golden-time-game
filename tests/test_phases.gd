@@ -18,6 +18,8 @@ func _attack(sim: SimWorld) -> void:
 	crew.partner.pos = Vector2(18.5, 13.5)
 	crew.partner.prev_pos = crew.partner.pos
 	sim.issue(EquipmentCommand.make("hose", [0] as Array[int], 0))
+	sim.step_ticks(1)
+	fetch_hose(sim, 0)  # 차 후면에서 호스를 꺼내 이 자리까지 깔아 온 상태 (2026-11-21)
 	sim.issue(EquipmentCommand.make("spray", [0] as Array[int], -1, HoseLine.Pattern.FOG, Vector3i(12, 16, 1)))
 
 

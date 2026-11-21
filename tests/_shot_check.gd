@@ -269,6 +269,25 @@ func _hose(world, sim: SimWorld, out: String) -> void:
 		print("수관 연장 실패")
 		return
 	var h := sim.water.hose_of_crew(crew.id)
+	# 호스는 한 번에 생기지 않는다 (E1·D6, 2026-11-21): 분대가 펌프차 후면으로 가서 꺼내는 동안(수관 준비 20초) 한 장
+	for i in 1200:
+		if not h.to_outlet:
+			break
+		sim.step_ticks(1)
+		sim.cards.queue.clear()
+	if h.fetch_until >= 0:
+		sim.step_ticks(60)
+		sim.clock.paused = true
+		world.camera.zoom = Vector2(2.0, 2.0)
+		world.camera.position = world.projection().to_screen(Vector2(h.points[0].x, h.points[0].y) + Vector2(4, 0), 0.0)
+		root.warp_mouse(Vector2(10, 10))
+		await _save(out, "D_hose_fetch")
+		sim.clock.paused = false
+	for i in 600:
+		if h.fetch_until < 0:
+			break
+		sim.step_ticks(1)
+		sim.cards.queue.clear()
 	# 건물에 가리지 않게 길을 따라 동쪽으로 35m쯤 간 뒤 건물 쪽으로 꺾는다 (둘째 결합구와 꺾인 곳이 탁 트인 곳에 보이게)
 	var start := h.points[0]
 	for leg: Vector2i in [Vector2i(start.x + 40, start.y + 3), Vector2i(start.x + 44, start.y - 3), Vector2i(start.x + 58, start.y - 3), Vector2i(start.x + 58, start.y + 4)]:

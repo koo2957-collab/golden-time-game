@@ -35,6 +35,9 @@ func _attack(sim: SimWorld, crew_id: int, spot: Vector2, pattern := "straight") 
 	crew.partner.pos = spot + Vector2(1, 0)
 	crew.partner.prev_pos = crew.partner.pos
 	sim.issue(EquipmentCommand.make("hose", [crew_id] as Array[int], PUMP))
+	sim.step_ticks(1)
+	# 차 후면에서 호스를 꺼내(20초) 이 자리까지 깔아 온 상태로 만든다 — 방수까지 걸리는 시간은 예전과 같다 (준비 20 + 결합 10초)
+	fetch_hose(sim, crew_id)
 	var p := HoseLine.Pattern.FOG if pattern == "fog" else HoseLine.Pattern.STRAIGHT
 	sim.issue(EquipmentCommand.make("spray", [crew_id] as Array[int], -1, p, Vector3i(12, 16, 1)))
 
@@ -75,16 +78,24 @@ func test_growth_fire_knocked_down_quickly() -> void:
 
 func test_fully_developed_room_needs_a_minute_or_more() -> void:
 	var sim := _sim()
-	sim.step_ticks(8 * 600)
-	var living := _living(sim)
-	var before := _burning_cells(sim, living)
-	assert_true(living.flashed, "8분: 거실 플래시오버 이후")
+	# 8분에 방수를 지시한다. 그 전에 두 조가 차 후면에서 호스를 꺼내(20초) 복도까지 깔아 온 상태로 만들어 둔다
+	# (2026-11-21부터 호스는 한 번에 생기지 않는다 — 이 테스트는 호스 준비가 아니라 진압 속도를 본다)
+	sim.step_ticks(8 * 600 - 205)
 	# 최성기 거실 안에는 열기 때문에 설 수 없다: 복도에서 직사로 공격을 시작한다.
 	# 최성기 거실(약 21㎡)은 필요 방수량이 약 290L/분이라 40mm 1선(275)으로는 모자라 2선으로 공격한다 (기획안 5-4, P6-1)
 	for id in [0, 1]:
 		var crew := sim.units.get_crew(id)
 		crew.leader.pos = Vector2(26.5, 12.5 + id)
 		crew.partner.pos = Vector2(27.5, 12.5 + id)
+		sim.water.lay_hose(id, PUMP, sim.clock.tick)
+	fetch_hoses(sim, [0, 1])
+	sim.step_ticks(maxi(0, 8 * 600 - sim.clock.tick))
+	var living := _living(sim)
+	var before := _burning_cells(sim, living)
+	assert_true(living.flashed, "8분: 거실 플래시오버 이후")
+	for id in [0, 1]:
+		# 송수는 방수 지시 30초 뒤부터 (준비 20 + 결합 10초 — 지시와 함께 호스를 꺼내기 시작한 것과 같은 시각)
+		sim.water.hose_of_crew(id).ready_tick = sim.clock.tick + roundi(30.0 / SimClock.TICK_DT)
 		sim.issue(EquipmentCommand.make("spray", [id] as Array[int], -1, HoseLine.Pattern.STRAIGHT, Vector3i(12, 16, 1)))
 	_wait_water(sim, [0, 1])
 	before = _burning_cells(sim, living)
@@ -191,10 +202,16 @@ func test_spray_auto_hose_and_approach() -> void:
 	sim.step_ticks(1)
 	var h := sim.water.hose_of_crew(0)
 	assert_true(h != null and h.vehicle_id == PUMP, "가장 가까운 펌프차에서 수관 자동 연장")
-	assert_true(h.approaching and crew.leader.is_moving(), "목표가 벽에 가려 있어 방수 위치로 이동")
+	# 먼저 펌프차 후면으로 호스를 꺼내러 가고(2026-11-21), 꺼낸 뒤 방수 위치로 간다
+	assert_true(h.approaching and (crew.leader.is_moving() or h.fetch_until >= 0), "호스를 꺼내러 가거나 꺼내는 중 — 아직 방수 위치로 가는 길")
 	var tank_before := sim.units.vehicles[PUMP].tank_l
 	sim.step_ticks(5)
 	assert_eq(sim.units.vehicles[PUMP].tank_l, tank_before, "이동 중에는 물을 쓰지 않음")
+	for i in 1800:
+		if not h.approaching and h.charged:
+			break
+		sim.step_ticks(1)
+	assert_eq(sim.events.of_type("hose_laid").size(), 1, "차 후면에서 호스를 꺼냄")
 	sim.step_ticks(600)
 	assert_true(not h.approaching and not h.blocked, "도착 후 막힘 없이 방수")
 	assert_eq(_burning_cells(sim, _living(sim)), 0, "거실 진화")
@@ -207,6 +224,7 @@ func test_hose_length_limits_movement() -> void:
 	sim.issue(EquipmentCommand.make("hose", [0] as Array[int], PUMP))
 	sim.step_ticks(1)
 	assert_eq(sim.water.hoses.size(), 1, "가까운 조는 수관 연장")
+	fetch_hose(sim, 0)
 	sim.issue(MoveCommand.new([0] as Array[int], Vector3i(12, 6, 2)))
 	sim.step_ticks(600)
 	var h := sim.water.hose_of_crew(0)
@@ -226,7 +244,7 @@ func test_water_does_not_pass_walls() -> void:
 	sim.issue(EquipmentCommand.make("hose", [0] as Array[int], PUMP))
 	# 다가가기 없이 막힌 곳을 겨누는 상황을 직접 만든다
 	sim.step_ticks(1)
-	var h := sim.water.hose_of_crew(0)
+	var h := fetch_hose(sim, 0)
 	h.target = Vector3i(27, 17, 1)
 	h.aim = Vector2(27.5, 17.5)
 	h.flowing = true
@@ -272,6 +290,8 @@ func test_burning_door_can_be_put_out() -> void:
 	crew.partner.pos = spot + Vector2(1, 0)
 	crew.partner.prev_pos = crew.partner.pos
 	sim.issue(EquipmentCommand.make("hose", [0] as Array[int], PUMP))
+	sim.step_ticks(1)
+	fetch_hose(sim, 0)
 	sim.issue(EquipmentCommand.make("spray", [0] as Array[int], -1, HoseLine.Pattern.STRAIGHT, door))
 	_wait_water(sim, [0])
 	var out_s := -1.0

@@ -118,6 +118,8 @@ static func describe_text(e: Dictionary) -> String:
 			text = "소화전 연결 해제 — %s" % e.vehicle
 		"supply_connected":
 			text = "급수 연결 — %s → %s%s" % [e.vehicle, e.to, _driver(e)]
+		"hose_fetch":
+			text = "수관 가지러 감 — %s (%s 후면)" % [e.crew, e.vehicle]
 		"hose_laid":
 			text = "수관 연장 — %s (%s)" % [e.crew, e.vehicle]
 		"hose_too_short":

@@ -95,6 +95,9 @@ func test_fog_without_vent_brings_heat_down() -> void:
 	crew.partner.pos = Vector2(18.5, 13.5)
 	var depth0 := living.layer_depth
 	sim.issue(EquipmentCommand.make("hose", [0] as Array[int], 0))
+	sim.step_ticks(1)
+	fetch_hose(sim, 0)  # 차 후면에서 호스를 꺼내 이 자리까지 깔아 온 상태 (2026-11-21)
+	depth0 = living.layer_depth
 	sim.issue(EquipmentCommand.make("spray", [0] as Array[int], -1, HoseLine.Pattern.FOG, Vector3i(12, 16, 1)))
 	var deepest := depth0
 	var hot_when_hit := 0.0

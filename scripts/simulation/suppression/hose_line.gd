@@ -43,8 +43,13 @@ var charged := false
 ## 휴대 호스 한도를 넘어 차량에서 더 가져오는 중이면 끝나는 틱
 var resupply_until := -1
 var carried_loads := 1
-## 방수구 수관: 호스 가방을 들고 방수구까지 가는 중 (닿으면 거기서 연결해 깐다, P9)
+## 수관을 시작할 곳으로 가는 중 (닿으면 거기서부터 깐다):
+##   방수구 수관 = 호스 가방을 들고 방수구까지 (P9) / 펌프차 수관 = 호스를 꺼내러 펌프차 후면까지 (2026-11-21, docs/motions.md E1·D6)
 var to_outlet := false
+## 펌프차 후면에서 호스를 꺼내는 중이면 끝나는 틱 (-1 = 아님). 그동안 분대는 서 있다 (기획안 6-1 수관 준비 시간)
+var fetch_until := -1
+## 꺼내는 데 걸리는 전체 틱 (화면 진행 막대)
+var fetch_ticks := 0
 
 
 func pattern_name() -> String:

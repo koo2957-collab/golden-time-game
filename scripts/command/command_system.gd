@@ -414,7 +414,7 @@ func entry_verdict(c: Crew, tick: int) -> Dictionary:
 	# 연결송수관(방수구) 수관은 건물 안 방수구에서 결합·충수하므로 입구에서는 마른 호스 가방이 맞다 (SOP 213)
 	var standpipe := h != null and h.outlet >= 0
 	if h and h.to_outlet:
-		hose_text = "방수구 호스 가방 휴대"
+		hose_text = "방수구 호스 가방 휴대" if standpipe else "수관 가지러 가는 중"
 		out.hose = hose_text
 	if task and task.action in ["attack", "attack_floor"] and not standpipe and (h == null or not h.charged):
 		out.verdict = "wait"

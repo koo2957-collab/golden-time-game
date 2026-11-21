@@ -32,6 +32,7 @@ func _water_used(pattern: HoseLine.Pattern) -> float:
 	var sim := _sim()
 	_put(sim, 0, Vector2(13.5, 18.5))
 	sim.water.lay_hose(0, 0, 0)
+	fetch_hose(sim, 0)  # 차 후면에서 호스를 꺼내 이 자리까지 깔아 온 상태
 	var before := sim.units.get_vehicle(0).tank_l
 	sim.water.start_spray(0, Vector3i(12, 16, 1), pattern, 0)
 	_wait_water(sim, 0)  # 수관 준비·방수 개시 시간 (P4-1)
@@ -66,6 +67,7 @@ func test_cover_reduces_heat() -> void:
 	sim.step_ticks(1)
 	var bare := sim.units.get_crew(1).leader.heat_flux
 	sim.water.lay_hose(0, 0, sim.clock.tick)
+	fetch_hose(sim, 0)
 	sim.water.start_spray(0, Vector3i(12, 16, 1), HoseLine.Pattern.COVER, sim.clock.tick)
 	_wait_water(sim, 0)
 	_put(sim, 0, Vector2(13.5, 17.5))

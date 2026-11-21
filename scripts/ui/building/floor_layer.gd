@@ -2402,6 +2402,17 @@ func _draw_vehicle(v: Vehicle, alpha: float) -> void:
 			draw_rect(Rect2(top + Vector2(-30, 0), Vector2(60, 6)), Color(0.1, 0.1, 0.1, 0.8))
 			draw_rect(Rect2(top + Vector2(-30, 0), Vector2(60 * wp, 6)), Color("ffb74d"))
 			draw_string(ThemeDB.fallback_font, top + Vector2(-50, -4), "%s %d초" % [v.work.label, ceili(float(v.work.remain))], HORIZONTAL_ALIGNMENT_CENTER, 100, 13, Color("ffe0b2"))
+		# 분대가 후면에서 호스를 꺼내는 중 (docs/motions.md E1): 차 후면 위에 진행 막대 (여러 분대면 위로 쌓는다)
+		var row := 0
+		for hz in sim.water.hoses:
+			if hz.vehicle_id != v.id or hz.fetch_until < 0 or hz.fetch_ticks <= 0:
+				continue
+			var left := maxi(0, hz.fetch_until - sim.clock.tick)
+			var at := proj.to_screen(v.rear_point(0.0, 0.0, center), h + 0.4) + Vector2(0, -20.0 * row)
+			draw_rect(Rect2(at + Vector2(-30, 0), Vector2(60, 6)), Color(0.1, 0.1, 0.1, 0.8))
+			draw_rect(Rect2(at + Vector2(-30, 0), Vector2(60 * (1.0 - float(left) / hz.fetch_ticks), 6)), Color("ffb74d"))
+			draw_string(ThemeDB.fallback_font, at + Vector2(-50, -4), "수관 준비 %d초" % ceili(left * SimClock.TICK_DT), HORIZONTAL_ALIGNMENT_CENTER, 100, 13, Color("ffe0b2"))
+			row += 1
 	if v.id in selection.selected_vehicles:
 		var outline := _lift(fp, h)
 		outline.append(outline[0])

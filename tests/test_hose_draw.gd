@@ -334,9 +334,11 @@ func test_sim_water_head_advances() -> void:
 	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)
 	assert_true(sim.water.hose_length_cells() > 0.0, "1본 길이 (칸)")
 	assert_true(sim.water.lay_hose(0, 0, 0), "수관 연장")
-	var h := sim.water.hose_of_crew(0)
+	# 차 후면에서 호스를 꺼내 서 있던 자리까지 깔아 온 상태로 (2026-11-21부터 호스는 한 번에 생기지 않는다)
+	var h := fetch_hose(sim, 0)
+	assert_true(h.length_cells() > 2.0, "서 있던 자리까지 깔린 호스 (%.1f칸)" % h.length_cells())
 	assert_eq(h.water_head, 0.0, "연장 직후: 납작")
-	sim.step_ticks(h.ready_tick - sim.clock.tick + 5)
+	sim.step_ticks(maxi(0, h.ready_tick - sim.clock.tick) + 5)
 	var early := h.water_head
 	assert_true(early > 0.0, "준비가 끝나면 물이 들어가기 시작")
 	for i in 3000:

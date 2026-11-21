@@ -290,24 +290,39 @@ func lay_hose_outlet(crew_id: int, outlet: int, tick: int, report := true) -> bo
 	return true
 
 
-## 조장이 방수구 가까이(같은 층 OUTLET_REACH_CELLS 안)에 있는가
+## 조장이 수관을 시작할 곳 가까이(같은 층 OUTLET_REACH_CELLS 안)에 있는가 — 방수구 수관은 방수구, 펌프차 수관은 차 후면(첫 칸)
 func _at_outlet(c: Crew, h: HoseLine) -> bool:
-	var o := building.outlets[h.outlet]
+	var o := building.outlets[h.outlet] if h.outlet >= 0 else h.points[0]
 	return c.leader.level == o.z and c.leader.pos.distance_to(Vector2(o.x, o.y) + Vector2(0.5, 0.5)) <= OUTLET_REACH_CELLS
 
 
-## 호스 가방을 들고 방수구에 닿았다: 거기서 수관을 깔고(결합·충수 시간 시작) 방수 위치로 간다
+## 수관을 시작할 곳에 닿았다: 거기서부터 수관을 깔고(결합·충수 시간 시작) 방수 위치로 간다.
+## 방수구 = 호스 가방을 풀어 결합 / 펌프차 후면 = 호스를 꺼낸다 (그동안 서 있다 — _begin_fetch)
 func _connect_at_outlet(h: HoseLine, c: Crew, tick: int) -> void:
 	h.to_outlet = false
 	var start := h.points[0]
 	var path := pathfinder.find_path(start, c.leader.cell3())
 	h.points = path if not path.is_empty() else [start] as Array[Vector3i]
-	_set_hose_timing(h, c, tick, true)
+	_set_hose_timing(h, c, tick, h.outlet >= 0)
 	for ff in c.members():
 		ff.speed_factor = _drag_factor
-	events.add(tick, "hose_outlet_laid", {"crew": _crew_name(c), "level": building.floor_name(start.z), "indoor": h.vehicle_id == INDOOR})
+	if h.outlet >= 0:
+		events.add(tick, "hose_outlet_laid", {"crew": _crew_name(c), "level": building.floor_name(start.z), "indoor": h.vehicle_id == INDOOR})
+	else:
+		_begin_fetch(h, c, tick)
+		events.add(tick, "hose_laid", {"crew": _crew_name(c), "vehicle": _name(units.get_vehicle(h.vehicle_id))})
 	if h.flowing:
 		_approach(h, c, tick)
+
+
+## 펌프차 후면에서 호스를 꺼낸다 (docs/motions.md E1): 수관 준비 시간(crew_hose_prep_s, 혼자면 2배) 동안 분대가 서 있고,
+## 끝나면 깔면서 간다 (_update_hoses). 결합 시간은 그 뒤 걸으면서 흐른다 (ready_tick = 준비 + 결합)
+func _begin_fetch(h: HoseLine, c: Crew, tick: int) -> void:
+	var prep := float(_tt.get("crew_hose_prep_s", 20.0)) * (2.0 if c.able_workers() <= 1 else 1.0)
+	h.fetch_ticks = roundi(prep / SimClock.TICK_DT)
+	h.fetch_until = tick + h.fetch_ticks
+	for ff in c.members():
+		ff.speed_factor = 0.0
 
 
 ## 수관이 시작하는 칸: 펌프차 후면 방수구 바로 뒤 (2026-11-21 — 예전에는 차 가운데)
@@ -318,30 +333,32 @@ func hose_start_cell(v: Vehicle) -> Vector2i:
 	return cell if cell != Pathfinder.NO_CELL else pathfinder.nearest_walkable(v.level, v.cell())
 
 
-## 수관 연장: 펌프차 후면 방수구에서 조장(관창수) 위치까지 호스를 깐다.
+## 수관 연장: 분대가 펌프차 후면으로 가서 호스를 꺼내고(준비 시간 동안 서 있다), 거기서부터 깔면서 간다
+## (2026-11-21, docs/motions.md E1·D6 — 예전에는 대원이 서 있는 자리까지 호스가 한 번에 생겼다).
+## 이미 차 후면에 있으면 바로 꺼내기 시작한다
 func lay_hose(crew_id: int, vehicle_id: int, tick: int) -> bool:
 	var c := units.get_crew(crew_id)
 	var v := units.get_vehicle(vehicle_id)
 	if c == null or v == null or not v.is_pump() or hose_of_crew(crew_id) != null:
 		return false
 	var start := hose_start_cell(v)
-	var path := pathfinder.find_path(Vector3i(start.x, start.y, v.level), c.leader.cell3())
-	if path.is_empty():
+	var start3 := Vector3i(start.x, start.y, v.level)
+	if pathfinder.find_path(start3, c.leader.cell3()).is_empty():
 		return false
 	var h := HoseLine.new()
 	h.id = hoses.size()
 	h.vehicle_id = vehicle_id
 	h.crew_id = crew_id
 	h.max_cells = v.hose_max_cells
-	h.points = path
-	_set_hose_timing(h, c, tick, false)
-	if h.length_cells() > h.max_cells:
-		events.add(tick, "hose_too_short", {"crew": _crew_name(c)})
-		return false
+	h.points = [start3] as Array[Vector3i]
 	hoses.append(h)
-	for ff in c.members():
-		ff.speed_factor = _drag_factor
-	events.add(tick, "hose_laid", {"crew": _crew_name(c), "vehicle": _name(v)})
+	if _at_outlet(c, h):
+		_connect_at_outlet(h, c, tick)
+		return true
+	h.to_outlet = true
+	h.ready_tick = 1 << 40
+	units.order_move([crew_id] as Array[int], start3, pathfinder)
+	events.add(tick, "hose_fetch", {"crew": _crew_name(c), "vehicle": _name(v)})
 	return true
 
 
@@ -683,12 +700,19 @@ func _update_hoses(tick: int) -> void:
 		var c := units.get_crew(h.crew_id)
 		var leader := c.leader
 		if h.to_outlet:
-			# 호스 가방을 들고 방수구로 가는 중: 닿으면 연결, 멈췄는데 못 닿았으면 1초마다 다시 길을 찾는다 (입구 대기 뒤 등)
+			# 수관을 시작할 곳(방수구·펌프차 후면)으로 가는 중: 닿으면 연결, 멈췄는데 못 닿았으면 1초마다 다시 길을 찾는다 (입구 대기 뒤 등)
 			if _at_outlet(c, h):
 				_connect_at_outlet(h, c, tick)
 			elif not leader.is_moving() and not leader.incapacitated and tick % roundi(1.0 / SimClock.TICK_DT) == 0:
 				units.order_move([c.id] as Array[int], h.points[0], pathfinder)
 			continue
+		if h.fetch_until >= 0:
+			# 펌프차 후면에서 호스를 꺼내는 중: 서 있다. 끝나면 깔면서 간다
+			if tick < h.fetch_until:
+				continue
+			h.fetch_until = -1
+			for ff in c.members():
+				ff.speed_factor = _drag_factor
 		if h.resupply_until >= 0 and tick >= h.resupply_until:
 			h.resupply_until = -1
 			for ff in c.members():

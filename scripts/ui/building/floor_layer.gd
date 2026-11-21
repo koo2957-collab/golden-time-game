@@ -2370,7 +2370,8 @@ func _draw_hoses() -> void:
 	# 높이 1m가 화면에서 올라가는 거리 — 부푼 호스를 반지름만큼 띄워 그린다
 	var up := proj.to_screen(Vector2.ZERO, 1.0) - proj.to_screen(Vector2.ZERO, 0.0)
 	for h in sim.water.hoses:
-		HoseDraw.draw(self, h, level, to_screen, IsoProjection.PX_PER_M, sim.building.cell_size_m, h.water_head, one, up)
+		HoseDraw.draw(self, h, level, to_screen, IsoProjection.PX_PER_M, sim.building.cell_size_m, h.water_head, one, up,
+			HoseDraw.layout(h, sim.units.get_vehicle(h.vehicle_id), sim.building))
 
 
 func _draw_vehicle(v: Vehicle, alpha: float) -> void:

@@ -79,6 +79,138 @@ func test_couplings_every_length() -> void:
 	assert_true(HoseDraw.couplings(run, 0.0).is_empty(), "길이를 모르면 그리지 않는다")
 
 
+## 동쪽으로 곧게 n칸
+func _straight(n: int) -> HoseLine:
+	var cells: Array = []
+	for x in n + 1:
+		cells.append(Vector3i(x, 0, 1))
+	return _hose(cells)
+
+
+## D5 여유 호스: 굽이는 옆으로만 휜다 — 거리(결합구·물머리 자리)는 그대로, 구간 밖과 구간 양 끝은 원래 자리
+func test_slack_bends_sideways_and_keeps_distance() -> void:
+	var raw: Dictionary = HoseDraw.runs(_straight(40), 1, 1.2, 4)[0]
+	var run := HoseDraw.with_slack(raw, [[4.0, 12.0, 1.0]], 0.8, 4.0, 0.5)
+	var dist: PackedFloat32Array = run.dist
+	assert_eq(dist[0], 0.0, "펌프차 쪽 끝 거리")
+	assert_true(absf(dist[dist.size() - 1] - 40.0) < 0.001, "관창 쪽 끝 거리 = 시뮬레이션 길이")
+	for k in range(1, dist.size()):
+		assert_true(dist[k] > dist[k - 1], "거리는 늘기만 한다 (%d)" % k)
+	var widest := 0.0
+	for k in run.pts.size():
+		var p: Vector2 = run.pts[k]
+		assert_true(absf(p.x - 0.5 - dist[k]) < 0.001, "앞뒤로는 옮기지 않는다 (%s)" % p)
+		if dist[k] <= 4.001 or dist[k] >= 11.999:
+			assert_true(absf(p.y - 0.5) < 0.001, "구간 밖·구간 양 끝은 원래 자리 (%s)" % p)
+		widest = maxf(widest, absf(p.y - 0.5))
+	assert_true(widest > 0.3 and widest <= 0.8001, "구간 안에서는 옆으로 휜다 (%.2f칸)" % widest)
+	assert_eq(HoseDraw.couplings(run, 15.0), HoseDraw.couplings(raw, 15.0), "결합구 거리는 그대로")
+	assert_eq(HoseDraw.point_at(run, 30.0), HoseDraw.point_at(raw, 30.0), "구간 밖의 결합구 자리는 그대로")
+	# 팽팽하면(크기 0) 굽이가 없다
+	assert_eq(HoseDraw.with_slack(raw, [[4.0, 12.0, 1.0]], 0.0, 4.0, 0.5).pts, raw.pts, "크기 0 = 곧은 호스")
+
+
+func test_slack_amount_shrinks_near_limit() -> void:
+	assert_eq(HoseDraw.slack_amount(50.0, 100.0, 0.3), 1.0, "남은 호스가 넉넉하면 굽이가 온전")
+	assert_true(absf(HoseDraw.slack_amount(85.0, 100.0, 0.3) - 0.5) < 0.001, "남은 호스 15% = 절반")
+	assert_eq(HoseDraw.slack_amount(100.0, 100.0, 0.3), 0.0, "한계 = 팽팽")
+	assert_eq(HoseDraw.slack_amount(30.0, 0.0, 0.3), 1.0, "한도를 모르면 온전")
+
+
+## D5: 호스는 차 가운데가 아니라 펌프차 후면 방수구(동작 패널, 2026-11-21 사용자)에서 나와 뒤 모서리를 돌아 나간다.
+## 거리는 방수구 0, 원래 길에 이어진 뒤는 그대로
+func test_hose_starts_at_vehicle_rear_port() -> void:
+	var v := Vehicle.new()
+	v.pos = Vector2(10.5, 10.5)
+	v.heading = Vector2.RIGHT
+	v.level = 1
+	for south: bool in [true, false]:
+		var cells: Array = []
+		for k in 21:
+			cells.append(Vector3i(10, 10 + (k if south else -k), 1))
+		var h := _hose(cells)
+		var lay := HoseDraw.port_of(h, v, 0.25, 1.0)
+		var side := 1.0 if south else -1.0
+		assert_eq(lay.port, Vector2(10.5 - v.length_cells * 0.5, 10.5 + side * v.width_cells * 0.25), "방수구 = 차 후면, 호스가 나가는 쪽 (%s)" % ("남" if south else "북"))
+		assert_eq(lay.port_out, lay.port + Vector2(-1.0, 0.0), "호스는 뒤로 나온다")
+		assert_eq(lay.port_corner, Vector2(10.5 - v.length_cells * 0.5 - 1.0, 10.5 + side * (v.width_cells * 0.5 + 1.0)), "뒤 모서리 바깥을 돈다")
+		var run: Dictionary = HoseDraw.runs(h, 1, 1.2, 4, lay)[0]
+		assert_eq(run.pts[0], lay.port, "호스는 방수구에서 시작")
+		assert_eq(run.dist[0], 0.0, "방수구 거리 0")
+		assert_true(absf(float(run.dist[run.dist.size() - 1]) - h.length_cells()) < 0.001, "끝 거리 = 시뮬레이션 길이")
+		assert_eq(run.pts[run.pts.size() - 1], Vector2(10.5, 10.5 + side * 20.0), "관창 쪽 끝은 그대로")
+		for k in range(1, run.pts.size()):
+			assert_true(run.dist[k] > run.dist[k - 1], "거리는 늘기만 한다")
+			assert_true(not v.contains(run.pts[k]), "차 몸통 밑을 지나지 않는다 (%s)" % run.pts[k])
+		assert_true(float(run.slack_from) > 0.0 and float(run.slack_from) < 3.0, "방수구 바로 바깥부터 굽이를 둘 수 있다 (%.2f)" % float(run.slack_from))
+		assert_eq(HoseDraw.point_at(run, 15.0), Vector2(10.5, 10.5 + side * 15.0), "원래 길에 이어진 뒤의 거리는 그대로")
+		assert_true(HoseDraw.dist_ahead(run, float(run.slack_from), 8.0) < float(run.slack_from) + 8.0, "앞머리는 거리가 눌려 있다 — 굽이 길이는 화면 길이로 잰다")
+	# 차 뒤로 곧게 나가는 호스: 방수구는 후면 가운데, 모서리를 돌지 않는다
+	var back_cells: Array = []
+	for k in 21:
+		back_cells.append(Vector3i(10 - k, 10, 1))
+	var back := HoseDraw.port_of(_hose(back_cells), v, 0.25, 1.0)
+	assert_eq(back.port, Vector2(10.5 - v.length_cells * 0.5, 10.5), "뒤로 나가면 후면 가운데")
+	assert_true(not back.has("port_corner"), "돌아갈 모서리 없음")
+	var back_run: Dictionary = HoseDraw.runs(_hose(back_cells), 1, 1.2, 4, back)[0]
+	assert_eq(back_run.pts[0], back.port, "후면에서 시작")
+	assert_eq(back_run.pts[back_run.pts.size() - 1], Vector2(-9.5, 10.5), "관창 쪽 끝")
+	for p: Vector2 in back_run.pts:
+		assert_true(p.x <= 3.5001 and absf(p.y - 10.5) < 0.001, "차 뒤로 곧게 (%s)" % p)
+	# 차에서 떨어진 곳에서 시작하는 호스 (차가 자리를 옮긴 뒤): 방수구로 잇지 않는다
+	var far := _hose([Vector3i(40, 10, 1), Vector3i(41, 10, 1), Vector3i(42, 10, 1)])
+	assert_true(HoseDraw.port_of(far, v, 0.25, 1.0).is_empty(), "멀리서 시작하면 그대로")
+
+
+## D5 시뮬레이션: 펌프차에서 건물 안까지 깐 호스 — 방수구에서 시작, 방수구 옆과 건물 앞에 굽이, 문은 곧게 지나고, 팽팽하면 편다
+func test_layout_slack_at_port_and_before_building() -> void:
+	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)
+	assert_true(sim.water.lay_hose(0, 0, 0), "수관 연장")
+	var h := sim.water.hose_of_crew(0)
+	var v := sim.units.get_vehicle(h.vehicle_id)
+	var b := sim.building
+	# 불난 건물 출입문 바로 앞까지 길을 찾고, 문과 그 안쪽 한 칸을 이어 건물 안까지 깐 호스를 만든다 (문이 닫혀 있어도 되게)
+	var door := Vector2i(-1, -1)
+	var out_dir := Vector2i.ZERO
+	for e in sim.entries.list:
+		if e.level == v.level and not e.neighbour and door.x < 0:
+			door = Vector2i(e.door)
+			out_dir = Vector2i(Vector2(e.outward).normalized().round())
+	assert_true(door.x >= 0 and out_dir != Vector2i.ZERO, "출입문")
+	var front := sim.pathfinder.nearest_walkable(v.level, door + out_dir * 2)
+	h.points = sim.pathfinder.find_path(h.points[0], Vector3i(front.x, front.y, v.level))
+	assert_true(h.points.size() > 10, "문 앞까지 길 (%d칸)" % h.points.size())
+	for step: Vector2i in [door + out_dir, door, door - out_dir]:
+		if Vector2i(h.points[-1].x, h.points[-1].y) != step:
+			h.points.append(Vector3i(step.x, step.y, v.level))
+	h.max_cells = h.length_cells() * 2.0
+	var cell_m := b.cell_size_m
+	var entry := HoseDraw.entry_dist(h, b)
+	assert_true(entry > 0.0 and entry <= h.length_cells(), "건물에 들어서는 거리 (%.1f칸)" % entry)
+	var lay := HoseDraw.layout(h, v, b)
+	assert_true(lay.has("port") and absf((lay.port - v.pos).dot(v.heading) + v.length_cells * 0.5) < 0.01 and not v.contains(lay.port_out), "방수구는 차 후면에")
+	assert_eq(float(lay.amount), 1.0, "남은 호스가 넉넉 = 굽이 온전")
+	var plain: Dictionary = HoseDraw.runs(h, v.level, float(HoseDraw.style().corner_radius_m) / cell_m, int(HoseDraw.style().corner_steps), lay)[0]
+	var run: Dictionary = HoseDraw.shaped_runs(h, v.level, cell_m, lay)[0]
+	var windows := HoseDraw.slack_windows(plain, lay, cell_m)
+	assert_eq(windows.size(), 2, "굽이 두 곳 — 방수구 옆·건물 앞")
+	assert_true(float(windows[1][1]) < entry and float(windows[1][0]) >= float(windows[0][1]), "건물 앞 굽이는 들어서기 전에 끝나고 방수구 옆 굽이와 겹치지 않는다")
+	assert_true(run.pts.size() > plain.pts.size(), "굽이만큼 점이 늘어남")
+	assert_true(absf(float(run.dist[run.dist.size() - 1]) - h.length_cells()) < 0.001, "끝 거리 = 시뮬레이션 길이")
+	assert_true(HoseDraw.point_at(run, entry).distance_to(HoseDraw.point_at(plain, entry)) < 0.001, "건물에 들어서는 곳은 곧게 지난다")
+	for w: Array in windows:
+		var bent := 0.0
+		for s in 41:
+			var d := lerpf(float(w[0]), float(w[1]), s / 40.0)
+			bent = maxf(bent, HoseDraw.point_at(run, d).distance_to(HoseDraw.point_at(plain, d)))
+		assert_true(bent > 0.3, "굽이에서 옆으로 벗어남 (%.1f~%.1f칸 구간, %.2f칸)" % [float(w[0]), float(w[1]), bent])
+	# 호스를 다 썼으면 팽팽하다 — 굽이 없이 곧은 길
+	h.max_cells = h.length_cells()
+	var taut := HoseDraw.layout(h, v, b)
+	assert_eq(float(taut.amount), 0.0, "한계 = 팽팽")
+	assert_eq(HoseDraw.shaped_runs(h, v.level, cell_m, taut)[0].pts, plain.pts, "팽팽하면 곧은 호스")
+
+
 ## 시뮬레이션: 물머리가 펌프차 쪽부터 나아가고(그 앞은 부푼 호스, 뒤는 납작한 호스), 한 번 찬 호스는 끌고 가도 차 있다
 func test_sim_water_head_advances() -> void:
 	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)

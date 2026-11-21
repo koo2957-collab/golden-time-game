@@ -310,6 +310,79 @@ func _hose(world, sim: SimWorld, out: String) -> void:
 	h.water_head = 0.0
 	await _save(out, "D_hose_flat_close")
 	print("저장 ", out, " · 수관 ", snappedf(h.length_cells() * sim.building.cell_size_m, 0.1), "m · 점 ", h.points.size())
+	# 여유 호스 (D5): 이 호스는 길 쪽(화면 앞쪽) 옆면 방수구에서 나온다 — 방수구 옆 굽이를 가까이
+	var near := HoseDraw.layout(h, sim.units.get_vehicle(h.vehicle_id), sim.building)
+	if near.has("port"):
+		world.camera.zoom = Vector2(2.5, 2.5)
+		world.camera.position = world.projection().to_screen(near.port_out + Vector2(4, 2), 0.0)
+		await _save(out, "D_hose_port_flat")
+		h.water_head = h.length_cells()
+		await _save(out, "D_hose_port_round")
+	await _hose_slack(world, sim, h, out)
+
+
+## 여유 호스 (D5, 2026-11-21): 펌프차에서 불난 건물 출입문 안까지 곧장 깐 호스 — 옆면 방수구에서 나와
+## 방수구 옆과 건물 조금 앞에 굽이를 둔다. 남은 호스가 없으면 굽이가 펴진다
+func _hose_slack(world, sim: SimWorld, h: HoseLine, out: String) -> void:
+	var v := sim.units.get_vehicle(h.vehicle_id)
+	var door := Vector2i(-1, -1)
+	var out_dir := Vector2i.ZERO
+	for e in sim.entries.list:
+		# 굽이 두 곳이 다 보이게 먼 쪽 출입문으로
+		if e.level == v.level and not e.neighbour and (door.x < 0 or v.pos.distance_to(Vector2(e.door)) > v.pos.distance_to(Vector2(door))):
+			door = Vector2i(e.door)
+			out_dir = Vector2i(Vector2(e.outward).normalized().round())
+	if door.x < 0:
+		print("출입문 없음")
+		return
+	var front := sim.pathfinder.nearest_walkable(v.level, door + out_dir * 2)
+	var path := sim.pathfinder.find_path(h.points[0], Vector3i(front.x, front.y, v.level))
+	if path.size() < 2:
+		print("문 앞까지 길 없음")
+		return
+	h.points = path
+	for step: Vector2i in [door + out_dir, door, door - out_dir]:
+		if Vector2i(h.points[-1].x, h.points[-1].y) != step:
+			h.points.append(Vector3i(step.x, step.y, v.level))
+	var crew := sim.units.get_crew(h.crew_id)
+	crew.leader.pos = Vector2(h.points[-1].x + 0.5, h.points[-1].y + 0.5)
+	h.max_cells = maxf(h.max_cells, h.length_cells() * 2.0)
+	var lay := HoseDraw.layout(h, v, sim.building)
+	var entry := HoseDraw.entry_dist(h, sim.building)
+	var run: Dictionary = HoseDraw.runs(h, v.level, 1.2, 4, lay)[0]
+	var before_door := HoseDraw.point_at(run, entry - 6.0)
+	var a := h.points[0]
+	var b := h.points[h.points.size() - 1]
+	print("여유 호스: 수관 ", snappedf(h.length_cells() * sim.building.cell_size_m, 0.1), "m · 방수구 ", lay.get("port", "없음"), " · 건물 진입 ", snappedf(entry, 0.1), "칸")
+	h.water_head = h.length_cells()
+	world.camera.zoom = Vector2(1.5, 1.5)
+	world.camera.position = world.projection().to_screen((Vector2(a.x, a.y) + Vector2(b.x, b.y)) * 0.5, 0.0)
+	await _save(out, "D_hose_slack")
+	world.camera.zoom = Vector2(3.0, 3.0)
+	if lay.has("port"):
+		world.camera.position = world.projection().to_screen(lay.port_out, 0.0)
+		await _save(out, "D_hose_slack_port")
+		h.water_head = 0.0
+		await _save(out, "D_hose_slack_port_flat")
+		h.water_head = h.length_cells()
+	world.camera.position = world.projection().to_screen(before_door, 0.0)
+	await _save(out, "D_hose_slack_door")
+	# 호스를 다 썼을 때: 굽이가 펴져 팽팽하다
+	h.max_cells = h.length_cells()
+	if lay.has("port"):
+		world.camera.position = world.projection().to_screen(lay.port_out, 0.0)
+		await _save(out, "D_hose_taut_port")
+	world.camera.position = world.projection().to_screen(before_door, 0.0)
+	await _save(out, "D_hose_taut_door")
+	# 평면 화면: 방수구가 차 뒤편(건물 쪽)이라 입체 화면에서는 차에 가린다 — 위에서 본 모습으로 굽이 두 곳을 같이
+	h.max_cells = h.length_cells() * 2.0
+	world.set_view_mode(1)
+	world.camera.zoom = Vector2(2.0, 2.0)
+	world.camera.position = world.projection().to_screen((Vector2(a.x, a.y) + Vector2(b.x, b.y)) * 0.5)
+	await _save(out, "D_hose_slack_plan")
+	h.max_cells = h.length_cells()
+	await _save(out, "D_hose_taut_plan")
+	world.set_view_mode(0)
 
 
 ## 화점을 찾지 못함 카드 (FIRE-NONE-01, 모드 nofire): 진압 분대를 불이 없는 맨 위층에 세우고 그 층 화재진압을 지시한다

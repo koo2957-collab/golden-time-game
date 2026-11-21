@@ -2367,8 +2367,10 @@ func _draw_air_bar(at: Vector2, ff: Firefighter) -> void:
 func _draw_hoses() -> void:
 	var to_screen := func(p: Vector2) -> Vector2: return proj.to_screen(p, 0.03)
 	var one: float = sim.water.hose_length_cells()
+	# 높이 1m가 화면에서 올라가는 거리 — 부푼 호스를 반지름만큼 띄워 그린다
+	var up := proj.to_screen(Vector2.ZERO, 1.0) - proj.to_screen(Vector2.ZERO, 0.0)
 	for h in sim.water.hoses:
-		HoseDraw.draw(self, h, level, to_screen, IsoProjection.PX_PER_M, sim.building.cell_size_m, h.water_head, one)
+		HoseDraw.draw(self, h, level, to_screen, IsoProjection.PX_PER_M, sim.building.cell_size_m, h.water_head, one, up)
 
 
 func _draw_vehicle(v: Vehicle, alpha: float) -> void:

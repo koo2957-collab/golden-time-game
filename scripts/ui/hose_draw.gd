@@ -125,30 +125,88 @@ static func couplings(run: Dictionary, length_cells: float) -> PackedFloat32Arra
 
 
 ## 호스 한 줄을 그린다. to_screen: 칸 좌표 → 화면 좌표, px_per_m: 화면 1m의 길이(px), cell_m: 칸 크기(m),
-## head_cells: 물머리 위치(펌프차 쪽 끝부터, 칸) — 그 앞은 부푼 호스, 뒤는 납작한 호스. length_cells: 1본 길이(칸)
-static func draw(ci: CanvasItem, h: HoseLine, level: int, to_screen: Callable, px_per_m: float, cell_m: float, head_cells: float, length_cells: float) -> void:
+## head_cells: 물머리 위치(펌프차 쪽 끝부터, 칸) — 그 앞은 부푼 호스, 뒤는 납작한 호스. length_cells: 1본 길이(칸),
+## up: 높이 1m가 화면에서 올라가는 거리 (입체 화면 = 위쪽, 평면 화면 = 0) — 부푼 호스를 반지름만큼 띄워 그린다.
+## 입체로 보이게 겹쳐 그린다 (2026-11-21 사용자 요청 — 진짜 3D가 아니라 선을 겹친 음영):
+##   부푼 호스: 바닥 그림자 → 테두리 → 몸통 → 그늘진 쪽 → 밝은 쪽 → 반짝이는 줄, 바닥에서 반지름만큼 뜸
+##   납작한 호스: 바닥에 붙은 띠 + 가운데 접힌 줄 + 빛 받는 가장자리
+##   결합구: 호스 방향으로 놓인 짧은 금속 원통. 물머리: 불룩한 마디
+## 빛은 한 방향(light_dir)에서 온다 — 호스가 어느 쪽으로 누워 있든 빛을 받는 쪽이 밝다
+static func draw(ci: CanvasItem, h: HoseLine, level: int, to_screen: Callable, px_per_m: float, cell_m: float, head_cells: float, length_cells: float, up := Vector2.ZERO) -> void:
 	var st := style()
-	var flat_w := float(st.get("flat_width_m", 0.16)) * px_per_m
-	var round_w := float(st.get("round_width_m", 0.1)) * px_per_m
-	var joint_r := float(st.get("coupling_radius_m", 0.09)) * px_per_m
+	var flat_w := float(st.get("flat_width_m", 0.2)) * px_per_m
+	var round_w := float(st.get("round_width_m", 0.13)) * px_per_m
+	var light := _vec(st.get("light_dir", [-0.5, -0.85])).normalized()
+	var shadow := Color(Color(str(st.get("shadow_color", "#000000"))), float(st.get("shadow_alpha", 0.35)))
+	# 그림자는 빛 반대쪽 바닥에 떨어진다
+	var cast := -light * round_w * float(st.get("shadow_offset_ratio", 0.45))
+	var lift := up * float(st.get("round_width_m", 0.13)) * 0.5
 	for run in runs(h, level, float(st.get("corner_radius_m", 0.6)) / cell_m, int(st.get("corner_steps", 4))):
 		var dry := _screen(slice(run, head_cells, INF), to_screen)
 		if dry.size() >= 2:
-			ci.draw_polyline(dry, Color(str(st.get("flat_edge_color", "#8f8669"))), flat_w + 1.5)
+			ci.draw_polyline(_shift(dry, cast * 0.3), Color(shadow, shadow.a * 0.6), flat_w)
+			ci.draw_polyline(dry, Color(str(st.get("flat_edge_color", "#7d7455"))), flat_w + 1.5)
 			ci.draw_polyline(dry, Color(str(st.get("flat_color", "#cfc5a8"))), flat_w)
-		var wet := _screen(slice(run, -INF, head_cells), to_screen)
-		if wet.size() >= 2:
-			ci.draw_polyline(wet, Color(str(st.get("round_shade_color", "#5b5136"))), round_w + 2.0)
-			ci.draw_polyline(wet, Color(str(st.get("round_color", "#f2e6c4"))), round_w)
-			# 위쪽 밝은 줄: 화면 위로 조금 올려 그어 둥근 관처럼
-			var lit := PackedVector2Array()
-			for p in wet:
-				lit.append(p + Vector2(0.0, -round_w * 0.22))
-			ci.draw_polyline(lit, Color(Color(str(st.get("round_highlight_color", "#ffffff"))), 0.75), maxf(1.0, round_w * 0.28))
+			ci.draw_polyline(_lit(dry, light, flat_w * 0.34), Color(str(st.get("flat_light_color", "#e9e0c6"))), maxf(1.0, flat_w * 0.2))
+			ci.draw_polyline(dry, Color(Color(str(st.get("flat_crease_color", "#8f8669"))), 0.7), maxf(1.0, flat_w * 0.1))
+		var ground := _screen(slice(run, -INF, head_cells), to_screen)
+		if ground.size() >= 2:
+			var wet := _shift(ground, lift)
+			ci.draw_polyline(_shift(ground, cast), shadow, round_w)
+			ci.draw_polyline(wet, Color(str(st.get("round_shade_color", "#3d3622"))), round_w + 2.0)
+			ci.draw_polyline(wet, Color(str(st.get("round_color", "#dccd9c"))), round_w)
+			ci.draw_polyline(_lit(wet, light, -round_w * 0.3), Color(str(st.get("round_dark_color", "#9c8c5e"))), maxf(1.0, round_w * 0.36))
+			ci.draw_polyline(_lit(wet, light, round_w * 0.16), Color(str(st.get("round_light_color", "#f6edcf"))), maxf(1.0, round_w * 0.44))
+			ci.draw_polyline(_lit(wet, light, round_w * 0.28), Color(Color(str(st.get("round_highlight_color", "#ffffff"))), 0.85), maxf(1.0, round_w * 0.14))
+		# 물머리: 차오르는 중이면 불룩한 마디
+		var d0: float = run.dist[0]
+		var d1: float = run.dist[run.dist.size() - 1]
+		if head_cells > d0 + 0.05 and head_cells < d1 - 0.05:
+			var at: Vector2 = to_screen.call(point_at(run, head_cells)) + lift
+			var r := round_w * float(st.get("head_bulge_ratio", 0.8))
+			ci.draw_circle(at - lift + cast, r, shadow)
+			ci.draw_circle(at, r + 1.0, Color(str(st.get("round_shade_color", "#3d3622"))))
+			ci.draw_circle(at, r, Color(str(st.get("round_color", "#dccd9c"))))
+			ci.draw_circle(at + light * r * 0.35, r * 0.45, Color(str(st.get("round_light_color", "#f6edcf"))))
+		# 결합구: 호스 방향으로 놓인 짧은 금속 원통 (물이 찬 쪽은 호스와 같이 떠 있다)
+		var half := float(st.get("coupling_length_m", 0.2)) / cell_m * 0.5
+		var joint_w := round_w * float(st.get("coupling_width_ratio", 1.5))
 		for d in couplings(run, length_cells):
-			var at: Vector2 = to_screen.call(point_at(run, d))
-			ci.draw_circle(at, joint_r + 1.0, Color(str(st.get("coupling_edge_color", "#2b3138"))))
-			ci.draw_circle(at, joint_r, Color(str(st.get("coupling_color", "#b8c0c8"))))
+			var raise := lift if d < head_cells else Vector2.ZERO
+			var a: Vector2 = to_screen.call(point_at(run, maxf(d0, d - half))) + raise
+			var b: Vector2 = to_screen.call(point_at(run, minf(d1, d + half))) + raise
+			if a.distance_to(b) < 1.0:
+				continue
+			var n := (b - a).normalized().orthogonal()
+			var side := n * n.dot(light)
+			ci.draw_line(a - raise + cast, b - raise + cast, shadow, joint_w)
+			ci.draw_line(a, b, Color(str(st.get("coupling_edge_color", "#2b3138"))), joint_w + 2.0)
+			ci.draw_line(a, b, Color(str(st.get("coupling_color", "#aab2ba"))), joint_w)
+			ci.draw_line(a + side * joint_w * 0.25, b + side * joint_w * 0.25, Color(str(st.get("coupling_light_color", "#eef2f5"))), maxf(1.0, joint_w * 0.22))
+
+
+static func _vec(v: Variant) -> Vector2:
+	if v is Array and (v as Array).size() >= 2:
+		return Vector2(float(v[0]), float(v[1]))
+	return Vector2(-0.5, -0.85)
+
+
+static func _shift(pts: PackedVector2Array, by: Vector2) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for p in pts:
+		out.append(p + by)
+	return out
+
+
+## 선을 빛 받는 쪽으로 amount만큼 옮긴 것 (음수면 그늘 쪽). 옮기는 양은 그 자리에서 호스가 빛과 이루는 각에 따른다:
+## 빛과 직각으로 누운 곳은 한쪽 옆이 다 밝고, 빛과 나란한 곳은 양옆이 같아 가운데에 머문다 — 꺾여도 밝은 쪽이 튀지 않는다
+static func _lit(pts: PackedVector2Array, light: Vector2, amount: float) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for k in pts.size():
+		var t := pts[mini(k + 1, pts.size() - 1)] - pts[maxi(k - 1, 0)]
+		var n := t.normalized().orthogonal() if t.length_squared() > 0.0001 else Vector2.ZERO
+		out.append(pts[k] + n * n.dot(light) * amount)
+	return out
 
 
 static func _screen(pts: PackedVector2Array, to_screen: Callable) -> PackedVector2Array:

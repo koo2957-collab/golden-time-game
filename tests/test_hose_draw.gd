@@ -183,6 +183,58 @@ func test_hose_starts_at_vehicle_rear_port() -> void:
 	assert_true(HoseDraw.port_of(far, v, 0.25, 1.0).is_empty(), "멀리서 시작하면 그대로")
 
 
+## 호스 끼고 걷기 (E2·E3): 관창수 뒤로 호스 길을 거슬러 간 자리 — 관창수가 칸 경계를 넘어 호스 점이 늘어도 거리가 튀지 않는다
+func test_trail_follows_leader_smoothly() -> void:
+	var h := _straight(10)
+	var before := HoseDraw.trail(h, 1, Vector2(10.5, 0.5))
+	assert_true(absf(float(before.dist[before.dist.size() - 1]) - 10.0) < 0.001, "칸 가운데에 서면 끝 거리 = 호스 길이")
+	# 다음 칸 쪽으로 0.49칸: 호스 점은 아직 그대로, 끝 거리는 그만큼 늘어난다
+	var mid := HoseDraw.trail(h, 1, Vector2(10.99, 0.5))
+	assert_true(absf(float(mid.dist[mid.dist.size() - 1]) - 10.49) < 0.001, "걸어간 만큼 늘어남 (%.2f)" % float(mid.dist[mid.dist.size() - 1]))
+	# 경계를 넘어 호스 점이 하나 늘었다 (다음 칸 가운데) — 관창수는 아직 그 가운데에 닿지 않았다
+	h.points.append(Vector3i(11, 0, 1))
+	var after := HoseDraw.trail(h, 1, Vector2(11.01, 0.5))
+	assert_true(absf(float(after.dist[after.dist.size() - 1]) - 10.51) < 0.001, "점이 늘어도 끝 거리는 이어진다 (%.2f)" % float(after.dist[after.dist.size() - 1]))
+	assert_eq(after.pts[after.pts.size() - 1], Vector2(11.01, 0.5), "끝은 관창수 자리")
+	# 뒤따르는 사람 자리: 끝에서 2.2칸(1.1m) 뒤
+	var spot := HoseDraw.point_at(after, float(after.dist[after.dist.size() - 1]) - 2.2)
+	assert_true(spot.distance_to(Vector2(8.81, 0.5)) < 0.001, "관창수 뒤 2.2칸 (%s)" % spot)
+	# 다른 층에 깔린 부분은 넣지 않는다 / 그 층에 끝이 없으면 빈 것
+	var up := _hose([Vector3i(0, 0, 1), Vector3i(1, 0, 1), Vector3i(1, 0, 2), Vector3i(2, 0, 2), Vector3i(3, 0, 2)])
+	var top := HoseDraw.trail(up, 2, Vector2(3.5, 0.5))
+	assert_eq(top.pts.size(), 3, "2층에 깔린 점만")
+	assert_true(absf(float(top.dist[0]) - 7.0) < 0.001, "거리는 펌프차부터 (계단 6칸 포함)")
+	assert_true(HoseDraw.trail(up, 1, Vector2(1.5, 0.5)).is_empty(), "끝이 그 층에 없으면 빈 것")
+
+
+## 호스 끼고 걷기: 바닥 호스는 2번 뒤에서 끝나고, 3번이 들어 올린 구간은 비운다
+func test_dry_ranges_cut_for_carried_hose() -> void:
+	assert_eq(HoseDraw.dry_ranges(0.0, INF, []), [[0.0, INF]], "보통: 물머리부터 끝까지")
+	assert_eq(HoseDraw.dry_ranges(3.0, 20.0, []), [[3.0, 20.0]], "2번 뒤에서 끝")
+	assert_eq(HoseDraw.dry_ranges(0.0, 20.0, [10.0, 14.0]), [[0.0, 10.0], [14.0, 20.0]], "들어 올린 구간은 뺀다")
+	assert_eq(HoseDraw.dry_ranges(12.0, 20.0, [10.0, 14.0]), [[14.0, 20.0]], "물머리가 구간 안이면 그 뒤만")
+	assert_eq(HoseDraw.dry_ranges(0.0, 12.0, [10.0, 14.0]), [[0.0, 10.0]], "끝이 구간 안이면 그 앞만")
+	assert_true(HoseDraw.dry_ranges(5.0, 5.0, []).is_empty(), "그릴 것 없음")
+	var st := HoseDraw.style()
+	assert_true(float(st.carry_drop_m) > 0.0 and float(st.tidy_gap_front_m) > 0.0 and float(st.tidy_gap_back_m) > 0.0, "그림과 맞춘 거리 값")
+
+
+## 호스 끼고 걷기 그림이 묶음에 들어 있고, 2·3번의 자리(1번 뒤)가 적혀 있다
+func test_hose_carry_art_baked() -> void:
+	var art := SpriteArt.get_set(str(SpriteArt.config().get("crew", "")))
+	assert_true(art != null, "대원 그림 묶음")
+	if art == null:
+		return
+	assert_eq(art.frames("hose_carry_a"), 8, "1번 관창수: 걷기 한 주기 8장")
+	assert_eq(art.frames("hose_carry_b"), 8, "2번 관창보조: 8장")
+	assert_eq(art.frames("hose_tidy"), 16, "3번: 낮은 자세 걷기 16장")
+	assert_true(float(art.stand("hose_carry_b").get("fwd_m", 0.0)) < -0.5, "2번은 1번 뒤 (%s)" % art.stand("hose_carry_b"))
+	assert_true(float(art.stand("hose_tidy").get("fwd_m", 0.0)) < float(art.stand("hose_carry_b").get("fwd_m", 0.0)) - 1.0, "3번은 2번의 호스가 바닥에 닿은 뒤쪽 (%s)" % art.stand("hose_tidy"))
+	var fps: Dictionary = SpriteArt.config().get("fps", {})
+	for anim: String in ["hose_carry_a", "hose_carry_b", "hose_tidy"]:
+		assert_true(float(fps.get(anim, 0.0)) > 0.0, "%s 초당 장 수" % anim)
+
+
 ## 급수 호스(소화전·물탱크차)가 차에 붙는 자리: 펌프차는 후면 보수구 — 호스가 오는 쪽 끝, 그 밖의 차는 가장 가까운 차체 둘레
 func test_supply_hose_connects_at_pump_rear() -> void:
 	var pump := Vehicle.new()

@@ -1653,6 +1653,15 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		anim = str(sl.anims.get(ff.id, "spray_n"))
 		dir = int(sl.k)
 		moving = false
+	elif hose and not hose.charged and _hose_carry_layout(crew, art).get("anims", {}).has(ff.id):
+		# 호스 끼고 걷기 (E2·A6·E3, 2026-11-21 사용자가 블렌더에서 확인): 물이 차기 전 — 1번·2번은 접은 호스 묶음을 겨드랑이에 끼고,
+		# 3번은 낮은 자세로 깔린 호스를 정리하며 따라간다. 멈춰 서 있으면 첫 장으로 서 있다
+		var hl := _hose_carry_layout(crew, art)
+		anim = str(hl.anims.get(ff.id, "hose_carry_a"))
+		dir = int(hl.ks.get(ff.id, hl.k))
+		moving = bool(hl.moving)
+		if not moving:
+			fixed_frame = 0
 	elif hose and hose.flowing and not hose.approaching and not moving and ff == crew.leader:
 		# 관창은 조장(관창수) 한 사람만 든다 — 짝은 뒤에서 서 있는다 (2026-11-12)
 		anim = "spray"
@@ -1699,7 +1708,7 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 
 
 ## 여럿이 한 장면으로 구운 동작 (프레임을 조장 기준으로 맞춘다)
-const PAIRED_ANIMS := ["force_a", "force_b", "lift_f", "lift_b", "drag", "spray_n", "spray_h", "spray_h1", "spray_h2",
+const PAIRED_ANIMS := ["hose_carry_a", "hose_carry_b", "hose_tidy", "force_a", "force_b", "lift_f", "lift_b", "drag", "spray_n", "spray_h", "spray_h1", "spray_h2",
 	"spray_ln", "spray_lh", "spray_lh1", "spray_lh2", "search_a", "search_b", "aid_a", "aid_b",
 	"cot_a", "cot_b", "scoop_a", "scoop_b", "ovh_a", "ovh_b"]
 
@@ -2061,6 +2070,97 @@ func _search_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dicti
 	return out if not out.anims.is_empty() else {}
 
 
+## 호스 끼고 걷기 배치 (E2·A6·E3, 2026-11-21 사용자가 블렌더에서 확인): 펌프차에서 꺼낸 호스에 아직 물이 차지 않은 동안,
+## 관창수(1번) = hose_carry_a(접은 호스 묶음을 겨드랑이에), 다음 일하는 조원(2번) = hose_carry_b(더 큰 묶음 — 바닥으로는 여기서 떨어진다),
+## 그다음(3번) = hose_tidy(낮은 자세로 깔린 호스를 들어 꼬임을 편다). 팀장은 그냥 걷는다. 멈춰 서 있을 때는 첫 장으로 서 있다.
+## 2·3번은 호스가 깔린 길 위에서 1번 뒤로 구울 때 적은 거리만큼 떨어진 자리에 선다 (모퉁이를 돌아도 호스를 따라간다).
+## 방수 위치에 닿아 관창을 겨누면(방수 배치) 묶음을 내려놓은 것으로 본다.
+## → {k, ks {대원 id: 방향}, anims {대원 id: 동작}, spots {대원 id: 칸 좌표}, moving,
+##    ground_end 바닥 호스가 끝나는 거리(칸, 2번이 있을 때), gap [from, to] 3번이 들어 올린 구간(칸)} 또는 빈 것
+func _hose_carry_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dictionary:
+	if art == null or crew == null or art.frames("hose_carry_a") <= 0:
+		return {}
+	var h := sim.water.hose_of_crew(crew.id)
+	if h == null or h.outlet >= 0 or h.to_outlet or h.fetch_until >= 0 or h.charged or h.points.size() < 2:
+		return {}
+	var lead := crew.leader
+	if lead == null or lead.incapacitated or lead.crouched or lead.level != h.points[h.points.size() - 1].z:
+		return {}
+	var moving := lead.level == lead.prev_level and (lead.pos - lead.prev_pos).length_squared() > 0.000001
+	if h.flowing and not h.approaching and not moving:
+		return {}
+	var members: Array[Firefighter] = []
+	for ff in crew.workers():
+		if not ff.incapacitated:
+			members.append(ff)
+	if members.is_empty() or members[0] != lead:
+		return {}
+	var cell_m := sim.units.cell_size_m
+	var trail := HoseDraw.trail(h, lead.level, UnitsView.display_pos(lead, alpha))
+	if trail.is_empty():
+		return {}
+	var first: float = trail.dist[0]
+	var end: float = trail.dist[trail.dist.size() - 1]
+	var k := int(_facing.get(lead.id, 1))
+	var out := {"k": k, "ks": {lead.id: k}, "anims": {lead.id: "hose_carry_a"}, "spots": {}, "moving": moving}
+	var st := HoseDraw.style()
+	var names: Array = ["hose_carry_b", "hose_tidy"]
+	for i in range(1, mini(members.size(), names.size() + 1)):
+		var ff := members[i]
+		var anim: String = names[i - 1]
+		if ff.level != lead.level or art.frames(anim) <= 0:
+			continue
+		# 구울 때 적은 자리: 1번 뒤로 몇 m (fwd_m이 음수)
+		var d := end + float(art.stand(anim).get("fwd_m", 0.0)) / cell_m
+		if d < first + 0.5:
+			continue  # 호스가 아직 거기까지 깔리지 않았다 — 이 사람은 그냥 걷는다
+		if anim == "hose_carry_b":
+			# 2번은 1번 바로 뒤(1번이 보는 방향 기준)에 선다 — 1번 묶음에서 이어지는 호스가 그림에서 곧게 뒤로 나가므로.
+			# 모퉁이에서는 끌려오는 수레처럼 안쪽으로 돈다. 바닥 호스는 2번 뒤에서 닿는다
+			var facing := Vector2.RIGHT.rotated(k * PI / 4.0)
+			var drop := float(st.get("carry_drop_m", 0.8)) / cell_m
+			out.anims[ff.id] = anim
+			out.spots[ff.id] = stand_spot(trail.pts[trail.pts.size() - 1], facing, art.stand(anim), cell_m)
+			out.ks[ff.id] = k
+			# 바닥 호스의 끝을 그림 속 호스가 바닥에 닿은 자리(2번 뒤)로 잇는다 — 길이 굽어 있어도 끊겨 보이지 않게.
+			# 바닥 호스는 깔린 길에서 그 자리와 가장 가까운 곳까지만 그린다 (지나쳤다 되돌아오지 않게)
+			var tail := (out.spots[ff.id] as Vector2) - facing * drop
+			var best_d := d - drop
+			var best := INF
+			var s := maxf(first, d - drop - 3.0)
+			while s <= end:
+				var q := HoseDraw.point_at(trail, s).distance_squared_to(tail)
+				if q < best:
+					best = q
+					best_d = s
+				s += 0.1
+			out.ground_end = best_d
+			out.ground_tail = tail
+			continue
+		# 3번은 깔린 호스 길 위에 선다. 들어 올린 호스 그림은 곧으므로, 그 구간에서 길이 굽으면 호스를 들지 않고 낮은 자세로만 걷는다
+		# (굽은 곳에서 그림과 바닥 호스가 어긋나 끊겨 보이지 않게)
+		var front := float(st.get("tidy_gap_front_m", 0.94)) / cell_m
+		var back := float(st.get("tidy_gap_back_m", 0.86)) / cell_m
+		var here := HoseDraw.point_at(trail, d)
+		# 구간 양 끝에서 길이 가는 방향을 견준다 (끝 쪽에서만 꺾여도 알아채게)
+		var ahead := HoseDraw.point_at(trail, minf(end, d + front)) - HoseDraw.point_at(trail, minf(end, d + front) - 0.5)
+		var behind := HoseDraw.point_at(trail, maxf(first, d - back) + 0.5) - HoseDraw.point_at(trail, maxf(first, d - back))
+		var along := HoseDraw.point_at(trail, minf(end, d + 0.6)) - HoseDraw.point_at(trail, maxf(first, d - 0.6))
+		var bent := ahead.length_squared() < 0.0001 or behind.length_squared() < 0.0001 or along.length_squared() < 0.0001 \
+			or absf(ahead.angle_to(behind)) > 0.2 or absf(ahead.angle_to(along)) > 0.2
+		var ground: float = out.get("ground_end", end)
+		if bent or d + front > ground:
+			if art.frames("crouch_walk") > 0:
+				out.anims[ff.id] = "crouch_walk"
+		else:
+			out.anims[ff.id] = anim
+			out.gap = [d - back, d + front]
+		if out.anims.has(ff.id):
+			out.spots[ff.id] = here
+			out.ks[ff.id] = SpriteArt.dir8(along) if along.length_squared() > 0.0001 else k
+	return out
+
+
 ## 방수 배치 (A4): 관창수(조장)가 방수 중이면 {k 방향, anims {대원 id: 동작}, spots {대원 id: 칸 좌표}}, 아니면 빈 것.
 ## 조가 2명이면 관창수 + 관창보조(spray_h), 3명 이상(분대)이면 관창보조1·2(spray_h1·h2). 자리는 구울 때 적은 값
 func _spray_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dictionary:
@@ -2228,6 +2328,10 @@ func _shown_pos(ff: Firefighter, alpha: float) -> Vector2:
 			var sl := _spray_layout(sc, sart, alpha)
 			if not sl.is_empty():
 				return sl.spots.get(ff.id, p)
+			# 호스 끼고 걷기: 2·3번은 호스가 깔린 길 위, 1번 뒤 정해진 거리에
+			var hl := _hose_carry_layout(sc, sart, alpha)
+			if not hl.is_empty():
+				return hl.spots.get(ff.id, p)
 	if not ff.incapacitated:
 		var hp := _helper_pose(ff)
 		if not hp.is_empty():
@@ -2365,14 +2469,24 @@ func _draw_air_bar(at: Vector2, ff: Firefighter) -> void:
 # --- 차량·수관·방수 ---
 
 ## 수관: 물이 차기 전에는 납작한 띠, 찬 뒤에는 통통한 관, 1본마다 결합구 (HoseDraw — docs/motions.md D1·D2·D4)
-func _draw_hoses() -> void:
+func _draw_hoses(alpha := 0.0) -> void:
 	var to_screen := func(p: Vector2) -> Vector2: return proj.to_screen(p, 0.03)
 	var one: float = sim.water.hose_length_cells()
 	# 높이 1m가 화면에서 올라가는 거리 — 부푼 호스를 반지름만큼 띄워 그린다
 	var up := proj.to_screen(Vector2.ZERO, 1.0) - proj.to_screen(Vector2.ZERO, 0.0)
+	var art := SpriteArt.get_set(str(SpriteArt.config().get("crew", ""))) if not thermal else null
 	for h in sim.water.hoses:
-		HoseDraw.draw(self, h, level, to_screen, IsoProjection.PX_PER_M, sim.building.cell_size_m, h.water_head, one, up,
-			HoseDraw.layout(h, sim.units.get_vehicle(h.vehicle_id), sim.building))
+		var lay := HoseDraw.layout(h, sim.units.get_vehicle(h.vehicle_id), sim.building)
+		# 호스 끼고 걷는 중: 바닥 호스는 2번 뒤에서 끝나고 3번이 들어 올린 구간은 비운다 (그 부분은 대원 그림에 들어 있다)
+		var carry := _hose_carry_layout(sim.units.get_crew(h.crew_id), art, alpha) if not h.charged else {}
+		if carry.has("ground_end") or carry.has("gap"):
+			lay = lay.duplicate()
+			if carry.has("ground_end"):
+				lay.ground_end = carry.ground_end
+				lay.ground_tail = carry.ground_tail
+			if carry.has("gap"):
+				lay.gap = carry.gap
+		HoseDraw.draw(self, h, level, to_screen, IsoProjection.PX_PER_M, sim.building.cell_size_m, h.water_head, one, up, lay)
 
 
 func _draw_vehicle(v: Vehicle, alpha: float) -> void:
@@ -3314,7 +3428,7 @@ func _draw_route_lines(alpha: float) -> void:
 			_draw_path(sim.units.get_crew(crew_id).leader, alpha)
 		if selection.commander_selected:
 			_draw_path(sim.command.commander, alpha)
-	_draw_hoses()
+	_draw_hoses(alpha)
 	if level == _first_level:
 		for line in UnitsView.supply_lines(sim):
 			_draw_supply_hose(line)

@@ -290,6 +290,7 @@ func _hose(world, sim: SimWorld, out: String) -> void:
 		sim.cards.queue.clear()
 	# 건물에 가리지 않게 길을 따라 동쪽으로 35m쯤 간 뒤 건물 쪽으로 꺾는다 (둘째 결합구와 꺾인 곳이 탁 트인 곳에 보이게)
 	var start := h.points[0]
+	var leg_no := 0
 	for leg: Vector2i in [Vector2i(start.x + 40, start.y + 3), Vector2i(start.x + 44, start.y - 3), Vector2i(start.x + 58, start.y - 3), Vector2i(start.x + 58, start.y + 4)]:
 		var goal := sim.pathfinder.nearest_walkable(1, leg)
 		sim.units.order_move([crew.id] as Array[int], Vector3i(goal.x, goal.y, 1), sim.pathfinder)
@@ -298,6 +299,17 @@ func _hose(world, sim: SimWorld, out: String) -> void:
 			sim.cards.queue.clear()
 			if not crew.leader.is_moving():
 				break
+			# 호스 끼고 걷기 (E2·E3, 2026-11-21): 첫 구간을 걷는 중·모퉁이를 돈 뒤에 한 장씩 (물이 차기 전)
+			if (leg_no == 0 and i == 45) or (leg_no == 1 and i == 14):
+				h.charged = false
+				h.water_head = 0.0
+				sim.clock.paused = true
+				world.camera.zoom = Vector2(2.4, 2.4)
+				world.camera.position = world.projection().to_screen(crew.leader.pos - Vector2(3.5, 0.0), 0.0)
+				root.warp_mouse(Vector2(10, 10))
+				await _save(out, "D_hose_carry_%d" % leg_no)
+				sim.clock.paused = false
+		leg_no += 1
 	sim.clock.paused = true
 	# 수관 양 끝의 가운데를 화면 가운데에
 	var a := h.points[0]

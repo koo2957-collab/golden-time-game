@@ -942,6 +942,61 @@
    }
   },
   {
+   "target": "firefighter_v2",
+   "pivot_object": "FF_A",
+   "frames": 8,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor",
+    "ctx_"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "hose_carry",
+   "blend": "tools/blender/scenes/hose_carry.blend",
+   "note": "E2·A6 호스 끼고 걷기: 접은(아코디언) 호스 묶음을 오른 겨드랑이에 끼고 걷는다. 1번 관창수(hose_carry_a) = 4겹(1본쯤), 묶음 뒤 끝이 2번 묶음 앞 끝으로 이어진다. 2번 관창보조(hose_carry_b, 1번 뒤 1.1m) = 7겹(2본쯤), 묶음 뒤 끝에서 호스가 늘어져 바닥에 닿는다 — 2026-11-21 사용자가 블렌더에서 확인 (화재1 소방호스 운반 '옆구리 끼우기식', 사용자: 겨드랑이에 끼고 간다 · 1번 호스는 2번으로 이어지고 바닥으로는 2번에서 떨어진다 · 끊겨 보이지 않게). 장면은 tools/blender/build_hose_carry.py 로 만든다. 기준점 = 1번",
+   "actors": {
+    "hose_carry_a": "FF_A",
+    "hose_carry_b": "FF_B"
+   }
+  },
+  {
+   "target": "firefighter_v2",
+   "pivot_object": "FF_A",
+   "frames": 16,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor",
+    "ctx_"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "hose_tidy",
+   "blend": "tools/blender/scenes/hose_carry.blend",
+   "note": "E3 호스 정리하며 따라가기: 3번(1번 뒤 3.6m)이 낮은 자세로 걸으며 오른손으로 깔린 호스를 들어 올려 앞뒤로 훑어 꼬임을 편다, 왼손은 무릎. 들어 올린 곳 아래에는 바닥 호스가 없다(같은 호스 한 줄) — 2026-11-21 사용자가 블렌더에서 확인 (화재1 연장 유의사항 '극단적인 꼬임·뒤틀림이 없도록'). 낮은 자세 걷기는 A7 인명검색 조장 동작. 기준점 = 1번",
+   "actors": {
+    "hose_tidy": "FF_C"
+   }
+  },
+  {
    "blend": "tools/blender/scenes/search_pair.blend",
    "target": "firefighter_v2",
    "pivot_object": "FF_A",

@@ -451,6 +451,59 @@ static func point_at(run: Dictionary, d: float) -> Vector2:
 	return pts[pts.size() - 1]
 
 
+## 호스 끝(관창수)에서 거슬러 가는 길 (호스 끼고 걷기 — docs/motions.md E2·E3): 그 층에 이어져 깔린 마지막 부분의 점들(칸 좌표)에
+## 관창수의 지금 자리(at)를 끝으로 맞춘 것. dist = 펌프차 쪽 끝부터 잰 거리 (칸) — 끝 거리는 관창수가 걷는 만큼 부드럽게 늘어난다
+## (호스 점은 칸 단위로 늘지만, 뒤따르는 대원의 자리가 튀지 않게). 그 층에 깔린 것이 없으면 빈 것
+static func trail(h: HoseLine, level: int, at: Vector2) -> Dictionary:
+	var n := h.points.size()
+	if n == 0 or h.points[n - 1].z != level:
+		return {}
+	var first := n - 1
+	while first > 0 and h.points[first - 1].z == level:
+		first -= 1
+	var pts := PackedVector2Array()
+	var dist := PackedFloat32Array()
+	var d := h.length_cells()
+	for k in range(n - 1, first - 1, -1):
+		pts.append(Vector2(h.points[k].x + 0.5, h.points[k].y + 0.5))
+		dist.append(d)
+		if k > first:
+			d -= Vector2(h.points[k].x, h.points[k].y).distance_to(Vector2(h.points[k - 1].x, h.points[k - 1].y))
+	pts.reverse()
+	dist.reverse()
+	var last := pts.size() - 1
+	var b := pts[last]
+	if last >= 1:
+		var a := pts[last - 1]
+		var t := (at - a).dot(b - a) / maxf(0.0001, (b - a).length_squared())
+		if t < 1.0:
+			# 관창수가 아직 마지막 칸 가운데에 닿지 않았다: 끝을 그 자리까지로 당긴다
+			var on := a + (b - a) * clampf(t, 0.0, 1.0)
+			pts[last] = on
+			dist[last] = dist[last - 1] + a.distance_to(on)
+			return {"pts": pts, "dist": dist}
+	if at.distance_to(b) > 0.01:
+		pts.append(at)
+		dist.append(dist[last] + at.distance_to(b))
+	return {"pts": pts, "dist": dist}
+
+
+## 납작한(물이 차지 않은) 호스를 바닥에 그릴 거리 구간들 [[from, to]]: head(물머리)부터, stop(바닥 호스가 끝나는 거리 — 그 앞은 대원이 끼고 있다)까지,
+## gap [from, to](대원이 들어 올린 구간)은 뺀다
+static func dry_ranges(head: float, stop: float, gap: Array) -> Array:
+	var out: Array = []
+	if stop <= head:
+		return out
+	if gap.size() != 2 or float(gap[1]) <= head or float(gap[0]) >= stop:
+		out.append([head, stop])
+		return out
+	if float(gap[0]) > head:
+		out.append([head, float(gap[0])])
+	if float(gap[1]) < stop:
+		out.append([float(gap[1]), stop])
+	return out
+
+
 ## 조각에 놓이는 결합구 거리들 (칸): 펌프차 쪽 끝(0)부터 1본(length_cells)마다. 관창 쪽 끝에는 두지 않는다
 static func couplings(run: Dictionary, length_cells: float) -> PackedFloat32Array:
 	var out := PackedFloat32Array()
@@ -482,9 +535,19 @@ static func draw(ci: CanvasItem, h: HoseLine, level: int, to_screen: Callable, p
 	# 그림자는 빛 반대쪽 바닥에 떨어진다
 	var cast := -light * round_w * float(st.get("shadow_offset_ratio", 0.45))
 	var lift := up * float(st.get("round_width_m", 0.13)) * 0.5
+	# 호스 끼고 걷는 중이면 (lay.ground_end·gap — FloorLayer._hose_carry_layout): 바닥 호스는 2번 대원 뒤에서 끝나고, 3번이 들어 올린 구간은 비운다
+	var stop := float(lay.get("ground_end", INF))
+	var gap: Array = lay.get("gap", [])
+	# ground_tail: 바닥 호스의 끝을 이어 줄 자리 (칸 좌표) — 2번 대원 그림의 호스가 바닥에 닿은 곳
+	var tail: Variant = lay.get("ground_tail")
 	for run in shaped_runs(h, level, cell_m, lay):
-		var dry := _screen(slice(run, head_cells, INF), to_screen)
-		if dry.size() >= 2:
+		for part: Array in dry_ranges(head_cells, stop, gap):
+			var cells := slice(run, float(part[0]), float(part[1]))
+			if tail is Vector2 and not cells.is_empty() and float(part[1]) == stop and stop <= float(run.dist[run.dist.size() - 1]):
+				cells.append(tail)
+			var dry := _screen(cells, to_screen)
+			if dry.size() < 2:
+				continue
 			ci.draw_polyline(_shift(dry, cast * 0.3), Color(shadow, shadow.a * 0.6), flat_w)
 			ci.draw_polyline(dry, Color(str(st.get("flat_edge_color", "#7d7455"))), flat_w + 1.5)
 			ci.draw_polyline(dry, Color(str(st.get("flat_color", "#cfc5a8"))), flat_w)
@@ -515,6 +578,8 @@ static func draw(ci: CanvasItem, h: HoseLine, level: int, to_screen: Callable, p
 		# 결합구 길이는 화면에 놓인 길이로 잰다 (방수구 앞머리는 거리가 눌려 있다)
 		var geo := _lengths(run.pts)
 		for d in couplings(run, length_cells):
+			if d > stop or (gap.size() == 2 and d > float(gap[0]) and d < float(gap[1])):
+				continue  # 대원이 끼고 있거나 들어 올린 곳 — 그 그림에 들어 있다
 			var raise := lift if d < head_cells else Vector2.ZERO
 			var g := _map(run.dist, geo, d)
 			var a: Vector2 = to_screen.call(point_at(run, _map(geo, run.dist, maxf(0.0, g - half)))) + raise

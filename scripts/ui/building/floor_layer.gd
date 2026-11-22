@@ -12,7 +12,6 @@ const ABOVE_DEPTH := 100
 const CEILING_M := 2.4
 const WINDOW_SILL_M := 0.9
 ## 화면 연출: 이 세기(최대 열방출 대비) 넘게 타는 칸은 불꽃 뒤에 불덩이 그림을 깐다
-const FIRE_MASS_FROM := 0.6
 const WINDOW_TOP_M := 2.1
 const DOOR_TOP_M := 2.0
 ## 사람 비율 (방화복·공기호흡기 착용): 어깨 높이, 머리 중심, 이름표 높이 (m)
@@ -200,6 +199,10 @@ var _furn_draw: Dictionary = {}
 ## 불빛 번짐 (P15-FX, 실시간 셰이더). 지금 층만
 var _glow: FireGlowLayer
 var _glow_spots: Array = []
+## 지금 층의 불(채) 목록과 칸 번호 → 불들 (_fire_layout)
+var _fire_bodies: Array[Dictionary] = []
+var _fire_at: Dictionary = {}
+var _fire_key: Array = []
 var _first_level := 0  # 지상층 (levels()는 부를 때마다 배열을 복사하므로 한 번만 읽는다)
 
 ## 바닥 캐시. 칸 모양은 층별로 고정이고, 색(바닥·그을음·열화상·정보 안개)은 시뮬레이션 틱이 바뀔 때만 달라진다.
@@ -261,6 +264,7 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 		_build_static_objects(lv)
 	_ground_key = []
 	_objects_key = []
+	_fire_key = []
 	_build_shell()
 	_night = stack.params.night_factor(ViewParams.clock_hour(str(sim.scenario.get("clock", ""))))
 	# 다른 층 사람 테두리: 테두리 셰이더를 입힌 자식에 따로 그린다 (벽 선은 이 층에 그대로)
@@ -848,14 +852,11 @@ func _object_cells() -> Dictionary:
 	var fixed: Dictionary = _static_objects[level]
 	for d in fixed:
 		by_diag[d] = (fixed[d] as PackedInt32Array).duplicate()
+	# 불은 칸마다가 아니라 묶은 불(채)의 자리에만 (FireDraw, 2026-11-22)
 	var b := sim.building
-	var grid := sim.fire.grid
-	var seen_burning := sim.perception.seen_burning
-	var start := grid.index(level, 0, 0)
-	for k in b.width * b.height:
-		var i := start + k
-		if grid.state[i] == FuelGrid.State.BURNING or seen_burning[i] == 1:
-			_add_object(by_diag, k % b.width, k / b.width)
+	_fire_layout()
+	for ci: int in _fire_at:
+		_add_object(by_diag, ci % b.width, ci / b.width)
 	_objects = by_diag
 	return _objects
 
@@ -1589,7 +1590,7 @@ func _draw_cell_objects(x: int, y: int) -> void:
 	if upper_level >= 0 and t == BuildingData.Cell.STAIRS:
 		_draw_stair_step(x, y)
 	if not skip_live:
-		_draw_flame(x, y, fh)
+		_draw_fires_at(x, y)
 
 
 ## 문: 닫힘(블록) / 열림(통로) / 잠김(표시) / 파괴(잔해). 작업 중이면 진행 막대.
@@ -1659,46 +1660,92 @@ func _draw_window(x: int, y: int) -> void:
 		_block(x, y, WINDOW_TOP_M, h, wall)
 
 
-func _draw_flame(x: int, y: int, base_m: float) -> void:
+## 지금 층의 불(채) 목록 (FireDraw.bodies — 2026-11-22): 가까운 타는 칸을 묶어 열방출률에 맞는 크기의 불꽃 하나로.
+## 정보 규칙은 예전과 같다 — 보이는 칸은 지금 타는 대로, 보이지 않지만 마지막으로 봤을 때 타던 칸은 흐리게.
+## 틱·층이 바뀔 때만 다시 만든다. _fire_at: 칸 번호(y × 폭 + x) → 그 칸에서 그릴 불들 (깊이 순서에 끼워 그린다)
+@warning_ignore("integer_division")
+func _fire_layout() -> Array[Dictionary]:
+	var key := [sim.clock.tick, level, sim.perception.enabled]
+	if key == _fire_key:
+		return _fire_bodies
+	_fire_key = key
+	var b := sim.building
 	var grid := sim.fire.grid
-	var i := grid.index(level, x, y)
-	# 열화상에서는 화염 모양 대신 바닥 온도 색으로만 보인다
+	var p := sim.perception
+	var remembered := FireDraw.num("remembered_intensity", 0.5)
+	var cells: Array = []
+	var start := grid.index(level, 0, 0)
+	for k in b.width * b.height:
+		var i := start + k
+		var burning := grid.state[i] == FuelGrid.State.BURNING
+		if not burning and p.seen_burning[i] != 1:
+			continue
+		var x := k % b.width
+		var y := k / b.width
+		var kw := 0.0
+		var faded := false
+		if p.is_visible(level, x, y):
+			if not burning:
+				continue
+			kw = grid.hrr[i]
+		elif p.is_seen(level, x, y) and p.seen_burning[i] == 1:
+			faded = true
+			kw = grid.peak_kw(i) * remembered
+		else:
+			continue
+		var comp := sim.fire.compartment_at(level, x, y)
+		# 플래시오버 뒤 최성기까지는 방 전체가 탄다 (화염이 천장까지 찬다)
+		var full := comp != null and comp.flashed and (comp.stage == Compartment.Stage.FLASHOVER or comp.stage == Compartment.Stage.FULLY_DEVELOPED)
+		cells.append({"x": x, "y": y, "kw": kw, "room": comp.index if comp else -1, "base": _furniture_height(x, y), "faded": faded, "full": full and not faded})
+	_fire_bodies = FireDraw.bodies(cells, b.cell_size_m, CEILING_M)
+	_fire_at = {}
+	for f in _fire_bodies:
+		var at: Vector2 = f.pos
+		var ci := clampi(floori(at.y), 0, b.height - 1) * b.width + clampi(floori(at.x), 0, b.width - 1)
+		if not _fire_at.has(ci):
+			_fire_at[ci] = []
+		_fire_at[ci].append(f)
+	return _fire_bodies
+
+
+## 이 칸에 자리한 불들을 그린다 (물체 깊이 순서 안에서)
+func _draw_fires_at(x: int, y: int) -> void:
 	if thermal:
 		return
-	var p := sim.perception
-	var fade := 1.0
-	var intensity := 0.5
-	if p.is_visible(level, x, y):
-		if grid.state[i] != FuelGrid.State.BURNING:
-			return
-		intensity = clampf(grid.hrr[i] / maxf(grid.peak_kw(i), 1.0), 0.15, 1.0)
-	elif p.is_seen(level, x, y) and p.seen_burning[i] == 1:
-		fade = 0.4  # 마지막으로 봤을 때 타고 있었음
-	else:
+	_fire_layout()
+	var list: Array = _fire_at.get(y * sim.building.width + x, [])
+	for f: Dictionary in list:
+		_draw_fire_body(f)
+
+
+## 불 한 채: 바닥의 주황빛 + 불빛 번짐 + 불꽃 그림 (크기는 화염 높이에 맞춘 s·m·l·xl).
+## 열화상에서는 화염 모양 대신 바닥 온도 색으로만 보인다
+func _draw_fire_body(f: Dictionary) -> void:
+	if thermal:
 		return
-	var t := Time.get_ticks_msec() / 1000.0
-	var seed_f := float((x * 73856093) ^ (y * 19349663)) * 0.0001
-	var flicker := 0.8 + 0.2 * sin(t * 8.0 + seed_f) * sin(t * 4.7 + seed_f * 1.3)
-	var height := (0.35 + 1.15 * intensity) * flicker
-	var c := Vector2(x + 0.5, y + 0.5)
-	var base := proj.to_screen(c, base_m)
-	var w := IsoProjection.HALF_W * 0.55
-	var sway := Vector2(sin(t * 3.1 + seed_f) * 3.0, 0)
-	_fill(_ellipse(base, w * 1.3, w * 0.65), Color(1.0, 0.45, 0.1, 0.35 * intensity * fade))
-	if depth == 0 and fade >= 1.0:
-		_glow_spots.append([base, IsoProjection.HALF_W * (3.0 + 3.0 * intensity), intensity, x * 131 + y])
-	# 셰이더로 구운 불꽃 그림 (tools/bake_fx.gd). 없으면 아래 도형
-	var fh_px := (0.6 + 1.5 * intensity) * IsoProjection.PX_PER_M * flicker
-	var fw_px := IsoProjection.HALF_W * (1.0 + 0.6 * intensity)
-	# 최성기(세게 타는 칸)는 불꽃 뒤에 불덩이(Kenney Explosion)를 깔아 불의 덩어리감을 준다
-	if intensity > FIRE_MASS_FROM:
-		var mass := (intensity - FIRE_MASS_FROM) / (1.0 - FIRE_MASS_FROM)
-		var bob := Vector2(0, -fh_px * 0.35 - sin(t * 1.7 + seed_f) * 3.0)
-		FxArt.draw_puff(self, base + bob, fw_px * (1.3 + 0.4 * mass), FxArt.PUFF_FIRE, x * 7 + y * 3 + int(t * 0.5), Color(1, 1, 1, 0.55 * mass * fade))
-	if FxArt.draw_flame(self, base + Vector2(sin(t * 2.3 + seed_f) * 1.5, 0), fw_px, fh_px, (x * 31 + y * 17), Color(1, 1, 1, fade)):
+	var fade := FireDraw.num("remembered_fade", 0.4) if bool(f.faded) else 1.0
+	var at: Vector2 = f.pos
+	var base_m := float(f.base_m)
+	var base := proj.to_screen(at, base_m)
+	var h_px := float(f.height_m) * IsoProjection.PX_PER_M
+	var w_px := float(f.width_m) * IsoProjection.PX_PER_M
+	var key := int(f.seed)
+	# 바닥에서 1m가 화면에서 차지하는 길이 (px)
+	var ground := (proj.to_screen(Vector2(1, -1), 0.0) - proj.to_screen(Vector2.ZERO, 0.0)).length() / (sqrt(2.0) * sim.building.cell_size_m)
+	if not bool(f.satellite):
+		var rx := maxf(float(f.diameter_m) * 0.65, 0.3) * ground
+		ShadowDraw.soft_ellipse(self, base, rx, rx * GROUND_RATIO, Color(1.0, 0.45, 0.1, FireDraw.num("ember_alpha", 0.4) * fade))
+		if depth == 0 and fade >= 1.0:
+			var glow_m := float(f.width_m) * FireDraw.num("glow_per_m", 1.7) + FireDraw.num("glow_base_m", 1.6)
+			_glow_spots.append([base, glow_m * ground, clampf(float(f.height_m) / CEILING_M, 0.3, 1.0), key % 9973])
+	if FxArt.draw_fire(self, str(f.kind), base, w_px, h_px, key, Color(1, 1, 1, fade)):
 		return
-	_fill(_flame_shape(base, w, proj.to_screen(c, base_m + height) + sway), Color(0.95, 0.3, 0.06, 0.9 * fade))
-	_fill(_flame_shape(base, w * 0.55, proj.to_screen(c, base_m + height * 0.6) + sway * 0.6), Color(1.0, 0.8, 0.3, 0.95 * fade))
+	# 구운 불꽃 그림이 없으면 예전 불꽃(셰이더로 구운 것), 그것도 없으면 도형
+	if FxArt.draw_flame(self, base, w_px, h_px, key, Color(1, 1, 1, fade)):
+		return
+	var half := w_px * 0.35
+	_fill(_flame_shape(base, half, proj.to_screen(at, base_m + float(f.height_m))), Color(0.95, 0.3, 0.06, 0.9 * fade))
+	_fill(_flame_shape(base, half * 0.55, proj.to_screen(at, base_m + float(f.height_m) * 0.6)), Color(1.0, 0.8, 0.3, 0.95 * fade))
 
 
 func _draw_unit(ff: Firefighter, alpha: float) -> void:
@@ -3803,11 +3850,8 @@ func _draw_live_only() -> void:
 	if level == _first_level and depth == 0:
 		ZoneDraw.draw_ground(self, sim.zones, func(p: Vector2) -> Vector2: return proj.to_screen(p, 0.03), 14)
 	_draw_route_lines(alpha)
-	var grid := sim.fire.grid
-	for i in grid.burning:
-		var c3 := grid.cell_of(i)
-		if c3.z == level:
-			_draw_flame(c3.x, c3.y, _furniture_height(c3.x, c3.y))
+	for f in _fire_layout():
+		_draw_fire_body(f)
 	# 사람·차량은 깊이(x + y) 순서로
 	var items: Array = []
 	for ff in sim.units.firefighters:

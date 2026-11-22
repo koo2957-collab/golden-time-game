@@ -78,6 +78,10 @@ func _run() -> void:
 		await _shadow(world, sim, out)
 		quit()
 		return
+	if mode == "fire":
+		await _fire(world, sim, out)
+		quit()
+		return
 	# 1) 팀장 표시: 4명 분대(구조대)를 크게 — 고르지 않음 / 고름
 	var squad_crew: Crew = null
 	for c in sim.units.crews:
@@ -262,6 +266,77 @@ func _more(world, sim: SimWorld, out: String) -> void:
 	vic.carried_by = -1
 	sq.type = old_type
 	print("저장 ", out, " · A7·A8·A9·A10")
+
+
+## 불·연기가 단계마다 어떻게 보이는가 (모드 fire, 2026-11-22 — 롤오버·플래시오버 그림을 고치기 전 모습 기록):
+## 아무도 손대지 않고 시간을 흘려, 불난 방을 내부 화면 가까이에서 찍는다.
+##   fire_1_now 지금 / fire_2_rollover 롤오버 징후 / fire_3_flash_0·1·2 플래시오버 순간과 조금 뒤 / fire_4_full 최성기 / fire_5_exterior 외부 화면
+func _fire(world, sim: SimWorld, out: String) -> void:
+	root.warp_mouse(Vector2(10, 10))
+	sim.perception.enabled = false
+	var room: Compartment = null
+	for r in sim.fire.comps:
+		if not sim.fire.is_exposure_comp(r) and (room == null or r.q > room.q):
+			room = r
+	if room == null:
+		print("불난 방이 없다")
+		return
+	world.set_view_mode(0)
+	world.set_view_level(room.level, false)
+	for i in 10:
+		await process_frame
+	var aim := func(zoom: float) -> void:
+		world.camera.zoom = Vector2(zoom, zoom)
+		world.camera.position = world.projection().to_screen(Vector2(room.rect.get_center()), 1.2)
+	var info := func() -> String:
+		return "%s · %s · 상부 %d℃ · 연기층 %.1fm · %dkW · 롤오버 %s" % [room.display_name(), room.stage_name(), int(room.t_upper), room.layer_depth, int(room.q), room.rollover]
+	aim.call(1.6)
+	sim.clock.paused = true
+	await _save(out, "fire_1_now")
+	print("fire_1_now  ", info.call())
+	# 롤오버 징후까지
+	var guard := 0
+	while not room.rollover and not room.flashed and guard < 6000:
+		sim.step_ticks(5)
+		sim.cards.queue.clear()
+		guard += 5
+	if room.rollover:
+		for i in 4:
+			sim.step_ticks(5)
+		await _save(out, "fire_2_rollover")
+		print("fire_2_rollover  ", info.call())
+		aim.call(2.6)
+		await _save(out, "fire_2_rollover_close")
+		aim.call(1.6)
+	# 플래시오버까지
+	guard = 0
+	while not room.flashed and guard < 12000:
+		sim.step_ticks(1)
+		sim.cards.queue.clear()
+		guard += 1
+	if room.flashed:
+		await _save(out, "fire_3_flash_0")
+		print("fire_3_flash_0  ", info.call())
+		sim.step_ticks(maxi(1, int(0.5 / SimClock.TICK_DT)))
+		await _save(out, "fire_3_flash_1")
+		sim.step_ticks(maxi(1, int(3.0 / SimClock.TICK_DT)))
+		await _save(out, "fire_3_flash_2")
+		print("fire_3_flash_2  ", info.call())
+		sim.step_ticks(int(60.0 / SimClock.TICK_DT))
+		sim.cards.queue.clear()
+		await _save(out, "fire_4_full")
+		print("fire_4_full  ", info.call())
+		aim.call(2.6)
+		await _save(out, "fire_4_full_close")
+	else:
+		print("플래시오버에 이르지 않았다  ", info.call())
+	world.set_view_level(room.level, true)
+	for i in 10:
+		await process_frame
+	world.camera.zoom = Vector2(0.9, 0.9)
+	world.camera.position = world.projection().to_screen(Vector2(room.rect.get_center()), 2.0)
+	await _save(out, "fire_5_exterior")
+	print("저장 ", out, " · fire_*")
 
 
 ## 그림자·음영 앞뒤 비교 (모드 shadow — 입체감 1단계, 2026-11-22): 같은 장면을 그림자를 끄고(shadow_before_*) 켜고(shadow_after_*) 찍는다.

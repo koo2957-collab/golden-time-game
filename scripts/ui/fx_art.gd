@@ -24,6 +24,8 @@ static var water_jet: Texture2D
 static var water_splash: Texture2D
 static var water_fog: Texture2D
 static var water_fog_splash: Texture2D
+## Blender로 구운 불꽃 플립북 (tools/blender/fire_fx.py, 장을 세로로 쌓음): {"s" · "m" · "l" · "xl": 그림}. 없는 크기는 빠진다
+static var fires: Dictionary = {}
 static var meta: Dictionary = {}
 
 
@@ -44,6 +46,11 @@ static func load_all() -> bool:
 	water_splash = _tex(DIR + "/water_splash.png")
 	water_fog = _tex(DIR + "/water_fog.png")
 	water_fog_splash = _tex(DIR + "/water_fog_splash.png")
+	fires = {}
+	for kind in FireDraw.KINDS:
+		var tex := _tex(DIR + "/fire_%s.png" % kind)
+		if tex != null:
+			fires[kind] = tex
 	return flame != null
 
 
@@ -67,6 +74,20 @@ static func draw_flame(ci: CanvasItem, base: Vector2, w: float, h: float, seed: 
 	var src := Rect2(frame * float(f.w), variant * float(f.h), float(f.w), float(f.h))
 	ci.draw_texture_rect_region(flame, Rect2(base - Vector2(w * 0.5, h * 0.96), Vector2(w, h)), src, modulate)
 	return true
+
+
+## 불 한 채 (FireDraw.bodies 의 kind): base = 화면의 불 뿌리, w·h = 불꽃의 화면 폭·높이(px — 그림 위쪽 여백은 빼고 준다).
+## seed 로 시작 장과 좌우 뒤집기를 다르게 한다. 그 크기의 그림이 없으면 false (부르는 쪽이 예전 불꽃으로)
+static func draw_fire(ci: CanvasItem, kind: String, base: Vector2, w: float, h: float, seed: int, modulate := Color.WHITE) -> bool:
+	if not load_all() or not fires.has(kind):
+		return false
+	var key := "fire_" + kind
+	var full := h / maxf(0.2, 1.0 - float(meta.get(key, {}).get("flame_top_v", 0.07)))
+	var left := base.x - w * 0.5
+	var right := base.x + w * 0.5
+	var mirror := posmod(seed, 2) == 1
+	return draw_flip(ci, fires[kind], key, PackedVector2Array([Vector2(left, base.y - full), Vector2(right, base.y - full), Vector2(right, base.y), Vector2(left, base.y)]),
+		Vector2(1.0 if mirror else 0.0, 0.0), Vector2(0.0 if mirror else 1.0, 1.0), modulate, seed)
 
 
 ## 덩어리 그림 종류 (art/fx/puffs.png 줄 순서)

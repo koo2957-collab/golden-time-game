@@ -74,6 +74,10 @@ func _run() -> void:
 		await _ready_stance(world, sim, out)
 		quit()
 		return
+	if mode == "shadow":
+		await _shadow(world, sim, out)
+		quit()
+		return
 	# 1) 팀장 표시: 4명 분대(구조대)를 크게 — 고르지 않음 / 고름
 	var squad_crew: Crew = null
 	for c in sim.units.crews:
@@ -258,6 +262,102 @@ func _more(world, sim: SimWorld, out: String) -> void:
 	vic.carried_by = -1
 	sq.type = old_type
 	print("저장 ", out, " · A7·A8·A9·A10")
+
+
+## 그림자·음영 앞뒤 비교 (모드 shadow — 입체감 1단계, 2026-11-22): 같은 장면을 그림자를 끄고(shadow_before_*) 켜고(shadow_after_*) 찍는다.
+##   exterior 외부 화면 전체 / interior 1층 내부 화면 / interior_close 방 안 가까이 / close 대원·차량 가까이 / city 멀리서 본 도시 / thermal 열화상(그림자 없음)
+func _shadow(world, sim: SimWorld, out: String) -> void:
+	sim.clock.paused = true
+	root.warp_mouse(Vector2(10, 10))
+	var b := sim.building
+	var first: int = b.levels()[0]
+	var fp := b.footprint(first)
+	var crew: Crew = null
+	for c in sim.units.crews:
+		if not c.leader.aboard and c.list.size() >= 3:
+			crew = c
+			break
+	var room: Compartment = null
+	for r in sim.fire.comps:
+		if r.level == first and not sim.fire.is_exposure_comp(r) and (room == null or r.cells.size() > room.cells.size()):
+			room = r
+	var calm: Compartment = null
+	for r in sim.fire.comps:
+		if r.level == first and not sim.fire.is_exposure_comp(r) and r.cells.size() >= 30 and (calm == null or r.q < calm.q):
+			calm = r
+	# 1층 방을 모두 확인한 것으로 (가구·그림자가 보이게) — 견본
+	sim.perception.enabled = false
+	for state: int in [0, 1]:
+		ShadowDraw.force(state)
+		var tag := "shadow_before_" if state == 0 else "shadow_after_"
+		world.city.build_mesh()
+		world.city.queue_redraw()
+		world.set_view_mode(0)
+		world.set_view_level(first, true)
+		for i in 10:
+			await process_frame
+		var proj = world.projection()
+		world.camera.zoom = Vector2(0.8, 0.8)
+		world.camera.position = proj.to_screen(Vector2(fp.get_center()) + Vector2(3, 3), 2.0)
+		await _save(out, tag + "exterior")
+		world.camera.zoom = Vector2(0.35, 0.35)
+		await _save(out, tag + "city")
+		if crew:
+			world.camera.zoom = Vector2(2.0, 2.0)
+			world.camera.position = proj.to_screen(crew.leader.pos + Vector2(-3, 0), 1.0)
+			await _save(out, tag + "close")
+		world.set_view_level(first, false)
+		for i in 10:
+			await process_frame
+		proj = world.projection()
+		world.camera.zoom = Vector2(0.9, 0.9)
+		world.camera.position = proj.to_screen(Vector2(fp.get_center()), 1.0)
+		await _save(out, tag + "interior")
+		if room:
+			world.camera.zoom = Vector2(2.2, 2.2)
+			world.camera.position = proj.to_screen(Vector2(room.rect.get_center()), 0.5)
+			await _save(out, tag + "interior_close")
+		# 구조만 (연기·불·사람 겹을 잠시 숨김): 벽 아래 띠와 가구 그림자가 연기에 묻히지 않게 — 견본
+		world.iso_view.current_live.visible = false
+		world.camera.zoom = Vector2(1.3, 1.3)
+		world.camera.position = proj.to_screen(Vector2(fp.get_center()), 0.5)
+		await _save(out, tag + "interior_bare")
+		if room:
+			world.camera.zoom = Vector2(2.6, 2.6)
+			world.camera.position = proj.to_screen(Vector2(room.rect.get_center()), 0.5)
+			await _save(out, tag + "interior_bare_close")
+		world.iso_view.current_live.visible = true
+		# 위층 내부 화면 (층 분리: 고른 층 + 직하층)
+		var top: int = b.levels().max()
+		if top != first:
+			world.set_view_level(top, false)
+			for i in 10:
+				await process_frame
+			world.camera.zoom = Vector2(0.75, 0.75)
+			world.camera.position = world.projection().to_screen(Vector2(fp.get_center()), 0.0)
+			await _save(out, tag + "interior_upper")
+	world.set_view_level(first, false)
+	for i in 10:
+		await process_frame
+	# 열화상 화면: 그림자를 켜 둔 채로도 그려지지 않아야 한다
+	world.set_thermal(true)
+	world.camera.zoom = Vector2(0.9, 0.9)
+	world.camera.position = world.projection().to_screen(Vector2(fp.get_center()), 1.0)
+	await _save(out, "shadow_after_thermal")
+	world.set_thermal(false)
+	# 방 안에 선 대원 (발밑 그림자·벽 아래 띠·가구 그림자를 한 장에): 연기를 지우고 불이 없는 방에 분대를 세운다 — 견본 (실제 진행 화면이 아님)
+	if crew and calm:
+		for r in sim.fire.comps:
+			r.layer_depth = 0.0
+			r.soot = 0.0
+		_place(crew, Vector2(calm.rect.get_center()) + Vector2(-1.5, 0.5), Vector2(1.2, 0.4))
+		for state: int in [0, 1]:
+			ShadowDraw.force(state)
+			world.camera.zoom = Vector2(2.6, 2.6)
+			world.camera.position = world.projection().to_screen(Vector2(calm.rect.get_center()), 0.8)
+			await _save(out, ("shadow_before_" if state == 0 else "shadow_after_") + "interior_crew")
+	ShadowDraw.force(-1)
+	print("저장 ", out, " · shadow_before_* / shadow_after_*")
 
 
 ## 문 앞 방수태세 (모드 ready — docs/motions.md E4, 2026-11-22): 수관을 가진 진압 분대가 불난 건물 출입문을 여는(부수는) 동안,

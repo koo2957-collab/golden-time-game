@@ -220,6 +220,18 @@ var _static_objects: Dictionary = {}  # level -> {d: PackedInt32Array (x 오름�
 var _objects: Dictionary = {}  # 지금 층의 {d: PackedInt32Array}: 고정 물체 + 화염 칸
 var _objects_key: Array = []
 
+## 미리 그려 넣는 그림자·음영 (입체감 1단계, 2026-11-22 — ShadowDraw, data/ui/shadow_style.json).
+## 움직이지 않는 것(건물 땅 그림자·벽 아래 띠)은 한 번 만들어 두고 삼각형 묶음 하나로 그린다: "층:외부 보기" -> {points, colors, indices}
+var _shade_static: Dictionary = {}
+## 가구 그림자: 층 -> [{x, y 보이는지 판정할 칸, pts 화면 좌표 사각형들}]. 확인한 방의 타지 않은 가구만 틱마다 모아 한 번에 그린다
+var _furn_shadow: Dictionary = {}
+var _furn_shadow_key: Array = []
+var _furn_shadow_pts := PackedVector2Array()
+var _furn_shadow_cols := PackedColorArray()
+var _furn_shadow_idx := PackedInt32Array()
+## 밤 정도 (0 낮 … 1 밤, 시나리오 시각) — 해 그림자를 옅게
+var _night := 0.0
+
 
 func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProjection, p_stack: FloorStack = null) -> void:
 	sim = p_sim
@@ -250,6 +262,7 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 	_ground_key = []
 	_objects_key = []
 	_build_shell()
+	_night = stack.params.night_factor(ViewParams.clock_hour(str(sim.scenario.get("clock", ""))))
 	# 다른 층 사람 테두리: 테두리 셰이더를 입힌 자식에 따로 그린다 (벽 선은 이 층에 그대로)
 	_ghost_units = Node2D.new()
 	var outline_shader: Shader = load("res://shaders/ghost_outline.gdshader")
@@ -924,6 +937,9 @@ func _draw() -> void:
 		_update_fire_rooms()
 	_mask_now = _draw_mask()
 	_draw_ground()
+	_draw_ground_shadows()
+	if not skip_live:
+		_draw_vehicle_shadows(alpha)
 	_draw_slab_edges()
 	if stub_below and depth > 0 and not _outside():
 		_draw_stub_below()
@@ -1233,6 +1249,193 @@ func _thermal_ground_color(x: int, y: int) -> Color:
 	return THERMAL_UNKNOWN
 
 
+# --- 미리 그려 넣는 그림자·음영 (입체감 1단계, 2026-11-22) ---
+# 실시간 광원·그림자가 아니다: 바닥 바로 위에 반투명한 어두운 도형을 그린다 (ShadowDraw, data/ui/shadow_style.json).
+# 호스·구역·이름·불·연기·선택 고리보다 먼저 그려 그 아래에 깔린다. 열화상 화면에는 그리지 않는다.
+
+## 건물 땅 그림자·벽 아래 띠(한 번 만들어 둔 묶음)와 가구 그림자
+func _draw_ground_shadows() -> void:
+	if thermal or not ShadowDraw.on():
+		return
+	var key := "%d:%d" % [level, 1 if _outside() else 0]
+	if not _shade_static.has(key):
+		_shade_static[key] = _build_static_shade()
+	var s: Dictionary = _shade_static[key]
+	if not (s.indices as PackedInt32Array).is_empty():
+		RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), s.indices, s.points, s.colors)
+	_draw_furniture_shadows()
+
+
+## 사각형 하나를 묶음에 넣는다 (칸 좌표 4점, 점마다 진하기)
+func _shade_quad(s: Dictionary, quad: PackedVector2Array, col: Color, alphas: Array) -> void:
+	var points: PackedVector2Array = s.points
+	var colors: PackedColorArray = s.colors
+	var indices: PackedInt32Array = s.indices
+	var at := points.size()
+	for k in 4:
+		points.append(proj.to_screen(quad[k], 0.0))
+		colors.append(Color(col, col.a * float(alphas[k])))
+	indices.append_array([at, at + 1, at + 2, at, at + 2, at + 3])
+	s.points = points
+	s.colors = colors
+	s.indices = indices
+
+
+## 움직이지 않는 음영: 건물이 땅에 드리우는 그림자(지상층)와 벽 아래 어두운 띠
+func _build_static_shade() -> Dictionary:
+	var s := {"points": PackedVector2Array(), "colors": PackedColorArray(), "indices": PackedInt32Array()}
+	var b := sim.building
+	var ext := _outside()
+	var cast := ShadowDraw.cast_dir(proj)
+	# 1) 건물 땅 그림자: 불난 건물(외부 보기는 외관 높이, 내부 화면은 잘린 벽 높이)과 이웃 건물(1층 높이)
+	if level == _first_level:
+		var sun := ShadowDraw.color("building_alpha", ShadowDraw.sun_scale(_night))
+		var cut_m := ShadowDraw.num("interior_wall_m", CEILING_M)
+		var masses: Array = [[Rect2(_shell_fp), _shell_top if ext else cut_m]]
+		for i in range(1, b.structures.size()):
+			masses.append([Rect2(b.structures[i].rect), cut_m])
+		for m: Array in masses:
+			var off := ShadowDraw.cast_offset(proj, float(m[1]), b.cell_size_m, "building_max_m")
+			for quad in ShadowDraw.sweep_quads(ShadowDraw.rect_points(m[0]), off):
+				_shade_quad(s, quad, sun, [1.0, 1.0, 1.0, 1.0])
+	# 2) 벽 아래 띠: 벽 칸마다 그려지는 모양(칸 가득한 벽 / 얇은 실내 벽의 가로 막대·세로 팔)의 옆면 아래로
+	var shadow_w := ShadowDraw.num("ao_shadow_m") / b.cell_size_m
+	var lit_w := ShadowDraw.num("ao_lit_m") / b.cell_size_m
+	var ao := ShadowDraw.num("ao_alpha")
+	var lit_ratio := ShadowDraw.num("ao_lit_ratio")
+	var t := clampf(stack.params.inner_wall_thick, 0.05, 1.0) * 0.5
+	var bands: Array[Dictionary] = []
+	for y in b.height:
+		for x in b.width:
+			var c := b.cell(level, x, y)
+			if c != BuildingData.Cell.WALL and c != BuildingData.Cell.WINDOW:
+				continue
+			var kind := stack.wall_kind(level, x, y, ext)
+			if kind == FloorStack.Wall.OPEN or kind == FloorStack.Wall.HIDDEN:
+				continue
+			if kind == FloorStack.Wall.HALF and c == BuildingData.Cell.WALL:
+				# 얇은 실내 벽 (_thin_wall 과 같은 모양). 외부 보기에서는 외관에 가려 보이지 않는다
+				if ext:
+					continue
+				var has := func(dx: int, dy: int) -> bool: return b.in_bounds(x + dx, y + dy) and b.cell(level, x + dx, y + dy) in FloorStack.WALL_CELLS
+				var w: bool = has.call(-1, 0)
+				var e: bool = has.call(1, 0)
+				var n: bool = has.call(0, -1)
+				var sth: bool = has.call(0, 1)
+				var cx := x + 0.5
+				var cy := y + 0.5
+				var ns := ShadowDraw.NORTH | ShadowDraw.SOUTH
+				var we := ShadowDraw.WEST | ShadowDraw.EAST
+				if w:
+					bands.append_array(ShadowDraw.box_bands(Rect2(x, cy - t, 0.5 - t, 2.0 * t), ns, cast, shadow_w, lit_w, ao, lit_ratio))
+				if e:
+					bands.append_array(ShadowDraw.box_bands(Rect2(cx + t, cy - t, 0.5 - t, 2.0 * t), ns, cast, shadow_w, lit_w, ao, lit_ratio))
+				if n:
+					bands.append_array(ShadowDraw.box_bands(Rect2(cx - t, y, 2.0 * t, 0.5 - t), we, cast, shadow_w, lit_w, ao, lit_ratio))
+				if sth:
+					bands.append_array(ShadowDraw.box_bands(Rect2(cx - t, cy + t, 2.0 * t, 0.5 - t), we, cast, shadow_w, lit_w, ao, lit_ratio))
+				var mid := (0 if w else ShadowDraw.WEST) | (0 if e else ShadowDraw.EAST) | (0 if n else ShadowDraw.NORTH) | (0 if sth else ShadowDraw.SOUTH)
+				bands.append_array(ShadowDraw.box_bands(Rect2(cx - t, cy - t, 2.0 * t, 2.0 * t), mid, cast, shadow_w, lit_w, ao, lit_ratio))
+				continue
+			var sides := 0
+			for k in 4:
+				var nb := Vector2i(x, y) + Vector2i(ShadowDraw.NORMALS[k])
+				if _shade_ground_at(nb.x, nb.y, ext):
+					sides |= ShadowDraw.SIDES[k]
+			if sides != 0:
+				bands.append_array(ShadowDraw.box_bands(Rect2(x, y, 1, 1), sides, cast, shadow_w, lit_w, ao, lit_ratio))
+	var black := ShadowDraw.color("ao_alpha")
+	black.a = 1.0
+	for d in ShadowDraw.merge_bands(bands):
+		var a := float(d.alpha)
+		if d.has("fan"):
+			_shade_quad(s, d.fan, black, [a, 0.0, 0.0, 0.0])
+		else:
+			_shade_quad(s, ShadowDraw.band_quad(d), black, [a, a, 0.0, 0.0])
+	return s
+
+
+## 벽 옆 칸에 띠를 그릴 바닥이 보이는가 (외부 보기에서는 바깥 땅만 — 실내는 외관에 가린다)
+func _shade_ground_at(x: int, y: int, ext: bool) -> bool:
+	var b := sim.building
+	if not b.in_bounds(x, y):
+		return false
+	var c := b.cell(level, x, y)
+	if c == BuildingData.Cell.VOID:
+		return false
+	if ext:
+		return c in BuildingData.OUTDOOR
+	if c in FloorStack.WALL_CELLS:
+		# 얇은 실내 벽·없앤 앞벽 칸은 바닥이 보인다
+		var kind := stack.wall_kind(level, x, y, false)
+		return kind == FloorStack.Wall.HALF or kind == FloorStack.Wall.OPEN
+	return true
+
+
+## 가구 그림자: 확인한 방의 타지 않은 가구만 (모르는 방의 가구를 그림자로 알려 주지 않는다 — 기획안 9-1)
+func _draw_furniture_shadows() -> void:
+	var b := sim.building
+	if not _furn_shadow.has(level):
+		var list: Array[Dictionary] = []
+		for item in b.furniture(level):
+			var r: Rect2i = item.rect
+			var h: float = FURNITURE_HEIGHTS.get(item.name, DEFAULT_FURNITURE_M)
+			var off := ShadowDraw.cast_offset(proj, h, b.cell_size_m, "furniture_max_m")
+			var pts := PackedVector2Array()
+			for quad in ShadowDraw.sweep_quads(ShadowDraw.rect_points(Rect2(r)), off):
+				for p in quad:
+					pts.append(proj.to_screen(p, 0.0))
+			list.append({"x": r.end.x - 1, "y": r.end.y - 1, "pts": pts})
+		_furn_shadow[level] = list
+	var key := [sim.clock.tick, level, sim.perception.enabled, _outside()]
+	if key != _furn_shadow_key:
+		_furn_shadow_key = key
+		_furn_shadow_pts = PackedVector2Array()
+		_furn_shadow_idx = PackedInt32Array()
+		for f: Dictionary in _furn_shadow[level]:
+			var x: int = f.x
+			var y: int = f.y
+			if not _mask_now.is_empty() and _mask_now[y * b.width + x] == 0:
+				continue
+			if not (b.cell(level, x, y) in BuildingData.OUTDOOR or sim.plan.structure_seen(level, x, y)) or _cell_burnt(x, y):
+				continue
+			var pts: PackedVector2Array = f.pts
+			@warning_ignore("integer_division")
+			for q in pts.size() / 4:
+				var at := _furn_shadow_pts.size()
+				_furn_shadow_pts.append_array(pts.slice(q * 4, q * 4 + 4))
+				_furn_shadow_idx.append_array([at, at + 1, at + 2, at, at + 2, at + 3])
+		_furn_shadow_cols.resize(_furn_shadow_pts.size())
+		_furn_shadow_cols.fill(ShadowDraw.color("furniture_alpha"))
+	if not _furn_shadow_idx.is_empty():
+		RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), _furn_shadow_idx, _furn_shadow_pts, _furn_shadow_cols)
+
+
+## 차량이 땅에 드리우는 그림자 (지상층). 차량·사람·호스보다 먼저 그린다
+func _draw_vehicle_shadows(alpha: float) -> void:
+	if thermal or level != _first_level or not ShadowDraw.on():
+		return
+	var col := ShadowDraw.color("vehicle_alpha", ShadowDraw.sun_scale(_night))
+	for v in sim.units.vehicles:
+		if v.away:
+			continue
+		var center := v.prev_pos.lerp(v.pos, alpha)
+		if not _mask_now.is_empty() and sim.building.in_bounds(floori(center.x), floori(center.y)) \
+				and _mask_now[floori(center.y) * sim.building.width + floori(center.x)] == 0:
+			continue
+		var off := ShadowDraw.cast_offset(proj, minf(v.height_m, VEHICLE_CUT_M), sim.building.cell_size_m)
+		ShadowDraw.fill_convex(self, _lift(ShadowDraw.sweep_hull(v.footprint(center), off), 0.0), col)
+
+
+## 사람 발밑 그림자 (타원). 그림자 설정이 켜져 있으면 가장자리가 옅어지는 타원, 꺼져 있거나 열화상이면 예전의 또렷한 타원
+func _contact_shadow(feet: Vector2, rx: float, ry: float, plain_alpha: float) -> void:
+	if thermal or not ShadowDraw.on():
+		draw_colored_polygon(_ellipse(feet, rx, ry), Color(0, 0, 0, plain_alpha))
+		return
+	var k := ShadowDraw.num("contact_scale", 1.0)
+	ShadowDraw.soft_ellipse(self, feet, rx * k, ry * GROUND_RATIO * k, ShadowDraw.color("contact_alpha"))
+
+
 ## 대기1단계 장소: 차로 바닥에 점선 테두리와 이름
 func _draw_staging() -> void:
 	var rects := sim.command.resources.staging_rects()
@@ -1503,7 +1706,7 @@ func _draw_unit(ff: Firefighter, alpha: float) -> void:
 	var squad := sim.units.squads[ff.squad_id]
 	var crew := sim.units.get_crew(ff.crew_id)
 	var feet := proj.to_screen(p, 0.0)
-	draw_colored_polygon(_ellipse(feet, 10, 5), Color(0, 0, 0, 0.3))
+	_contact_shadow(feet, 10, 5, 0.3)
 	# 들려 가는 쓰러진 대원(2인 운반)은 그 높이에 그린다 — 그림자는 바닥에
 	var carried := _ff_carry_layout(ff, alpha)
 	if not carried.is_empty():
@@ -2015,7 +2218,7 @@ func _draw_driver(d: Dictionary) -> void:
 	var art := SpriteArt.get_set(str(SpriteArt.config().get("driver", "")))
 	var owner := v if who == "driver" else sim.units.get_vehicle(int(dl.get("other_vehicle", v.id)))
 	var feet := proj.to_screen(p.pos, 0.0)
-	draw_colored_polygon(_ellipse(feet, 10, 5), Color(0, 0, 0, 0.3))
+	_contact_shadow(feet, 10, 5, 0.3)
 	art.draw(self, str(p.anim), int(p.k), int(p.frame), feet, Color.WHITE, SpriteArt.helmet_color(sim.units.squads[owner.squad_id].type))
 
 
@@ -2533,7 +2736,7 @@ func _draw_commander(alpha: float) -> void:
 	var c := sim.command.commander
 	var p := UnitsView.display_pos(c, alpha)
 	var feet := proj.to_screen(p, 0.0)
-	draw_colored_polygon(_ellipse(feet, 10, 5), Color(0, 0, 0, 0.3))
+	_contact_shadow(feet, 10, 5, 0.3)
 	if selection.commander_selected:
 		draw_polyline(_ellipse(feet, 13, 6.5, true), PlanStyle.SELECTION, 2.0)
 	var art := SpriteArt.get_set(str(SpriteArt.config().get("commander", ""))) if not thermal else null
@@ -2552,7 +2755,7 @@ func _draw_commander(alpha: float) -> void:
 ## 관계인: 사복 차림, 머리 위 이름
 func _draw_witness(w: Witness) -> void:
 	var feet := proj.to_screen(w.pos, 0.0)
-	draw_colored_polygon(_ellipse(feet, 10, 5), Color(0, 0, 0, 0.3))
+	_contact_shadow(feet, 10, 5, 0.3)
 	var art := SpriteArt.get_set(str(SpriteArt.config().get("witness", ""))) if not thermal else null
 	if art == null or not art.draw(self, "idle", 1, SpriteArt.frame_at("idle", art.frames("idle"), 0.5), feet):
 		_draw_figure(w.pos, 1.0, PlanStyle.WITNESS_BODY, PlanStyle.WITNESS_HEAD, false)
@@ -3344,7 +3547,7 @@ func _draw_victim(v: Victim) -> void:
 			return
 		if held_art != null and held_art.frames("down_up") > 0:
 			var spot: Vector2 = lay.victim
-			draw_colored_polygon(_ellipse(proj.to_screen(spot, 0.0), 14, 5), Color(0, 0, 0, 0.25))
+			_contact_shadow(proj.to_screen(spot, 0.0), 14, 5, 0.25)
 			var feet_dir := int(lay.k) if str(lay.mode) == "lift" else posmod(int(lay.k) + 4, 8)
 			held_art.draw(self, "down_up", feet_dir, 0, proj.to_screen(spot, float(lay.victim_h)))
 			return
@@ -3371,7 +3574,7 @@ func _draw_victim(v: Victim) -> void:
 		draw_string(PlanStyle.font(), at + Vector2(-70, -14), "%s · %s · %s" % [v.label(), sim.ems.shown_name(p), EmsSystem.STAGE_NAMES[p.stage]], HORIZONTAL_ALIGNMENT_CENTER, 140, 12, tag.lightened(0.3))
 		return
 	var feet := proj.to_screen(v.pos, 0.05)
-	draw_colored_polygon(_ellipse(feet, 15, 6), Color(0, 0, 0, 0.35))
+	_contact_shadow(feet, 15, 6, 0.35)
 	if not _draw_victim_sprite(v, feet):
 		draw_colored_polygon(_ellipse(feet + Vector2(0, -3), 13, 5), color)
 		draw_circle(feet + Vector2(12, -5), 5.0, color.lightened(0.3))
@@ -3596,6 +3799,7 @@ func _draw_supply_hose(line: PackedVector2Array) -> void:
 ## 바탕(바닥·벽·가구)은 색을 뺀 같은 층 노드가 그리고, 여기서는 구역·경로·수관·차량·불꽃·사람·연기만 원래 색으로
 func _draw_live_only() -> void:
 	var alpha := sim.clock.alpha()
+	_draw_vehicle_shadows(alpha)
 	if level == _first_level and depth == 0:
 		ZoneDraw.draw_ground(self, sim.zones, func(p: Vector2) -> Vector2: return proj.to_screen(p, 0.03), 14)
 	_draw_route_lines(alpha)
@@ -4113,6 +4317,7 @@ func _draw_ghost() -> void:
 ## 바깥 땅은 어느 층을 보든 그대로 보인다). 깊이(x + y) 순서로. 위층 건물에 가려지는 자리는 테두리도 함께 (_draw_ghost_units)
 func _draw_outdoor_people() -> void:
 	var alpha := sim.clock.alpha()
+	_draw_vehicle_shadows(alpha)
 	var items: Array = []
 	for v in sim.units.vehicles:
 		if not v.away:

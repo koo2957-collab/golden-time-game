@@ -5,7 +5,7 @@ extends Node2D
 ## 2026-11-14 (사용자 결정): 화면을 꽉 채우는 도시 — 배치는 CityPlan(격자 도로망·필지·안전센터·출동 경로)이 만들고
 ## 여기서는 그리기만 한다. 길·블록 바닥·중앙선·횡단보도·건물·옥탑, 밤에는 창문 불빛과 가로등 점.
 ## 출동 중에는 그 위에 선착 소방차(구운 그림)가 안전센터에서 길을 따라 달리고, 대상 건물에서 연기 기둥이 오른다.
-## 텍스처·그림자 없이 색만. 도시 전체를 사각형 묶음 몇 개로 한 번 만들어 두고 다시 만들지 않는다 (사무용 PC, 기획안 9-5).
+## 텍스처·실시간 그림자 없이 색만 (건물 땅 그림자는 미리 넣는 사각형 — ShadowDraw, 2026-11-22). 도시 전체를 사각형 묶음 몇 개로 한 번 만들어 두고 다시 만들지 않는다 (사무용 PC, 기획안 9-5).
 ## 수치·색은 data/ui/city.json.
 
 ## 횡단보도를 그리는 범위 (현장 가운데에서, 칸) — 멀리서는 보이지 않아 가까운 교차로만
@@ -94,8 +94,16 @@ func build_mesh() -> void:
 	var lit := night > 0.05 and not DisplaySettings.low_spec
 	if lit:
 		_lamps()
-	# 건물 (뒤에서 앞으로)
 	var floor_m := plan.num("floor_m", 3.0)
+	# 건물 땅 그림자 (입체감 1단계, 2026-11-22 — ShadowDraw): 건물보다 먼저 모두 깔아, 건물이 제 자리와 뒤 건물 그림자를 덮는다.
+	# 한 번 만들어 두는 그림에 사각형만 더할 뿐이다 (실시간 그림자 아님). 저사양 모드에서는 넣지 않는다
+	if ShadowDraw.on() and not DisplaySettings.low_spec:
+		var shade := ShadowDraw.color("city_alpha", ShadowDraw.sun_scale(night))
+		for lot: Dictionary in plan.lots:
+			var off := ShadowDraw.cast_offset(proj, float(lot.floors) * floor_m, CityPlan.CELL_M, "city_max_m")
+			for q in ShadowDraw.sweep_quads(ShadowDraw.rect_points(Rect2(lot.rect as Rect2i)), off):
+				_quad(proj.to_screen(q[0]), proj.to_screen(q[1]), proj.to_screen(q[2]), proj.to_screen(q[3]), shade)
+	# 건물 (뒤에서 앞으로)
 	for lot: Dictionary in plan.lots:
 		var rect := Rect2(lot.rect as Rect2i)
 		var h := float(lot.floors) * floor_m

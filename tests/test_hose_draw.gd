@@ -230,9 +230,16 @@ func test_hose_carry_art_baked() -> void:
 	assert_eq(art.frames("hose_tidy"), 16, "3번: 낮은 자세 걷기 16장")
 	assert_true(float(art.stand("hose_carry_b").get("fwd_m", 0.0)) < -0.5, "2번은 1번 뒤 (%s)" % art.stand("hose_carry_b"))
 	assert_true(float(art.stand("hose_tidy").get("fwd_m", 0.0)) < float(art.stand("hose_carry_b").get("fwd_m", 0.0)) - 1.0, "3번은 2번의 호스가 바닥에 닿은 뒤쪽 (%s)" % art.stand("hose_tidy"))
+	# 호스 꺼내기 (E1, 2026-11-22 사용자가 블렌더에서 확인): 1번·2번이 차 후면 앞에 나란히
+	assert_eq(art.frames("hose_fetch_a"), 12, "꺼내기 1번: 12장")
+	assert_eq(art.frames("hose_fetch_b"), 12, "꺼내기 2번: 12장")
+	assert_true(absf(float(art.stand("hose_fetch_b").get("right_m", 0.0))) > 0.4 and absf(float(art.stand("hose_fetch_b").get("fwd_m", 0.0))) < 0.1,
+		"2번은 1번 옆에 나란히 (%s)" % art.stand("hose_fetch_b"))
 	var fps: Dictionary = SpriteArt.config().get("fps", {})
-	for anim: String in ["hose_carry_a", "hose_carry_b", "hose_tidy"]:
+	for anim: String in ["hose_fetch_a", "hose_fetch_b", "hose_carry_a", "hose_carry_b", "hose_tidy"]:
 		assert_true(float(fps.get(anim, 0.0)) > 0.0, "%s 초당 장 수" % anim)
+	var st := HoseDraw.style()
+	assert_true(float(st.fetch_stand_m) > 0.3 and float(st.shutter_top_m) > float(st.shutter_bottom_m), "꺼낼 때 서는 거리·열린 셔터 높이")
 
 
 ## 급수 호스(소화전·물탱크차)가 차에 붙는 자리: 펌프차는 후면 보수구 — 호스가 오는 쪽 끝, 그 밖의 차는 가장 가까운 차체 둘레

@@ -3,8 +3,10 @@ extends TestSuite
 
 const CREW_ANIMS := ["idle", "walk", "crouch_walk", "spray", "search", "down", "force_a", "force_b", "lift_f", "lift_b", "drag"]
 ## 그림 텍스처 상한 (MB, 게임 설정값). 저사양 목표는 48MB(docs/perf.md)지만, 2026-11-15 사용자 결정: 행동을 모두 먼저 만들고
-## 프레임 수는 나중에 줄인다 (docs/motions.md) — 그때까지 넉넉히 둔다
-const TEXTURE_BUDGET_MB := 128.0
+## 프레임 수는 나중에 줄인다 (docs/motions.md) — 그때까지 넉넉히 둔다.
+## 2026-11-22: 호스 꺼내기·끼고 걷기·정리 동작(E1~E3, 약 12.7MB)이 들어가 131.7MB가 되어 128 → 160으로 올림 (같은 결정에 따름 — 사용자에게 알림.
+## 상한을 그대로 두려면 hose_tidy 16장·hose_fetch 12장을 절반으로 줄여야 한다)
+const TEXTURE_BUDGET_MB := 160.0
 
 
 func _sets_in_config() -> Array[String]:

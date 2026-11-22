@@ -28,7 +28,10 @@ BUNDLE_X = -0.275
 BUNDLE_Y0 = -0.30
 BUNDLE_Y1 = 0.36
 BUNDLE_TOP = 1.215
-LAYERS = {"FF_A": 4, "FF_B": 7}
+# 1번은 홀수 겹 — 맨 위 겹이 앞에서 시작해야 그 끝에 결합된 관창이 묶음 앞 위에 온다
+LAYERS = {"FF_A": 5, "FF_B": 7}
+# 관창 조각 (장면에 있는 1번의 관창 — 원래는 오른손 뼈에 붙어 있다)
+NOZZLE_PARTS = ("nozzle", "nozzle_bale", "nozzle_coupling", "nozzle_grip", "nozzle_ring", "nozzle_tip")
 # 뒷사람 자리 (앞사람 뒤로 m)
 BEHIND = {"FF_B": 1.1, "FF_C": 3.6}
 
@@ -237,6 +240,29 @@ for name, layers in LAYERS.items():
     ob = ribbon("hc_bundle_" + name[-1], path, BAND_W, BAND_T, hose_mat, [BUNDLE_X] * len(path))
     bone_parent(ob, rig, "chest", off)
     paths[name] = [(y + off.y, z) for y, z in path]
+# 관창 (2026-11-22 사용자: 관창은 1번 호스 끝에 결합되어 있는 경우가 대부분): 1번 묶음 맨 위 겹의 앞 끝에 결합된 채 묶음 위에 얹혀 앞을 본다.
+# 손에 따로 들지 않는다. 관창 조각은 오른손 뼈 기준으로 놓여 있으므로(길이 방향 = +Y), 같은 틀을 가진 빈 물체를 가슴뼈에 달고 거기로 옮긴다
+mount = bpy.data.objects.new("hc_nozzle_mount", None)
+mount.empty_display_size = 0.05
+sc.collection.objects.link(mount)
+mount.matrix_world = Matrix.Translation((BUNDLE_X, BUNDLE_Y0 - 0.03, BUNDLE_TOP + BAND_T * 0.5 + 0.035)) @ Matrix.Rotation(math.pi, 4, "Z")
+upd()
+world_mount = mount.matrix_world.copy()
+chest = ff_a.pose.bones["chest"]
+mount.parent = ff_a
+mount.parent_type = "BONE"
+mount.parent_bone = "chest"
+mount.matrix_parent_inverse = (ff_a.matrix_world @ chest.matrix @ Matrix.Translation((0, chest.bone.length, 0))).inverted()
+mount.matrix_basis = world_mount
+for o in parts(ff_a):
+    if o.name in NOZZLE_PARTS:
+        o.parent = mount
+        o.parent_type = "OBJECT"
+        o.matrix_parent_inverse = Matrix.Identity(4)
+        o.hide_render = False
+        o.hide_viewport = False
+upd()
+
 # 호스는 한 줄로 이어진다 (2026-11-21 사용자): 1번 묶음의 뒤 끝 → 2번 묶음의 앞 끝, 바닥으로는 2번 묶음에서 떨어진다.
 # 조각마다 앞 조각 쪽으로 조금 겹치고, 겹과 같은 방향(수평)으로 나가고 들어와 이음매가 보이지 않는다
 pa = paths["FF_A"]

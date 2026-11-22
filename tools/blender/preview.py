@@ -41,6 +41,9 @@ sc.collection.objects.link(cam)
 sc.camera = cam
 # 보는 쪽: (이름, 방위각 도 — 모델 앞(-Y)을 0으로 시계 반대, 내려다보는 각 도)
 views = [("game", 45.0, 35.0), ("side", 90.0, 8.0), ("front", 0.0, 8.0)]
+# 다섯째 인자가 back 이면 사람 뒤쪽에서 본다 (차·벽을 보고 선 장면)
+if len(args) > 4 and args[4] == "back":
+    views = [("game_back", 140.0, 35.0), ("side", 90.0, 8.0), ("back", 180.0, 8.0)]
 tiles = []
 tmp = out + ".tile.png"
 for vname, az, elev in views:

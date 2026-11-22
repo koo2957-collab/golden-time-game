@@ -1653,6 +1653,12 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		anim = str(sl.anims.get(ff.id, "spray_n"))
 		dir = int(sl.k)
 		moving = false
+	elif hose and hose.fetch_until >= 0 and _hose_fetch_layout(crew, art).get("anims", {}).has(ff.id):
+		# 호스 꺼내기 (E1): 차 후면을 보고 서서 접어 쌓은 호스를 당겨 꺼낸다
+		var fl := _hose_fetch_layout(crew, art)
+		anim = str(fl.anims.get(ff.id, "hose_fetch_a"))
+		dir = int(fl.k)
+		moving = false
 	elif hose and not hose.charged and _hose_carry_layout(crew, art).get("anims", {}).has(ff.id):
 		# 호스 끼고 걷기 (E2·A6·E3, 2026-11-21 사용자가 블렌더에서 확인): 물이 차기 전 — 1번·2번은 접은 호스 묶음을 겨드랑이에 끼고,
 		# 3번은 낮은 자세로 깔린 호스를 정리하며 따라간다. 멈춰 서 있으면 첫 장으로 서 있다
@@ -1708,7 +1714,7 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 
 
 ## 여럿이 한 장면으로 구운 동작 (프레임을 조장 기준으로 맞춘다)
-const PAIRED_ANIMS := ["hose_carry_a", "hose_carry_b", "hose_tidy", "force_a", "force_b", "lift_f", "lift_b", "drag", "spray_n", "spray_h", "spray_h1", "spray_h2",
+const PAIRED_ANIMS := ["hose_fetch_a", "hose_fetch_b", "hose_carry_a", "hose_carry_b", "hose_tidy", "force_a", "force_b", "lift_f", "lift_b", "drag", "spray_n", "spray_h", "spray_h1", "spray_h2",
 	"spray_ln", "spray_lh", "spray_lh1", "spray_lh2", "search_a", "search_b", "aid_a", "aid_b",
 	"cot_a", "cot_b", "scoop_a", "scoop_b", "ovh_a", "ovh_b"]
 
@@ -2070,6 +2076,32 @@ func _search_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dicti
 	return out if not out.anims.is_empty() else {}
 
 
+## 호스 꺼내기 배치 (E1): 분대가 펌프차 후면에서 호스를 꺼내는 동안(수관 준비 시간), 1번(관창수)과 2번이 차 후면(열린 셔터)을 보고
+## 나란히 서서 접어 쌓은 호스를 두 손으로 당겨 꺼낸다. 1번은 후면 가운데에서 fetch_stand_m 뒤, 2번은 구울 때 적은 옆자리.
+## → {k 방향(차가 보는 쪽), anims {대원 id: 동작}, spots {대원 id: 칸 좌표}} 또는 빈 것 (그림이 아직 없으면 빈 것 — 서 있는 그림)
+func _hose_fetch_layout(crew: Crew, art: SpriteArt.SpriteSet) -> Dictionary:
+	if art == null or crew == null or art.frames("hose_fetch_a") <= 0:
+		return {}
+	var h := sim.water.hose_of_crew(crew.id)
+	if h == null or h.fetch_until < 0 or h.outlet >= 0:
+		return {}
+	var v := sim.units.get_vehicle(h.vehicle_id)
+	var lead := crew.leader
+	if v == null or lead == null or lead.incapacitated or lead.level != v.level:
+		return {}
+	var cell_m := sim.units.cell_size_m
+	var k := SpriteArt.dir8(v.heading)
+	var facing := Vector2.RIGHT.rotated(k * PI / 4.0)
+	var base := v.rear_point(float(HoseDraw.style().get("fetch_stand_m", 0.75)) / cell_m)
+	var out := {"k": k, "anims": {lead.id: "hose_fetch_a"}, "spots": {lead.id: base}}
+	for ff in crew.workers():
+		if ff != lead and not ff.incapacitated and ff.level == lead.level and art.frames("hose_fetch_b") > 0:
+			out.anims[ff.id] = "hose_fetch_b"
+			out.spots[ff.id] = stand_spot(base, facing, art.stand("hose_fetch_b"), cell_m)
+			break
+	return out
+
+
 ## 호스 끼고 걷기 배치 (E2·A6·E3, 2026-11-21 사용자가 블렌더에서 확인): 펌프차에서 꺼낸 호스에 아직 물이 차지 않은 동안,
 ## 관창수(1번) = hose_carry_a(접은 호스 묶음을 겨드랑이에), 다음 일하는 조원(2번) = hose_carry_b(더 큰 묶음 — 바닥으로는 여기서 떨어진다),
 ## 그다음(3번) = hose_tidy(낮은 자세로 깔린 호스를 들어 꼬임을 편다). 팀장은 그냥 걷는다. 멈춰 서 있을 때는 첫 장으로 서 있다.
@@ -2322,6 +2354,15 @@ func _ff_carry_layout(ff: Firefighter, alpha: float) -> Dictionary:
 func _shown_pos(ff: Firefighter, alpha: float) -> Vector2:
 	var p := UnitsView.display_pos(ff, alpha)
 	if not ff.incapacitated and not sim.water.hoses.is_empty():
+		# 호스 꺼내기 (E1): 1번·2번은 차 후면 앞 정해진 자리에
+		var fc := sim.units.get_crew(ff.crew_id)
+		var fh := sim.water.hose_of_crew(fc.id) if fc != null else null
+		if fh != null and fh.fetch_until >= 0:
+			var fart := SpriteArt.get_set(str(SpriteArt.config().get("crew", ""))) if not thermal else null
+			var fl := _hose_fetch_layout(fc, fart)
+			if not fl.is_empty() and fl.spots.has(ff.id):
+				return fl.spots[ff.id]
+	if not ff.incapacitated and not sim.water.hoses.is_empty():
 		var sc := sim.units.get_crew(ff.crew_id)
 		if sc != null and sc.leader != ff:
 			var sart := SpriteArt.get_set(str(SpriteArt.config().get("crew", ""))) if not thermal else null
@@ -2489,6 +2530,41 @@ func _draw_hoses(alpha := 0.0) -> void:
 		HoseDraw.draw(self, h, level, to_screen, IsoProjection.PX_PER_M, sim.building.cell_size_m, h.water_head, one, up, lay)
 
 
+## 열린 후면 셔터 (2026-11-22 사용자 결정: 차 그림을 다시 굽지 않고 게임에서 덧그린다 — 펌프차는 후면 셔터 안에 접어 쌓은 호스와
+## 동작 패널이 있다). fp = [뒤 왼쪽, 앞 왼쪽, 앞 오른쪽, 뒤 오른쪽], h = 차 높이(m). 후면이 화면 뒤쪽을 보면 그리지 않는다.
+## 크기·색은 data/ui/hose_style.json shutter_*
+func _draw_open_shutter(fp: PackedVector2Array, h: float) -> void:
+	if ((fp[0] + fp[3]) * 0.5 - (fp[1] + fp[2]) * 0.5).dot(Vector2.ONE) <= 0.0:
+		return
+	var st := HoseDraw.style()
+	var side := float(st.get("shutter_side_ratio", 0.08))
+	var a := fp[0].lerp(fp[3], side)
+	var b := fp[0].lerp(fp[3], 1.0 - side)
+	var bottom := float(st.get("shutter_bottom_m", 0.85))
+	var top := minf(float(st.get("shutter_top_m", 2.05)), h - 0.1)
+	if top <= bottom:
+		return
+	var quad := func(from: Vector2, to: Vector2, z0: float, z1: float) -> PackedVector2Array:
+		return PackedVector2Array([proj.to_screen(from, z0), proj.to_screen(to, z0), proj.to_screen(to, z1), proj.to_screen(from, z1)])
+	# 열린 칸 (어두운 안쪽)
+	draw_colored_polygon(quad.call(a, b, bottom, top), Color(str(st.get("shutter_dark_color", "#0e0e11"))))
+	# 접어 쌓은 호스
+	var rows := int(st.get("shutter_stack_rows", 7))
+	var pitch := float(st.get("shutter_stack_pitch_m", 0.07))
+	var stack_to := float(st.get("shutter_stack_ratio", 0.72))
+	var hose_color := Color(str(st.get("flat_color", "#cfc5a8")))
+	for i in rows:
+		var z0 := bottom + 0.1 + i * pitch
+		if z0 + pitch * 0.65 > top:
+			break
+		draw_colored_polygon(quad.call(a.lerp(b, 0.04), a.lerp(b, stack_to), z0, z0 + pitch * 0.65), hose_color)
+	# 동작 패널
+	draw_colored_polygon(quad.call(a.lerp(b, stack_to + 0.06), a.lerp(b, 0.96), bottom + 0.15, minf(top - 0.1, bottom + 0.75)),
+		Color(str(st.get("shutter_panel_color", "#73787f"))))
+	# 말려 올라간 셔터
+	draw_colored_polygon(quad.call(a, b, top, minf(h, top + 0.14)), Color(str(st.get("shutter_roll_color", "#9ea3a8"))))
+
+
 func _draw_vehicle(v: Vehicle, alpha: float) -> void:
 	var center := v.prev_pos.lerp(v.pos, alpha)
 	var fp := v.footprint(center)
@@ -2508,6 +2584,12 @@ func _draw_vehicle(v: Vehicle, alpha: float) -> void:
 		draw_colored_polygon(_lift(cab, h), Color(color.darkened(0.35), VEHICLE_ALPHA))
 		if not thermal:
 			_vehicle_details(v, fp, h)
+	if not thermal:
+		# 분대가 호스를 꺼내는 동안 후면 셔터가 열려 있다 (docs/motions.md E1 — 차 후면이 카메라 쪽을 볼 때만 보인다)
+		for hz in sim.water.hoses:
+			if hz.vehicle_id == v.id and hz.fetch_until >= 0:
+				_draw_open_shutter(fp, h)
+				break
 	if not thermal:
 		# 운전원 작업 진행 막대 (기획안 6-1)
 		var wp := sim.water.work_progress(v)

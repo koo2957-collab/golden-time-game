@@ -944,6 +944,34 @@
   {
    "target": "firefighter_v2",
    "pivot_object": "FF_A",
+   "frames": 12,
+   "frame_start": 1,
+   "hide": [
+    "wall_",
+    "door_",
+    "floor",
+    "ctx_"
+   ],
+   "scale": 0.75,
+   "frame": [
+    128,
+    144
+   ],
+   "anchor": [
+    64,
+    96
+   ],
+   "name": "hose_fetch",
+   "blend": "tools/blender/scenes/hose_fetch.blend",
+   "note": "E1 호스 꺼내기: 1번 관창수(hose_fetch_a)와 2번 관창보조(hose_fetch_b, 1번 왼쪽 옆 0.72m)가 펌프차 후면(열린 셔터)을 보고 나란히 서서, 접어 쌓은(아코디언) 호스를 두 손으로 잡아 몸 쪽으로 당겨 꺼내기를 되풀이한다 (2번은 반 박자 늦게). 차 후면은 보기용 — 게임에서는 차 그림 위에 열린 셔터를 덧그린다 (2026-11-22 사용자 결정 (가)). 장면은 tools/blender/build_hose_fetch.py 로 만든다. 기준점 = 1번 (차 후면에서 0.75m)",
+   "actors": {
+    "hose_fetch_a": "FF_A",
+    "hose_fetch_b": "FF_B"
+   }
+  },
+  {
+   "target": "firefighter_v2",
+   "pivot_object": "FF_A",
    "frames": 8,
    "frame_start": 1,
    "hide": [

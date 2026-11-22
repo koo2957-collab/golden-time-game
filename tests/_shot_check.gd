@@ -66,6 +66,10 @@ func _run() -> void:
 		await _hose(world, sim, out)
 		quit()
 		return
+	if mode == "fetch":
+		await _fetch(world, sim, out)
+		quit()
+		return
 	# 1) 팀장 표시: 4명 분대(구조대)를 크게 — 고르지 않음 / 고름
 	var squad_crew: Crew = null
 	for c in sim.units.crews:
@@ -250,6 +254,40 @@ func _more(world, sim: SimWorld, out: String) -> void:
 	vic.carried_by = -1
 	sq.type = old_type
 	print("저장 ", out, " · A7·A8·A9·A10")
+
+
+## 호스 꺼내기 (모드 fetch — docs/motions.md E1, 2026-11-22): 진압 분대가 펌프차 후면에서 호스를 꺼내는 동안 — 열린 후면 셔터와 꺼내는 동작.
+## 후면이 화면 쪽을 보게 펌프차를 돌려 세운다 (견본 — 실제 진행에서는 차가 도착한 방향 그대로라 후면이 안 보일 수 있다)
+func _fetch(world, sim: SimWorld, out: String) -> void:
+	var crew: Crew = null
+	for c in sim.units.crews:
+		if sim._default_mission(c) == "attack" and not c.leader.aboard:
+			crew = c
+			break
+	if crew == null:
+		print("진압 분대 없음")
+		return
+	var pump := sim.water._nearest_pump(crew.leader.pos)
+	var v := sim.units.get_vehicle(pump)
+	v.heading = -v.heading
+	v.prev_pos = v.pos
+	sim.clock.paused = false
+	if not sim.water.lay_hose(crew.id, pump, sim.clock.tick):
+		print("수관 연장 실패")
+		return
+	var h := sim.water.hose_of_crew(crew.id)
+	for i in 1200:
+		if not h.to_outlet:
+			break
+		sim.step_ticks(1)
+		sim.cards.queue.clear()
+	sim.step_ticks(60)
+	sim.clock.paused = true
+	world.camera.zoom = Vector2(2.2, 2.2)
+	world.camera.position = world.projection().to_screen(v.rear_point(1.0), 0.6)
+	root.warp_mouse(Vector2(10, 10))
+	await _save(out, "E_hose_fetch")
+	print("저장 ", out, " · 꺼내는 중 ", h.fetch_until >= 0, " · 차 방향 ", v.heading)
 
 
 ## 소방호스 그림 (모드 hose — docs/motions.md D1·D2·D4): 진압 분대가 펌프차에서 현관 앞까지 수관을 깔고,

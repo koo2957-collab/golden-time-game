@@ -70,6 +70,10 @@ func _run() -> void:
 		await _fetch(world, sim, out)
 		quit()
 		return
+	if mode == "ready":
+		await _ready_stance(world, sim, out)
+		quit()
+		return
 	# 1) 팀장 표시: 4명 분대(구조대)를 크게 — 고르지 않음 / 고름
 	var squad_crew: Crew = null
 	for c in sim.units.crews:
@@ -254,6 +258,58 @@ func _more(world, sim: SimWorld, out: String) -> void:
 	vic.carried_by = -1
 	sq.type = old_type
 	print("저장 ", out, " · A7·A8·A9·A10")
+
+
+## 문 앞 방수태세 (모드 ready — docs/motions.md E4, 2026-11-22): 수관을 가진 진압 분대가 불난 건물 출입문을 여는(부수는) 동안,
+## 관창수가 문 옆에서 낮은 자세로 관창을 문에 겨누고 있는 모습
+func _ready_stance(world, sim: SimWorld, out: String) -> void:
+	var crew: Crew = null
+	for c in sim.units.crews:
+		if sim._default_mission(c) == "attack" and not c.leader.aboard:
+			crew = c
+			break
+	if crew == null:
+		print("진압 분대 없음")
+		return
+	sim.clock.paused = false
+	var pump := sim.water._nearest_pump(crew.leader.pos)
+	if sim.water.hose_of_crew(crew.id) == null and not sim.water.lay_hose(crew.id, pump, sim.clock.tick):
+		print("수관 연장 실패")
+		return
+	var h := sim.water.hose_of_crew(crew.id)
+	for i in 1500:
+		if not h.to_outlet and h.fetch_until < 0:
+			break
+		sim.step_ticks(1)
+		sim.cards.queue.clear()
+	var door := Vector2i(-1, -1)
+	for e in sim.entries.list:
+		if e.level == 1 and not e.neighbour and (door.x < 0 or crew.leader.pos.distance_to(Vector2(e.door)) < crew.leader.pos.distance_to(Vector2(door))):
+			door = Vector2i(e.door)
+	if door.x < 0 or not sim.doors.request(crew.id, Vector3i(door.x, door.y, 1), true, sim.clock.tick):
+		print("문 개방 지시 실패 ", door)
+		return
+	var seen := false
+	for i in 2500:
+		sim.step_ticks(1)
+		sim.cards.queue.clear()
+		var t := sim.doors.task_of_crew(crew.id)
+		if t != null and t.open and not t.waiting_people and not crew.leader.is_moving() and crew.leader.pos.distance_to(Vector2(door) + Vector2(0.5, 0.5)) <= 3.5 and t.progress > 1.0:
+			seen = true
+			break
+		if t == null and i > 50:
+			break
+	sim.clock.paused = true
+	world.camera.zoom = Vector2(2.6, 2.6)
+	world.camera.position = world.projection().to_screen(Vector2(door) + Vector2(0.5, 1.5), 0.6)
+	root.warp_mouse(Vector2(10, 10))
+	await _save(out, "E_door_ready")
+	var o := sim.fire.opening_at(Vector3i(door.x, door.y, 1))
+	print("저장 ", out, " · 문 작업 중 ", seen, " · 잠김 ", o.locked if o else false, " · 수관 충수 ", h.charged, " · 분대 ", crew.workers().size(), "명")
+	var where := ""
+	for ff in crew.members():
+		where += " %s%s(%.1f,%.1f)" % ["팀장" if ff.officer else "", "선두" if ff == crew.leader else "", ff.pos.x, ff.pos.y]
+	print("문 ", door, " · 대원", where)
 
 
 ## 호스 꺼내기 (모드 fetch — docs/motions.md E1, 2026-11-22): 진압 분대가 펌프차 후면에서 호스를 꺼내는 동안 — 열린 후면 셔터와 꺼내는 동작.

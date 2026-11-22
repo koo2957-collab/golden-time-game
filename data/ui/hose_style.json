@@ -29,6 +29,8 @@
   "carry_drop_m": {"value": 0.8, "source": "화면 설정", "note": "호스 끼고 걷기(E2): 2번 대원의 묶음에서 늘어진 호스가 바닥에 닿는 곳 — 2번 뒤로 이만큼. 게임이 그리는 바닥 호스는 여기서 끝난다 (그 앞은 대원 그림에 들어 있다 — tools/blender/build_hose_carry.py 와 맞춘 값)"},
   "tidy_gap_front_m": {"value": 0.94, "source": "화면 설정", "note": "호스 정리(E3): 3번 대원이 들어 올린 호스가 앞쪽 바닥에 닿는 곳 — 3번 앞으로 이만큼. 그 사이는 바닥 호스를 그리지 않는다 (같은 호스 한 줄 — 그림에 들어 있다)"},
   "tidy_gap_back_m": {"value": 0.86, "source": "화면 설정", "note": "호스 정리(E3): 들어 올린 호스가 뒤쪽 바닥에 닿는 곳 — 3번 뒤로 이만큼"},
+  "ready_back_m": {"value": 1.1, "source": "화면 설정", "note": "문 앞 방수태세(E4): 관창수가 문에서 이만큼 물러나 낮은 자세로 관창을 문에 겨눈다 (화재1 화점실 진입 '방수태세를 갖춘 후 개방')"},
+  "ready_side_m": {"value": 0.4, "source": "화면 설정", "note": "문 앞 방수태세(E4): 문을 여는 사람의 반대쪽 옆으로 이만큼 비킨다 (화재1 '문의 측면에 위치해'). 문을 부술 때는 두 사람이 문틈 양쪽에 서므로 비키지 않는다"},
   "fetch_stand_m": {"value": 0.75, "source": "화면 설정", "note": "호스 꺼내기(E1): 1번 대원이 차 후면에서 이만큼 떨어져 선다 (tools/blender/build_hose_fetch.py 의 REAR_Y와 맞춘 값 — 손이 열린 칸에 닿는 거리)"},
   "shutter_side_ratio": {"value": 0.08, "source": "화면 설정", "note": "열린 후면 셔터(호스를 꺼내는 동안 차 후면에 덧그린다 — docs/motions.md E1, 2026-11-22 사용자 결정 (가)): 차 폭 양쪽에서 이 비율만큼 안쪽"},
   "shutter_bottom_m": {"value": 0.85, "source": "화면 설정", "note": "열린 칸의 아래 높이 (m)"},

@@ -257,6 +257,28 @@ func test_door_force_two_sides() -> void:
 	assert_eq(FloorLayer.force_frame(one, Vector2(2.5, 5.8)).facing, Vector2(1, 0), "왼쪽에서 오른쪽 문을 본다")
 
 
+## E4 문 앞 방수태세 (2026-11-22): 다른 조원이 문을 확인·개방·파괴하는 동안 관창수는 문 옆에서 낮은 자세로 관창을 문에 겨눈다.
+## 새 그림 없이 낮은 자세 방수(A5 spray_ln)를 쓴다. 자리 = 문에서 물러나, 문을 여는 사람의 반대쪽 옆
+func test_door_ready_stance_spot() -> void:
+	var crew := SpriteArt.get_set(str(SpriteArt.config().crew))
+	assert_true(crew.frames("spray_ln") > 0, "낮은 자세 방수 그림 (관창수)")
+	var st := HoseDraw.style()
+	var back := float(st.ready_back_m) / 0.5
+	var side := float(st.ready_side_m) / 0.5
+	assert_true(back > 1.0 and side > 0.0 and side < back, "문에서 물러나는 거리·옆으로 비키는 거리 (%.1f · %.1f칸)" % [back, side])
+	# 아래(+y)에서 위의 문을 본다: 문 가운데 (11, 20.5), 보는 방향 (0, -1) → 오른쪽 = (1, 0)
+	var center := Vector2(11.0, 20.5)
+	var facing := Vector2(0, -1)
+	# 여는 사람이 문 오른쪽(+x)에 서면 관창수는 왼쪽으로 비킨다
+	var spot := FloorLayer.door_ready_spot(center, facing, Vector2(12.2, 21.0), back, side)
+	assert_true(spot.is_equal_approx(Vector2(11.0 - side, 20.5 + back)), "여는 사람의 반대쪽 옆, 문 앞 (%s)" % spot)
+	assert_eq(SpriteArt.dir8(center - spot), SpriteArt.dir8(Vector2(side, -back)), "관창은 문을 겨눈다")
+	# 여는 사람이 왼쪽이면 오른쪽으로
+	assert_true(FloorLayer.door_ready_spot(center, facing, Vector2(9.8, 21.0), back, side).x > 11.0, "반대쪽")
+	# 문을 부술 때(두 사람이 문틈 양쪽): 비키지 않고 가운데 뒤
+	assert_true(FloorLayer.door_ready_spot(center, facing, null, back, side).is_equal_approx(Vector2(11.0, 20.5 + back)), "가운데 뒤")
+
+
 ## A2 2인 운반 (2026-11-15 사용자가 블렌더에서 확인): 앞사람(조장)·뒷사람(짝)·구조대상자를 한 장면으로 구웠다
 func test_two_person_carry_baked_together() -> void:
 	var crew := SpriteArt.get_set(str(SpriteArt.config().crew))

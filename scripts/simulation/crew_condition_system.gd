@@ -62,6 +62,11 @@ var _heat_event_tick: Dictionary = {}  # "종류:조" -> tick
 var _stress_retreat := 0.5
 ## 물러나는 조의 목적지 {crew id: 길 끝 칸}
 var _retreat_goal: Dictionary = {}
+## 퇴로 차단 (2026-11-25): 열기에 길이 막히기 시작한 틱 {crew id: tick} · 막힌 마지막 틱 · 고립을 보고한 조 {crew id: tick}
+var _blocked_since: Dictionary = {}
+var _blocked_last: Dictionary = {}
+var _trapped: Dictionary = {}
+var _trapped_ticks := 300
 
 
 func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, stats: ParamTable, p_events: SimEventLog) -> void:
@@ -94,6 +99,7 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, stats
 	_swap_s = stats.value("scba_swap_s")
 	_swap_range = stats.value("scba_swap_range_m") / _cell_m
 	_air_full = stats.value("scba_air_l")
+	_trapped_ticks = roundi((stats.value("trapped_report_s") if stats.params.has("trapped_report_s") else 30.0) / SimClock.TICK_DT)
 	for ff in units.firefighters:
 		init_member(ff)
 
@@ -194,10 +200,36 @@ func before_move(tick: int) -> void:
 			for ff in c.list:
 				ff.path.clear()
 			_heat_event(c, "heat_blocked", tick)
+			_check_trapped(c, tick)
 			# 인명검색·구조 중이었으면 임무를 멈추고, 문턱에 서 있지 않고 방 밖 식은 곳까지 물러나 지시를 기다린다
 			# (문턱 안쪽에 서 있다가 플래시오버에 쓰러졌다). 방수하러 다가가는 조는 그대로 — 그 자리에서 쏜다
 			if _stop_task(c, tick, "blocked"):
 				_retreat(c, tick)
+
+
+## 퇴로 차단 (2026-11-25 — 튜토리얼 자동 진행에서 2층 검색을 마치고 나오려던 구조 분대가 1층 거실(불난 방)을 지나는 길이 열기로
+## 막혀 '열기 접근 불가'만 10초마다 되풀이하다 열 스트레스로 쓰러졌다. 지휘관은 고립된 줄 몰랐다):
+## 건물 안의 조가 trapped_report_s 동안 줄곧 열기에 길이 막히면 '퇴로 차단 — 고립' 을 보고하고(지휘관이 엄호 방수·사다리·RIT 로
+## 퇴로를 열 수 있게) 그 층의 가장 식은 곳으로 물러나 기다린다. 한 번 보고한 뒤에는 길이 다시 열려 움직일 때까지 또 보고하지 않는다
+func _check_trapped(c: Crew, tick: int) -> void:
+	var last := int(_blocked_last.get(c.id, -1))
+	# 막힘이 잠시(보고 시간의 절반 넘게) 풀렸으면 처음부터 다시 센다 — 고립 보고도 잊는다 (다음에 또 막히면 다시 보고)
+	if last < 0 or tick - last > _trapped_ticks / 2:
+		_blocked_since[c.id] = tick
+		_trapped.erase(c.id)
+	_blocked_last[c.id] = tick
+	if _trapped.has(c.id):
+		return
+	if tick - int(_blocked_since.get(c.id, tick)) < _trapped_ticks:
+		return
+	var leader := c.leader
+	if fire.building.cell(leader.level, floori(leader.pos.x), floori(leader.pos.y)) in BuildingData.OUTDOOR:
+		return
+	_trapped[c.id] = tick
+	var room := fire.compartment_at(leader.level, floori(leader.pos.x), floori(leader.pos.y))
+	events.add(tick, "crew_trapped", {"crew": _crew_name(c), "crew_id": c.id, "floor": fire.building.floor_name(leader.level),
+		"room": room.display_name() if room else ""})
+	_retreat(c, tick, "heat_retreat")
 
 
 ## 열기 때문에 하던 임무를 멈춘다 (SimWorld가 넣은 on_heat_stop) — 멈춘 임무가 있었는가

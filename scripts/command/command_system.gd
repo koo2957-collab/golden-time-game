@@ -24,6 +24,7 @@ const DISPATCH_CENTER := "119종합상황실"
 const AUTO_SLOW_TYPES: Array[String] = [
 	"ff_down", "mayday", "par_no_response", "air_alarm", "victim_found", "rollover_sign", "backdraft_sign", "backdraft",
 	"fgi_warning", "flashover", "rekindle", "collapse_sign", "collapse", "gas_explosion", "exposure_ignition", "jump_risk", "sign_warning", "shaft_ignition",
+	"crew_trapped",
 ]
 ## 대원이 무전으로 보고하는 사건과 우선순위 (107-1.3). 대원 쓰러짐은 SafetySystem의 긴급탈출 선언으로 보고한다
 const REPORT_PRIORITY := {
@@ -42,6 +43,7 @@ const REPORT_PRIORITY := {
 	"hose_charged": Radio.Priority.TACTICS,
 	"door_stack": Radio.Priority.TACTICS,
 	"air_swap_out": Radio.Priority.SAFETY,
+	"crew_trapped": Radio.Priority.SAFETY,
 	"door_close_failed": Radio.Priority.TACTICS,
 	"air_swap_done": Radio.Priority.TACTICS,
 	"hose_takeover": Radio.Priority.TACTICS,

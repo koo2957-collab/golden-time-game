@@ -48,6 +48,8 @@ static func describe_text(e: Dictionary) -> String:
 			text = "문을 닫을 수 없음 (파괴됨·통로에 사람) — %s" % e.crew
 		"door_unreachable":
 			text = "문 앞으로 갈 수 없음 — %s" % e.crew
+		"crew_trapped":
+			text = "퇴로 차단 — 열기로 나가는 길이 막힘, %s %s 식은 곳에서 대기, 엄호 방수·구조 요청 — %s" % [e.floor, e.room, e.crew]
 		"hose_abandoned":
 			text = "관창으로 가지 못함 — 수관을 놓아 둔다 — %s" % e.crew
 		"door_close_failed":

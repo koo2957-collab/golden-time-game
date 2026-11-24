@@ -362,22 +362,56 @@ func lay_hose(crew_id: int, vehicle_id: int, tick: int) -> bool:
 	return true
 
 
-## 방수 시작. 수관이 없으면 가장 가까운 펌프차에서 자동으로 연장하고,
+## 목표 층에서 쓸 수관이 옥내 방수구(연결송수관·옥내소화전)에서 나오는가 — 그러면 그 층에 올라가서 결합한다 (차에서 꺼내 가지 않는다)
+func uses_outlet(target_level: int) -> bool:
+	var standpipe_ok := fdc_vehicle >= 0 or (building.indoor_lpm > 0.0 and indoor_tank_l > 0.0)
+	return standpipe_ok and target_level > 1 and building.outlet_on(target_level) >= 0
+
+
+## 수관이 없으면 연장을 시작한다: 목표 층에 쓸 방수구가 있으면 방수구에서, 아니면 펌프차 후면에서 꺼낸다
+## (자기 출동대의 펌프차 먼저, 없으면 가장 가까운 펌프차 — 2026-11-24 사용자·현직 소방관: 진압 지시를 받으면 본인 차량에서 호스를 챙겨 간다).
+## 이미 수관이 있으면 그대로 true. 연장을 시작할 수 없으면 false
+func ensure_hose(crew_id: int, target_level: int, tick: int) -> bool:
+	var c := units.get_crew(crew_id)
+	if c == null:
+		return false
+	if hose_of_crew(crew_id) != null:
+		return true
+	if uses_outlet(target_level) and lay_hose_outlet(crew_id, building.outlet_on(target_level), tick, false):
+		return true
+	var pump := _own_pump(c)
+	if pump >= 0 and lay_hose(crew_id, pump, tick):
+		return true
+	var near := _nearest_pump(c.leader.pos)
+	return near >= 0 and near != pump and lay_hose(crew_id, near, tick)
+
+
+## 펌프차 후면에서 호스를 꺼내는 중인가 (후면으로 가는 중이거나 꺼내느라 서 있는 중) — 끝나야 현장으로 간다
+func fetching(crew_id: int) -> bool:
+	var h := hose_of_crew(crew_id)
+	return h != null and h.outlet < 0 and (h.to_outlet or h.fetch_until >= 0)
+
+
+## 그 조의 출동대 펌프차 (여러 대면 가장 가까운 것). 없으면 -1
+func _own_pump(c: Crew) -> int:
+	var best := -1
+	var best_d := INF
+	for v in units.vehicles_of_squad(c.squad_id):
+		if v.is_pump() and v.distance_to_body(c.leader.pos) < best_d:
+			best_d = v.distance_to_body(c.leader.pos)
+			best = v.id
+	return best
+
+
+## 방수 시작. 수관이 없으면 펌프차(자기 차 먼저)에서 자동으로 연장하고,
 ## 목표가 사거리 밖이거나 벽에 가려 있으면 물줄기가 닿는 위치까지 먼저 이동한다.
 func start_spray(crew_id: int, target: Vector3i, pattern: HoseLine.Pattern, tick: int) -> bool:
 	var c := units.get_crew(crew_id)
 	if c == null:
 		return false
+	if not ensure_hose(crew_id, target.z, tick):
+		return false
 	var h := hose_of_crew(crew_id)
-	if h == null:
-		# 연결송수관이 살아 있고 목표 층에 방수구가 있으면 방수구에서, 아니면 가장 가까운 펌프차에서
-		var standpipe_ok := fdc_vehicle >= 0 or (building.indoor_lpm > 0.0 and indoor_tank_l > 0.0)
-		var outlet := building.outlet_on(target.z) if standpipe_ok and target.z > 1 else -1
-		if outlet < 0 or not lay_hose_outlet(crew_id, outlet, tick, false):
-			var pump := _nearest_pump(c.leader.pos)
-			if pump < 0 or not lay_hose(crew_id, pump, tick):
-				return false
-		h = hose_of_crew(crew_id)
 	h.pattern = pattern
 	h.target = target
 	h.aim = Vector2(target.x + 0.5, target.y + 0.5)

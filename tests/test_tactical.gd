@@ -44,6 +44,10 @@ func test_attack_opens_locked_door_and_sprays() -> void:
 func test_levels_halt_at_doors() -> void:
 	var sim := _sim("중급")
 	sim.issue(TacticalCommand.make("attack", [0], LIVING))
+	# 화재진압은 호스부터 (2026-11-24) — 문은 호스를 꺼내 온 뒤에 본다
+	sim.step_ticks(20)
+	assert_true(_halts(sim).is_empty() and sim.water.fetching(0), "호스를 꺼내는 동안에는 문으로 가지 않는다")
+	fetch_hose(sim, 0)
 	sim.step_ticks(20)
 	var h := _halts(sim)
 	assert_true(h.size() == 1 and h[0].contains("잠김"), "중급: 잠긴 문은 지시를 기다린다 (%s)" % [h])
@@ -73,6 +77,10 @@ func test_backdraft_sign_door_not_opened() -> void:
 		ff.path.clear()
 		ff.pos = Vector2(14.5 + ff.id % 2, 9.5)
 		ff.prev_pos = ff.pos
+	# 화재진압은 호스부터 (2026-11-24): 호스를 이미 꺼내 문 앞까지 깔아 온 조에게 지시한다
+	# (호스가 없으면 차로 돌아갔다가 열린 현관으로 들어가 이 문을 지나지 않는다)
+	assert_true(sim.water.ensure_hose(0, 1, sim.clock.tick), "수관 연장")
+	fetch_hose(sim, 0)
 	sim.issue(TacticalCommand.make("attack", [0], LIVING))
 	sim.step_ticks(30)
 	var h := _halts(sim)

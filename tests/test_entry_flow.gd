@@ -77,7 +77,13 @@ func test_neighbour_door_not_used_for_floor_mission() -> void:
 		ff.aboard = false
 		ff.level = e_nb.level
 		ff.pos = Vector2(e_nb.outside.x, e_nb.outside.y) + Vector2(0.5, 0.5)
+	var near: EntryPoints.Entry = sim.command._approach_entry([0] as Array[int])
+	assert_true(near != null and not near.neighbour, "옆집 문 앞에서 골라도 불난 건물 문 (%s)" % (near.name if near else "없음"))
 	sim.issue(CommandOrder.make("floor_mission", [0] as Array[int], e_nb.level, Vector3i.ZERO, {"kind": "attack", "entry": -1}))
 	sim.step_ticks(1)
+	# 화재진압은 호스부터 (2026-11-24): 자기 펌프차 후면에서 호스를 꺼낸 뒤에 진입구로 간다
+	assert_true(sim.water.fetching(0) and not sim.command.approach.has(0), "호스를 꺼내는 동안에는 진입구로 가지 않는다")
+	fetch_hose(sim, 0, false)
+	sim.step_ticks(2)
 	var ei := int(sim.command.approach.get(0, -1))
 	assert_true(ei >= 0 and not sim.entries.list[ei].neighbour, "가까운 옆집 문 대신 불난 건물 문 (%s)" % (sim.entries.list[ei].name if ei >= 0 else "없음"))

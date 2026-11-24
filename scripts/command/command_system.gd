@@ -167,6 +167,8 @@ var floor_goals: Dictionary = {}
 var stair_asks: Dictionary = {}
 ## 층에 닿으면 시작할 층 단위 임무 {crew id: "search"·"attack"} (지시 창 floor_mission, 2026-11-17)
 var floor_missions: Dictionary = {}
+## 화재진압 임무를 받고 펌프차 후면에서 호스를 꺼내는 중인 밖의 조 {crew id: {level, entry, kind}} — 다 꺼내면 진입구로 간다 (2026-11-24)
+var _hose_first: Dictionary = {}
 ## 층 임무 화재진압이 닿았을 때 잔불정리로 바꾸는 곳 (crew id, 층, tick) -> 바꿨으면 true (SimWorld가 넣는다)
 var floor_overhaul: Callable
 ## 계단실 (SimWorld가 만든다)
@@ -502,6 +504,7 @@ func step(dt: float, tick: int) -> void:
 		if e.type == "tactical_start" and not _entry_denied.is_empty():
 			clear_entry_denied(_squad_of_sender(str(e.get("crew", ""))))
 	safety.step(tick)
+	_step_hose_first(tick)
 	_step_approach(tick)
 	_step_floor_goals(tick)
 	_check_span(tick)
@@ -1454,10 +1457,47 @@ func order_floor(crew_ids: Array, level: int, e: EntryPoints.Entry, tick: int) -
 func order_floor_mission(crew_ids: Array, level: int, e: EntryPoints.Entry, kind: String, tick: int) -> void:
 	if not fire.building.has_level(level) or not kind in ["search", "attack"]:
 		return
-	order_floor(crew_ids, level, e, tick)
+	# 화재진압은 호스부터 (2026-11-24 사용자·현직 소방관): 밖에서 대기하던 조는 문으로 가지 않고 자기 펌프차 후면에서 호스를 꺼낸 뒤
+	# 깔면서 진입구로 간다 (docs/motions.md E1 → E4). 전에는 문을 열고 건물에 들어선 뒤에야 차로 돌아가 호스를 꺼냈다.
+	# 목표 층의 옥내 방수구를 쓸 수 있으면(연결송수관) 차에서 꺼내 가지 않는다 — 그 층에서 결합한다
+	var now: Array = []
 	for id in crew_ids:
-		if units.get_crew(int(id)) != null:
-			floor_missions[int(id)] = kind
+		var c := units.get_crew(int(id))
+		if c == null:
+			continue
+		if kind == "attack" and water and not _indoor(c.leader.level, c.leader.pos) and not water.uses_outlet(level) \
+				and (water.hose_of_crew(c.id) != null or water.ensure_hose(c.id, level, tick)) and water.fetching(c.id):
+			if tactical:
+				tactical.cancel(c.id)
+			if doors:
+				doors.cancel(c.id)
+			clear_floor_goal(c.id)
+			_hose_first[c.id] = {"level": level, "entry": e, "kind": kind}
+			floor_missions[c.id] = kind
+			continue
+		now.append(c.id)
+	if now.is_empty():
+		return
+	order_floor(now, level, e, tick)
+	for id: int in now:
+		floor_missions[id] = kind
+
+
+## 호스를 다 꺼낸 조를 진입구로 보낸다 (order_floor_mission 이 미뤄 둔 것)
+func _step_hose_first(tick: int) -> void:
+	if _hose_first.is_empty() or water == null:
+		return
+	for id: int in _hose_first.keys():
+		var c := units.get_crew(id)
+		if c == null or c.leader.incapacitated or water.hose_of_crew(id) == null:
+			_hose_first.erase(id)
+			continue
+		if water.fetching(id):
+			continue
+		var w: Dictionary = _hose_first[id]
+		_hose_first.erase(id)
+		order_floor([id], int(w.level), w.entry, tick)
+		floor_missions[id] = str(w.kind)
 
 
 ## 진입구 앞에서 진입 허가를 기다리는 출동대 (P4-5 동시 진입)
@@ -1666,6 +1706,7 @@ func clear_floor_goal(id: int) -> void:
 	approach.erase(id)
 	floor_goals.erase(id)
 	floor_missions.erase(id)
+	_hose_first.erase(id)
 	stair_asks.erase(id)
 	_floor_routed.erase(id)
 

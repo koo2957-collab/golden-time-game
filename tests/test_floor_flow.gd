@@ -146,6 +146,11 @@ func test_floor_mission_starts_at_door_when_blocked() -> void:
 	sim.issue(CommandOrder.make("floor_mission", [0] as Array[int], e.level, Vector3i.ZERO, {"kind": "attack", "entry": e.index}))
 	sim.step_ticks(1)
 	assert_true(sim.command.floor_missions.has(0), "층 임무 받음")
+	# 화재진압은 호스부터 (2026-11-24): 문으로 가기 전에 자기 펌프차 후면에서 호스를 꺼낸다
+	assert_true(sim.water.fetching(0) and not sim.command.approach.has(0), "호스를 꺼내는 동안에는 진입구로 가지 않는다")
+	fetch_hose(sim, 0)
+	sim.step_ticks(2)
+	assert_true(sim.command.floor_missions.has(0), "호스를 꺼낸 뒤에도 층 임무는 그대로")
 	# 문은 열렸고 허가도 났는데(진입구 단계 끝) 안으로 못 들어가고 밖에 서 있다
 	sim.command.approach.erase(0)
 	_place(c, e.level, Vector2i(e.outside.x, e.outside.y))

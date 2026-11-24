@@ -47,6 +47,9 @@ class Task:
 	## 직하층 확인: 남은 방 (구획 index)과 위·아래 세대 이름
 	var unit_rooms: Array[int] = []
 	var unit_check: Dictionary = {}
+	## 화재진압은 호스부터 (2026-11-24): 수관 연장을 한 번 시켰는가 / 펌프차 후면에서 꺼내 오기를 기다리는 중인가
+	var hose_asked := false
+	var hose_wait := false
 
 
 var fire: FireSim
@@ -201,6 +204,20 @@ func step(tick: int) -> void:
 		if c.leader.incapacitated:
 			tasks.erase(t)
 			continue
+		# 화재진압은 호스부터 (2026-11-24 사용자·현직 소방관): 수관이 없으면 문·진입구로 가기 전에 자기 펌프차 후면에서 호스를 꺼낸다.
+		# 꺼내는 동안은 기다리고, 다 꺼내면 깔면서 간다 (문 목록은 그 자리에서 다시 정한다).
+		# 목표 층의 옥내 방수구를 쓸 수 있으면 그 층에서 결합하므로 기다리지 않는다. 연장을 시작할 수 없으면 예전처럼 간다 (방수 위치에서 알린다)
+		if t.action == "attack" and t.phase == Phase.DOORS and not water.uses_outlet(t.target.z):
+			if not t.hose_asked and water.hose_of_crew(t.crew_id) == null:
+				t.hose_asked = true
+				water.ensure_hose(t.crew_id, t.target.z, tick)
+			if water.fetching(t.crew_id):
+				t.hose_wait = true
+				continue
+			if t.hose_wait:
+				t.hose_wait = false
+				if t.room >= 0 and t.via.x < 0:
+					t.doors = _closed_doors_to(c, fire.comps[t.room])
 		if t.via.x >= 0:
 			# 고른 진입구 바깥 칸까지 먼저 간다
 			if c.leader.level == t.via.z and c.leader.pos.distance_to(Vector2(t.via.x, t.via.y) + Vector2(0.5, 0.5)) <= 1.5:

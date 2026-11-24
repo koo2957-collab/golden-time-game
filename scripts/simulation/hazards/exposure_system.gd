@@ -253,7 +253,8 @@ func _protected(p: Pair) -> bool:
 	var a := _center(p.source)
 	var b := _center(p.target)
 	for h in water.hoses:
-		if not h.flowing:
+		# 실제로 물이 나가는 관창만 (2026-11-24 — 전에는 방수 지시만 있으면, 가는 중·충수 전·물 끊김에도 지킨 것으로 쳤다)
+		if not h.spraying:
 			continue
 		if p.vertical and h.target.z != p.source.level and h.target.z != p.target.level:
 			continue

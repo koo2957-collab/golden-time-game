@@ -62,6 +62,7 @@ func _run() -> void:
 	hose.vehicle_id = sim.units.vehicles[0].id
 	hose.crew_id = crews[0].id
 	hose.flowing = true
+	hose.spraying = true
 	hose.flow_fraction = 1.0
 	hose.pattern = HoseLine.Pattern.STRAIGHT
 	hose.aim = Vector2(57.5, road_y + 2.0)

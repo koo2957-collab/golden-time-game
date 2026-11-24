@@ -17,6 +17,10 @@ var max_cells := 0.0
 var at_limit := false
 
 var flowing := false
+## 이번 틱에 관창에서 실제로 물이 나갔는가 (WaterSystem._apply_sprays). flowing 은 '방수하라는 지시'라서 방수 위치로 가는 중·
+## 충수 전·다른 층·물 끊김에도 참이다 — 물줄기 그림·엄호·경계 판정은 이 값을 본다 (2026-11-24: 걸어가는 조에서 예전 자리로
+## 물줄기가 계속 그려져 '사람은 앞을 보는데 물은 옆으로' 나갔다)
+var spraying := false
 ## 방수 위치로 이동 중 (도착하면 물을 쏘기 시작)
 var approaching := false
 ## 보이는 화점이 없을 때 다음으로 전진 위치를 찾을 틱

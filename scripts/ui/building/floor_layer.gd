@@ -2917,9 +2917,9 @@ func _draw_hoses(alpha := 0.0) -> void:
 		# 문 앞 방수태세 (E4): 관창수가 문 옆에서 겨눈 관창의 결합구까지 호스가 올라간다.
 		# 이때 다른 조원은 문을 열고 있어 호스를 끼고 있지 않다 — 끼고 걷기 배치보다 먼저 본다
 		if hose_crew != null and art != null and not h.flowing and h.fetch_until < 0:
-			var ready := _ready_hose_end(hose_crew, art, h)
-			if not ready.is_empty():
-				carry = ready
+			var ready_end := _ready_hose_end(hose_crew, art, h)
+			if not ready_end.is_empty():
+				carry = ready_end
 		if carry.has("ground_end") or carry.has("gap"):
 			lay = lay.duplicate()
 			if carry.has("ground_end"):
@@ -3072,7 +3072,8 @@ func _vehicle_details_sprite(v: Vehicle, center: Vector2) -> void:
 func _draw_sprays(alpha: float) -> void:
 	var t := Time.get_ticks_msec() / 1000.0
 	for h in sim.water.hoses:
-		if not h.flowing or h.flow_fraction <= 0.0:
+		# 실제로 물이 나간 틱만 그린다 (HoseLine.spraying, 2026-11-24 — 전에는 방수 위치로 걸어가는 동안에도 예전 자리로 물줄기가 남았다)
+		if not h.flowing or h.flow_fraction <= 0.0 or not h.spraying:
 			continue
 		var leader := sim.units.get_crew(h.crew_id).leader
 		if leader.level != level:

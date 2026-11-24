@@ -311,8 +311,10 @@ func _connect_at_outlet(h: HoseLine, c: Crew, tick: int) -> void:
 	else:
 		_begin_fetch(h, c, tick)
 		events.add(tick, "hose_laid", {"crew": _crew_name(c), "vehicle": _name(units.get_vehicle(h.vehicle_id))})
-	if h.flowing:
-		_approach(h, c, tick)
+	# 방수 지시를 받고 꺼내 왔다: 방수 위치로 간다. 닿는 자리가 없으면(다른 층의 창 등) 방수를 접는다 —
+	# 전에는 접지 않아 차 뒤에 선 채 '방수 중'으로 남아 탱크 물만 비웠다 (2026-11-24)
+	if h.flowing and not _approach(h, c, tick):
+		stop_spray(c.id, tick)
 
 
 ## 펌프차 후면에서 호스를 꺼낸다 (docs/motions.md E1): 수관 준비 시간(crew_hose_prep_s, 혼자면 2배) 동안 분대가 서 있고,
@@ -806,7 +808,9 @@ func _update_supply(dt: float, tick: int) -> void:
 			continue
 		var flowing: Array[HoseLine] = []
 		for h in hoses_of_vehicle(v.id):
-			if h.flowing and not h.approaching and h.charged and tick >= h.resupply_until:
+			# 관창수가 목표와 다른 층에 있으면 관창을 열지 않는다 — 물도 줄지 않는다 (2026-11-24: 닿지 않는데 탱크만 비었다)
+			if h.flowing and not h.approaching and h.charged and tick >= h.resupply_until \
+					and units.get_crew(h.crew_id).leader.level == h.target.z:
 				flowing.append(h)
 		if flowing.is_empty():
 			continue
@@ -834,6 +838,8 @@ func _update_supply(dt: float, tick: int) -> void:
 func _apply_sprays(dt: float, tick: int) -> void:
 	var grid := fire.grid
 	for h in hoses:
+		# spraying = 이번 틱에 실제로 물이 나갔는가 — 아래 관문을 다 지나야 참 (그림·엄호·경계 판정이 본다)
+		h.spraying = false
 		if not h.flowing:
 			continue
 		var leader := units.get_crew(h.crew_id).leader
@@ -853,9 +859,13 @@ func _apply_sprays(dt: float, tick: int) -> void:
 			h.flame_tick = tick
 		else:
 			_advance(h, units.get_crew(h.crew_id), tick)
+			# 더 다가가려고 걷기 시작했으면 이번 틱에는 쏘지 않는다
+			if h.approaching:
+				continue
 		var trace := _trace(leader.level, leader.pos, h.aim, _range[h.pattern])
 		h.impact = trace.impact
 		h.blocked = trace.blocked
+		h.spraying = true
 		var v := units.get_vehicle(h.vehicle_id)
 		var lpm := hose_lpm(h, v)
 		var liters := lpm / 60.0 * dt * h.flow_fraction * float(_flow.get(h.pattern, 1.0))
@@ -878,8 +888,10 @@ func _apply_sprays(dt: float, tick: int) -> void:
 				if r >= 0:
 					fire.comps[r].applied_lpm += liters / dt * 60.0
 					fire.comps[r].water_applied_l += liters
-		# 타는 셀에 물이 먼저 가도록 열방출률로 가중
-		var cells := grid.cells_in_radius(leader.level, h.impact, _radius[h.pattern])
+		# 타는 셀에 물이 먼저 가도록 열방출률로 가중.
+		# 퍼지는 물은 벽·닫힌 문·안 깨진 창을 넘지 않는다 (2026-11-24 — 전에는 맞은 곳 둘레의 칸을 가림 없이 적셔
+		# 분무·엄호 주수가 벽 뒤를 적셨고, 벽·문·창 칸을 겨누면 그 뒤 불에 물이 닿았다)
+		var cells := _reachable_cells(leader.level, trace.origin, impact_cell, grid.cells_in_radius(leader.level, h.impact, _radius[h.pattern]))
 		var weights := PackedFloat32Array()
 		var total_w := 0.0
 		for i in cells:
@@ -922,16 +934,36 @@ func _sweep(h: HoseLine, leader: Firefighter, dt: float) -> bool:
 				best_d = d
 				goal = p
 				found = true
+	if not found and room:
+		# 목표 방의 불이 보이지 않으면, 가는 길에 있는(목표보다 가까운) 보이는 불부터 끈다 — 진압하며 전진 (화재1 '연소 중인 곳을
+		# 제압하며 화점으로'). 2026-11-24: 퍼지는 물이 벽을 넘지 않게 고치자, 복도에 번진 불 때문에 전진하지 못하고
+		# 벽만 쏘고 서 있었다 (전에는 벽 너머로 복도 불을 식혀 나아갔다)
+		var reach := leader.pos.distance_to(target)
+		var best_d := INF
+		for i in grid.burning:
+			var c := grid.cell_of(i)
+			if c.z != leader.level:
+				continue
+			var p := Vector2(c.x + 0.5, c.y + 0.5)
+			var d := leader.pos.distance_to(p)
+			if d > _range[h.pattern] or d >= reach or d >= best_d:
+				continue
+			if not _trace(leader.level, leader.pos, p, _range[h.pattern]).blocked:
+				best_d = d
+				goal = p
+				found = true
 	h.aim = h.aim.move_toward(goal, SWEEP_CELLS_PER_S * dt)
 	return found
 
 
 ## from에서 to 방향으로 물줄기를 보낸다. 벽·닫힌 문·깨지지 않은 창에 막히면 그 앞에서 멈춘다.
+## origin = 물이 퍼지기 시작하는 곳: 표면(벽·문·창)에 맞았으면 그 바로 앞(쏘는 쪽)의 점, 아니면 맞은 곳 —
+## 퍼지는 물이 그 표면 뒤로 넘어가지 않게 하는 데 쓴다 (_reachable_cells)
 func _trace(level: int, from: Vector2, to: Vector2, max_cells: float) -> Dictionary:
 	var dir := to - from
 	var dist := minf(dir.length(), max_cells)
 	if dist < 0.01:
-		return {"impact": from, "blocked": false}
+		return {"impact": from, "blocked": false, "origin": from}
 	dir = dir.normalized()
 	var last := from
 	var goal_cell := Vector2i(to.floor())
@@ -940,13 +972,31 @@ func _trace(level: int, from: Vector2, to: Vector2, max_cells: float) -> Diction
 		var p := from + dir * t
 		var c := Vector2i(p.floor())
 		if not _water_passes(level, c):
-			# 겨눈 곳이 바로 그 문·창이면 표면에는 물이 닿는다
+			# 겨눈 곳이 바로 그 벽·문·창이면 표면에는 물이 닿는다 (그 뒤로는 가지 않는다)
 			if c == goal_cell:
-				return {"impact": p, "blocked": false}
-			return {"impact": last, "blocked": true}
+				return {"impact": p, "blocked": false, "origin": last}
+			return {"impact": last, "blocked": true, "origin": last}
 		last = p
 		t += 0.25
-	return {"impact": from + dir * dist, "blocked": false}
+	var end := from + dir * dist
+	return {"impact": end, "blocked": false, "origin": end}
+
+
+## 맞은 곳 둘레의 칸들(cells — 연료 격자 번호) 가운데 물이 실제로 닿는 칸: origin(물이 퍼지기 시작하는 곳)에서 곧게 닿는 칸과
+## 물이 직접 맞은 칸(impact_cell — 타는 문이면 그 문). 벽·닫힌 문·안 깨진 창 뒤의 칸은 뺀다
+func _reachable_cells(level: int, origin: Vector2, impact_cell: Vector2i, cells: PackedInt32Array) -> PackedInt32Array:
+	var grid := fire.grid
+	var out := PackedInt32Array()
+	var origin_cell := Vector2i(origin.floor())
+	for i in cells:
+		var c := grid.cell_of(i)
+		var cell := Vector2i(c.x, c.y)
+		if cell == impact_cell or cell == origin_cell:
+			out.append(i)
+			continue
+		if not _trace(level, origin, Vector2(cell.x + 0.5, cell.y + 0.5), INF).blocked:
+			out.append(i)
+	return out
 
 
 func _water_passes(level: int, c: Vector2i) -> bool:

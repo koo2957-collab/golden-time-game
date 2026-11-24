@@ -98,6 +98,16 @@ func test_fully_developed_room_needs_a_minute_or_more() -> void:
 		sim.water.hose_of_crew(id).ready_tick = sim.clock.tick + roundi(30.0 / SimClock.TICK_DT)
 		sim.issue(EquipmentCommand.make("spray", [id] as Array[int], -1, HoseLine.Pattern.STRAIGHT, Vector3i(12, 16, 1)))
 	_wait_water(sim, [0, 1])
+	# 물이 거실에 닿기 시작할 때부터 잰다 (2026-11-24: 퍼지는 물이 벽을 넘지 않게 고친 뒤로는, 열기에 밀려 계단실 쪽에 선 조가
+	# 복도 불을 먼저 끄고 거실이 보이는 자리로 전진하는 데 시간이 걸린다 — 전에는 벽 너머로 복도 불을 식혀 바로 나아갔다)
+	var reached := false
+	for i in 900:
+		var room := sim.fire.compartment_at(1, floori(sim.water.hose_of_crew(0).impact.x), floori(sim.water.hose_of_crew(0).impact.y))
+		if room == living and sim.water.hose_of_crew(0).spraying:
+			reached = true
+			break
+		sim.step_ticks(1)
+	assert_true(reached, "물이 거실에 닿는 자리로 전진한다")
 	before = _burning_cells(sim, living)
 	sim.step_ticks(200)
 	var after := _burning_cells(sim, living)

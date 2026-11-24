@@ -57,6 +57,7 @@ func _run() -> void:
 	hose.vehicle_id = sim.units.vehicles[0].id
 	hose.crew_id = crew.id
 	hose.flowing = true
+	hose.spraying = true
 	hose.flow_fraction = 1.0
 	hose.charged = true
 	hose.water_head = 9999.0

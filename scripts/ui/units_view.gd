@@ -239,7 +239,7 @@ func _draw_tank_gauge(at: Vector2, v: Vehicle) -> void:
 
 func _draw_sprays(alpha: float) -> void:
 	for h in sim.water.hoses:
-		if not h.flowing or h.flow_fraction <= 0.0:
+		if not h.flowing or h.flow_fraction <= 0.0 or not h.spraying:
 			continue
 		var leader := sim.units.get_crew(h.crew_id).leader
 		if leader.level != level:

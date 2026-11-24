@@ -60,6 +60,7 @@ func test_cover_nozzle_prevents_ignition() -> void:
 	var p := _heat(sim)
 	var h := HoseLine.new()
 	h.flowing = true
+	h.spraying = true  # 실제로 물이 나가는 관창만 지킨 것으로 친다 (2026-11-24)
 	var c := p.target.cells[0]
 	h.target = Vector3i(c.x, c.y, p.target.level)
 	sim.water.hoses.append(h)

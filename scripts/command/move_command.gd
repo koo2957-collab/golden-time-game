@@ -26,6 +26,9 @@ func execute(sim: SimWorld) -> void:
 		sim.falls.cancel(id)
 		sim.vent.cancel(id, tick)
 		sim.command.clear_floor_goal(id)
+		# 관창을 잠그고 이동한다 (README 조작표: '방수 중이면 방수를 멈추고 이동' — 2026-11-24: 실제로는 잠그지 않아
+		# 옮겨 간 뒤에도 예전 목표로 끝없이 방수했다)
+		sim.water.stop_spray(id, tick)
 	sim.units.order_move(crew_ids, target, sim.pathfinder, via)
 
 

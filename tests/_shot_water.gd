@@ -48,6 +48,7 @@ func _run() -> void:
 		h.points = [crew.leader.cell3()] as Array[Vector3i]
 		sim.water.hoses.append(h)
 		h.flowing = true
+		h.spraying = true
 		h.approaching = false
 		h.flow_fraction = 1.0
 		h.pattern = spots[k][2]

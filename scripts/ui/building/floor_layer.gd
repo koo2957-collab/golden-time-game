@@ -8,6 +8,8 @@ extends Node2D
 ## 뒤쪽 외벽(북·서)은 천장 높이로, 나머지 벽은 낮게 잘라 실내가 보이게 한다.
 
 ## 위층 노드의 depth 시작값 (IsoView.ABOVE_DEPTH와 같음)
+## 연기 읽기 계산 (색·빠르기·뻗는 길이, 2026-11-24)
+const SmokeLook := preload("res://scripts/ui/smoke_look.gd")
 const ABOVE_DEPTH := 100
 const CEILING_M := 2.4
 const WINDOW_SILL_M := 0.9
@@ -3517,6 +3519,8 @@ func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density
 	# 윗면 그림이 있으면 방 안쪽 덩어리 대신 연기 판 하나
 	var sheet := curtain and FxArt.sheet != null
 	var col := Color(0.36, 0.36, 0.38) if dark else Color(0.8, 0.81, 0.84)
+	# 연기층 색도 연기 읽기 색으로 (흰 → 회 → 검, 수증기) — 2026-11-24. 덩어리 그림(검은·흰 묶음)은 짙기로 고른 그대로
+	col = SmokeLook.look(sim.fire, c).get("color", col)
 	if op < 0.0:
 		op = minf(sp.smoke_max_opacity, a * 1.3)
 	if sheet:
@@ -3758,9 +3762,12 @@ func _draw_fire_plumes() -> Array[Vector2]:
 		var m: Dictionary = FxArt.meta.get("smoke_plume", {})
 		var ratio := float(m.get("w", 120)) / maxf(1.0, float(m.get("h", 192)))
 		var hw := hh * ratio * clampf(0.6 + 0.1 * n, 0.7, 1.4) * 0.5
-		var col := Color(0.32, 0.32, 0.34, sp.smoke_plume_alpha * float(acc[2]) * clampf(0.5 + 0.1 * n, 0.5, 1.0))
+		# 불 위 연기 기둥도 그 방의 연기 읽기 색·빠르기 (2026-11-24)
+		var plk: Dictionary = SmokeLook.look(sim.fire, sim.fire.comps[key]) if key >= 0 and key < sim.fire.comps.size() else {}
+		var col: Color = plk.get("color", Color(0.32, 0.32, 0.34))
+		col.a = sp.smoke_plume_alpha * float(acc[2]) * clampf(0.5 + 0.1 * n, 0.5, 1.0)
 		FxArt.draw_flip(self, FxArt.plume, "smoke_plume", PackedVector2Array([top + Vector2(-hw, 0), top + Vector2(hw, 0),
-			bottom + Vector2(hw, 0), bottom + Vector2(-hw, 0)]), Vector2.ZERO, Vector2.ONE, col, key + 3)
+			bottom + Vector2(hw, 0), bottom + Vector2(-hw, 0)]), Vector2.ZERO, Vector2.ONE, col, key + 3, 1.0, float(plk.get("rate", 1.0)))
 	return fires
 
 
@@ -3788,15 +3795,19 @@ func _draw_spill(s: Array, floor_h: float, ceil_m: float, seed: int) -> void:
 	var lintel := (1.0 - float(m.get("lintel_v", 0.75))) * img_h
 	# 세로 배율: 밖은 그대로 솟고, 방 사이 문은 인방~천장 틈에 맞춰 눌러 그린다
 	var k := 1.0 if not interior else clampf((ceil_m - top) / maxf(0.1, img_h - lintel), 0.3, 1.0)
-	var out := float(m.get("out_m", 1.6)) * (0.75 if interior else 1.0) * (0.7 + 0.4 * float(s[1])) / cell
+	# 연기 읽기 (2026-11-24, data/ui/smoke_look.json): 나오는 방의 그을음·산소·온도로 색(흰 → 회 → 검), 온도로 빠르기·뻗는 길이,
+	# 방수로 빼앗긴 열만큼 흰 수증기 (화재1 p.342·124·255)
+	var src_i := int(s[5]) if s.size() > 5 else -1
+	var lk: Dictionary = SmokeLook.look(sim.fire, sim.fire.comps[src_i]) if src_i >= 0 and src_i < sim.fire.comps.size() else {}
+	var reach := float(lk.get("reach", 1.0))
+	var out := float(m.get("out_m", 1.6)) * (0.75 if interior else 1.0) * (0.7 + 0.4 * float(s[1])) * reach / cell
 	var wall := at + dir * 0.5
 	var lo := floor_h + top - lintel * k
-	var hi := floor_h + top + (img_h - lintel) * k
-	var dark := float(s[1]) >= 0.6
-	var col := Color(0.34, 0.34, 0.36) if dark else Color(0.78, 0.79, 0.82)
+	var hi := floor_h + top + (img_h - lintel) * k * lerpf(1.0, reach, 0.5)
+	var col: Color = lk.get("color", Color(0.34, 0.34, 0.36) if float(s[1]) >= 0.6 else Color(0.78, 0.79, 0.82))
 	col.a = stack.params.smoke_spill_alpha * clampf(float(s[1]), 0.3, 1.0)
 	FxArt.draw_flip(self, FxArt.spill, "smoke_spill", PackedVector2Array([proj.to_screen(wall, hi), proj.to_screen(wall + dir * out, hi),
-		proj.to_screen(wall + dir * out, lo), proj.to_screen(wall, lo)]), Vector2.ZERO, Vector2.ONE, col, seed)
+		proj.to_screen(wall + dir * out, lo), proj.to_screen(wall, lo)]), Vector2.ZERO, Vector2.ONE, col, seed, 1.0, float(lk.get("rate", 1.0)))
 
 
 ## 개구부로 넘치는 연기: [위치(개구부 가운데, 셀), 세기 0~1, 흐르는 방향(셀 단위 축), 인방 높이(m),

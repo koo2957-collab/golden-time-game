@@ -109,12 +109,15 @@ static func draw_curtain(ci: CanvasItem, top_a: Vector2, top_b: Vector2, bot_b: 
 ## 플립북 한 조각: tex = 장을 세로로 쌓은 그림, key = fx.json 이름(장 수·속도).
 ## 화면 네 점(pts) ↔ 한 장 안의 uv 사각형 (uv0.x,uv0.y)·(uv1.x,uv0.y)·(uv1.x,uv1.y)·(uv0.x,uv1.y).
 ## 이웃한 두 장을 겹쳐 부드럽게 재생하고, seed로 시작 장을 다르게 한다. bottom = 뒤 두 점(아래쪽) 진하기 배율. 그림이 없으면 false
-static func draw_flip(ci: CanvasItem, tex: Texture2D, key: String, pts: PackedVector2Array, uv0: Vector2, uv1: Vector2, modulate: Color, seed: int, bottom := 1.0) -> bool:
+## rate = 재생 빠르기 배율 (연기 읽기 — 뜨거운 연기는 빠르게, 식은 연기는 느리게, 2026-11-24). 0.1 단위로 끊어 쓴다:
+## 장 번호가 (시각 × fps × rate)라서 rate 가 조금씩 계속 바뀌면 장이 튄다 — 단위로 끊으면 단계가 바뀔 때만 한 번 넘어간다
+static func draw_flip(ci: CanvasItem, tex: Texture2D, key: String, pts: PackedVector2Array, uv0: Vector2, uv1: Vector2, modulate: Color, seed: int, bottom := 1.0, rate := 1.0) -> bool:
 	if tex == null:
 		return false
 	var m: Dictionary = meta.get(key, {})
 	var frames := maxi(1, int(m.get("frames", 24)))
-	var f := Time.get_ticks_msec() / 1000.0 * float(m.get("fps", 6.0)) + float(posmod(seed * 7, frames))
+	var r := maxf(0.1, snappedf(rate, 0.1))
+	var f := Time.get_ticks_msec() / 1000.0 * float(m.get("fps", 6.0)) * r + float(posmod(seed * 7, frames))
 	var f0 := posmod(int(floorf(f)), frames)
 	var w := f - floorf(f)
 	var inset := 0.5 / float(tex.get_height())

@@ -2735,6 +2735,22 @@ func _ff_carry_layout(ff: Firefighter, alpha: float) -> Dictionary:
 	return {}
 
 
+## 문을 확인·열거나(B1) 부수는(A1) 조원이 서는 자리 (칸 좌표). 그 일을 하는 조원이 아니면 null.
+## 조건은 자세(_unit_pose)의 문 확인·개방·파괴와 같다 — 자세와 자리가 서로 다른 배치에서 나오지 않게
+func _door_work_spot(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Variant:
+	if crew == null or art == null or (sim.doors.tasks.is_empty() and sim.cards.checking_door(crew.id) == null):
+		return null
+	var dl := _door_check_layout(crew, art)
+	if not dl.is_empty() and int(dl.opener) == ff.id:
+		return dl.spot
+	var dt := sim.doors.task_of_crew(crew.id)
+	if dt != null and _forcing(dt, ff) and art.frames("force_a") > 0:
+		var lay := _force_layout(dt, crew, art)
+		if lay.spots.has(ff.id):
+			return lay.spots[ff.id]
+	return null
+
+
 ## 대원을 그리는 자리: 보통은 실제 자리, 운반 중인 짝·옮겨지는 대원·문을 부수는 대원은 배치 자리
 func _shown_pos(ff: Firefighter, alpha: float) -> Vector2:
 	var p := UnitsView.display_pos(ff, alpha)
@@ -2751,6 +2767,12 @@ func _shown_pos(ff: Firefighter, alpha: float) -> Vector2:
 		var sc := sim.units.get_crew(ff.crew_id)
 		if sc != null and sc.leader != ff:
 			var sart := SpriteArt.get_set(str(SpriteArt.config().get("crew", ""))) if not thermal else null
+			# 문을 확인·열거나 부수는 조원은 문 앞 자리가 먼저다 — 자세(_unit_pose)가 문 동작을 방수 줄·호스 끼고 걷기보다 먼저 고르므로
+			# 자리도 같은 순서로 (2026-11-24 사용자: 호스를 가진 조가 문을 열 때 관창수만 문 앞에 남고 다른 조원이 사라졌다 —
+			# 문 여는 자세를 한 채 호스 길 위 자리(문에서 몇 칸 뒤, 펌프차 쪽)에 그려졌다)
+			var ds: Variant = _door_work_spot(ff, sc, sart)
+			if ds != null:
+				return ds
 			var sl := _spray_layout(sc, sart, alpha)
 			if not sl.is_empty():
 				return sl.spots.get(ff.id, p)
@@ -4716,22 +4738,14 @@ func _draw_smoke_outlines() -> void:
 ## hulls가 비어 있지 않으면 화면에서 그 윤곽(연기 상자) 안에 몸이 든 사람만
 func _draw_outlines(target: CanvasItem, rooms: Dictionary, hulls: Array[PackedVector2Array] = []) -> void:
 	var alpha := sim.clock.alpha()
-	for c in sim.units.crews:
+	for it: Array in _outline_crew(target == _ghost_units, rooms, hulls, alpha):
+		var ff: Firefighter = it[0]
+		var c: Crew = it[1]
 		var crew_art := SpriteArt.crew_set(sim.units.squads[c.squad_id].type) if not thermal else null
-		for ff in c.members():
-			if ff.level != level or ff.aboard:
-				continue
-			var p := UnitsView.display_pos(ff, alpha)
-			if not rooms.is_empty() and not _in_rooms(p, rooms):
-				continue
-			if not hulls.is_empty() and not _in_hulls(proj.to_screen(p, 1.0), hulls):
-				continue
-			if target == _ghost_units and _outdoor_at(p) and not _hidden_by_upper(p, 1.0):
-				continue
-			var feet := proj.to_screen(p, 0.0)
-			var pose := _unit_pose(ff, c, crew_art) if crew_art else []
-			if crew_art == null or not crew_art.draw(target, pose[0], pose[1], pose[2], feet, GHOST_CREW):
-				target.draw_arc(feet + Vector2(0, -18), 9.0, 0.0, TAU, 16, GHOST_CREW, 2.0)
+		var feet := proj.to_screen(it[2], 0.0)
+		var pose := _unit_pose(ff, c, crew_art) if crew_art else []
+		if crew_art == null or not crew_art.draw(target, pose[0], pose[1], pose[2], feet, GHOST_CREW):
+			target.draw_arc(feet + Vector2(0, -18), 9.0, 0.0, TAU, 16, GHOST_CREW, 2.0)
 	for v in sim.rescue.victims:
 		if not v.discovered or v.level != level or v.carried_by >= 0:
 			continue
@@ -4746,6 +4760,27 @@ func _draw_outlines(target: CanvasItem, rooms: Dictionary, hulls: Array[PackedVe
 		var vpose := _victim_pose(v, art) if art else []
 		if art == null or not art.draw(target, vpose[0], vpose[1], vpose[2], feet, GHOST_VICTIM):
 			target.draw_arc(feet + Vector2(0, -6), 9.0, 0.0, TAU, 16, GHOST_VICTIM, 2.0)
+
+
+## 테두리로 그릴 이 층 대원 [[대원, 조, 그리는 자리(칸 좌표)], ...]. other_floor = 다른 층 사람 테두리(_ghost_units)인가.
+## 자리는 몸을 그리는 자리(_shown_pos)다 — 연기에 덮였는지도 그 자리로 본다 (2026-11-24 사용자: 문 개방·방수 때 대원이 사라지고
+## 선택 원만 남았다 — 실제 자리로 판정하고 그려서, 문 앞 방수태세·문 여는 자리·방수 줄처럼 배치 자리에 선 대원은
+## 몸이 연기에 묻혀도 테두리가 딴 곳에 뜨거나 아예 없었다)
+func _outline_crew(other_floor: bool, rooms: Dictionary, hulls: Array[PackedVector2Array], alpha: float) -> Array:
+	var out: Array = []
+	for c in sim.units.crews:
+		for ff in c.members():
+			if ff.level != level or ff.aboard:
+				continue
+			var p := _shown_pos(ff, alpha)
+			if not rooms.is_empty() and not _in_rooms(p, rooms):
+				continue
+			if not hulls.is_empty() and not _in_hulls(proj.to_screen(p, 1.0), hulls):
+				continue
+			if other_floor and _outdoor_at(p) and not _hidden_by_upper(p, 1.0):
+				continue
+			out.append([ff, c, p])
+	return out
 
 
 ## 화면 점이 윤곽들 중 하나 안인가

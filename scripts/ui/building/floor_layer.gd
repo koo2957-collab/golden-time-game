@@ -162,6 +162,12 @@ const GHOST_CREW := Color(1.0, 0.85, 0.2, 0.9)
 const GHOST_VICTIM := Color(1.0, 0.3, 0.3, 0.9)
 var _ghost_units: Node2D
 var _smoke_outline: Node2D
+## 가려진 대원 표시 방식 견본 (2026-11-24): 테두리 셰이더 재질 둘 · 머리 위 표식 층 · 표식 목록 {"ghost"·"smoke": [..]} · 지금 맞춘 방식
+var _ghost_other_mat: ShaderMaterial
+var _ghost_smoke_mat: ShaderMaterial
+var _badge_layer: Node2D
+var _badge_items: Dictionary = {}
+var _ghost_style_applied := "outline"
 ## 이번 그림에서 사람을 덮을 만큼 연기가 짙고 낮게 깔린 방 (Compartment.index → true)
 var _smoky := {}
 ## 연기 상자 화면 윤곽 (진하기가 smoke_outline_opacity 이상인 방) — 그 안에 든 사람은 테두리로
@@ -294,6 +300,14 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 	_smoke_outline.material = mat
 	_smoke_outline.draw.connect(_draw_smoke_outlines)
 	add_child(_smoke_outline)
+	# 가려진 대원의 머리 위 표식 (ghost_style badge·mix — 2026-11-24 견본): 셰이더 없이 맨 위에
+	_ghost_other_mat = other
+	_ghost_smoke_mat = mat
+	_badge_layer = Node2D.new()
+	_badge_layer.z_as_relative = false
+	_badge_layer.z_index = 101
+	_badge_layer.draw.connect(_draw_badges)
+	add_child(_badge_layer)
 
 
 # --- 외부 보기: 건물 외관 (R16) ---
@@ -4753,6 +4767,7 @@ func _draw_upper_ledge(tone: Color) -> void:
 ## 다른 층의 대원(노랑)·발견한 요구조자(빨강): 그림을 테두리 셰이더로. 그림이 없으면 동그라미 테두리
 func _draw_ghost_units() -> void:
 	if sim == null or not (ghost or people_outline):
+		_set_badges("ghost", [])
 		return
 	_draw_outlines(_ghost_units, {})
 
@@ -4760,22 +4775,71 @@ func _draw_ghost_units() -> void:
 ## 연기에 묻힌 대원(노랑)·요구조자(빨강): 벽 너머 사람과 같은 테두리를 연기 위에 (2026-11-12 사용자 결정)
 func _draw_smoke_outlines() -> void:
 	if sim == null or _smoke_hulls.is_empty() or thermal:
+		_set_badges("smoke", [])
 		return
 	_draw_outlines(_smoke_outline, {}, _smoke_hulls)
 
 
+## 가려진 대원 표시 방식(ViewParams.ghost_style)에 맞게 테두리 셰이더 값을 맞춘다 (바뀌었을 때만)
+func _apply_ghost_style(style: String) -> void:
+	if style == _ghost_style_applied or _ghost_other_mat == null:
+		return
+	_ghost_style_applied = style
+	var p := stack.params
+	match style:
+		"silhouette", "mix":
+			# 실제 그림을 반투명으로 + 출동대 색의 얇은 테두리 (다른 층은 더 옅게, 점선 없이)
+			_ghost_smoke_mat.set_shader_parameter("fill", 0.6 if style == "silhouette" else 0.5)
+			_ghost_smoke_mat.set_shader_parameter("thickness", 0.9)
+			_ghost_other_mat.set_shader_parameter("fill", 0.35)
+			_ghost_other_mat.set_shader_parameter("thickness", 0.9)
+			_ghost_other_mat.set_shader_parameter("dash_px", 0.0)
+		_:
+			_ghost_smoke_mat.set_shader_parameter("fill", p.ghost_body_alpha)
+			_ghost_smoke_mat.set_shader_parameter("thickness", p.ghost_outline_px)
+			_ghost_other_mat.set_shader_parameter("fill", p.ghost_other_fill)
+			_ghost_other_mat.set_shader_parameter("thickness", p.ghost_outline_px)
+			_ghost_other_mat.set_shader_parameter("dash_px", p.ghost_dash_px)
+
+
+## 머리 위 표식으로 그릴 대원 목록을 바꾸고 다시 그리게 한다 (which = "ghost" 다른 층 · "smoke" 연기 속)
+func _set_badges(which: String, items: Array) -> void:
+	if (_badge_items.get(which, []) as Array).is_empty() and items.is_empty():
+		return
+	_badge_items[which] = items
+	if _badge_layer:
+		_badge_layer.queue_redraw()
+
+
 ## 사람 테두리를 target에 그린다. rooms가 비어 있지 않으면 그 방(구획 index)에 있는 사람만,
-## hulls가 비어 있지 않으면 화면에서 그 윤곽(연기 상자) 안에 몸이 든 사람만
+## hulls가 비어 있지 않으면 화면에서 그 윤곽(연기 상자) 안에 몸이 든 사람만.
+## 표시 방식(ghost_style): outline = 노란 테두리(지금) · silhouette = 출동대 색 실루엣 · badge = 머리 위 표식만 ·
+## mix = 연기 속은 실루엣 + 표식, 다른 층은 표식만
 func _draw_outlines(target: CanvasItem, rooms: Dictionary, hulls: Array[PackedVector2Array] = []) -> void:
 	var alpha := sim.clock.alpha()
-	for it: Array in _outline_crew(target == _ghost_units, rooms, hulls, alpha):
+	var style: String = stack.params.ghost_style
+	var other_floor := target == _ghost_units
+	_apply_ghost_style(style)
+	var badges: Array = []
+	for it: Array in _outline_crew(other_floor, rooms, hulls, alpha):
 		var ff: Firefighter = it[0]
 		var c: Crew = it[1]
-		var crew_art := SpriteArt.crew_set(sim.units.squads[c.squad_id].type) if not thermal else null
+		var squad := sim.units.squads[c.squad_id]
+		var crew_art := SpriteArt.crew_set(squad.type) if not thermal else null
 		var feet := proj.to_screen(it[2], 0.0)
 		var pose := _unit_pose(ff, c, crew_art) if crew_art else []
-		if crew_art == null or not crew_art.draw(target, pose[0], pose[1], pose[2], feet, GHOST_CREW):
-			target.draw_arc(feet + Vector2(0, -18), 9.0, 0.0, TAU, 16, GHOST_CREW, 2.0)
+		var tint := GHOST_CREW
+		var body := true
+		if style != "outline":
+			tint = Color(squad.color.lightened(0.25), 0.95)
+			body = style == "silhouette" or (style == "mix" and not other_floor)
+			if style != "silhouette":
+				badges.append({"ff": ff, "crew": c, "pos": it[2], "anim": str(pose[0]) if not pose.is_empty() else "idle"})
+		if not body:
+			continue
+		if crew_art == null or not crew_art.draw(target, pose[0], pose[1], pose[2], feet, tint):
+			target.draw_arc(feet + Vector2(0, -18), 9.0, 0.0, TAU, 16, tint, 2.0)
+	_set_badges("ghost" if other_floor else "smoke", badges)
 	for v in sim.rescue.victims:
 		if not v.discovered or v.level != level or v.carried_by >= 0:
 			continue
@@ -4790,6 +4854,77 @@ func _draw_outlines(target: CanvasItem, rooms: Dictionary, hulls: Array[PackedVe
 		var vpose := _victim_pose(v, art) if art else []
 		if art == null or not art.draw(target, vpose[0], vpose[1], vpose[2], feet, GHOST_VICTIM):
 			target.draw_arc(feet + Vector2(0, -6), 9.0, 0.0, TAU, 16, GHOST_VICTIM, 2.0)
+
+
+## 가려진 대원의 머리 위 표식 (ghost_style badge·mix): 조장 머리 위에 출동대 색 원 + 하는 일 그림 + 공기 잔량,
+## 다른 조원은 발밑에 작은 점. 무엇을 하는지는 자세가 아니라 표식으로 읽는다 (프로스트펑크·EMERGENCY 방식)
+func _draw_badges() -> void:
+	if sim == null:
+		return
+	var ci := _badge_layer
+	for which: String in _badge_items:
+		for it: Dictionary in _badge_items[which]:
+			var ff: Firefighter = it.ff
+			var c: Crew = it.crew
+			var col: Color = sim.units.squads[c.squad_id].color
+			var pos: Vector2 = it.pos
+			if ff != c.leader:
+				var dot := proj.to_screen(pos, 0.1)
+				ci.draw_circle(dot, 4.5, Color(0.06, 0.07, 0.09, 0.85))
+				ci.draw_circle(dot, 3.2, col)
+				continue
+			var feet := proj.to_screen(pos, 0.0)
+			var at := proj.to_screen(pos, 2.3)
+			# 꼬리 + 원 (발밑에는 다른 조원과 같은 점)
+			ci.draw_circle(feet, 4.5, Color(0.06, 0.07, 0.09, 0.85))
+			ci.draw_circle(feet, 3.2, col)
+			ci.draw_colored_polygon(PackedVector2Array([at + Vector2(-6, 9), at + Vector2(6, 9), at + Vector2(0, 19)]), Color(0.06, 0.07, 0.09, 0.9))
+			ci.draw_circle(at, 13.5, Color(0.06, 0.07, 0.09, 0.9))
+			ci.draw_circle(at, 11.5, col)
+			_badge_icon(ci, at, _badge_kind(str(it.anim)), Color.WHITE if col.get_luminance() < 0.6 else Color(0.08, 0.09, 0.11))
+			# 공기 잔량
+			var bar := Rect2(at.x - 12.0, at.y - 21.0, 24.0, 4.0)
+			ci.draw_rect(bar.grow(1.0), Color(0.06, 0.07, 0.09, 0.9))
+			var f := ff.air_ratio()
+			ci.draw_rect(Rect2(bar.position, Vector2(bar.size.x * f, bar.size.y)), PlanStyle.AIR_LOW if f < 0.18 else PlanStyle.AIR_OK)
+
+
+## 자세 이름 → 표식 그림 종류
+static func _badge_kind(anim: String) -> String:
+	if anim.begins_with("spray") or anim.begins_with("ovh"):
+		return "water"
+	if anim.begins_with("search"):
+		return "search"
+	if anim.begins_with("door") or anim.begins_with("force") or anim.begins_with("window"):
+		return "door"
+	if anim.begins_with("lift") or anim.begins_with("drag") or anim.begins_with("carry") or anim.begins_with("aid") or anim.begins_with("cot") or anim.begins_with("scoop"):
+		return "rescue"
+	if anim.contains("walk") or anim.begins_with("hose"):
+		return "move"
+	return "wait"
+
+
+## 표식 안의 작은 그림 (지름 14px 안): 물방울 · 돋보기 · 문 · 십자 · 화살표 · 멈춤
+static func _badge_icon(ci: CanvasItem, at: Vector2, kind: String, col: Color) -> void:
+	match kind:
+		"water":
+			ci.draw_colored_polygon(PackedVector2Array([at + Vector2(0, -8), at + Vector2(5, 0), at + Vector2(4, 4), at + Vector2(0, 6.5),
+				at + Vector2(-4, 4), at + Vector2(-5, 0)]), col)
+		"search":
+			ci.draw_arc(at + Vector2(-1.5, -1.5), 4.5, 0.0, TAU, 20, col, 2.2)
+			ci.draw_line(at + Vector2(2, 2), at + Vector2(6.5, 6.5), col, 2.6)
+		"door":
+			ci.draw_rect(Rect2(at + Vector2(-4.5, -7), Vector2(9, 14)), col, false, 2.0)
+			ci.draw_circle(at + Vector2(2, 0.5), 1.4, col)
+		"rescue":
+			ci.draw_rect(Rect2(at + Vector2(-2, -7), Vector2(4, 14)), col)
+			ci.draw_rect(Rect2(at + Vector2(-7, -2), Vector2(14, 4)), col)
+		"move":
+			for dx: float in [-4.0, 1.5]:
+				ci.draw_polyline(PackedVector2Array([at + Vector2(dx, -5), at + Vector2(dx + 4.5, 0), at + Vector2(dx, 5)]), col, 2.2)
+		_:
+			ci.draw_rect(Rect2(at + Vector2(-5, -6), Vector2(3.5, 12)), col)
+			ci.draw_rect(Rect2(at + Vector2(1.5, -6), Vector2(3.5, 12)), col)
 
 
 ## 테두리로 그릴 이 층 대원 [[대원, 조, 그리는 자리(칸 좌표)], ...]. other_floor = 다른 층 사람 테두리(_ghost_units)인가.

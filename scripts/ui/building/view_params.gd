@@ -82,6 +82,9 @@ var ghost_ledge_round_m := 1.5
 var ghost_slab_m := 0.3
 var ghost_dash_px := 6.0
 var ghost_body_alpha := 0.25
+## 가려진(연기 속·다른 층) 대원 표시 방식: "outline" 노란 테두리(지금) · "silhouette" 출동대 색 반투명 실루엣 ·
+## "badge" 머리 위 표식만 · "mix" 실루엣 + 표식 (2026-11-24 사용자: 노란 테두리가 캐릭터와 맞지 않고 촌스럽다 — 견본 비교용)
+var ghost_style := "outline"
 var ghost_outline_px := 1.5
 var ghost_other_fill := 0.0
 var wall_cut_m := 0.2
@@ -190,6 +193,7 @@ func apply(data: Dictionary) -> void:
 	ghost_slab_m = float(_value(data, "ghost_slab_m", ghost_slab_m))
 	ghost_dash_px = float(_value(data, "ghost_dash_px", ghost_dash_px))
 	ghost_body_alpha = float(_value(data, "ghost_body_alpha", ghost_body_alpha))
+	ghost_style = str(_value(data, "ghost_style", ghost_style))
 	ghost_outline_px = float(_value(data, "ghost_outline_px", ghost_outline_px))
 	ghost_other_fill = float(_value(data, "ghost_other_fill", ghost_other_fill))
 	wall_cut_m = float(_value(data, "wall_cut_m", wall_cut_m))

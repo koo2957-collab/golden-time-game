@@ -1,0 +1,14 @@
+{
+ "note": "대원 그림에 구워진 호스의 양 끝 자리 (2026-11-24). 그 사람 발밑 기준, 보는 방향 기준 [앞으로 m, 오른쪽으로 m, 높이 m]. front = 관창 쪽 끝, back = 펌프차 쪽 끝 (관창수는 back 만 = 관창 결합구). 게임이 바닥 호스를 back 까지 이어 그리고, 꺾인 곳에서는 뒤 사람의 front 를 앞 사람의 back 에 맞춰 세운다 (scripts/ui/hose_draw.gd, floor_layer.gd _spray_layout). 손으로 고치지 말고 장면을 고친 뒤 tools/blender/hose_ends.py 를 다시 돌린다.",
+ "source": "tools/blender/hose_ends.py 가 장면 파일(tools/blender/scenes/spray_*.blend — 사용자가 블렌더에서 확인한 방수 자세)에서 잰 값",
+ "ends": {
+  "spray_h": {"scene": "spray_pair", "front": [1.043, 0.176, 1.021], "back": [-0.895, 0.152, 0.03]},
+  "spray_h1": {"scene": "spray_squad", "front": [1.043, 0.176, 1.021], "back": [-0.195, 0.152, 1.112]},
+  "spray_h2": {"scene": "spray_squad", "front": [0.805, 0.152, 1.112], "back": [-0.89, 0.152, 0.03]},
+  "spray_lh": {"scene": "spray_low_pair", "front": [1.26, 0.179, 0.816], "back": [-0.901, 0.15, 0.03]},
+  "spray_lh1": {"scene": "spray_low_squad", "front": [1.26, 0.179, 0.816], "back": [-0.201, 0.15, 0.92]},
+  "spray_lh2": {"scene": "spray_low_squad", "front": [0.849, 0.15, 0.92], "back": [-0.895, 0.15, 0.03]},
+  "spray_ln": {"scene": "spray_low_squad", "back": [0.31, 0.184, 0.816]},
+  "spray_n": {"scene": "spray_squad", "back": [0.283, 0.184, 1.021]}
+ }
+}

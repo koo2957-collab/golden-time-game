@@ -1901,7 +1901,7 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		# 관창보조는 그 뒤에서 호스를 겨드랑이에 끼고 버틴다 (2인 = spray_h, 분대 = spray_h1·h2). 물이 찬 호스는 일직선
 		var sl := _spray_layout(crew, art)
 		anim = str(sl.anims.get(ff.id, "spray_n"))
-		dir = int(sl.k)
+		dir = int(sl.ks.get(ff.id, sl.k))
 		moving = false
 	elif hose and ff == crew.leader and int(_door_ready_layout(crew, art).get("id", -1)) == ff.id:
 		# 문 앞 방수태세 (E4): 다른 조원이 문을 확인·개방·파괴하는 동안 관창수는 문 옆에서 낮은 자세로 관창을 문에 겨눈다 (A5 그림의 첫 장)
@@ -2474,6 +2474,7 @@ func _hose_carry_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> D
 				s += 0.1
 			out.ground_end = best_d
 			out.ground_tail = tail
+			out.tail_dir = facing
 			continue
 		# 3번은 깔린 호스 길 위에 선다. 들어 올린 호스 그림은 곧으므로, 그 구간에서 길이 굽으면 호스를 들지 않고 낮은 자세로만 걷는다
 		# (굽은 곳에서 그림과 바닥 호스가 어긋나 끊겨 보이지 않게)
@@ -2499,7 +2500,12 @@ func _hose_carry_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> D
 	return out
 
 
-## 방수 배치 (A4): 관창수(조장)가 방수 중이면 {k 방향, anims {대원 id: 동작}, spots {대원 id: 칸 좌표}}, 아니면 빈 것.
+## _spray_layout 이 계산해 둔 것 {조 id: [바뀌면 다시 계산할 값들, 결과]}
+var _spray_cache: Dictionary = {}
+
+
+## 방수 배치 (A4): 관창수(조장)가 방수 중이면 {k 방향, ks {대원 id: 방향}, anims {대원 id: 동작}, spots {대원 id: 칸 좌표},
+## ground_end·ground_tail·tail_dir·tail_h 바닥 호스가 끝나는 곳 (맨 뒤 사람의 그림 속 호스 끝)}, 아니면 빈 것.
 ## 조가 2명이면 관창수 + 관창보조(spray_h), 3명 이상(분대)이면 관창보조1·2(spray_h1·h2). 자리는 구울 때 적은 값
 func _spray_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dictionary:
 	if art == null or art.frames("spray_n") <= 0:
@@ -2517,15 +2523,88 @@ func _spray_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dictio
 	if lead.crouched and art.frames("spray_ln") > 0:
 		names = ["spray_ln", "spray_lh"] if members.size() <= 2 else ["spray_ln", "spray_lh1", "spray_lh2"]
 	var lp := UnitsView.display_pos(lead, alpha)
-	var out := {"k": k, "anims": {}, "spots": {}}
+	var out := {"k": k, "ks": {}, "anims": {}, "spots": {}}
+	# 줄 선 사람들 (쓰러진 사람은 빼고 앞에서부터) — 관창수가 빠지면 예전처럼 곧게 세운다
+	var line: Array[Firefighter] = []
+	var line_names: Array = []
 	for i in members.size():
-		var ff := members[i]
-		if ff.incapacitated:
-			continue
-		var anim: String = names[mini(i, names.size() - 1)]
-		out.anims[ff.id] = anim
-		out.spots[ff.id] = lp if i == 0 else stand_spot(lp, facing, art.stand(anim), sim.units.cell_size_m)
+		if not members[i].incapacitated:
+			line.append(members[i])
+			line_names.append(names[mini(i, names.size() - 1)])
+	if line.is_empty():
+		return out
+	# 한 화면에 여러 번 묻는다 (사람마다 자리·자세, 호스) — 바뀐 것이 없으면 계산해 둔 것을 쓴다
+	var key := [sim.clock.tick, alpha, lp, hose.aim, lead.crouched, hose.points.size(), line.size(), art.id]
+	var cached: Array = _spray_cache.get(crew.id, [])
+	if cached.size() == 2 and cached[0] == key:
+		return cached[1]
+	_spray_cache[crew.id] = [key, out]
+	if line[0] != lead:
+		for i in line.size():
+			out.anims[line[i].id] = line_names[i]
+			out.spots[line[i].id] = stand_spot(lp, facing, art.stand(line_names[i]), sim.units.cell_size_m)
+		return out
+	# 뒤 사람은 앞사람 바로 뒤에 서되, 벽에 막히거나 호스 길이 꺾인 곳에서는 호스가 온 쪽으로 틀어 선다 (2026-11-24 사용자 —
+	# 꺾이는 곳에서도 세 명이 일렬로 서던 것). 그림 속 호스의 끝끼리 맞추므로 호스가 이어져 보인다 (HoseDraw.chain_spots)
+	var cell_m := sim.units.cell_size_m
+	var stands := {}
+	for anim_name: String in line_names:
+		stands[anim_name] = art.stand(anim_name)
+	var at_level := lead.level
+	var clear := func(from: Vector2, to: Vector2) -> bool: return _floor_clear(at_level, from, to)
+	var trail := HoseDraw.trail(hose, at_level, lp)
+	var chain := HoseDraw.chain_spots(lp, k, line_names, stands, cell_m, trail, clear,
+		float(HoseDraw.style().get("chain_near_m", 0.6)) / cell_m)
+	for i in line.size():
+		out.anims[line[i].id] = line_names[i]
+		out.spots[line[i].id] = chain.spots[i]
+		out.ks[line[i].id] = chain.ks[i]
+	# 바닥 호스는 맨 뒤 사람의 그림 속 호스가 끝나는 곳까지만 그린다 (그 앞은 그림에 들어 있다)
+	if chain.has("tail") and not trail.is_empty():
+		var first: float = trail.dist[0]
+		var end: float = trail.dist[trail.dist.size() - 1]
+		out.ground_tail = chain.tail.pos
+		out.tail_dir = chain.tail.dir
+		out.tail_h = chain.tail.h_m
+		out.ground_end = clampf(_tail_dist(trail, chain.tail.pos, float(chain.tail.h_m), chain.spots[chain.spots.size() - 1], cell_m), first, end)
 	return out
+
+
+## 문 앞 방수태세(E4)일 때 바닥 호스가 끝나는 곳 {ground_end, ground_tail, tail_dir, tail_h} — 관창수가 겨눈 관창의 결합구. 아니면 빈 것
+func _ready_hose_end(crew: Crew, art: SpriteArt.SpriteSet, hose: HoseLine) -> Dictionary:
+	if sim.doors.tasks.is_empty() and sim.cards.checking_door(crew.id) == null:
+		return {}
+	var rl := _door_ready_layout(crew, art)
+	var back: Variant = HoseDraw.end_of("spray_ln", "back")
+	if rl.is_empty() or back == null or crew.leader == null:
+		return {}
+	var cell_m := sim.units.cell_size_m
+	var facing := Vector2.RIGHT.rotated(int(rl.k) * PI / 4.0)
+	var spot: Vector2 = rl.spot
+	var trail := HoseDraw.trail(hose, crew.leader.level, UnitsView.display_pos(crew.leader, 0.0))
+	if trail.is_empty():
+		return {}
+	var tail := HoseDraw.end_spot(spot, facing, back, cell_m)
+	return {"ground_tail": tail, "tail_dir": facing, "tail_h": (back as Vector3).z,
+		"ground_end": clampf(_tail_dist(trail, tail, (back as Vector3).z, spot, cell_m), float(trail.dist[0]), float(trail.dist[trail.dist.size() - 1]))}
+
+
+## 바닥 호스가 끝나는 거리 (칸): 그림 속 호스의 끝(tail)과 가장 가까운 호스 길 위의 곳.
+## 끝이 바닥이 아니면 (관창수가 혼자 든 관창의 결합구 — 몸 앞에 있다) 그 사람 뒤 0.3m 에서 바닥을 떠나 올라간다
+func _tail_dist(trail: Dictionary, tail: Vector2, h_m: float, spot: Vector2, cell_m: float) -> float:
+	if h_m > 0.3:
+		return HoseDraw._trail_dist(trail, spot) - 0.3 / cell_m
+	return HoseDraw._trail_dist(trail, tail)
+
+
+## 두 자리(칸 좌표) 사이가 걸을 수 있는 바닥으로 이어져 있는가 (벽·빈 곳을 지나지 않는가)
+func _floor_clear(at_level: int, from: Vector2, to: Vector2) -> bool:
+	var n := maxi(1, ceili(from.distance_to(to) / 0.25))
+	for s in n + 1:
+		var p := from.lerp(to, float(s) / n)
+		if not sim.building.is_walkable(at_level, floori(p.x), floori(p.y)):
+			return false
+	return true
 
 
 ## 잠긴 문을 부수는 중인가 (그 문 가까이에서, 사람이 모자라 기다리는 중이 아닐 때)
@@ -2830,12 +2909,25 @@ func _draw_hoses(alpha := 0.0) -> void:
 	for h in sim.water.hoses:
 		var lay := HoseDraw.layout(h, sim.units.get_vehicle(h.vehicle_id), sim.building)
 		# 호스 끼고 걷는 중: 바닥 호스는 2번 뒤에서 끝나고 3번이 들어 올린 구간은 비운다 (그 부분은 대원 그림에 들어 있다)
-		var carry := _hose_carry_layout(sim.units.get_crew(h.crew_id), art, alpha) if not h.charged else {}
+		var hose_crew := sim.units.get_crew(h.crew_id)
+		var carry := _hose_carry_layout(hose_crew, art, alpha) if not h.charged else {}
+		# 방수 중: 바닥 호스는 맨 뒤 사람의 그림 속 호스가 바닥에 닿은 곳에서 끝난다 (2026-11-24 — 전에는 관창수 발밑까지 그려 그림과 어긋났다)
+		if carry.is_empty() and hose_crew != null and art != null and h.flowing:
+			carry = _spray_layout(hose_crew, art, alpha)
+		# 문 앞 방수태세 (E4): 관창수가 문 옆에서 겨눈 관창의 결합구까지 호스가 올라간다.
+		# 이때 다른 조원은 문을 열고 있어 호스를 끼고 있지 않다 — 끼고 걷기 배치보다 먼저 본다
+		if hose_crew != null and art != null and not h.flowing and h.fetch_until < 0:
+			var ready := _ready_hose_end(hose_crew, art, h)
+			if not ready.is_empty():
+				carry = ready
 		if carry.has("ground_end") or carry.has("gap"):
 			lay = lay.duplicate()
 			if carry.has("ground_end"):
 				lay.ground_end = carry.ground_end
 				lay.ground_tail = carry.ground_tail
+				if carry.has("tail_dir"):
+					lay.tail_dir = carry.tail_dir
+					lay.tail_h = float(carry.get("tail_h", 0.0))
 			if carry.has("gap"):
 				lay.gap = carry.gap
 		HoseDraw.draw(self, h, level, to_screen, IsoProjection.PX_PER_M, sim.building.cell_size_m, h.water_head, one, up, lay)

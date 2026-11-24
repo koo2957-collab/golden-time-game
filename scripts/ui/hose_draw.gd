@@ -14,6 +14,9 @@ const PATH := "res://data/ui/hose_style.json"
 static var _style: Dictionary = {}
 ## 호스마다 계산해 둔 배치 {호스 instance id: {key, lay}} — 호스가 바뀔 때만 다시 계산한다
 static var _lay_cache: Dictionary = {}
+const ENDS_PATH := "res://data/ui/hose_ends.json"
+static var _ends: Dictionary = {}
+static var _ends_loaded := false
 
 
 ## 설정값 {이름: 값} (파일의 value만)
@@ -25,6 +28,127 @@ static func style() -> Dictionary:
 				if data[key] is Dictionary and (data[key] as Dictionary).has("value"):
 					_style[key] = data[key]["value"]
 	return _style
+
+
+## 대원 그림에 구워진 호스의 양 끝 {동작: {front [앞 m, 오른쪽 m, 높이 m], back […]}} — data/ui/hose_ends.json (tools/blender/hose_ends.py가 잰 값)
+static func ends() -> Dictionary:
+	if not _ends_loaded:
+		_ends_loaded = true
+		var data: Variant = JsonData.load_file(ENDS_PATH)
+		if data is Dictionary and data.get("ends") is Dictionary:
+			_ends = data.ends
+	return _ends
+
+
+## 그 동작 그림 속 호스의 끝 (which = "front" 관창 쪽 · "back" 펌프차 쪽): Vector3(앞 m, 오른쪽 m, 높이 m). 없으면 null
+static func end_of(anim: String, which: String) -> Variant:
+	var v: Variant = ends().get(anim, {}).get(which)
+	if v is Array and (v as Array).size() >= 3:
+		return Vector3(float(v[0]), float(v[1]), float(v[2]))
+	return null
+
+
+## 그 사람(자리 spot 칸 좌표, 보는 방향 facing)의 그림 속 호스 끝이 바닥에서 놓이는 곳 (칸 좌표)
+static func end_spot(spot: Vector2, facing: Vector2, end: Vector3, cell_m: float) -> Vector2:
+	return spot + (facing * end.x + facing.rotated(PI / 2.0) * end.y) / maxf(0.01, cell_m)
+
+
+## 방수하는 조의 자리 (2026-11-24 사용자: 호스가 꺾이는 곳에서도 세 명이 일렬로 서서 벽을 뚫는다 → 꺾인 곳에서는 뒤 사람이 좌우로 선다).
+##   lead = 관창수 자리(칸), k = 관창수가 보는 방향(8방향), names = 사람 순서대로 동작 이름 (관창수부터),
+##   stands = {동작: {fwd_m, right_m}} 구울 때의 자리 (관창수 기준), trail = 깔린 호스 길 (HoseDraw.trail — 비어도 된다),
+##   clear = func(from 칸, to 칸) -> bool: 그 사이가 걸을 수 있는 바닥으로 이어져 있는가, near_cells = 호스 길에서 이만큼 벗어나면 꺾인 것으로 본다
+## 규칙: 뒤 사람은 앞사람 바로 뒤(구울 때의 자리 — 그림 속 호스가 그대로 이어진다)에 서되,
+##   그 자리가 막혔거나(벽) 3번부터는 호스 길에서 벗어났으면, 자기 그림 속 호스의 앞 끝이 앞사람 호스의 뒤 끝에 닿게
+##   방향을 틀어 선다 (호스가 온 쪽으로 — 8방향 가운데 막히지 않은 가장 가까운 방향).
+## 돌려주는 값: {spots [칸], ks [방향], tail {pos 칸, dir, h_m} 맨 뒤 사람의 호스가 끝나는 곳 (없으면 없음)}
+static func chain_spots(lead: Vector2, k: int, names: Array, stands: Dictionary, cell_m: float, trail: Dictionary, clear: Callable, near_cells: float) -> Dictionary:
+	var spots: Array[Vector2] = [lead]
+	var ks: Array[int] = [k]
+	for i in range(1, names.size()):
+		var anim := str(names[i])
+		var prev := str(names[i - 1])
+		var pf := Vector2.RIGHT.rotated(ks[i - 1] * PI / 4.0)
+		var a: Dictionary = stands.get(anim, {})
+		var b: Dictionary = stands.get(prev, {})
+		var step := Vector2(float(a.get("fwd_m", 0.0)) - float(b.get("fwd_m", 0.0)), float(a.get("right_m", 0.0)) - float(b.get("right_m", 0.0)))
+		var straight := spots[i - 1] + (pf * step.x + pf.rotated(PI / 2.0) * step.y) / maxf(0.01, cell_m)
+		var ok: bool = clear.call(spots[i - 1], straight)
+		if ok and i >= 2 and not trail.is_empty() and _trail_gap(trail, straight) > near_cells:
+			ok = false
+		var joint: Variant = end_of(prev, "back")
+		var front: Variant = end_of(anim, "front")
+		if ok or joint == null or front == null:
+			spots.append(straight)
+			ks.append(ks[i - 1])
+			continue
+		# 꺾어 세우기: 앞사람 호스의 뒤 끝(joint)에 내 호스의 앞 끝을 맞춘다
+		var j := end_spot(spots[i - 1], pf, joint, cell_m)
+		var want := -pf
+		if not trail.is_empty():
+			# 호스가 온 쪽: 이음 자리에서 호스 길을 따라 내 그림 속 호스 길이만큼 거슬러 간 곳
+			var d := _trail_dist(trail, j)
+			var back := point_at(trail, d - (front as Vector3).x / maxf(0.01, cell_m))
+			if back.distance_squared_to(j) > 0.0001:
+				want = (back - j).normalized()
+		var k0 := SpriteArt.dir8(-want)
+		var placed := false
+		for off: int in [0, 1, -1, 2, -2, 3, -3]:
+			var kk := posmod(k0 + off, 8)
+			if kk == ks[i - 1]:
+				continue  # 곧게 뒤는 위에서 이미 안 된다고 봤다
+			var f := Vector2.RIGHT.rotated(kk * PI / 4.0)
+			var spot := j - (f * (front as Vector3).x + f.rotated(PI / 2.0) * (front as Vector3).y) / maxf(0.01, cell_m)
+			if clear.call(j, spot) and spot.distance_to(spots[i - 1]) > 0.5 / maxf(0.01, cell_m):
+				spots.append(spot)
+				ks.append(kk)
+				placed = true
+				break
+		if not placed:
+			spots.append(straight)
+			ks.append(ks[i - 1])
+	var out := {"spots": spots, "ks": ks}
+	var last := str(names[names.size() - 1])
+	var tail: Variant = end_of(last, "back")
+	if tail != null:
+		var lf := Vector2.RIGHT.rotated(ks[ks.size() - 1] * PI / 4.0)
+		out.tail = {"pos": end_spot(spots[spots.size() - 1], lf, tail, cell_m), "dir": lf, "h_m": (tail as Vector3).z}
+	return out
+
+
+## 호스 길(trail)에서 p와 가장 가까운 곳의 거리 (칸, 펌프차 쪽 끝부터)
+static func _trail_dist(trail: Dictionary, p: Vector2) -> float:
+	var pts: PackedVector2Array = trail.pts
+	var dist: PackedFloat32Array = trail.dist
+	var best := INF
+	var best_d: float = dist[dist.size() - 1]
+	for i in range(1, pts.size()):
+		var a := pts[i - 1]
+		var b := pts[i]
+		var t := clampf((p - a).dot(b - a) / maxf(0.0001, (b - a).length_squared()), 0.0, 1.0)
+		var q := (a + (b - a) * t).distance_squared_to(p)
+		if q < best:
+			best = q
+			best_d = lerpf(dist[i - 1], dist[i], t)
+	return best_d
+
+
+## p가 호스 길에서 벗어난 거리 (칸)
+static func _trail_gap(trail: Dictionary, p: Vector2) -> float:
+	return point_at(trail, _trail_dist(trail, p)).distance_to(p)
+
+
+## 바닥 호스를 그림 속 호스의 끝(tail)으로 잇는 굽은 길 (칸 좌표, 첫 점 a는 빼고 tail까지): a에서 a_dir 쪽으로 가다
+## tail에 tail_dir 방향으로 닿는다 (직각으로 꺾여 보이지 않게 — 3차 곡선)
+static func tail_curve(a: Vector2, a_dir: Vector2, tail: Vector2, tail_dir: Vector2, steps := 8) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var reach := a.distance_to(tail) * 0.4
+	var p1 := a + a_dir.normalized() * reach
+	var p2 := tail - tail_dir.normalized() * reach
+	for s in range(1, steps + 1):
+		var t := float(s) / steps
+		var u := 1.0 - t
+		out.append(a * (u * u * u) + p1 * (3.0 * u * u * t) + p2 * (3.0 * u * t * t) + tail * (t * t * t))
+	return out
 
 
 ## 그 층에 놓인 호스 조각들 [{pts: PackedVector2Array (칸 좌표), dist: PackedFloat32Array (펌프차 쪽 끝부터 잰 거리, 칸)}].
@@ -540,28 +664,66 @@ static func draw(ci: CanvasItem, h: HoseLine, level: int, to_screen: Callable, p
 	var gap: Array = lay.get("gap", [])
 	# ground_tail: 바닥 호스의 끝을 이어 줄 자리 (칸 좌표) — 2번 대원 그림의 호스가 바닥에 닿은 곳
 	var tail: Variant = lay.get("ground_tail")
+	# tail_dir: 그림 속 호스가 바닥에 닿은 곳에서 호스가 가는 방향 (관창 쪽, 칸 좌표) — 그 방향으로 닿게 굽혀 잇는다.
+	# tail_h: 그 끝의 높이 (m) — 바닥이 아니면(관창수 혼자: 관창 결합구) 호스가 그 높이까지 올라간다
+	var tail_dir: Variant = lay.get("tail_dir")
+	var tail_h := float(lay.get("tail_h", 0.0))
+	if tail is Vector2 and stop < INF:
+		# 굽혀 이을 길이만큼 바닥 호스를 미리 끊는다 (끊은 곳에서 tail까지 곡선)
+		# (대원이 들어 올린 구간 gap 이 있으면 그 뒤로는 물러나지 않는다)
+		var cut := stop - float(st.get("join_length_m", 0.8)) / cell_m
+		if gap.size() == 2:
+			cut = maxf(cut, minf(stop, float(gap[1]) + 0.2))
+		stop = cut
 	for run in shaped_runs(h, level, cell_m, lay):
+		var run_end: float = run.dist[run.dist.size() - 1]
 		for part: Array in dry_ranges(head_cells, stop, gap):
 			var cells := slice(run, float(part[0]), float(part[1]))
-			if tail is Vector2 and not cells.is_empty() and float(part[1]) == stop and stop <= float(run.dist[run.dist.size() - 1]):
-				cells.append(tail)
+			var dry_joined := 0
+			if tail is Vector2 and not cells.is_empty() and float(part[1]) == stop and stop <= run_end:
+				dry_joined = cells.size()
+				_join_tail(cells, tail, tail_dir)
 			var dry := _screen(cells, to_screen)
 			if dry.size() < 2:
 				continue
-			ci.draw_polyline(_shift(dry, cast * 0.3), Color(shadow, shadow.a * 0.6), flat_w)
-			ci.draw_polyline(dry, Color(str(st.get("flat_edge_color", "#7d7455"))), flat_w + 1.5)
-			ci.draw_polyline(dry, Color(str(st.get("flat_color", "#cfc5a8"))), flat_w)
-			ci.draw_polyline(_lit(dry, light, flat_w * 0.34), Color(str(st.get("flat_light_color", "#e9e0c6"))), maxf(1.0, flat_w * 0.2))
-			ci.draw_polyline(dry, Color(Color(str(st.get("flat_crease_color", "#8f8669"))), 0.7), maxf(1.0, flat_w * 0.1))
-		var ground := _screen(slice(run, -INF, head_cells), to_screen)
+			# 그림 속 호스(대원이 낀 묶음에서 늘어진 띠)는 바닥 호스보다 좁다 — 이은 곡선에서 그 폭으로 가늘어진다
+			var flat_end := minf(flat_w, float(st.get("sprite_flat_width_m", 0.13)) * px_per_m)
+			var dry_floor := dry.duplicate()
+			_rise(dry, dry_joined, up, tail_h)
+			var dry_pieces := _pieces(dry_floor, dry, dry_joined, flat_w, flat_end)
+			for piece: Array in dry_pieces:
+				ci.draw_polyline(_shift(piece[0], cast * 0.3), Color(shadow, shadow.a * 0.6), piece[2])
+			for piece: Array in dry_pieces:
+				ci.draw_polyline(piece[1], Color(str(st.get("flat_edge_color", "#7d7455"))), float(piece[2]) + 1.5)
+			for piece: Array in dry_pieces:
+				var w: float = piece[2]
+				ci.draw_polyline(piece[1], Color(str(st.get("flat_color", "#cfc5a8"))), w)
+				ci.draw_polyline(_lit(piece[1], light, w * 0.34), Color(str(st.get("flat_light_color", "#e9e0c6"))), maxf(1.0, w * 0.2))
+				ci.draw_polyline(piece[1], Color(Color(str(st.get("flat_crease_color", "#8f8669"))), 0.7), maxf(1.0, w * 0.1))
+		# 물이 찬 호스도 그림 속 호스의 끝(tail)에서 끝난다 — 방수 중인 조의 맨 뒤 사람 뒤 (FloorLayer._spray_layout)
+		var wet_cells := slice(run, -INF, minf(head_cells, stop))
+		var joined := 0
+		if tail is Vector2 and not wet_cells.is_empty() and head_cells >= stop and stop <= run_end:
+			joined = wet_cells.size()
+			_join_tail(wet_cells, tail, tail_dir)
+		var ground := _screen(wet_cells, to_screen)
 		if ground.size() >= 2:
 			var wet := _shift(ground, lift)
-			ci.draw_polyline(_shift(ground, cast), shadow, round_w)
-			ci.draw_polyline(wet, Color(str(st.get("round_shade_color", "#3d3622"))), round_w + 2.0)
-			ci.draw_polyline(wet, Color(str(st.get("round_color", "#dccd9c"))), round_w)
-			ci.draw_polyline(_lit(wet, light, -round_w * 0.3), Color(str(st.get("round_dark_color", "#9c8c5e"))), maxf(1.0, round_w * 0.36))
-			ci.draw_polyline(_lit(wet, light, round_w * 0.16), Color(str(st.get("round_light_color", "#f6edcf"))), maxf(1.0, round_w * 0.44))
-			ci.draw_polyline(_lit(wet, light, round_w * 0.28), Color(Color(str(st.get("round_highlight_color", "#ffffff"))), 0.85), maxf(1.0, round_w * 0.14))
+			# 끝이 바닥이 아니면 이은 곡선을 따라 그 높이까지 올라간다 (그림자는 바닥에 남는다)
+			_rise(wet, joined, up, tail_h)
+			# 그림 속 호스는 바닥 호스보다 가늘다 — 이은 곡선에서 그 굵기로 가늘어져 닿는다 (굵기가 뚝 바뀌어 보이지 않게)
+			var round_end := minf(round_w, float(st.get("sprite_hose_width_m", 0.064)) * px_per_m)
+			var pieces := _pieces(ground, wet, joined, round_w, round_end)
+			for piece: Array in pieces:
+				ci.draw_polyline(_shift(piece[0], cast), shadow, piece[2])
+			for piece: Array in pieces:
+				ci.draw_polyline(piece[1], Color(str(st.get("round_shade_color", "#3d3622"))), float(piece[2]) + 2.0)
+			for piece: Array in pieces:
+				var w: float = piece[2]
+				ci.draw_polyline(piece[1], Color(str(st.get("round_color", "#dccd9c"))), w)
+				ci.draw_polyline(_lit(piece[1], light, -w * 0.3), Color(str(st.get("round_dark_color", "#9c8c5e"))), maxf(1.0, w * 0.36))
+				ci.draw_polyline(_lit(piece[1], light, w * 0.16), Color(str(st.get("round_light_color", "#f6edcf"))), maxf(1.0, w * 0.44))
+				ci.draw_polyline(_lit(piece[1], light, w * 0.28), Color(Color(str(st.get("round_highlight_color", "#ffffff"))), 0.85), maxf(1.0, w * 0.14))
 		# 물머리: 차오르는 중이면 불룩한 마디
 		var d0: float = run.dist[0]
 		var d1: float = run.dist[run.dist.size() - 1]
@@ -592,6 +754,46 @@ static func draw(ci: CanvasItem, h: HoseLine, level: int, to_screen: Callable, p
 			ci.draw_line(a, b, Color(str(st.get("coupling_edge_color", "#2b3138"))), joint_w + 2.0)
 			ci.draw_line(a, b, Color(str(st.get("coupling_color", "#aab2ba"))), joint_w)
 			ci.draw_line(a + side * joint_w * 0.25, b + side * joint_w * 0.25, Color(str(st.get("coupling_light_color", "#eef2f5"))), maxf(1.0, joint_w * 0.22))
+
+
+## 호스 선을 그릴 조각들 [[바닥 점들, 그릴 점들, 폭]]: 앞의 joined 개 점은 제 폭(w) 한 줄,
+## 그 뒤(그림 속 호스로 이은 곡선)는 구간마다 나눠 끝 폭(end_w)까지 가늘어진다. joined 가 0이면 전체가 한 줄
+static func _pieces(floor_pts: PackedVector2Array, pts: PackedVector2Array, joined: int, w: float, end_w: float) -> Array:
+	var out: Array = []
+	var n := pts.size()
+	if joined <= 0 or joined >= n or is_equal_approx(w, end_w):
+		out.append([floor_pts, pts, w])
+		return out
+	if joined >= 2:
+		out.append([floor_pts.slice(0, joined), pts.slice(0, joined), w])
+	# 구간을 한 점씩 겹쳐 자른다 (점 셋) — 꺾이는 마디에 틈이 벌어지지 않게
+	var m := n - joined
+	for q in m:
+		var to := mini(n, joined + 2 + q)
+		out.append([floor_pts.slice(joined - 1 + q, to), pts.slice(joined - 1 + q, to), lerpf(w, end_w, (q + 0.5) / m)])
+	return out
+
+
+## 이은 곡선(앞의 joined 개 점 뒤)을 따라 끝 높이 h_m 까지 부드럽게 올린다 (up = 높이 1m가 화면에서 올라가는 거리)
+static func _rise(pts: PackedVector2Array, joined: int, up: Vector2, h_m: float) -> void:
+	var n := pts.size() - joined
+	if joined <= 0 or n <= 0 or h_m <= 0.0:
+		return
+	for q in n:
+		var t := float(q + 1) / n
+		pts[joined + q] += up * h_m * t * t * (3.0 - 2.0 * t)
+
+
+## 바닥 호스 점들(칸 좌표) 끝에 tail까지 굽은 길을 덧붙인다 (tail_dir 가 없으면 곧게 닿는 방향)
+static func _join_tail(cells: PackedVector2Array, tail: Vector2, tail_dir: Variant) -> void:
+	var a := cells[cells.size() - 1]
+	if a.distance_squared_to(tail) < 0.0001:
+		return
+	var a_dir := tail - a
+	if cells.size() >= 2 and cells[cells.size() - 2].distance_squared_to(a) > 0.0001:
+		a_dir = a - cells[cells.size() - 2]
+	var t_dir: Vector2 = tail_dir if tail_dir is Vector2 and (tail_dir as Vector2).length_squared() > 0.0001 else tail - a
+	cells.append_array(tail_curve(a, a_dir, tail, t_dir))
 
 
 static func _vec(v: Variant) -> Vector2:

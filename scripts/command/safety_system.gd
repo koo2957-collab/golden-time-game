@@ -53,6 +53,8 @@ var _par_deadline := -1
 var _par_expect: Dictionary = {}  # crew id -> true (아직 응답하지 않은 조)
 var _par_response_ticks := 600
 var _air_swap_ratio := 0.5
+## 공기호흡기 교체가 끝났다고 보는 공기 비율 (CommandSystem._step_air_swaps)
+var air_full_ratio := 0.95
 ## 공기호흡기 교체로 관창을 놓고 나온 조 {crew id: {tick, resume {action, target} 또는 {}, state "out"·"back"}}.
 ## 교체가 끝나면 CommandSystem 이 호스를 따라 다시 들여보낸다 (_step_air_swaps)
 var air_swaps: Dictionary = {}
@@ -72,6 +74,7 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, p_res
 	factor_recent_ticks = roundi(params.value("entry_factor_recent_s") / SimClock.TICK_DT)
 	_par_response_ticks = roundi(params.value("par_response_s") / SimClock.TICK_DT)
 	_air_swap_ratio = params.value("air_swap_ratio") if params.params.has("air_swap_ratio") else 0.5
+	air_full_ratio = params.value("air_full_ratio") if params.params.has("air_full_ratio") else 0.95
 
 
 func emergency() -> bool:
@@ -179,9 +182,12 @@ func withdraw_crew(c: Crew, tick: int, reason := "withdraw", resume: Dictionary 
 		elif _needs_air(c):
 			water.drop_nozzle(c.id, tick)
 			air_swaps[c.id] = {"tick": tick, "resume": resume, "state": "out"}
-			units.order_move([c.id], _swap_spot(c, h), pathfinder)
 			events.add(tick, "air_swap_out", {"crew": _crew_name(c), "crew_id": c.id})
-			return
+			var spot := _swap_spot(c, h)
+			if spot.x >= 0:
+				units.order_move([c.id], spot, pathfinder)
+				return
+			# 교체할 펌프차 옆이 없다: 아래 보통 출구로 나간다
 		else:
 			water.recover_hose(c.id, tick)
 			events.add(tick, reason, {"crew": _crew_name(c)})
@@ -224,10 +230,11 @@ func _swap_spot(c: Crew, h: HoseLine) -> Vector3i:
 		if v.is_pump() and v.distance_to_body(c.leader.pos) < best_d:
 			best_d = v.distance_to_body(c.leader.pos)
 			best = v
+	# 펌프차가 없거나 옆에 설 자리가 없으면 (-1): 보통 출구로 나간다 — 건물 안 방수구로 가면 교체가 끝나지 않는다 (2026-11-24 검사)
 	if best == null:
-		return h.points[0]
+		return Vector3i(-1, -1, -1)
 	var near := pathfinder.nearest_walkable(best.level, Vector2i(best.closest_body_point(c.leader.pos).floor()))
-	return Vector3i(near.x, near.y, best.level) if near != Pathfinder.NO_CELL else h.points[0]
+	return Vector3i(near.x, near.y, best.level) if near != Pathfinder.NO_CELL else Vector3i(-1, -1, -1)
 
 
 ## 호스를 따라 나가는 출구: 관창 쪽에서 펌프차 쪽으로 호스를 거슬러 가다 처음 만나는 바깥 칸 (진입한 문 바로 밖).
@@ -327,6 +334,9 @@ func _on_role_received(tick: int, crew_id: int, role: Role) -> void:
 	else:
 		roles[crew_id] = role
 		deployed.erase(crew_id)
+		# 역할(RIT 등)을 받은 조는 교체 뒤 관창으로 돌아가지 않고, 놓고 간 관창은 주인을 푼다 (2026-11-24 검사)
+		air_swaps.erase(crew_id)
+		water.release_dropped(crew_id)
 		# 건물 안에 있었으면 하던 일을 멈추고 밖으로 나온다
 		if _indoor(c.leader.level, c.leader.pos):
 			doors.cancel(crew_id)

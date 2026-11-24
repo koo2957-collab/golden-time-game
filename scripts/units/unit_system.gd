@@ -405,7 +405,15 @@ func order_move(crew_ids: Array[int], target: Vector3i, pathfinder: Pathfinder, 
 		var da: float = dist.call(a)
 		var db: float = dist.call(b)
 		return da < db or (da == db and a.id < b.id))
-	var slots := pathfinder.formation_slots(target.z, Vector2i(target.x, target.y), targets.size())
+	# 다른 조가 멈춰 서 있는 칸은 비워 둔다 (같은 칸에 두 분대 대원이 겹쳐 서지 않게, 2026-11-24)
+	var occupied := {}
+	for c in crews:
+		if c in targets:
+			continue
+		for ff in c.list:
+			if not ff.incapacitated and ff.level == target.z and not ff.is_moving():
+				occupied[Vector2i(ff.pos.floor())] = true
+	var slots := pathfinder.formation_slots(target.z, Vector2i(target.x, target.y), targets.size(), 2, occupied)
 	if slots.is_empty():
 		return
 	for i in targets.size():

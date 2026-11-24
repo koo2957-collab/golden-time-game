@@ -1491,12 +1491,15 @@ func order_floor_mission(crew_ids: Array, level: int, e: EntryPoints.Entry, kind
 		var c := units.get_crew(int(id))
 		if c == null:
 			continue
-		# 층 검색을 받았으면 꺼내러 가던 호스는 거둔다 (2026-11-24 — 호스가 필요 없는 임무)
+		# 새 임무: '교체 뒤 관창으로 돌아가기'는 잊는다 (2026-11-24 검사)
+		safety.air_swaps.erase(c.id)
+		# 층 검색을 받았으면 꺼내러 가던 호스는 거두고 놓고 간 관창은 주인을 푼다 (2026-11-24 — 호스가 필요 없는 임무)
 		if kind != "attack" and water:
 			water.cancel_fetch(c.id, tick)
+			water.release_dropped(c.id)
 			_hose_first.erase(c.id)
 		if kind == "attack" and water and not _indoor(c.leader.level, c.leader.pos) and not water.uses_outlet(level) \
-				and (water.hose_of_crew(c.id) != null or water.ensure_hose(c.id, level, tick)) and water.fetching(c.id):
+				and (water.held_hose(c.id) != null or water.ensure_hose(c.id, level, tick)) and water.fetching(c.id):
 			if tactical:
 				tactical.cancel(c.id)
 			if doors:
@@ -1511,6 +1514,19 @@ func order_floor_mission(crew_ids: Array, level: int, e: EntryPoints.Entry, kind
 	order_floor(now, level, e, tick)
 	for id: int in now:
 		floor_missions[id] = kind
+
+
+## 그 조가 놓인 관창을 잡으러(호스를 따라 건물 안으로) 가도 되는가 (2026-11-24 검사): 이미 건물 안이면 된다.
+## 밖이면 그 출동대가 진입 허가를 받았고 지금 진입 금지 요소(방어 전략·특수현상·붕괴 징후)가 없을 때만 — 진입 허가 카드를 건너뛰지 않게
+func can_take_hose(crew_id: int) -> bool:
+	var c := units.get_crew(crew_id)
+	if c == null:
+		return false
+	if _indoor(c.leader.level, c.leader.pos):
+		return true
+	if not can_enter(c.squad_id):
+		return false
+	return str(entry_verdict(c, clock.tick if clock else 0).verdict) != "deny"
 
 
 ## 공기호흡기 교체로 관창을 놓고 나온 조 (2026-11-24 사용자 결정): 교체가 끝나면 "교체 완료, 재진입" 보고 후 호스를 따라
@@ -1531,7 +1547,7 @@ func _step_air_swaps(tick: int) -> void:
 				continue
 			var full := true
 			for ff in c.members():
-				if not ff.incapacitated and ff.air_ratio() < 0.95:
+				if not ff.incapacitated and ff.air_ratio() < safety.air_full_ratio:
 					full = false
 			if not full:
 				continue
@@ -1787,6 +1803,7 @@ func _step_floor_goals(tick: int) -> void:
 ## 다른 명령을 받으면 층 목표를 지운다 (MoveCommand·TacticalCommand). 층에 닿은 뒤 시작할 임무도 지운다
 func clear_floor_goal(id: int) -> void:
 	approach.erase(id)
+	_stacked_at_entry.erase(id)
 	floor_goals.erase(id)
 	floor_missions.erase(id)
 	_hose_first.erase(id)

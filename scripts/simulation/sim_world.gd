@@ -198,6 +198,8 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	safety.entry_allowed = sim.command.entry_allowed
 	sim.command.safety = safety
 	sim.command.zones = sim.zones
+	# 놓인 관창을 잡으러 건물 안으로 가도 되는가 (진입 허가·진입 금지 요소, 2026-11-24 검사)
+	sim.water.take_allowed = sim.command.can_take_hose
 	sim.tactical = TacticalSystem.new(sim.fire, sim.units, sim.water, sim.doors, sim.rescue, sim.events)
 	sim.tactical.safety = safety
 	sim.tactical.perception = sim.perception
@@ -515,7 +517,7 @@ func crew_busy(crew_id: int) -> String:
 		return ""
 	if c.leader.aboard:
 		return "차량·승강기에 타고 있음"
-	if water.hose_of_crew(crew_id) != null:
+	if water.held_hose(crew_id) != null:
 		return "수관을 잡고 있음"
 	var rt: RefCounted = rescue.task_of_crew(crew_id)
 	if rt is RescueSystem.CarryTask:

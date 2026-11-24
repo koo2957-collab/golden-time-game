@@ -115,14 +115,14 @@ func _report_knockdown(tick: int) -> void:
 	var rooms: PackedStringArray = []
 	if reporter:
 		var here := fire.compartment_at(reporter.leader.level, floori(reporter.leader.pos.x), floori(reporter.leader.pos.y))
-		var h := water.hose_of_crew(reporter.id)
+		var h := water.held_hose(reporter.id)
 		var target := fire.compartment_at(h.target.z, h.target.x, h.target.y) if h else null
 		for c in [target, here]:
 			if c and c.ever_burned and not c.display_name() in rooms:
 				rooms.append(c.display_name())
 	var name := units.crew_name(reporter) if reporter else "현장 대원"
 	var e := {"crew": name, "rooms": ", ".join(rooms) if not rooms.is_empty() else "화점", "crew_id": reporter.id if reporter else -1}
-	var h2 := water.hose_of_crew(reporter.id) if reporter else null
+	var h2 := water.held_hose(reporter.id) if reporter else null
 	if h2:
 		e["room_cell"] = [h2.target.x, h2.target.y, h2.target.z]
 	events.add(tick, "knockdown_reported", e)

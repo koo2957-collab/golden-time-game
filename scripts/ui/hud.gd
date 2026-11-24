@@ -300,7 +300,10 @@ func _refresh_selection() -> void:
 			line += "  · %s%s" % [SafetySystem.ROLE_NAMES[role], " (투입)" if sim.command.safety.deployed.has(crew_id) else " — 다른 임무 불가, 밖에서 대기"]
 		line += _crew_status(crew)
 		var hose := sim.water.hose_of_crew(crew_id)
-		if hose:
+		if hose and not hose.held():
+			# 관창을 놓고 나옴 · 관창으로 가는 중 · 호스 거두는 중 (2026-11-24)
+			line += "  · %s" % ("관창으로 가는 중" if hose.to_nozzle else ("호스 회수 중" if hose.recovering else "관창 놓음"))
+		elif hose:
 			line += "  · 수관 %.0f/%.0fm" % [hose.length_cells() * sim.building.cell_size_m, hose.max_cells * sim.building.cell_size_m]
 			if hose.flowing:
 				any_flowing = true

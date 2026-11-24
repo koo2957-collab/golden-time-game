@@ -306,7 +306,7 @@ func _free_crew(target: Vector2i) -> int:
 		var s := units.squads[cr.squad_id]
 		if cr.solo or not command.resources.on_scene(s.id) or cr.leader.aboard or cr.leader.incapacitated or s.type == "구급대":
 			continue
-		if command.tactical.task_of_crew(cr.id) != null or command.rescue.task_of_crew(cr.id) != null or command.water.hose_of_crew(cr.id) != null:
+		if command.tactical.task_of_crew(cr.id) != null or command.rescue.task_of_crew(cr.id) != null or command.water.held_hose(cr.id) != null:
 			continue
 		if command.safety.reserved(cr.id) or busy(cr.id) or command.interior.crew_inside(cr.id):
 			continue

@@ -59,9 +59,15 @@ var _supply_range: float
 ## 수관 시작점: 펌프차 후면에서 이만큼 뒤 (칸)
 var _port_behind: float
 var _drag_factor: float
+## (crew_id) -> bool : 그 조가 놓인 관창을 잡으러(건물 안으로) 가도 되는가. SimWorld 가 CommandSystem.can_take_hose 로 잇는다
+var take_allowed := Callable()
 ## 호스를 거두며 돌아가는 속도 비율 · 놓인 관창을 다시 잡는 거리 (칸)
 var _recover_factor := 0.45
 var _nozzle_reach := 1.5
+## 관창으로 가기·거두기 시간 한도 (틱) · 거둔 것으로 보는 거리 · 다 거둔 것으로 보는 거리 (칸)
+var _detach_limit := 1800
+var _recover_reach := 1.5
+var _recover_done := 2.0
 var _damage_temp: float
 var _range := {}  # Pattern -> 셀
 ## 물줄기를 막는 가구 높이 {Vector3i(x, y, 층): m} · 관창 높이(선 자세·낮은 자세) · 차체가 막는가 (data/fire/fire_params.json)
@@ -100,6 +106,9 @@ func _init(p_building: BuildingData, p_units: UnitSystem, p_pathfinder: Pathfind
 	_drag_factor = config.value("hose_drag_speed_factor")
 	_recover_factor = config.value("hose_recover_speed_factor") if config.params.has("hose_recover_speed_factor") else 0.45
 	_nozzle_reach = (config.value("nozzle_reach_m") if config.params.has("nozzle_reach_m") else 0.75) / _cell_m
+	_detach_limit = roundi((config.value("hose_detach_limit_s") if config.params.has("hose_detach_limit_s") else 180.0) / SimClock.TICK_DT)
+	_recover_reach = (config.value("hose_recover_reach_m") if config.params.has("hose_recover_reach_m") else 0.75) / _cell_m
+	_recover_done = (config.value("hose_recover_done_m") if config.params.has("hose_recover_done_m") else 1.0) / _cell_m
 	_port_behind = config.value("hose_port_behind_m") / _cell_m
 	indoor_tank_l = p_building.indoor_tank_l
 	_damage_temp = config.value("water_damage_temp_c")
@@ -401,22 +410,33 @@ func uses_outlet(target_level: int) -> bool:
 ## 수관이 없으면 연장을 시작한다: 목표 층에 쓸 방수구가 있으면 방수구에서, 아니면 펌프차 후면에서 꺼낸다
 ## (자기 출동대의 펌프차 먼저, 없으면 가장 가까운 펌프차 — 2026-11-24 사용자·현직 소방관: 진압 지시를 받으면 본인 차량에서 호스를 챙겨 간다).
 ## 이미 수관이 있으면 그대로 true. 연장을 시작할 수 없으면 false
-func ensure_hose(crew_id: int, target_level: int, tick: int) -> bool:
+## take = 놓인 관창을 다시 잡거나 이어받아도 되는가 (건물 안이거나 진입 허가를 받았고 진입 금지 요소가 없을 때 — 부르는 쪽이 정한다).
+## 경계 관창(외부 방수)은 false: 건물 안 관창을 쓰러 들어가지 않고 새 호스를 꺼낸다 (2026-11-24 검사: 긴급 탈출 뒤 외부 방수 지시에
+## 대원이 건물 안으로 다시 들어갔다)
+func ensure_hose(crew_id: int, target_level: int, tick: int, take := true) -> bool:
 	var c := units.get_crew(crew_id)
 	if c == null:
 		return false
+	# 건물 밖의 조는 진입 허가를 받았고 진입 금지 요소가 없을 때만 건물 안 관창을 잡으러 간다 (CommandSystem.can_take_hose)
+	if take and take_allowed.is_valid() and not bool(take_allowed.call(crew_id)):
+		take = false
 	var mine := hose_of_crew(crew_id)
+	if mine != null and mine.dropped and not mine.to_nozzle and not take:
+		# 놓고 간 관창을 쓰지 않는다: 주인을 풀고 새 호스를 꺼낸다
+		release_dropped(crew_id)
+		mine = null
 	if mine != null:
 		# 놓고 간 관창이 있으면 호스를 따라 다시 잡으러 간다 / 거두는 중이었으면 거두기를 멈추고 관창 쪽으로 다시 간다
 		if mine.dropped and not mine.to_nozzle:
 			return_to_nozzle(crew_id, tick)
 		elif mine.recovering:
 			mine.recovering = false
+			mine.detach_tick = -1
 			for ff in c.members():
 				ff.speed_factor = _drag_factor
 		return true
 	# 교대조 인수 (2026-11-24 사용자 결정): 다른 조가 놓고 간 관창이 있으면 새 호스를 꺼내지 않고 그 호스를 따라가 이어받는다
-	if take_over(crew_id, target_level, tick):
+	if take and take_over(crew_id, target_level, tick):
 		return true
 	if uses_outlet(target_level) and lay_hose_outlet(crew_id, building.outlet_on(target_level), tick, false):
 		return true
@@ -470,6 +490,16 @@ func cancel_fetch(crew_id: int, tick: int) -> bool:
 func held_hose(crew_id: int) -> HoseLine:
 	var h := hose_of_crew(crew_id)
 	return h if h != null and h.held() else null
+
+
+## 그 조가 놓고 간 수관의 주인을 푼다 (다른 임무를 받았다 — 2026-11-24 검사): 그 조는 이제 '수관을 가진 조'가 아니라
+## 구조·새 호스 등을 받을 수 있고, 놓인 수관은 다른 조가 이어받는다. 풀었으면 true
+func release_dropped(crew_id: int) -> bool:
+	var h := hose_of_crew(crew_id)
+	if h == null or not h.dropped or h.to_nozzle:
+		return false
+	h.crew_id = -1
+	return true
 
 
 ## 깔린 수관인가 (꺼내러 가는 중·꺼내는 중이 아니다)
@@ -555,9 +585,26 @@ func take_over(crew_id: int, target_level: int, tick: int) -> bool:
 ## 수관을 지웠으면 true (그 수관은 더 보지 않는다)
 func _update_detached(h: HoseLine, c: Crew, tick: int) -> bool:
 	var leader := c.leader
+	if h.detach_tick < 0:
+		h.detach_tick = tick
+	# 조장이 쓰러졌거나 정한 시간 안에 못 했으면(길이 막힘) 그만두고 놓인 수관으로 되돌린다 — 다른 조가 이어받을 수 있게 (2026-11-24 검사)
+	if leader.incapacitated or tick - h.detach_tick > _detach_limit:
+		h.to_nozzle = false
+		h.recovering = false
+		h.dropped = true
+		h.approaching = false
+		h.flowing = false
+		h.standby = false
+		h.detach_tick = -1
+		for ff in c.members():
+			ff.speed_factor = 1.0
+		h.crew_id = -1
+		events.add(tick, "hose_abandoned", {"crew": _crew_name(c), "crew_id": c.id})
+		return false
 	if h.to_nozzle:
 		var end := h.points[-1]
 		if leader.level == end.z and leader.pos.distance_to(Vector2(end.x, end.y) + Vector2(0.5, 0.5)) <= _nozzle_reach + 0.5:
+			h.detach_tick = -1
 			h.to_nozzle = false
 			h.dropped = false
 			for ff in c.members():
@@ -574,11 +621,11 @@ func _update_detached(h: HoseLine, c: Crew, tick: int) -> bool:
 		var here := leader.cell3()
 		for k in h.points.size():
 			var p := h.points[k]
-			if p.z == here.z and Vector2(p.x, p.y).distance_to(Vector2(here.x, here.y)) <= 1.5:
+			if p.z == here.z and Vector2(p.x, p.y).distance_to(Vector2(here.x, here.y)) <= _recover_reach:
 				if k + 1 < h.points.size():
 					h.points.resize(k + 1)
 				break
-		if h.points.size() <= 1 or (not leader.is_moving() and leader.cell3().distance_to(h.points[0]) <= 2.0):
+		if h.points.size() <= 1 or (not leader.is_moving() and leader.cell3().distance_to(h.points[0]) <= _recover_done):
 			hoses.erase(h)
 			for ff in c.members():
 				ff.speed_factor = 1.0
@@ -605,12 +652,13 @@ func _own_pump(c: Crew) -> int:
 ## 목표가 사거리 밖이거나 벽에 가려 있으면 물줄기가 닿는 위치까지 먼저 이동한다.
 ## exterior = 경계 관창: 바깥 지상에서 건물의 창·외벽(위층일 수 있다)으로 올려 쏜다 — 건물 안으로 들어가지 않는다.
 ## standby = 관창을 배치만 한다 (방수 위치로 가서 겨눈 채 잠가 둔다 — 불이 다가오면 TacticalSystem이 연다)
-func start_spray(crew_id: int, target: Vector3i, pattern: HoseLine.Pattern, tick: int, exterior := false, standby := false) -> bool:
+## take = 놓인 관창을 다시 잡거나 이어받아도 되는가 (외부 방수 임무는 false — 건물 안 관창을 쓰러 들어가지 않는다)
+func start_spray(crew_id: int, target: Vector3i, pattern: HoseLine.Pattern, tick: int, exterior := false, standby := false, take := true) -> bool:
 	var c := units.get_crew(crew_id)
 	if c == null:
 		return false
 	# 경계 관창은 옥내 방수구가 아니라 차에서 끌어온다 (밖에 선다)
-	if not ensure_hose(crew_id, c.leader.level if exterior else target.z, tick):
+	if not ensure_hose(crew_id, c.leader.level if exterior else target.z, tick, take and not exterior):
 		return false
 	var h := hose_of_crew(crew_id)
 	h.pattern = pattern
@@ -958,7 +1006,7 @@ func _helper_near(v: Vehicle) -> bool:
 func _helper_crew(v: Vehicle) -> int:
 	var r := float(_tt.get("helper_radius_m", 4.0)) / _cell_m
 	for c in units.crews:
-		if c.leader.incapacitated or c.leader.aboard or c.leader.is_moving() or hose_of_crew(c.id) != null:
+		if c.leader.incapacitated or c.leader.aboard or c.leader.is_moving() or held_hose(c.id) != null:
 			continue
 		if c.leader.level == v.level and v.distance_to_body(c.leader.pos) <= r:
 			return c.id
@@ -1039,11 +1087,13 @@ func _update_pending(tick: int) -> void:
 ## 휴대 한도(1인 2본)를 넘으면 차량에서 더 가져올 동안 멈춘다 (기획안 6-1)
 func _update_hoses(tick: int) -> void:
 	for h: HoseLine in hoses.duplicate():
-		var c := units.get_crew(h.crew_id)
-		var leader := c.leader
-		# 관창을 놓고 간 수관은 그대로 둔다. 다시 잡으러 가는 중·거두는 중은 따로 (2026-11-24)
+		# 관창을 놓고 간 수관은 그대로 둔다 (주인이 풀린 수관은 crew_id -1). 다시 잡으러 가는 중·거두는 중은 따로 (2026-11-24)
 		if h.dropped and not h.to_nozzle:
 			continue
+		var c := units.get_crew(h.crew_id)
+		if c == null:
+			continue
+		var leader := c.leader
 		if h.to_nozzle or h.recovering:
 			_update_detached(h, c, tick)
 			continue

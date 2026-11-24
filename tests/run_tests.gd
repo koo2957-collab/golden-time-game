@@ -32,13 +32,13 @@ func _initialize() -> void:
 			continue
 		var script: GDScript = load(TEST_DIR + file)
 		if script == null or not script.can_instantiate():
-			# 컴파일이 안 된 테스트 파일 (또는 그것이 쓰는 게임 스크립트) — 전에는 조용히 건너뛰어 아무 실패도 안 보였다
-			if _matches(filters, file, ""):
-				failed += 1
-				failed_names.append("%s (컴파일 실패)" % file)
-				print("  실패  %s :: 컴파일 실패" % file)
-				for e in err_log.take():
-					print("        - " + e)
+			# 컴파일이 안 된 테스트 파일 (또는 그것이 쓰는 게임 스크립트) — 전에는 조용히 건너뛰어 아무 실패도 안 보였다.
+			# 거르는 조건과 상관없이 늘 실패로 센다 (2026-11-24 검사: 메서드 이름으로 거르면 '0 통과, 0 실패'로 넘어갔다)
+			failed += 1
+			failed_names.append("%s (컴파일 실패)" % file)
+			print("  실패  %s :: 컴파일 실패" % file)
+			for e in err_log.take():
+				print("        - " + e)
 			continue
 		for method in script.get_script_method_list():
 			var method_name: String = method.name

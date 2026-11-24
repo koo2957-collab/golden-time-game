@@ -31,6 +31,9 @@ func execute(sim: SimWorld) -> void:
 		sim.water.stop_spray(id, tick)
 		# 호스를 꺼내러 가던 중이면 거둔다 — 안 그러면 멈춘 뒤 다시 펌프차로 끌려간다 (2026-11-24)
 		sim.water.cancel_fetch(id, tick)
+		# 놓고 간 관창은 주인을 풀고, '교체 뒤 관창으로 돌아가기'는 잊는다 (2026-11-24 검사)
+		sim.water.release_dropped(id)
+		sim.command.safety.air_swaps.erase(id)
 	sim.units.order_move(crew_ids, target, sim.pathfinder, via)
 
 

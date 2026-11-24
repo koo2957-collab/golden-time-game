@@ -157,16 +157,27 @@ func nearest_walkable(level: int, cell: Vector2i, max_radius := 6) -> Vector2i:
 
 ## target 주변에서 서로 spacing 셀 이상 떨어진 도착 지점 count개를 찾는다.
 ## 벽을 넘지 않도록 걸을 수 있는 셀만 따라 너비 우선으로 탐색한다.
-func formation_slots(level: int, target: Vector2i, count: int, spacing := 2) -> Array[Vector2i]:
+## occupied: 다른 조가 멈춰 서 있는 칸 {Vector2i: true} — 그 칸은 비워 두고 다음으로 가까운 칸을 쓴다 (2026-11-24: 다른 분대 대원이
+## 같은 칸에 서서 한 사람이 다른 사람 그림에 가려 사라져 보였다). 비울 칸이 없으면(좁은 곳) 그래도 쓴다
+func formation_slots(level: int, target: Vector2i, count: int, spacing := 2, occupied: Dictionary = {}) -> Array[Vector2i]:
 	var slots: Array[Vector2i] = []
 	if not passable(level, target.x, target.y):
 		return slots
 	var queue: Array[Vector2i] = [target]
 	var visited := {target: true}
 	var head := 0
+	var fallback: Array[Vector2i] = []
 	while head < queue.size() and slots.size() < count and head < FORMATION_SEARCH_LIMIT:
 		var c := queue[head]
 		head += 1
+		if occupied.has(c):
+			fallback.append(c)
+			for d: Vector2i in [Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP]:
+				var n := c + d
+				if not visited.has(n) and passable(level, n.x, n.y):
+					visited[n] = true
+					queue.append(n)
+			continue
 		var free := true
 		for s in slots:
 			if maxi(absi(s.x - c.x), absi(s.y - c.y)) < spacing:
@@ -179,6 +190,11 @@ func formation_slots(level: int, target: Vector2i, count: int, spacing := 2) -> 
 			if not visited.has(n) and passable(level, n.x, n.y):
 				visited[n] = true
 				queue.append(n)
+	# 비어 있는 칸이 모자라면 다른 조가 선 칸이라도 (좁은 복도·계단참)
+	for c in fallback:
+		if slots.size() >= count:
+			break
+		slots.append(c)
 	return slots
 
 

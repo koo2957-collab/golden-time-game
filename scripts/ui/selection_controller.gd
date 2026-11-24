@@ -148,7 +148,7 @@ func cancel_mode() -> void:
 func crews_with_hose() -> Array[int]:
 	var out: Array[int] = []
 	for id in selected:
-		if sim.water.hose_of_crew(id):
+		if sim.water.held_hose(id):
 			out.append(id)
 	return out
 
@@ -157,7 +157,7 @@ func crews_with_hose() -> Array[int]:
 func crews_spraying() -> Array[int]:
 	var out: Array[int] = []
 	for id in crews_with_hose():
-		if sim.water.hose_of_crew(id).flowing:
+		if sim.water.held_hose(id).flowing:
 			out.append(id)
 	return out
 
@@ -486,7 +486,7 @@ func _issue_target_click(world_pos: Vector2) -> bool:
 	var pump := _vehicle_at(world_pos)
 	var without_hose: Array[int] = []
 	for id in selected:
-		if sim.water.hose_of_crew(id) == null:
+		if sim.water.held_hose(id) == null:
 			without_hose.append(id)
 	var door := _door_at(world_pos)
 	var window: Opening = null

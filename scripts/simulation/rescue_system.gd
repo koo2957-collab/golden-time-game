@@ -235,7 +235,7 @@ func order_rescue(crew_id: int, kind: String, target_id: int, tick: int) -> bool
 	# 2인이 업어야 하므로 선두와 또 한 명이 움직일 수 있어야 한다 (2인 조는 둘 다, 분대는 일하는 조원 둘 이상)
 	if c.leader.incapacitated or c.able_workers() < 2:
 		return false
-	if water and water.hose_of_crew(crew_id) != null:
+	if water and water.held_hose(crew_id) != null:
 		events.add(tick, "rescue_hose_crew", {"crew": _crew_name(c)})
 		return false
 	var target_pos: Vector2

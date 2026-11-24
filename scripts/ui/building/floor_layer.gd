@@ -658,8 +658,9 @@ func _draw_window_signs(w: Dictionary, h0: float, fh: float) -> void:
 		var c3 := _face_point(w.face, lerpf(a, b, 0.85), lerpf(g0, g1, 0.7))
 		draw_polyline(PackedVector2Array([c0, c1, c2]), BROKEN_LINE, 1.2)
 		draw_line(c1, c3, BROKEN_LINE, 1.2)
-	# 백드래프트 징후 ③ 창에 짙은 연기 응축물(검은색 액체)이 흘러내린 얼룩 (화재1 p.44, 연기 읽기 2단계 2026-11-24) — 닫힌 창
-	if not o.broken and not o.is_open and seen and sim.hazards != null and sim.hazards.backdraft_sign(sim.fire.comps[o.room_a]):
+	# 백드래프트 징후 ③ 창에 짙은 연기 응축물(검은색 액체)이 흘러내린 얼룩 (화재1 p.44, 연기 읽기 2단계 2026-11-24) — 닫힌 창.
+	# 외관의 창은 밖에서 늘 보인다 (문틈 연기와 같게 — 2026-11-24 검사)
+	if not o.broken and not o.is_open and sim.hazards != null and sim.hazards.backdraft_sign(sim.fire.comps[o.room_a]):
 		var st := SmokeLook.style()
 		var sc: Array = st.get("bd_stain_color", [0.08, 0.06, 0.04, 0.6])
 		var stain := Color(float(sc[0]), float(sc[1]), float(sc[2]), float(sc[3]))
@@ -3535,7 +3536,7 @@ func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density
 	var sheet := curtain and FxArt.sheet != null
 	var col := Color(0.36, 0.36, 0.38) if dark else Color(0.8, 0.81, 0.84)
 	# 연기층 색도 연기 읽기 색으로 (흰 → 회 → 검, 수증기) — 2026-11-24. 덩어리 그림(검은·흰 묶음)은 짙기로 고른 그대로
-	col = SmokeLook.look(sim.fire, c).get("color", col)
+	col = _smoke_look(c).get("color", col)
 	if op < 0.0:
 		op = minf(sp.smoke_max_opacity, a * 1.3)
 	if sheet:
@@ -3778,7 +3779,7 @@ func _draw_fire_plumes() -> Array[Vector2]:
 		var ratio := float(m.get("w", 120)) / maxf(1.0, float(m.get("h", 192)))
 		var hw := hh * ratio * clampf(0.6 + 0.1 * n, 0.7, 1.4) * 0.5
 		# 불 위 연기 기둥도 그 방의 연기 읽기 색·빠르기 (2026-11-24)
-		var plk: Dictionary = SmokeLook.look(sim.fire, sim.fire.comps[key]) if key >= 0 and key < sim.fire.comps.size() else {}
+		var plk: Dictionary = _smoke_look(sim.fire.comps[key]) if key >= 0 and key < sim.fire.comps.size() else {}
 		var col: Color = plk.get("color", Color(0.32, 0.32, 0.34))
 		col.a = sp.smoke_plume_alpha * float(acc[2]) * clampf(0.5 + 0.1 * n, 0.5, 1.0)
 		FxArt.draw_flip(self, FxArt.plume, "smoke_plume", PackedVector2Array([top + Vector2(-hw, 0), top + Vector2(hw, 0),
@@ -3795,11 +3796,11 @@ func _draw_smoke_spills() -> bool:
 	for s in smoke_spills(sim, level):
 		if not bool(s[4]):
 			_draw_spill(s, 0.0, CEILING_M, int(s[5]))
-	# 백드래프트 징후: 보이거나 본 적 있는 닫힌 문·창 틈에서만 (정보 안개 — 2026-11-24)
+	# 백드래프트 징후: 지금 보이는 닫힌 문·창 틈에서만 (정보 안개 — 본 적만 있는 곳의 지금 상태를 보여 주지 않는다, 2026-11-24 검사)
 	var p := sim.perception
 	for s in backdraft_seeps(sim, level):
 		var at: Vector2 = s[0]
-		if p.enabled and not (p.is_visible(level, floori(at.x), floori(at.y)) or p.is_seen(level, floori(at.x), floori(at.y))):
+		if p.enabled and not p.is_visible(level, floori(at.x), floori(at.y)):
 			continue
 		_draw_backdraft_seep(s, 0.0)
 	return true
@@ -3820,7 +3821,7 @@ func _draw_spill(s: Array, floor_h: float, ceil_m: float, seed: int) -> void:
 	# 연기 읽기 (2026-11-24, data/ui/smoke_look.json): 나오는 방의 그을음·산소·온도로 색(흰 → 회 → 검), 온도로 빠르기·뻗는 길이,
 	# 방수로 빼앗긴 열만큼 흰 수증기 (화재1 p.342·124·255)
 	var src_i := int(s[5]) if s.size() > 5 else -1
-	var lk: Dictionary = SmokeLook.look(sim.fire, sim.fire.comps[src_i]) if src_i >= 0 and src_i < sim.fire.comps.size() else {}
+	var lk: Dictionary = _smoke_look(sim.fire.comps[src_i]) if src_i >= 0 and src_i < sim.fire.comps.size() else {}
 	var reach := float(lk.get("reach", 1.0))
 	var out := float(m.get("out_m", 1.6)) * (0.75 if interior else 1.0) * (0.7 + 0.4 * float(s[1])) * reach / cell
 	var wall := at + dir * 0.5
@@ -3862,6 +3863,22 @@ static func smoke_spills(p_sim: SimWorld, lv: int) -> Array[Array]:
 		var density := 1.0 - clampf(fire.visibility_m(src) / 10.0, 0.0, 1.0)
 		out.append([center, clampf(0.3 + density, 0.0, 1.0), _spill_dir(p_sim, lv, o, src, dst, center), o.top, interior, src.index, dst.index])
 	return out
+
+
+## 방의 연기 모습 (SmokeLook.look) — 같은 틱 안에서는 방마다 한 번만 셈한다 (그리기마다 줄기·덩어리마다 불렸다, 2026-11-24 검사)
+var _look_cache: Dictionary = {}
+var _look_tick := -1
+
+
+func _smoke_look(c: Compartment) -> Dictionary:
+	if c == null:
+		return {}
+	if sim.clock.tick != _look_tick:
+		_look_tick = sim.clock.tick
+		_look_cache.clear()
+	if not _look_cache.has(c.index):
+		_look_cache[c.index] = SmokeLook.look(sim.fire, c)
+	return _look_cache[c.index]
 
 
 ## 백드래프트 징후 (연기 읽기 2단계, 2026-11-24 — 화재1 p.44 '닫힌 문 주위에서 나오는 무겁고 검은 연기', '연기가 건물 내로
@@ -3910,7 +3927,7 @@ func _draw_backdraft_seep(s: Array, floor_h: float) -> void:
 	var out := (0.15 + 0.55 * push) / cell
 	var lo := floor_h + top - 0.12
 	var hi := floor_h + top + 0.35 + 0.45 * push
-	var col: Color = SmokeLook.look(sim.fire, sim.fire.comps[int(s[3])]).get("color", Color(0.1, 0.1, 0.11))
+	var col: Color = _smoke_look(sim.fire.comps[int(s[3])]).get("color", Color(0.1, 0.1, 0.11))
 	col = col.darkened(0.25)
 	col.a = float(st.get("bd_alpha", 0.8)) * (0.45 + 0.55 * push)
 	FxArt.draw_flip(self, FxArt.spill, "smoke_spill", PackedVector2Array([proj.to_screen(wall, hi), proj.to_screen(wall + dir * out, hi),

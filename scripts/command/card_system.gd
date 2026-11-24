@@ -573,7 +573,7 @@ func _apply(effect: String, c: Card, tick: int) -> void:
 			rescue.order_rescue(c.crew_id, "victim", int(c.ctx.get("victim", -1)), tick)
 		"resume":
 			if action != "":
-				tactical.order(action, c.crew_id, target, tick)
+				_resume(c.crew_id, action, target, tick)
 		"close_then_resume":
 			# 화재실 문을 닫고(210-3.5) 닫히면 하던 검색을 이어 간다
 			var fr := _room_named(str(c.ctx.get("room", "")))
@@ -606,7 +606,7 @@ func _apply(effect: String, c: Card, tick: int) -> void:
 		"close_room_door", "cool_and_close":
 			var r := _room_named(str(c.ctx.get("room", "")))
 			if r:
-				if effect == "cool_and_close" and water.hose_of_crew(c.crew_id):
+				if effect == "cool_and_close" and water.held_hose(c.crew_id):
 					water.start_spray(c.crew_id, _cell(c.ctx.get("room_cell", [])), HoseLine.Pattern.FOG, tick)
 				elif sim == null or sim.command.interior.crew_inside(c.crew_id):
 					# 화점실 문은 건물 안에서만 닫으러 간다 — 밖의 분대에게 보내면 닿지 못하고, 하던 현관 개방 작업까지 끊겨
@@ -788,6 +788,10 @@ func _step_followups(tick: int) -> void:
 			var fd: Opening = fire.openings[int(f.door)]
 			# 정한 시간 안에 닫지 못하면(통로에 사람·호스, 문 앞에 닿지 못함) 알리고 하던 일을 잇는다 — 2026-11-24: 현관이 곧 화재실 문인
 			# 집에서 구조 분대가 닫지 못한 문 옆에 2,000틱 넘게 아무 보고 없이 서 있었다
+			# 시간은 문 앞에 멈춰 선 뒤부터 센다 (걸어가는 동안은 다시 맞춘다 — 2026-11-24 검사)
+			var fc := units.get_crew(int(f.crew))
+			if fc != null and fc.leader.is_moving():
+				f["tick"] = tick
 			var stuck := tick - int(f.get("tick", tick)) >= _close_wait_ticks
 			if not fd.is_open or doors.task_of_crew(int(f.crew)) == null or stuck:
 				_followups.erase(f)
@@ -802,7 +806,7 @@ func _step_followups(tick: int) -> void:
 		if win.broken or win.is_open:
 			_followups.erase(f)
 			tactical.allow_door(int(f.crew), int(f.door))
-			tactical.order(str(f.action) if str(f.action) != "" else "attack", int(f.crew), f.target, tick)
+			_resume(int(f.crew), str(f.action) if str(f.action) != "" else "attack", f.target, tick)
 
 
 ## 카드 뒤에 하던 임무를 잇는다. 층 임무(층 검색·층 진압)를 받은 조가 건물 밖에 있으면 지시 창의 층 임무 길

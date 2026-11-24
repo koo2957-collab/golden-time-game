@@ -188,6 +188,12 @@ func _order(action: String, crew_id: int, target: Vector3i, tick: int) -> bool:
 	# 호스가 필요 없는 임무를 받았으면 꺼내러 가던 호스는 거둔다 (2026-11-24 — 전에는 그대로 펌프차로 끌려갔다)
 	if not action in ["attack", "attack_floor", "exterior"]:
 		water.cancel_fetch(crew_id, tick)
+		# 놓고 간 관창은 주인을 푼다 — 다른 조가 이어받고, 이 조는 구조·새 호스 등을 받을 수 있다 (철수는 아래에서 따로)
+		if action != "withdraw":
+			water.release_dropped(crew_id)
+	# 새 지시를 받았으면 '교체 뒤 관창으로 돌아가기'는 잊는다 (2026-11-24 검사: 대기 지시 뒤에도 스스로 다시 들어갔다)
+	if action != "withdraw" and safety:
+		safety.air_swaps.erase(crew_id)
 	if action == "withdraw":
 		water.stop_spray(crew_id, tick)
 		safety.withdraw_crew(c, tick, "withdraw", resume)
@@ -205,7 +211,9 @@ func _order(action: String, crew_id: int, target: Vector3i, tick: int) -> bool:
 		var ext := tgt.z != c.leader.level or kind == BuildingData.Cell.WALL or kind == BuildingData.Cell.WINDOW
 		# 지금 불꽃·가열이 없으면 관창을 배치만 한다 (잠근 채 겨눔) — 불이 다가오면 연다 (_step_exterior)
 		var why := _exterior_threat(tgt, ext, _exterior_open_ratio)
-		if not water.start_spray(crew_id, tgt, HoseLine.Pattern.STRAIGHT, tick, ext, why == ""):
+		# 외부 방수 임무는 놓인 관창(건물 안)을 쓰지 않는다 — 자기 조가 놓고 간 관창은 주인을 풀고 새 호스를 꺼낸다 (2026-11-24 검사)
+		water.release_dropped(crew_id)
+		if not water.start_spray(crew_id, tgt, HoseLine.Pattern.STRAIGHT, tick, ext, why == "", false):
 			return false
 		_exterior[crew_id] = tgt
 		_ext_calm[crew_id] = tick
@@ -243,7 +251,7 @@ func step(tick: int) -> void:
 		# 꺼내는 동안은 기다리고, 다 꺼내면 깔면서 간다 (문 목록은 그 자리에서 다시 정한다).
 		# 목표 층의 옥내 방수구를 쓸 수 있으면 그 층에서 결합하므로 기다리지 않는다. 연장을 시작할 수 없으면 예전처럼 간다 (방수 위치에서 알린다)
 		if t.action == "attack" and t.phase == Phase.DOORS and not water.uses_outlet(t.target.z):
-			if not t.hose_asked and water.hose_of_crew(t.crew_id) == null:
+			if not t.hose_asked and water.held_hose(t.crew_id) == null:
 				t.hose_asked = true
 				water.ensure_hose(t.crew_id, t.target.z, tick)
 			if water.fetching(t.crew_id):
@@ -803,7 +811,7 @@ func _check_fire_found(t: Task, c: Crew, tick: int) -> void:
 			continue
 		_fire_seen[key] = true
 		events.add(tick, "fire_found", {"crew": _crew_name(c), "crew_id": c.id, "room": room.display_name(),
-			"room_cell": [p.x, p.y, lv], "has_hose": water.hose_of_crew(c.id) != null,
+			"room_cell": [p.x, p.y, lv], "has_hose": water.held_hose(c.id) != null,
 			"action": t.floor_action if t.floor >= 0 else t.action, "target": [t.target.x, t.target.y, t.target.z]})
 		return
 

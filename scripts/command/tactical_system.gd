@@ -477,6 +477,21 @@ func allow_door(crew_id: int, opening_index: int) -> void:
 	allowed_doors[crew_id] = opening_index
 
 
+## 화염·열기로 더 들어가지 못해 하던 인명검색·구조를 멈췄다 (2026-11-24, SimWorld._on_heat_stop): 임무를 '지시 바람'으로 멈추고
+## 무전으로 알린다. 스스로 다시 들어가지 않는다 — 다시 보낼지는 지휘관이 정한다 (층 임무도 이어 가지 않는다).
+## place = 들어가지 못한 곳 이름
+func halt_for_heat(crew_id: int, tick: int, place: String) -> void:
+	var c := units.get_crew(crew_id)
+	if c == null:
+		return
+	var reason := "화염·열기로 %s 진입 불가 — 물러나 대기, 지시 바람" % place
+	var t := task_of_crew(crew_id)
+	if t != null:
+		_halt(t, c, tick, reason, true, "heat")
+	else:
+		events.add(tick, "tactical_halt", {"crew": _crew_name(c), "reason": reason, "safety": true, "kind": "heat", "crew_id": c.id})
+
+
 func _center(o: Opening) -> Vector2:
 	var s := Vector2.ZERO
 	for cell in o.cells:

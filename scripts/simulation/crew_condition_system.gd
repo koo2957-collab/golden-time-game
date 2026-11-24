@@ -47,6 +47,9 @@ var emergency := Callable()
 var exits := Callable()
 ## 엄호 주수 안인가 (level, pos) -> bool. SimWorld가 넣는다 (R11)
 var covered := Callable()
+## 열기에 막히거나 밀려난 조가 하던 임무를 멈춘다 (crew, tick, 종류 "blocked"·"retreat") -> 멈춘 임무가 있었는가. SimWorld가 넣는다
+## (2026-11-24 — 인명검색·구조가 1초마다 다시 길을 잡아 문턱에서 왔다 갔다 했고, 물러난 뒤에도 되돌아왔다)
+var on_heat_stop := Callable()
 var _cover_factor := 0.5
 var _exits_now: Array = []
 var _swap_s: float
@@ -152,6 +155,9 @@ func before_move(tick: int) -> void:
 	for c in units.crews:
 		var leader := c.leader
 		if leader.incapacitated:
+			# 선두가 쓰러져도 남은 조원은 뜨거운 곳으로 걸어 들어가지 않는다 (2026-11-24 — 전에는 선두가 쓰러지면 조 전체의
+			# 열 검사를 건너뛰어, 길이 남아 있던 조원이 플래시오버가 난 방으로 들어가 모두 쓰러졌다)
+			_guard_members(c)
 			continue
 		var here := Vector2i(leader.pos.floor())
 		var hot := false
@@ -165,6 +171,8 @@ func before_move(tick: int) -> void:
 			warm = warm or q > _routine
 			stressed = stressed or ff.heat_stress >= _stress_retreat
 		if hot:
+			# 하던 인명검색·구조를 멈춘다 — 멈추지 않으면 물러난 자리에 닿자마자 다시 불 쪽으로 간다
+			_stop_task(c, tick, "retreat")
 			_retreat(c, tick)
 			continue
 		if stressed and warm:
@@ -175,13 +183,51 @@ func before_move(tick: int) -> void:
 				_heat_event(c, "heat_stress_high", tick)
 		if leader.path.is_empty():
 			continue
+		# 다음에 밟을 칸: 길의 첫 칸이 지금 선 칸이면 그다음 칸 (order_move 가 잡은 길은 자기 칸에서 시작한다 —
+		# 전에는 그 한 틱을 검사하지 않아, 다시 명령받을 때마다 한 걸음씩 들어갔다 나왔다 했다, 2026-11-24)
 		var wp := leader.path[0]
+		if wp.z == leader.level and Vector2i(wp.x, wp.y) == here and leader.path.size() > 1:
+			wp = leader.path[1]
 		if wp.z != leader.level or Vector2i(wp.x, wp.y) == here:
 			continue
 		if heat_at(wp.z, Vector2i(wp.x, wp.y), leader.crouched) >= _hazard:
 			for ff in c.list:
 				ff.path.clear()
 			_heat_event(c, "heat_blocked", tick)
+			# 인명검색·구조 중이었으면 임무를 멈추고, 문턱에 서 있지 않고 방 밖 식은 곳까지 물러나 지시를 기다린다
+			# (문턱 안쪽에 서 있다가 플래시오버에 쓰러졌다). 방수하러 다가가는 조는 그대로 — 그 자리에서 쏜다
+			if _stop_task(c, tick, "blocked"):
+				_retreat(c, tick)
+
+
+## 열기 때문에 하던 임무를 멈춘다 (SimWorld가 넣은 on_heat_stop) — 멈춘 임무가 있었는가
+func _stop_task(c: Crew, tick: int, kind: String) -> bool:
+	return on_heat_stop.is_valid() and bool(on_heat_stop.call(c, tick, kind))
+
+
+## 선두가 쓰러진 조의 남은 조원: 다음 칸이 위험하면 멈추고, 지금 칸이 위험하면 방 밖 식은 곳으로 저마다 물러난다
+func _guard_members(c: Crew) -> void:
+	for ff in c.list:
+		if ff.incapacitated:
+			continue
+		var here := Vector2i(ff.pos.floor())
+		if heat_at(ff.level, here, ff.crouched) >= _hazard:
+			if ff.path.is_empty() or not safe_to_enter(ff.path.back().z, Vector2i(ff.path.back().x, ff.path.back().y)):
+				var to := _cool_cell(ff.level, here, 0)
+				if to.x >= 0 and to != here:
+					ff.set_path(pathfinder.find_path(ff.cell3(), Vector3i(to.x, to.y, ff.level)))
+			continue
+		if ff.path.is_empty():
+			continue
+		var wp := ff.path[0]
+		if wp.z == ff.level and Vector2i(wp.x, wp.y) == here and ff.path.size() > 1:
+			wp = ff.path[1]
+		if wp.z == ff.level and Vector2i(wp.x, wp.y) != here and heat_at(wp.z, Vector2i(wp.x, wp.y), ff.crouched) >= _hazard:
+			# 문턱에 서 있지 않고 방 밖 식은 곳까지 물러난다 (문턱에 서 있다가 플래시오버에 쓰러졌다)
+			ff.path.clear()
+			var back := _cool_cell(ff.level, here, 0)
+			if back.x >= 0 and back != here:
+				ff.set_path(pathfinder.find_path(ff.cell3(), Vector3i(back.x, back.y, ff.level)))
 
 
 ## 이동 후: 자세·복사열·열 스트레스·공기호흡기·용기 교체·행동 불능
@@ -269,10 +315,20 @@ func _retreat(c: Crew, tick: int, event_type := "heat_retreat") -> void:
 	if not leader.path.is_empty() and _retreat_goal.get(c.id, Vector3i(-1, -1, -1)) == leader.path.back():
 		return
 	var start := Vector2i(leader.pos.floor())
-	# 지금 있는 방을 벗어난다 — 가까운 '식은 칸'이 불난 방 문턱이면 뒤따르는 짝이 방 안에 남아 플래시오버에 쓰러졌다.
-	# 뒤따르는 대원 수만큼(줄 간격) 더 가서 선다
-	var here_room := fire.compartment_at(leader.level, start.x, start.y)
-	var trail: int = (c.list.size() - 1) * units.line_gap_cells
+	var target := _cool_cell(leader.level, start, (c.list.size() - 1) * units.line_gap_cells)
+	if target.x < 0 or target == start:
+		return
+	units.order_move([c.id] as Array[int], Vector3i(target.x, target.y, leader.level), pathfinder)
+	if not leader.path.is_empty():
+		_retreat_goal[c.id] = leader.path.back()
+	_heat_event(c, event_type, tick)
+
+
+## start 에서 걸어서 닿는 가장 가까운 식은 칸 (없으면 (-1, -1)).
+## 지금 있는 방을 벗어난다 — 가까운 '식은 칸'이 불난 방 문턱이면 뒤따르는 짝이 방 안에 남아 플래시오버에 쓰러졌다.
+## trail = 뒤따르는 대원 수만큼(줄 간격) 더 가서 설 칸 수
+func _cool_cell(level: int, start: Vector2i, trail: int) -> Vector2i:
+	var here_room := fire.compartment_at(level, start.x, start.y)
 	var queue: Array[Vector2i] = [start]
 	var depth := {start: 0}
 	var head := 0
@@ -283,8 +339,8 @@ func _retreat(c: Crew, tick: int, event_type := "heat_retreat") -> void:
 		var p := queue[head]
 		head += 1
 		# 늘 낮은 자세로 보면 연기층이 높아 서는 방에서 '식은 칸'을 잘못 골라 한 칸씩만 물러나다 쓰러졌다 (2026-11-17)
-		var q := _flux_there(leader.level, p)
-		var room := fire.compartment_at(leader.level, p.x, p.y)
+		var q := _flux_there(level, p)
+		var room := fire.compartment_at(level, p.x, p.y)
 		if q <= _routine and (here_room == null or room != here_room):
 			target = p
 			if first_ok < 0:
@@ -295,17 +351,10 @@ func _retreat(c: Crew, tick: int, event_type := "heat_retreat") -> void:
 			fallback = p
 		for d: Vector2i in [Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP]:
 			var n := p + d
-			if not depth.has(n) and pathfinder.passable(leader.level, n.x, n.y):
+			if not depth.has(n) and pathfinder.passable(level, n.x, n.y):
 				depth[n] = int(depth[p]) + 1
 				queue.append(n)
-	if target.x < 0:
-		target = fallback
-	if target.x < 0 or target == start:
-		return
-	units.order_move([c.id] as Array[int], Vector3i(target.x, target.y, leader.level), pathfinder)
-	if not leader.path.is_empty():
-		_retreat_goal[c.id] = leader.path.back()
-	_heat_event(c, event_type, tick)
+	return target if target.x >= 0 else fallback
 
 
 func _heat_event(c: Crew, type: String, tick: int) -> void:

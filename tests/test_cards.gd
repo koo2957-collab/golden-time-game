@@ -16,6 +16,11 @@ func _attack_locked_door(sim: SimWorld) -> void:
 		c.members()[i].pos = Vector2(13.5 + i, 22.5)
 		c.members()[i].prev_pos = c.members()[i].pos
 	sim.command.entry_allowed[c.squad_id] = true
+	# 화재진압은 호스부터 (2026-11-24) — 호스를 이미 꺼내 현관 앞까지 깔아 온 조에게 시킨다 (문 카드를 보려는 테스트)
+	sim.water.ensure_hose(0, 1, sim.clock.tick)
+	fetch_hose(sim, 0)
+	# 꺼내는 20초 동안 온 다른 질문(출동 중 카드 등)은 치운다 — 여기서 볼 것은 문 카드다
+	sim.cards.queue.clear()
 	sim.issue(TacticalCommand.make("attack", [0] as Array[int], Vector3i(12, 16, 1)))
 
 

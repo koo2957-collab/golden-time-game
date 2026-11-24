@@ -213,7 +213,8 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.conditions.emergency = func() -> bool: return sim.command.safety.emergency()
 	sim.conditions.exits = sim.rescue.exit_cells
 	sim.conditions.covered = sim.water.is_covered
-	sim.monitors = MonitorSystem.new(sim.fire, sim.units, fire_config, sim.events)
+	sim.conditions.on_heat_stop = sim._on_heat_stop
+	sim.monitors =MonitorSystem.new(sim.fire, sim.units, fire_config, sim.events)
 	sim.aerial = AerialSystem.new(sim.fire, sim.units, sim.rescue, sim.falls, sim.events)
 	sim.aerial.zones = sim.zones
 	sim.monitors.aerial = sim.aerial
@@ -1072,6 +1073,27 @@ func apply_loadout(items: Array, tick: int) -> void:
 			"high_rise_pack":
 				building.outlet_hose_m += 15.0
 	events.add(tick, "loadout", {"items": ", ".join(PackedStringArray(loadout))})
+
+
+## 열기에 막히거나 밀려난 조가 인명검색·구조 중이었으면 그 임무를 멈추고 알린다 (2026-11-24 사용자: 화염으로 진입이 안 되면
+## 스스로 후퇴해야 하는데 제자리에서 왔다 갔다 한다 — 검색·구조가 계속 다시 길을 잡았고, 물러나도 임무가 남아 되돌아갔다).
+## 이미 구조대상자를 업었으면 그대로 데리고 나간다. 방수하러 가는 조는 건드리지 않는다. 멈춘 임무가 있었으면 true
+func _on_heat_stop(c: Crew, tick: int, _kind: String) -> bool:
+	var t := rescue.task_of_crew(c.id)
+	if t == null:
+		return false
+	if t is RescueSystem.CarryTask and (t as RescueSystem.CarryTask).carrying:
+		return false
+	var place := "내부"
+	if t is RescueSystem.SearchTask:
+		var st := t as RescueSystem.SearchTask
+		if st.room >= 0 and st.room < fire.comps.size():
+			place = fire.comps[st.room].display_name()
+	else:
+		place = "구조대상자 쪽"
+	rescue.cancel(c.id)
+	tactical.halt_for_heat(c.id, tick, place)
+	return true
 
 
 ## 대원의 활동 단계 (호흡량): 0 대기·보행 40 / 1 수색·호스 전개 55 / 2 방수·파괴 65 / 3 구조·계단 80 ℓ/분 (기획안 5-6)

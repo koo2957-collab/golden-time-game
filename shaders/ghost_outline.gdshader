@@ -32,7 +32,8 @@ void fragment() {
 	m = max(m, texture(TEXTURE, UV + vec2(px.x, -px.y)).a);
 	m = max(m, texture(TEXTURE, UV + vec2(-px.x, px.y)).a);
 	// 바깥 테두리를 진하게 (두 번 눌러 또렷하게). 안쪽은 그림 원래 색을 fill 진하기로 (2026-11-12 사용자 결정 25%)
-	float edge = clamp((m - a) * 1.5, 0.0, 1.0) * edge_strength;
+	// 그린 색의 알파가 1이면(구조대상자) 방식과 상관없이 늘 테두리를 그린다 — 테두리 없는 대원 표시에서도 구조대상자는 빨간 테두리로 남는다
+	float edge = clamp((m - a) * 1.5, 0.0, 1.0) * (tint.a > 0.98 ? 1.0 : edge_strength);
 	if (dash_px > 0.0) {
 		bool sx = fract(FRAGCOORD.x / dash_px) < 0.5;
 		bool sy = fract(FRAGCOORD.y / (dash_px * 1.3)) < 0.5;

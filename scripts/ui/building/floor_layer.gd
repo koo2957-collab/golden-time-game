@@ -159,7 +159,8 @@ var ghost_mode := 0:
 			queue_redraw()
 var _ghost_outdoor_idx: Dictionary = {}  # level -> 바깥 땅 칸 삼각형 index
 const GHOST_CREW := Color(1.0, 0.85, 0.2, 0.9)
-const GHOST_VICTIM := Color(1.0, 0.3, 0.3, 0.9)
+## 알파 1 = 테두리 셰이더가 표시 방식과 상관없이 늘 테두리를 그린다 (shaders/ghost_outline.gdshader)
+const GHOST_VICTIM := Color(1.0, 0.3, 0.3, 1.0)
 var _ghost_units: Node2D
 var _smoke_outline: Node2D
 ## 가려진 대원 표시 방식 견본 (2026-11-24): 테두리 셰이더 재질 둘 · 머리 위 표식 층 · 표식 목록 {"ghost"·"smoke": [..]} · 지금 맞춘 방식

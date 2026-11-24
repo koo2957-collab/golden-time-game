@@ -225,7 +225,7 @@ func _run() -> void:
 			_dump(crew, "fetch")
 			await _shot(crew, "fetch")
 	_dump(crew, "호스 꺼냄")
-	if flow != "mission" and flow != "real":
+	if flow not in ["mission", "real", "both"]:
 		await _door_flow(crew, flow)
 		_finish()
 		return
@@ -236,6 +236,10 @@ func _run() -> void:
 			entry = e
 	if entry == null:
 		_say("진입구 없음")
+		_finish()
+		return
+	if flow == "both":
+		await _both_flow(crew, entry)
 		_finish()
 		return
 	sim.issue(CommandOrder.make("floor_mission", [crew.squad_id] as Array[int], entry.level, Vector3i.ZERO, {"kind": "attack", "entry": entry.index}))
@@ -286,6 +290,87 @@ func _run() -> void:
 			if spray_seen > 400:
 				break
 	_finish()
+
+
+## 진압 분대와 구조 분대가 같은 진입구에서 만날 때 (2026-11-24 사용자 보고: 진압대에 화재진압, 구조대에 인명구조를 시켜
+## 둘이 한 문 앞에서 만나 문을 열면 대원이 사라진다). 두 분대 모두 그 진입구로 보내고, 어느 쪽이든 자세가 바뀌면 두 분대를 다 적고 잰다
+func _both_flow(attack: Crew, entry) -> void:
+	var rescue_crew: Crew = null
+	for c in sim.units.crews:
+		if c != attack and c.squad_id != attack.squad_id and sim._default_mission(c) == "search" and not c.leader.aboard:
+			rescue_crew = c
+			break
+	if rescue_crew == null:
+		_say("구조 분대 없음")
+		return
+	_say("구조 분대: 조 %d (%s)" % [rescue_crew.id, sim.units.squads[rescue_crew.squad_id].name])
+	sim.issue(CommandOrder.make("floor_mission", [attack.squad_id] as Array[int], entry.level, Vector3i.ZERO, {"kind": "attack", "entry": entry.index}))
+	sim.issue(CommandOrder.make("floor_mission", [rescue_crew.squad_id] as Array[int], entry.level, Vector3i.ZERO, {"kind": "search", "entry": entry.index}))
+	_say("지시: 진압 = 1층 화재진압 · 구조 = 1층 인명구조 · 같은 진입구 %d 문 %s" % [entry.index, entry.door])
+	var last_sig := ""
+	var after := 0
+	for i in 9000:
+		sim.step_ticks(1)
+		if not sim.cards.queue.is_empty():
+			_answer_cards()
+		if i % 5 != 0:
+			continue
+		var layer = _layer()
+		var sig := ""
+		for c: Crew in [attack, rescue_crew]:
+			var art = _sa.crew_set(sim.units.squads[c.squad_id].type)
+			var dt := sim.doors.task_of_crew(c.id)
+			sig += "[%s%s] " % ["문" if dt != null and dt.open else "", "확인" if sim.cards.checking_door(c.id) != null else ""]
+			for ff in c.members():
+				sig += str(layer._unit_pose(ff, c, art)[0]) + " "
+		if sig == last_sig:
+			continue
+		last_sig = sig
+		_say("--- 자세 바뀜: " + sig)
+		_dump(attack, "진압")
+		_dump(rescue_crew, "구조")
+		# 두 분대가 문 가까이 함께 있을 때만 찍는다 (아니면 기록만)
+		var door_p := Vector2(entry.door) + Vector2(0.5, 0.5)
+		var near: bool = attack.leader.pos.distance_to(door_p) <= 5.0 and rescue_crew.leader.pos.distance_to(door_p) <= 5.0 \
+			and attack.leader.level == entry.level and rescue_crew.leader.level == entry.level
+		if near:
+			sim.step_ticks(4)
+			await _shot_pair(attack, rescue_crew, "both")
+			after = 0
+		else:
+			after += 1
+		# 두 분대 모두 건물 안 깊이 들어갔으면 끝
+		if not near and after > 30:
+			break
+
+
+## 두 분대 가운데를 찍고 두 분대 모두 몸이 보이는지 잰다
+func _shot_pair(a: Crew, b: Crew, name: String) -> void:
+	var n := int(_shots.get(name, 0))
+	_shots[name] = n + 1
+	if n >= 12:
+		return
+	var layer = _layer()
+	var c := Vector2.ZERO
+	var k := 0
+	for cr: Crew in [a, b]:
+		for ff in cr.members():
+			c += layer._shown_pos(ff, 0.0)
+			k += 1
+	world.selection.selected = [] as Array[int]
+	world.camera.zoom = Vector2(2.4, 2.4)
+	world.camera.position = world.projection().to_screen(c / maxf(1.0, k), 0.6)
+	root.warp_mouse(Vector2(10, 10))
+	for i in 8:
+		await process_frame
+	world.hud.card_ui.visible = false
+	var file := "%s%s_%s_%s_%d_t%d.png" % [out, "ext" if world.exterior_view else "int", _flow, name, n, sim.clock.tick]
+	root.get_texture().get_image().save_png(file)
+	_say("   >> 화면 " + file)
+	_say("   [진압]")
+	await _measure(a)
+	_say("   [구조]")
+	await _measure(b)
 
 
 func _finish() -> void:

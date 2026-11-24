@@ -3114,10 +3114,17 @@ func _draw_sprays(alpha: float) -> void:
 			var fr := SpriteArt.frame_at(nanim, crew_art.frames(nanim), leader.id * 0.37)
 			from = feet + crew_art.nozzle_offset(nanim, SpriteArt.dir8(h.aim - leader.pos), fr, from - feet)
 		var to := proj.to_screen(h.impact, IMPACT_M)
+		# 경계 관창이 창·외벽으로 올려 쏜다 (2026-11-24): 끝은 그 층 창 높이의 벽면, 줄기는 위로 휘어 오른다
+		var arc_px := 0.0
+		var on_wall := false
+		if h.exterior:
+			to = _exterior_hit(h)
+			arc_px = from.distance_to(to) * float(HoseDraw.style().get("exterior_arc_ratio", 0.12))
+			on_wall = true
 		# 물줄기 그림 (사용자 참고 그림, 2026-11-12): 직사는 가는 줄기와 튀는 물, 그 밖(분무 등)은 원뿔 물안개. 없으면 아래 도형
 		var straight := h.pattern == HoseLine.Pattern.STRAIGHT
 		var spread := 0.0 if straight else sim.water.radius_cells(h.pattern) * IsoProjection.HALF_W
-		if not thermal and FxArt.draw_water(self, from, to, straight, spread, Color(0.88, 0.95, 1.0, 0.95), h.crew_id):
+		if not thermal and FxArt.draw_water(self, from, to, straight, spread, Color(0.88, 0.95, 1.0, 0.95), h.crew_id, arc_px, on_wall):
 			continue
 		if h.pattern == HoseLine.Pattern.STRAIGHT:
 			# 포물선을 그리며 날아가는 물방울
@@ -3137,6 +3144,29 @@ func _draw_sprays(alpha: float) -> void:
 			if from.distance_to(to) > 1.0:
 				draw_colored_polygon(PackedVector2Array([from, to + side, to - side]), PlanStyle.FOG_COLOR)
 			_fill(_ellipse(to, r, r * 0.5), Color(PlanStyle.FOG_COLOR, 0.25))
+
+
+## 경계 관창의 물이 맞는 곳 (화면 좌표): 겨눈 창·외벽의 벽면, 그 층 창 높이.
+## 외부 보기에서는 외관의 그 층 높이(층이 많으면 줄여 그린 높이 — _shell), 내부 보기에서는 층 높이 그대로
+func _exterior_hit(h: HoseLine) -> Vector2:
+	var at := Vector2(h.target.x + 0.5, h.target.y + 0.5)
+	var up_m := exterior_hit_height(h.target.z)
+	if _outside():
+		for w: Dictionary in _ext_windows.get(h.target.z, []):
+			if Vector2i(h.target.x, h.target.y) in (w.o as Opening).cells:
+				return _face_point(str(w.face), (float(w.a) + float(w.b)) * 0.5, up_m)
+	return proj.to_screen(at, up_m)
+
+
+## 그 층의 창 가운데 높이 (m, 맨 아래 층 바닥에서) — 외관에 그리는 층 높이를 따른다
+func exterior_hit_height(target_level: int) -> float:
+	var win := float(HoseDraw.style().get("exterior_window_m", 1.5))
+	if target_level == _first_level:
+		return win
+	for s: Dictionary in _shell:
+		if int(s.level) == target_level:
+			return float(s.h0) + (float(s.h1) - float(s.h0)) * 0.55
+	return (sim.building.floor_number(target_level) - sim.building.floor_number(_first_level)) * FLOOR_M + win
 
 
 ## 바닥 다각형(셀 좌표)을 h0~h1 높이의 기둥으로 그린다. 보는 쪽 옆면과 윗면만 그린다.

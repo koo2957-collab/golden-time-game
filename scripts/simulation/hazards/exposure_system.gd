@@ -92,6 +92,17 @@ func max_ratio() -> float:
 	return clampf(m, 0.0, 1.0)
 
 
+## 그 자리(칸·층) 가까이(3칸)의 창이 달궈진 정도 (0~: 1이면 착화) — 경계 관창을 여닫는 기준 (TacticalSystem._step_exterior, 2026-11-24)
+func heat_near(target: Vector3i) -> float:
+	var best := 0.0
+	var at := Vector2(target.x + 0.5, target.y + 0.5)
+	for p in pairs:
+		if p.target.level != target.z or _center(p.target).distance_to(at) > 3.0:
+			continue
+		best = maxf(best, float(dose.get(p.target.index, 0.0)) / _ignite)
+	return best
+
+
 ## 화면·평가용 이름: 인접 건물이 있으면 그 이름, 상층 연소만 있으면 "상층 세대"
 func label() -> String:
 	for st in fire.building.structures:

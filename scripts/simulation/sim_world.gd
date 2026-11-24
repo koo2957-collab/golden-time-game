@@ -214,6 +214,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.conditions.exits = sim.rescue.exit_cells
 	sim.conditions.covered = sim.water.is_covered
 	sim.conditions.on_heat_stop = sim._on_heat_stop
+	sim.tactical.exposure_heat = sim.exposure.heat_near
 	sim.monitors =MonitorSystem.new(sim.fire, sim.units, fire_config, sim.events)
 	sim.aerial = AerialSystem.new(sim.fire, sim.units, sim.rescue, sim.falls, sim.events)
 	sim.aerial.zones = sim.zones

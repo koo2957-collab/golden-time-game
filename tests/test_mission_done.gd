@@ -184,7 +184,9 @@ func test_exterior_spray_reports_done_when_flames_gone() -> void:
 	sim.issue(TacticalCommand.make("exterior", [c.id] as Array[int], Vector3i(13, 15, 1)))
 	sim.step_ticks(1)
 	var h := sim.water.hose_of_crew(c.id)
-	assert_true(h != null and h.flowing, "외부 방수 시작")
+	# 2026-11-24: 지금 불꽃이 없으면 관창을 배치만 하고, 불꽃이 보이면 연다 (호스를 꺼내 자리를 잡은 뒤)
+	assert_true(h != null and (h.flowing or h.standby), "외부 방수 지시 — 수관 연장")
+	assert_true(_until(sim, func() -> bool: return h.flowing, 120.0), "불꽃이 보이면 방수 시작")
 	assert_true(_until(sim, func() -> bool: return h.flame_tick >= 0, 200.0), "물줄기가 불꽃에 닿는다")
 	assert_true(sim.events.of_type("tactical_done").is_empty(), "불꽃이 있는 동안은 계속 쏜다")
 	var done := func() -> bool:
@@ -200,8 +202,9 @@ func test_exterior_spray_reports_done_when_flames_gone() -> void:
 	assert_true(q.text.contains("외부 방수") and _option(q, "next_task") >= 0, "카드에 완료 내용과 다음 임무 (%s)" % q.text)
 
 
-## 경계관창(불꽃이 없는 곳을 식히는 외부 방수)은 스스로 끝내지 않는다. 다른 명령을 받으면 지켜보기를 그만둔다
-func test_exterior_cover_without_flames_keeps_spraying() -> void:
+## 경계 관창 (2026-11-24 사용자 결정 — 2026-11-18 '스스로 끝내지 않고 계속 쏜다'를 바꿈): 불꽃·가열이 없는 곳에는
+## 관창을 배치만 한다 (잠근 채 겨눔 — 물을 쓰지 않는다). 임무는 이어지고(완료 보고 없음), 다른 명령을 받으면 지켜보기를 그만둔다
+func test_exterior_cover_without_flames_waits_closed() -> void:
 	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)
 	var c := _attack_crew(sim)
 	_place_at_front(c)
@@ -209,11 +212,17 @@ func test_exterior_cover_without_flames_keeps_spraying() -> void:
 	sim.issue(TacticalCommand.make("exterior", [c.id] as Array[int], Vector3i(16, 24, 1)))
 	sim.step_ticks(roundi(90.0 / SimClock.TICK_DT))
 	var h := sim.water.hose_of_crew(c.id)
-	assert_true(h != null and h.flowing and h.flame_tick < 0, "불꽃 없는 곳에 계속 방수")
-	assert_true(sim.events.of_type("tactical_done").is_empty(), "완료 보고 없음")
+	assert_true(h != null and h.standby and not h.flowing and h.flame_tick < 0, "불꽃 없는 곳: 관창을 배치만 한다 (잠근 채)")
+	var tank := sim.units.get_vehicle(h.vehicle_id).tank_l
+	sim.step_ticks(roundi(60.0 / SimClock.TICK_DT))
+	assert_true(absf(sim.units.get_vehicle(h.vehicle_id).tank_l - tank) < 0.01, "잠가 둔 동안 물을 쓰지 않는다 (전에는 275초에 탱크가 비었다)")
+	assert_true(sim.events.of_type("tactical_done").is_empty(), "완료 보고 없음 — 계속 지킨다")
+	var posts := sim.events.of_type("exterior_post")
+	assert_true(posts.size() == 1 and str(posts[0].text).contains("배치"), "배치 보고 한 번 (%s)" % [posts])
+	assert_true(sim.tactical._exterior.has(c.id), "지켜보는 중")
 	sim.issue(TacticalCommand.make("hold", [c.id] as Array[int]))
 	sim.step_ticks(2)
-	assert_true(not h.flowing and sim.tactical._exterior.is_empty(), "대기 명령 → 방수 중지, 지켜보기 끝")
+	assert_true(not h.flowing and not h.standby and sim.tactical._exterior.is_empty(), "대기 명령 → 배치를 풀고 지켜보기 끝")
 
 
 func _none_card(sim: SimWorld, id: int) -> CardSystem.Card:

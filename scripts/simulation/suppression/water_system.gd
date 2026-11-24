@@ -66,6 +66,8 @@ var _furn_h: Dictionary = {}
 var _nozzle_h := 1.0
 var _nozzle_low_h := 0.7
 var _vehicles_block := true
+## 경계 관창이 위층을 겨눌 때 층마다 치는 높이 (m — fire_params exterior_floor_height_m)
+var _ext_floor_m := 3.0
 ## 주수 형태별 물 사용 비율 (펜슬링은 끊어 쏜다)
 var _flow := {HoseLine.Pattern.STRAIGHT: 1.0, HoseLine.Pattern.FOG: 1.0}
 var _cover_cells := 5.0
@@ -100,6 +102,7 @@ func _init(p_building: BuildingData, p_units: UnitSystem, p_pathfinder: Pathfind
 	_nozzle_h = config.value("nozzle_height_m") if config.params.has("nozzle_height_m") else 1.0
 	_nozzle_low_h = config.value("nozzle_height_low_m") if config.params.has("nozzle_height_low_m") else 0.7
 	_vehicles_block = config.params.has("vehicle_blocks_water") and config.value("vehicle_blocks_water") > 0.0
+	_ext_floor_m = config.value("exterior_floor_height_m") if config.params.has("exterior_floor_height_m") else 3.0
 	var heights: Dictionary = config.params.get("furniture_height_m", {}).get("value", {})
 	for lv: int in building.levels():
 		for item: Dictionary in building.furniture(lv):
@@ -333,7 +336,7 @@ func _connect_at_outlet(h: HoseLine, c: Crew, tick: int) -> void:
 		events.add(tick, "hose_laid", {"crew": _crew_name(c), "vehicle": _name(units.get_vehicle(h.vehicle_id))})
 	# 방수 지시를 받고 꺼내 왔다: 방수 위치로 간다. 닿는 자리가 없으면(다른 층의 창 등) 방수를 접는다 —
 	# 전에는 접지 않아 차 뒤에 선 채 '방수 중'으로 남아 탱크 물만 비웠다 (2026-11-24)
-	if h.flowing and not _approach(h, c, tick):
+	if (h.flowing or h.standby) and not _approach(h, c, tick):
 		stop_spray(c.id, tick)
 
 
@@ -427,11 +430,14 @@ func _own_pump(c: Crew) -> int:
 
 ## 방수 시작. 수관이 없으면 펌프차(자기 차 먼저)에서 자동으로 연장하고,
 ## 목표가 사거리 밖이거나 벽에 가려 있으면 물줄기가 닿는 위치까지 먼저 이동한다.
-func start_spray(crew_id: int, target: Vector3i, pattern: HoseLine.Pattern, tick: int) -> bool:
+## exterior = 경계 관창: 바깥 지상에서 건물의 창·외벽(위층일 수 있다)으로 올려 쏜다 — 건물 안으로 들어가지 않는다.
+## standby = 관창을 배치만 한다 (방수 위치로 가서 겨눈 채 잠가 둔다 — 불이 다가오면 TacticalSystem이 연다)
+func start_spray(crew_id: int, target: Vector3i, pattern: HoseLine.Pattern, tick: int, exterior := false, standby := false) -> bool:
 	var c := units.get_crew(crew_id)
 	if c == null:
 		return false
-	if not ensure_hose(crew_id, target.z, tick):
+	# 경계 관창은 옥내 방수구가 아니라 차에서 끌어온다 (밖에 선다)
+	if not ensure_hose(crew_id, c.leader.level if exterior else target.z, tick):
 		return false
 	var h := hose_of_crew(crew_id)
 	h.pattern = pattern
@@ -440,11 +446,19 @@ func start_spray(crew_id: int, target: Vector3i, pattern: HoseLine.Pattern, tick
 	h.approaching = false
 	h.next_advance_tick = tick
 	h.flame_tick = -1
+	h.exterior = exterior
+	h.standby = standby
 	if h.to_outlet:
 		# 아직 방수구로 가는 중: 닿아서 연결한 뒤 방수 위치로 간다 (_connect_at_outlet)
 		h.approaching = true
 	elif not _approach(h, c, tick):
+		h.exterior = false
+		h.standby = false
 		return false
+	if standby:
+		h.flowing = false
+		h.flow_fraction = 0.0
+		return true
 	h.flowing = true
 	events.add(tick, "spray_start", {"crew": _crew_name(c), "pattern": h.pattern_name()})
 	return true
@@ -454,6 +468,16 @@ func start_spray(crew_id: int, target: Vector3i, pattern: HoseLine.Pattern, tick
 func _approach(h: HoseLine, c: Crew, tick: int) -> bool:
 	var goal := Vector2(h.target.x + 0.5, h.target.y + 0.5)
 	h.approaching = false
+	if h.exterior:
+		if exterior_reach(c.leader.pos, c.leader.level, h.target):
+			return true
+		var out := _exterior_cell(c, h.target)
+		if out == Pathfinder.NO_CELL:
+			events.add(tick, "spray_unreachable", {"crew": _crew_name(c)})
+			return false
+		units.order_move([c.id] as Array[int], Vector3i(out.x, out.y, c.leader.level), pathfinder)
+		h.approaching = true
+		return true
 	if _can_spray_to(c.leader.pos, c.leader.level, goal, h.target.z, h.pattern):
 		return true
 	var spot := _approach_cell(c, goal, h.target.z, h.pattern)
@@ -463,6 +487,90 @@ func _approach(h: HoseLine, c: Crew, tick: int) -> bool:
 	units.order_move([c.id] as Array[int], Vector3i(spot.x, spot.y, h.target.z), pathfinder)
 	h.approaching = true
 	return true
+
+
+## 경계 관창이 겨눌 곳: 찍은 칸 가까이(2.5칸)에 바깥으로 난 창·문이 있으면 그 칸 (그 층), 없으면 찍은 칸 그대로
+func exterior_target(target: Vector3i) -> Vector3i:
+	var at := Vector2(target.x + 0.5, target.y + 0.5)
+	var best := target
+	var best_d := 2.5
+	for o in fire.openings:
+		if o.level != target.z or o.kind == Opening.Kind.STAIR or o.room_b != Opening.OUTSIDE:
+			continue
+		for cell in o.cells:
+			var d := at.distance_to(Vector2(cell) + Vector2(0.5, 0.5))
+			if d < best_d:
+				best_d = d
+				best = Vector3i(cell.x, cell.y, o.level)
+	return best
+
+
+## 바깥 지상의 pos(층 level)에서 건물의 target(창·외벽 — 위층일 수 있다)까지 직사가 닿는가:
+## 수평 거리와 높이(층마다 exterior_floor_height_m)를 합친 거리가 사거리 안이고, 지상에서 그 벽면까지 가리는 것(다른 건물·차)이 없다
+func exterior_reach(pos: Vector2, level: int, target: Vector3i) -> bool:
+	if not building.cell(level, floori(pos.x), floori(pos.y)) in BuildingData.OUTDOOR:
+		return false
+	var goal := Vector2(target.x + 0.5, target.y + 0.5)
+	var rise := absf(building.floor_number(target.z) - building.floor_number(level)) * _ext_floor_m / _cell_m
+	var flat := pos.distance_to(goal)
+	if Vector2(flat, rise).length() > _range[HoseLine.Pattern.STRAIGHT] * APPROACH_RANGE_RATIO:
+		return false
+	# 너무 바짝 붙으면 위로 쏠 수 없다 (높이의 절반은 물러선다)
+	if flat < rise * 0.5:
+		return false
+	var tr := _trace(level, pos, goal, INF, _nozzle_h)
+	return (tr.impact as Vector2).distance_to(goal) <= 1.5
+
+
+## 경계 관창을 놓을 자리: 그 벽면에 직사가 닿는 바깥 칸 가운데 조에서 가장 가까운 곳 (길이 있는 곳)
+func _exterior_cell(c: Crew, target: Vector3i) -> Vector2i:
+	var level := c.leader.level
+	var r := ceili(_range[HoseLine.Pattern.STRAIGHT] * APPROACH_RANGE_RATIO)
+	var candidates: Array[Vector2i] = []
+	for y in range(target.y - r, target.y + r + 1):
+		for x in range(target.x - r, target.x + r + 1):
+			if not pathfinder.passable(level, x, y) or not exterior_reach(Vector2(x + 0.5, y + 0.5), level, target):
+				continue
+			if safe_cell.is_valid() and not safe_cell.call(level, Vector2i(x, y)):
+				continue
+			candidates.append(Vector2i(x, y))
+	var from := c.leader.pos
+	candidates.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return from.distance_squared_to(Vector2(a) + Vector2(0.5, 0.5)) < from.distance_squared_to(Vector2(b) + Vector2(0.5, 0.5)))
+	for cell in candidates:
+		if not pathfinder.find_path(c.leader.cell3(), Vector3i(cell.x, cell.y, level)).is_empty():
+			return cell
+	return Pathfinder.NO_CELL
+
+
+## 겨눈 곳(target)에 불꽃이 있는가 (관창을 잠가 둔 채로도 본다): 경계 관창(exterior)은 열렸거나 깨진 창 안쪽,
+## 그 밖에는 겨눈 곳 둘레(직사가 퍼지는 반경)의 타는 칸
+func flames_at(target: Vector3i, exterior: bool) -> bool:
+	var grid := fire.grid
+	var goal := Vector2(target.x + 0.5, target.y + 0.5)
+	var cell := Vector2i(target.x, target.y)
+	if exterior:
+		var o := fire.opening_at(target)
+		if o == null or not (o.is_open or o.broken):
+			return false
+	for i in _reachable_cells(target.z, goal, cell, grid.cells_in_radius(target.z, goal, _radius[HoseLine.Pattern.STRAIGHT])):
+		if grid.state[i] == FuelGrid.State.BURNING:
+			return true
+	return false
+
+
+## 관창을 잠그고 그 자리에서 계속 지킨다 (경계 관창: 식었다 — 다시 달궈지면 TacticalSystem이 연다)
+func hold_nozzle(crew_id: int, tick: int) -> void:
+	var h := hose_of_crew(crew_id)
+	if h == null:
+		return
+	if h.flowing:
+		h.flowing = false
+		h.flow_fraction = 0.0
+		events.add(tick, "spray_stop", {"crew": _crew_name(units.get_crew(crew_id))})
+	h.approaching = false
+	h.spraying = false
+	h.standby = true
 
 
 ## 호스 1본 길이 (칸) — 화면의 결합구 간격
@@ -508,6 +616,11 @@ func _source_has_water(h: HoseLine) -> bool:
 
 func stop_spray(crew_id: int, tick: int) -> void:
 	var h := hose_of_crew(crew_id)
+	if h:
+		# 경계 관창 배치도 푼다 (다른 지시를 받았다)
+		h.standby = false
+		h.exterior = false
+		h.spraying = false
 	if h and h.flowing:
 		h.flowing = false
 		h.approaching = false
@@ -830,7 +943,7 @@ func _update_supply(dt: float, tick: int) -> void:
 		for h in hoses_of_vehicle(v.id):
 			# 관창수가 목표와 다른 층에 있으면 관창을 열지 않는다 — 물도 줄지 않는다 (2026-11-24: 닿지 않는데 탱크만 비었다)
 			if h.flowing and not h.approaching and h.charged and tick >= h.resupply_until \
-					and units.get_crew(h.crew_id).leader.level == h.target.z:
+					and (h.exterior or units.get_crew(h.crew_id).leader.level == h.target.z):
 				flowing.append(h)
 		if flowing.is_empty():
 			continue
@@ -855,6 +968,45 @@ func _update_supply(dt: float, tick: int) -> void:
 	_update_indoor(minutes, tick)
 
 
+## 경계 관창의 방수 (2026-11-24): 바깥 지상에서 겨눈 창·외벽(위층일 수 있다)에 물이 맞는다.
+## 열렸거나 깨진 창이면 물이 안으로 들어가 창 안쪽을 적시고 그 방을 식힌다. 닫힌 창·외벽이면 겉만 적신다 —
+## 유리는 깨지 않는다. 겉을 적셔 달궈지는 것을 막는 효과는 ExposureSystem이 spraying 으로 본다
+func _spray_exterior(h: HoseLine, leader: Firefighter, dt: float, tick: int) -> void:
+	var grid := fire.grid
+	var goal := Vector2(h.target.x + 0.5, h.target.y + 0.5)
+	h.aim = goal
+	h.impact = goal
+	if not exterior_reach(leader.pos, leader.level, h.target):
+		h.blocked = true
+		return
+	h.blocked = false
+	h.spraying = true
+	var o := fire.opening_at(h.target)
+	if o == null or not (o.is_open or o.broken):
+		return
+	var v := units.get_vehicle(h.vehicle_id)
+	var liters := hose_lpm(h, v) / 60.0 * dt * h.flow_fraction * float(_flow.get(h.pattern, 1.0))
+	var room: Compartment = fire.comps[o.room_a] if o.room_a >= 0 and o.room_a < fire.comps.size() else null
+	if room:
+		room.cooling_kw += liters / dt * _water_kj * _gas_eff[h.pattern]
+		room.water_applied_l += liters
+		room.applied_lpm += liters / dt * 60.0
+	var cell := Vector2i(h.target.x, h.target.y)
+	var cells := _reachable_cells(h.target.z, goal, cell, grid.cells_in_radius(h.target.z, goal, _radius[h.pattern]))
+	var total_w := 0.0
+	var weights := PackedFloat32Array()
+	for i in cells:
+		var w := 0.2 + (grid.hrr[i] if grid.state[i] == FuelGrid.State.BURNING else 0.0)
+		weights.append(w)
+		total_w += w
+	for k in cells.size():
+		var i := cells[k]
+		var was_burning := grid.state[i] == FuelGrid.State.BURNING
+		grid.apply_water(i, liters * weights[k] / total_w, _fuel_eff[h.pattern], fire.comps)
+		if was_burning:
+			h.flame_tick = tick
+
+
 func _apply_sprays(dt: float, tick: int) -> void:
 	var grid := fire.grid
 	for h in hoses:
@@ -871,6 +1023,9 @@ func _apply_sprays(dt: float, tick: int) -> void:
 				h.approaching = false
 			continue
 		if h.flow_fraction <= 0.0 or not h.charged or tick < h.resupply_until:
+			continue
+		if h.exterior:
+			_spray_exterior(h, leader, dt, tick)
 			continue
 		if leader.level != h.target.z:
 			h.blocked = true

@@ -33,6 +33,8 @@
   "sprite_hose_width_m": {"value": 0.064, "source": "구운 그림의 모양 — tools/blender/scenes/spray_*.blend 호스 곡선의 굵기 (bevel 0.032m × 2)", "note": "대원 그림 속 물이 찬 호스의 굵기. 바닥 호스(round_width_m)가 이은 곡선에서 이 굵기로 가늘어져 닿는다"},
   "sprite_flat_width_m": {"value": 0.13, "source": "구운 그림의 모양 — tools/blender/build_hose_carry.py BAND_W", "note": "대원 그림 속 납작한 호스(끼고 걷는 묶음에서 늘어진 띠)의 폭. 바닥 호스(flat_width_m)가 이은 곡선에서 이 폭으로 좁아져 닿는다"},
   "chain_near_m": {"value": 0.6, "source": "화면 설정", "note": "방수하는 조의 3번부터: 앞사람 바로 뒤 자리가 깔린 호스 길에서 이만큼 넘게 벗어나면 호스가 꺾인 곳으로 보고, 호스가 온 쪽으로 틀어 세운다 (2026-11-24 사용자 — 꺾이는 곳에서도 일렬로 서던 것). 벽에 막힌 자리는 거리와 상관없이 틀어 세운다"},
+  "exterior_arc_ratio": {"value": 0.12, "source": "화면 설정", "note": "경계 관창이 창·외벽으로 올려 쏠 때 물줄기가 가운데에서 위로 휘어 오르는 높이 = 줄기 길이 × 이 값 (2026-11-24 사용자: 경계 관창은 외부 상부에 방수하는 모습이 있어야 한다 — 전에는 직사가 앞으로만 나갔다)"},
+  "exterior_window_m": {"value": 1.5, "source": "화면 설정", "note": "경계 관창의 물이 맞는 높이 — 그 층 바닥에서 창 가운데까지 (m)"},
   "ready_back_m": {"value": 1.1, "source": "화면 설정", "note": "문 앞 방수태세(E4): 관창수가 문에서 이만큼 물러나 낮은 자세로 관창을 문에 겨눈다 (화재1 화점실 진입 '방수태세를 갖춘 후 개방')"},
   "ready_side_m": {"value": 0.4, "source": "화면 설정", "note": "문 앞 방수태세(E4): 문을 여는 사람의 반대쪽 옆으로 이만큼 비킨다 (화재1 '문의 측면에 위치해'). 문을 부술 때는 두 사람이 문틈 양쪽에 서므로 비키지 않는다"},
   "fetch_stand_m": {"value": 0.75, "source": "화면 설정", "note": "호스 꺼내기(E1): 1번 대원이 차 후면에서 이만큼 떨어져 선다 (tools/blender/build_hose_fetch.py 의 REAR_Y와 맞춘 값 — 손이 열린 칸에 닿는 거리)"},

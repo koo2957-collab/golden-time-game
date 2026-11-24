@@ -100,6 +100,16 @@ var _search_since: Dictionary = {}
 ## 불꽃을 한 번도 못 본 방수(경계관창 — 달궈지는 창 냉각)는 끝내지 않는다 (2026-11-18)
 var _exterior: Dictionary = {}
 var _exterior_done_ticks := 100
+## 경계 관창 (2026-11-24 사용자 결정 — 2026-11-18 '경계관창은 스스로 끝내지 않는다'를 바꿈): 관창을 배치해 두고(잠근 채 겨눔)
+## 겨눈 곳이 달궈지거나 불꽃이 나오면 열고, 식으면 잠그고 보고한 뒤 계속 지킨다 (기획안 '경계·연소확대 방지: 관창 배치 → 불이 다가오면 방수').
+## 그 자리 가까이의 창이 달궈진 정도 (칸·층) -> 0~1. SimWorld가 넣는다 (ExposureSystem.heat_near)
+var exposure_heat := Callable()
+## 달궈진 정도가 이 비율 이상이면 열고 / 이 비율 아래로 식고 불꽃도 없으면 잠근다 (mission_params exterior_open_ratio·exterior_close_ratio)
+var _exterior_open_ratio := 0.15
+var _exterior_close_ratio := 0.03
+## 위협(가열·불꽃)이 마지막으로 있던 틱 {조 id: tick} / 개방·잠금을 이미 한 번 보고했는가 {조 id: {"open": true, "hold": true}}
+var _ext_calm: Dictionary = {}
+var _ext_told: Dictionary = {}
 
 
 func _init(p_fire: FireSim, p_units: UnitSystem, p_water: WaterSystem, p_doors: DoorSystem, p_rescue: RescueSystem, p_events: SimEventLog) -> void:
@@ -118,6 +128,8 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_water: WaterSystem, p_doors: 
 	_fire_lost_ticks = roundi(float(mission_data.get("fire_lost_s", {}).get("value", 900.0)) / SimClock.TICK_DT)
 	_fire_lost_vis_m = float(mission_data.get("fire_lost_visibility_m", {}).get("value", 1.0))
 	_exterior_done_ticks = roundi(float(mission_data.get("exterior_done_s", {}).get("value", 10.0)) / SimClock.TICK_DT)
+	_exterior_open_ratio = float(mission_data.get("exterior_open_ratio", {}).get("value", 0.15))
+	_exterior_close_ratio = float(mission_data.get("exterior_close_ratio", {}).get("value", 0.03))
 
 
 func set_level(name: String) -> void:
@@ -177,9 +189,19 @@ func _order(action: String, crew_id: int, target: Vector3i, tick: int) -> bool:
 		return true
 	if action == "exterior":
 		events.add(tick, "tactical_start", {"crew": _crew_name(c), "action": ACTIONS[action]})
-		if not water.start_spray(crew_id, target, HoseLine.Pattern.STRAIGHT, tick):
+		# 찍은 곳 가까이에 바깥으로 난 창·문이 있으면 그것을 겨눈다. 창·외벽이거나 다른 층이면 바깥 지상에서 올려 쏘는 경계 관창
+		var tgt := water.exterior_target(target)
+		var kind := fire.building.cell(tgt.z, tgt.x, tgt.y)
+		var ext := tgt.z != c.leader.level or kind == BuildingData.Cell.WALL or kind == BuildingData.Cell.WINDOW
+		# 지금 불꽃·가열이 없으면 관창을 배치만 한다 (잠근 채 겨눔) — 불이 다가오면 연다 (_step_exterior)
+		var why := _exterior_threat(tgt, ext, _exterior_open_ratio)
+		if not water.start_spray(crew_id, tgt, HoseLine.Pattern.STRAIGHT, tick, ext, why == ""):
 			return false
-		_exterior[crew_id] = target
+		_exterior[crew_id] = tgt
+		_ext_calm[crew_id] = tick
+		_ext_told[crew_id] = {"open": why != ""}
+		if why == "":
+			events.add(tick, "exterior_post", {"crew": _crew_name(c), "text": "경계 관창 배치 (%s) — 불이 다가오면 방수" % _exterior_place(tgt)})
 		return true
 	if action in ["attack", "attack_floor"] and not _attack_since.has(crew_id):
 		_attack_since[crew_id] = tick
@@ -262,20 +284,76 @@ func step(tick: int) -> void:
 ## 외부 방수: 물줄기가 닿는 곳에 있던 불꽃이 사라진 채 잠시 지나면 방수를 멈추고 완료 보고 → 카드가 다음 지시를 묻는다.
 ## 밖에서는 닿는 곳만 안다 — 방 안쪽에 불이 남아 있을 수 있어 '화점 진압'이 아니라 '닿는 곳의 불꽃 소멸'로 보고한다.
 ## 다른 명령·철수로 방수가 끝났거나 목표가 바뀌었으면 지켜보지 않는다. 자동화 수준 상급(auto_stop 꺼짐)은 화점진압처럼 스스로 멈추지 않는다
+##
+## 경계 관창 (2026-11-24): 불꽃을 본 적 없는 방수는 '식히는 중'이다 — 가열·불꽃이 exterior_done_s 동안 없으면 관창을 잠그고
+## 그 자리에서 계속 지킨다. 잠가 둔(배치만 한) 관창은 겨눈 곳이 달궈지거나 불꽃이 나오면 스스로 연다 (어느 자동화 수준에서나).
+## 개방·잠금은 처음 한 번씩만 무전으로 알린다 (되풀이는 기록만)
 func _step_exterior(tick: int) -> void:
 	for id: int in _exterior.keys():
 		var c := units.get_crew(id)
 		var h := water.hose_of_crew(id)
-		if c == null or c.leader.incapacitated or h == null or not h.flowing or h.target != (_exterior[id] as Vector3i):
+		if c == null or c.leader.incapacitated or h == null or not (h.flowing or h.standby) or h.target != (_exterior[id] as Vector3i):
 			_exterior.erase(id)
+			_ext_calm.erase(id)
+			_ext_told.erase(id)
 			continue
-		if not level.auto_stop or h.flame_tick < 0 or tick - h.flame_tick < _exterior_done_ticks:
+		# 가열·불꽃은 1초마다 본다
+		if tick % 10 == id % 10:
+			var why := _exterior_threat(h.target, h.exterior, _exterior_close_ratio if h.flowing else _exterior_open_ratio)
+			if why != "":
+				_ext_calm[id] = tick
+				if h.standby and not c.leader.is_moving() and not water.fetching(id):
+					# 불이 다가왔다: 관창을 연다
+					if water.start_spray(id, h.target, HoseLine.Pattern.STRAIGHT, tick, h.exterior, false):
+						_tell_exterior(id, c, tick, "open", "경계 관창 개방 (%s) — %s" % [_exterior_place(h.target), why])
+		if not h.flowing or not level.auto_stop:
 			continue
-		_exterior.erase(id)
-		water.stop_spray(id, tick)
-		var e := {"crew": _crew_name(c), "text": "%s 외부 방수 — 닿는 곳의 불꽃 소멸, 방수 중지" % fire.building.floor_name(h.target.z)}
-		e.merge(_final(c, "exterior", h.target.z))
-		events.add(tick, "tactical_done", e)
+		if h.flame_tick >= 0:
+			# 불꽃에 쏘던 방수: 닿는 곳의 불꽃이 사라진 채 잠시 지나면 임무 완료
+			if tick - h.flame_tick < _exterior_done_ticks or tick - int(_ext_calm.get(id, tick)) < _exterior_done_ticks:
+				continue
+			_exterior.erase(id)
+			_ext_calm.erase(id)
+			_ext_told.erase(id)
+			water.stop_spray(id, tick)
+			var e := {"crew": _crew_name(c), "text": "%s 외부 방수 — 닿는 곳의 불꽃 소멸, 방수 중지" % fire.building.floor_name(h.target.z)}
+			e.merge(_final(c, "exterior", h.target.z))
+			events.add(tick, "tactical_done", e)
+		elif tick - int(_ext_calm.get(id, tick)) >= _exterior_done_ticks:
+			# 식히던 방수: 식었다 — 관창을 잠그고 그 자리에서 계속 지킨다
+			water.hold_nozzle(id, tick)
+			_tell_exterior(id, c, tick, "hold", "경계 관창 잠금 (%s) — 가열 없음, 계속 감시" % _exterior_place(h.target))
+
+
+## 경계 관창이 겨눈 곳의 위협: "" 없음 · "화염" · "가열". ratio = 가열로 보는 달궈진 정도 (열 때와 잠글 때가 다르다 — 떨림 방지)
+func _exterior_threat(target: Vector3i, ext: bool, ratio: float) -> String:
+	if not ext:
+		# 방 안을 겨눈 외부 방수: 그 방에 타는 곳이 있으면 (물줄기가 훑는다)
+		var room := fire.compartment_at(target.z, target.x, target.y)
+		if room != null and _room_burning(room.index):
+			return "화염"
+	if water.flames_at(target, ext):
+		return "화염"
+	if exposure_heat.is_valid() and float(exposure_heat.call(target)) > ratio:
+		return "가열"
+	return ""
+
+
+## 경계 관창이 겨눈 곳 이름 (보고용)
+func _exterior_place(target: Vector3i) -> String:
+	var o := fire.opening_at(target)
+	if o != null and o.room_a >= 0 and o.room_a < fire.comps.size():
+		return "%s %s" % [fire.comps[o.room_a].display_name(), "창" if o.kind == Opening.Kind.WINDOW else "문"]
+	var room := fire.compartment_at(target.z, target.x, target.y)
+	return room.display_name() if room != null else "%s 외벽" % fire.building.floor_name(target.z)
+
+
+## 경계 관창의 개방·잠금 보고: 종류마다 처음 한 번은 무전(exterior_post), 그 뒤로는 기록만 (exterior_cycle)
+func _tell_exterior(id: int, c: Crew, tick: int, key: String, text: String) -> void:
+	var told: Dictionary = _ext_told.get(id, {})
+	events.add(tick, "exterior_cycle" if bool(told.get(key, false)) else "exterior_post", {"crew": _crew_name(c), "text": text})
+	told[key] = true
+	_ext_told[id] = told
 
 
 # --- 단계 ---

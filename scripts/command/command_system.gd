@@ -61,6 +61,7 @@ const REPORT_PRIORITY := {
 	"equipment_missing": Radio.Priority.TACTICS,
 	"ember_spotted": Radio.Priority.KEY_FACTOR,
 	"tactical_halt": Radio.Priority.KEY_FACTOR,
+	"exterior_post": Radio.Priority.TACTICS,
 	"exposure_heating": Radio.Priority.KEY_FACTOR,
 	"exposure_ignition": Radio.Priority.KEY_FACTOR,
 	"collapse_sign": Radio.Priority.SAFETY,

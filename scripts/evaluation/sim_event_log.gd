@@ -138,6 +138,8 @@ static func describe_text(e: Dictionary) -> String:
 			text = "방수 중지 — %s" % e.crew
 		"spray_unreachable":
 			text = "방수 위치 없음 (물줄기가 닿는 곳에 갈 수 없음) — %s" % e.crew
+		"exterior_post", "exterior_cycle":
+			text = "%s — %s" % [e.text, e.crew]
 		"radio":
 			var channel := str(e.get("channel", "지휘망"))
 			text = "[무전%s] %s" % ["" if channel == "지휘망" else " " + channel, e.text]

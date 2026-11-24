@@ -146,7 +146,7 @@ func _run() -> void:
 			c.leader.is_moving(), int(sim.command.approach.get(c.id, -1)), int(sim.command.floor_goals.get(c.id, -1)), str(sim.command.floor_missions.get(c.id, "")),
 			sim.command.can_enter(c.squad_id), sim.tactical.mission_text(c.id)])
 	for e in sim.events.entries:
-		if str(e.type) in ["entry_approach", "entry_request", "entry_wait", "floor_reached", "tactical_start", "tactical_halt", "floor_unreachable", "preassign_start", "hose_laid", "card_answered", "crew_entered", "squad_staged", "vehicle_arrived", "ff_down", "mayday", "air_alarm", "heat_retreat", "withdraw", "heat_stress_retreat", "heat_stress_high", "heat_blocked",
+		if str(e.type) in ["entry_approach", "entry_request", "entry_wait", "floor_reached", "tactical_start", "tactical_halt", "floor_unreachable", "preassign_start", "hose_laid", "card_answered", "crew_entered", "squad_staged", "vehicle_arrived", "ff_down", "mayday", "air_alarm", "heat_retreat", "withdraw", "heat_stress_retreat", "heat_stress_high", "heat_blocked", "crew_trapped", "air_swap_out", "air_swap_done", "hose_recover", "nozzle_dropped", "door_stack",
 				"spray_start", "spray_stop", "tactical_done", "tactical_next", "rekindle", "card_asked", "knockdown_reported"] \
 				and (int(e.tick) < 4000 or str(e.type) != "entry_request"):
 			print("  > ", e)

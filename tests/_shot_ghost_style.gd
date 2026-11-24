@@ -94,7 +94,8 @@ func _run() -> void:
 		mid = (mid + rescue_crew.leader.pos) * 0.5
 	world.camera.position = world.projections[world.ViewMode.ISO].to_screen(mid) + Vector2(0, -40)
 	print("fire crew at ", fire_crew.leader.pos, " rescue at ", rescue_crew.leader.pos if rescue_crew else Vector2.ZERO)
-	for style: String in ["outline", "silhouette", "badge", "mix"]:
+	var styles: PackedStringArray = (args[1] if args.size() > 1 else "outline,silhouette,badge,mix").split(",")
+	for style: String in styles:
 		for l in world.iso_view.layers:
 			l.stack.params.ghost_style = style
 			l.queue_redraw()

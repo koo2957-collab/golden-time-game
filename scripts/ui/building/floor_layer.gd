@@ -4786,6 +4786,9 @@ func _apply_ghost_style(style: String) -> void:
 		return
 	_ghost_style_applied = style
 	var p := stack.params
+	for m: ShaderMaterial in [_ghost_smoke_mat, _ghost_other_mat]:
+		m.set_shader_parameter("edge_strength", 1.0)
+		m.set_shader_parameter("flat_tint", 0.0)
 	match style:
 		"silhouette", "mix":
 			# 실제 그림을 반투명으로 + 출동대 색의 얇은 테두리 (다른 층은 더 옅게, 점선 없이)
@@ -4794,6 +4797,11 @@ func _apply_ghost_style(style: String) -> void:
 			_ghost_other_mat.set_shader_parameter("fill", 0.35)
 			_ghost_other_mat.set_shader_parameter("thickness", 0.9)
 			_ghost_other_mat.set_shader_parameter("dash_px", 0.0)
+		"badge_soft", "badge_flat":
+			# 테두리 없이: 옅은 몸(원래 색) 또는 출동대 색 한 가지로 채운 실루엣
+			_ghost_smoke_mat.set_shader_parameter("fill", 0.45 if style == "badge_soft" else 0.5)
+			_ghost_smoke_mat.set_shader_parameter("edge_strength", 0.0)
+			_ghost_smoke_mat.set_shader_parameter("flat_tint", 0.0 if style == "badge_soft" else 1.0)
 		_:
 			_ghost_smoke_mat.set_shader_parameter("fill", p.ghost_body_alpha)
 			_ghost_smoke_mat.set_shader_parameter("thickness", p.ghost_outline_px)
@@ -4832,9 +4840,11 @@ func _draw_outlines(target: CanvasItem, rooms: Dictionary, hulls: Array[PackedVe
 		var body := true
 		if style != "outline":
 			tint = Color(squad.color.lightened(0.25), 0.95)
-			body = style == "silhouette" or (style == "mix" and not other_floor)
+			body = style == "silhouette" or (style in ["mix", "badge_soft", "badge_flat"] and not other_floor)
 			if style != "silhouette":
-				badges.append({"ff": ff, "crew": c, "pos": it[2], "anim": str(pose[0]) if not pose.is_empty() else "idle"})
+				# 조원 자리 표시: 점 · 바닥 고리 · 없음(몸이 보이는 방식)
+				var mark := "ring" if style == "badge_ring" else ("none" if body else "dot")
+				badges.append({"ff": ff, "crew": c, "pos": it[2], "anim": str(pose[0]) if not pose.is_empty() else "idle", "mark": mark})
 		if not body:
 			continue
 		if crew_art == null or not crew_art.draw(target, pose[0], pose[1], pose[2], feet, tint):
@@ -4868,16 +4878,18 @@ func _draw_badges() -> void:
 			var c: Crew = it.crew
 			var col: Color = sim.units.squads[c.squad_id].color
 			var pos: Vector2 = it.pos
-			if ff != c.leader:
-				var dot := proj.to_screen(pos, 0.1)
-				ci.draw_circle(dot, 4.5, Color(0.06, 0.07, 0.09, 0.85))
-				ci.draw_circle(dot, 3.2, col)
-				continue
 			var feet := proj.to_screen(pos, 0.0)
+			# 발밑 자리 표시 (조장·조원 같게): 점 또는 바닥 고리 (몸이 보이는 방식에서는 없음)
+			match str(it.get("mark", "dot")):
+				"dot":
+					ci.draw_circle(feet, 4.5, Color(0.06, 0.07, 0.09, 0.85))
+					ci.draw_circle(feet, 3.2, col)
+				"ring":
+					ci.draw_polyline(_ellipse(feet, 13, 6.5, true), Color(0.06, 0.07, 0.09, 0.8), 4.0)
+					ci.draw_polyline(_ellipse(feet, 13, 6.5, true), col, 2.2)
+			if ff != c.leader:
+				continue
 			var at := proj.to_screen(pos, 2.3)
-			# 꼬리 + 원 (발밑에는 다른 조원과 같은 점)
-			ci.draw_circle(feet, 4.5, Color(0.06, 0.07, 0.09, 0.85))
-			ci.draw_circle(feet, 3.2, col)
 			ci.draw_colored_polygon(PackedVector2Array([at + Vector2(-6, 9), at + Vector2(6, 9), at + Vector2(0, 19)]), Color(0.06, 0.07, 0.09, 0.9))
 			ci.draw_circle(at, 13.5, Color(0.06, 0.07, 0.09, 0.9))
 			ci.draw_circle(at, 11.5, col)

@@ -7,6 +7,9 @@ uniform float thickness = 3.0;
 uniform float fill = 0.12;
 // 0보다 크면 테두리를 점선으로 (화면 px). 가로·세로 주기를 달리해 어느 방향 선이든 끊긴다 (다른 층 사람, 2026-11-12)
 uniform float dash_px = 0.0;
+// 테두리 진하기 (0이면 테두리 없이 몸만) · 몸을 그린 색으로 채우는 정도 (0 = 그림 원래 색, 1 = 한 가지 색 실루엣) — 2026-11-24 견본
+uniform float edge_strength = 1.0;
+uniform float flat_tint = 0.0;
 
 // 그릴 때 준 색(modulate)만 — fragment의 COLOR는 그림 색이 곱해져 있다
 varying vec4 tint;
@@ -29,7 +32,7 @@ void fragment() {
 	m = max(m, texture(TEXTURE, UV + vec2(px.x, -px.y)).a);
 	m = max(m, texture(TEXTURE, UV + vec2(-px.x, px.y)).a);
 	// 바깥 테두리를 진하게 (두 번 눌러 또렷하게). 안쪽은 그림 원래 색을 fill 진하기로 (2026-11-12 사용자 결정 25%)
-	float edge = clamp((m - a) * 1.5, 0.0, 1.0);
+	float edge = clamp((m - a) * 1.5, 0.0, 1.0) * edge_strength;
 	if (dash_px > 0.0) {
 		bool sx = fract(FRAGCOORD.x / dash_px) < 0.5;
 		bool sy = fract(FRAGCOORD.y / (dash_px * 1.3)) < 0.5;
@@ -37,6 +40,6 @@ void fragment() {
 			edge = 0.0;
 		}
 	}
-	vec3 rgb = mix(tex.rgb, tint.rgb, edge);
+	vec3 rgb = mix(mix(tex.rgb, tint.rgb, flat_tint), tint.rgb, edge);
 	COLOR = vec4(rgb, clamp(edge + a * fill, 0.0, 1.0) * mix(1.0, tint.a, edge));
 }

@@ -1831,7 +1831,7 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 	var moving := ff.level == ff.prev_level and delta.length_squared() > 0.000001
 	var anim := "idle"
 	var task := sim.rescue.task_of_crew(crew.id)
-	var hose := sim.water.hose_of_crew(crew.id)
+	var hose := sim.water.held_hose(crew.id)
 	var door_task := sim.doors.task_of_crew(crew.id)
 	if moving:
 		_facing[ff.id] = SpriteArt.dir8(delta)
@@ -2097,7 +2097,7 @@ func _door_ready_layout(crew: Crew, art: SpriteArt.SpriteSet) -> Dictionary:
 		return {}
 	if sim.doors.tasks.is_empty() and sim.cards.checking_door(crew.id) == null:
 		return {}
-	var h := sim.water.hose_of_crew(crew.id)
+	var h := sim.water.held_hose(crew.id)
 	if h == null or h.to_outlet or h.fetch_until >= 0:
 		return {}
 	var lead := crew.leader
@@ -2522,7 +2522,7 @@ func _search_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dicti
 func _hose_fetch_layout(crew: Crew, art: SpriteArt.SpriteSet) -> Dictionary:
 	if art == null or crew == null or art.frames("hose_fetch_a") <= 0:
 		return {}
-	var h := sim.water.hose_of_crew(crew.id)
+	var h := sim.water.held_hose(crew.id)
 	if h == null or h.fetch_until < 0 or h.outlet >= 0:
 		return {}
 	var v := sim.units.get_vehicle(h.vehicle_id)
@@ -2552,7 +2552,7 @@ func _hose_fetch_layout(crew: Crew, art: SpriteArt.SpriteSet) -> Dictionary:
 func _hose_carry_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dictionary:
 	if art == null or crew == null or art.frames("hose_carry_a") <= 0:
 		return {}
-	var h := sim.water.hose_of_crew(crew.id)
+	var h := sim.water.held_hose(crew.id)
 	if h == null or h.outlet >= 0 or h.to_outlet or h.fetch_until >= 0 or h.charged or h.points.size() < 2:
 		return {}
 	var lead := crew.leader
@@ -2644,7 +2644,7 @@ var _spray_cache: Dictionary = {}
 func _spray_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dictionary:
 	if art == null or art.frames("spray_n") <= 0:
 		return {}
-	var hose := sim.water.hose_of_crew(crew.id)
+	var hose := sim.water.held_hose(crew.id)
 	var lead := crew.leader
 	if hose == null or not hose.flowing or hose.approaching or lead.incapacitated or lead.is_moving():
 		return {}
@@ -2960,7 +2960,7 @@ func _shown_pos(ff: Firefighter, alpha: float) -> Vector2:
 	if not ff.incapacitated and not sim.water.hoses.is_empty():
 		# 호스 꺼내기 (E1): 1번·2번은 차 후면 앞 정해진 자리에
 		var fc := sim.units.get_crew(ff.crew_id)
-		var fh := sim.water.hose_of_crew(fc.id) if fc != null else null
+		var fh := sim.water.held_hose(fc.id) if fc != null else null
 		if fh != null and fh.fetch_until >= 0:
 			var fart := SpriteArt.get_set(str(SpriteArt.config().get("crew", ""))) if not thermal else null
 			var fl := _hose_fetch_layout(fc, fart)

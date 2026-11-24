@@ -174,6 +174,13 @@ func _order(action: String, crew_id: int, target: Vector3i, tick: int) -> bool:
 		return false
 	doors_sys.cancel(crew_id)
 	rescue.cancel(crew_id)
+	# 공기호흡기 교체 철수면 교체 뒤 이어 할 임무 (2026-11-24): 지금 하던 진압·층 진압·외부 방수
+	var resume := {}
+	var prev := task_of_crew(crew_id)
+	if prev != null and prev.action in ["attack", "attack_floor"]:
+		resume = {"action": prev.action, "target": prev.target}
+	elif _exterior.has(crew_id):
+		resume = {"action": "exterior", "target": _exterior[crew_id]}
 	cancel(crew_id)
 	# 새 임무를 받으면 관창부터 잠근다 (방수 임무는 방수 위치에 닿아 다시 연다). 2026-11-24 — 전에는 외부 방수를 하던 조에게
 	# 진압·검색을 시켜도 잠그지 않아, 걸어가고 문을 여는 동안에도 예전 목표로 물이 나갔다 (물 낭비 + 물줄기가 엉뚱한 쪽으로 그려짐)
@@ -183,7 +190,7 @@ func _order(action: String, crew_id: int, target: Vector3i, tick: int) -> bool:
 		water.cancel_fetch(crew_id, tick)
 	if action == "withdraw":
 		water.stop_spray(crew_id, tick)
-		safety.withdraw_crew(c, tick, "withdraw")
+		safety.withdraw_crew(c, tick, "withdraw", resume)
 		return true
 	if action == "hold":
 		water.stop_spray(crew_id, tick)

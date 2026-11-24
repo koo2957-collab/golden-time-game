@@ -48,6 +48,22 @@ static func describe_text(e: Dictionary) -> String:
 			text = "문을 닫을 수 없음 (파괴됨·통로에 사람) — %s" % e.crew
 		"door_unreachable":
 			text = "문 앞으로 갈 수 없음 — %s" % e.crew
+		"nozzle_dropped":
+			text = "관창을 놓고 이탈 (%s) — %s" % [e.level, e.crew]
+		"hose_recover":
+			text = "관창 놓고 호스 회수하며 철수 — %s" % e.crew
+		"hose_recovered":
+			text = "호스 회수 완료 — %s" % e.crew
+		"nozzle_return":
+			text = "호스 따라 관창으로 이동 — %s" % e.crew
+		"nozzle_picked_up":
+			text = "관창 다시 잡음 — %s" % e.crew
+		"hose_takeover":
+			text = "%s이(가) 놓고 간 관창 인수 (%s) — %s" % [e.from, e.level, e.crew] if str(e.get("from", "")) != "" else "놓인 관창 인수 (%s) — %s" % [e.level, e.crew]
+		"air_swap_out":
+			text = "공기호흡기 교체 — 관창 놓고 호스 따라 탈출 — %s" % e.crew
+		"air_swap_done":
+			text = "공기호흡기 교체 완료, %s — %s" % [e.text, e.crew]
 		"hose_fetch_cancel":
 			text = "호스 연장 취소 (다른 지시) — %s" % e.crew
 		"door_stack":

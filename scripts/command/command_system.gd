@@ -41,6 +41,9 @@ const REPORT_PRIORITY := {
 	"hose_resupply": Radio.Priority.TACTICS,
 	"hose_charged": Radio.Priority.TACTICS,
 	"door_stack": Radio.Priority.TACTICS,
+	"air_swap_out": Radio.Priority.SAFETY,
+	"air_swap_done": Radio.Priority.TACTICS,
+	"hose_takeover": Radio.Priority.TACTICS,
 	"steam_mix": Radio.Priority.SAFETY,
 	"firebrand_ignition": Radio.Priority.KEY_FACTOR,
 	"flow_short": Radio.Priority.KEY_FACTOR,
@@ -515,7 +518,13 @@ func step(dt: float, tick: int) -> void:
 		# 진입 금지를 받은 출동대가 새 임무를 받으면 다시 진입 허가를 요청할 수 있다 (P10-2)
 		if e.type == "tactical_start" and not _entry_denied.is_empty():
 			clear_entry_denied(_squad_of_sender(str(e.get("crew", ""))))
+		# 방수구(건물 안)에서 깐 호스를 다 거둔 조는 아직 건물 안이다: 이어서 밖으로 철수 (2026-11-24)
+		if e.type == "hose_recovered":
+			var rc := units.get_crew(int(e.get("crew_id", -1)))
+			if rc != null and _indoor(rc.leader.level, rc.leader.pos):
+				safety.withdraw_crew(rc, tick)
 	safety.step(tick)
+	_step_air_swaps(tick)
 	_step_hose_first(tick)
 	_step_approach(tick)
 	_step_floor_goals(tick)
@@ -1497,6 +1506,51 @@ func order_floor_mission(crew_ids: Array, level: int, e: EntryPoints.Entry, kind
 	order_floor(now, level, e, tick)
 	for id: int in now:
 		floor_missions[id] = kind
+
+
+## 공기호흡기 교체로 관창을 놓고 나온 조 (2026-11-24 사용자 결정): 교체가 끝나면 "교체 완료, 재진입" 보고 후 호스를 따라
+## 관창으로 다시 들어가 잡고 하던 임무를 잇는다. 진입 금지 요소(방어 전략·특수현상·붕괴 징후)가 있으면 들어가지 않고 지시를 기다린다.
+## 그 사이 교대조가 관창을 이어받았으면 밖에서 대기
+func _step_air_swaps(tick: int) -> void:
+	if safety.air_swaps.is_empty() or water == null:
+		return
+	for id: int in safety.air_swaps.keys():
+		var c := units.get_crew(id)
+		var s: Dictionary = safety.air_swaps[id]
+		if c == null or c.leader.incapacitated:
+			safety.air_swaps.erase(id)
+			continue
+		var h := water.hose_of_crew(id)
+		if str(s.state) == "out":
+			if c.leader.is_moving() or _indoor(c.leader.level, c.leader.pos):
+				continue
+			var full := true
+			for ff in c.members():
+				if not ff.incapacitated and ff.air_ratio() < 0.95:
+					full = false
+			if not full:
+				continue
+			if h == null or not h.dropped:
+				events.add(tick, "air_swap_done", {"crew": _crew_name(c), "crew_id": id, "text": "교대조가 관창 인수 — 밖에서 대기"})
+				safety.air_swaps.erase(id)
+				continue
+			var v := entry_verdict(c, tick)
+			if str(v.verdict) == "deny":
+				events.add(tick, "air_swap_done", {"crew": _crew_name(c), "crew_id": id, "text": "재진입 보류 (%s) — 지시 바람" % v.reason})
+				safety.air_swaps.erase(id)
+				continue
+			events.add(tick, "air_swap_done", {"crew": _crew_name(c), "crew_id": id, "text": "호스 따라 재진입"})
+			water.return_to_nozzle(id, tick)
+			s.state = "back"
+		elif h == null or (not h.held() and not h.to_nozzle):
+			# 다른 지시를 받아 관창으로 가던 것을 멈췄다
+			safety.air_swaps.erase(id)
+		elif h.held():
+			# 관창을 다시 잡았다: 하던 임무를 잇는다
+			var r: Dictionary = s.get("resume", {})
+			safety.air_swaps.erase(id)
+			if not r.is_empty() and tactical:
+				tactical.order(str(r.action), id, r.target, tick)
 
 
 ## 호스를 다 꺼낸 조를 진입구로 보낸다 (order_floor_mission 이 미뤄 둔 것)

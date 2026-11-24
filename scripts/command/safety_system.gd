@@ -52,6 +52,10 @@ var _role_pending: Dictionary = {}  # crew id -> Role
 var _par_deadline := -1
 var _par_expect: Dictionary = {}  # crew id -> true (아직 응답하지 않은 조)
 var _par_response_ticks := 600
+var _air_swap_ratio := 0.5
+## 공기호흡기 교체로 관창을 놓고 나온 조 {crew id: {tick, resume {action, target} 또는 {}, state "out"·"back"}}.
+## 교체가 끝나면 CommandSystem 이 호스를 따라 다시 들여보낸다 (_step_air_swaps)
+var air_swaps: Dictionary = {}
 
 
 func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, p_rescue: RescueSystem, p_water: WaterSystem, p_doors: DoorSystem, params: ParamTable, p_events: SimEventLog) -> void:
@@ -67,6 +71,7 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, p_res
 	_officer_every = maxi(1, roundi(params.value("officer_check_s") / SimClock.TICK_DT))
 	factor_recent_ticks = roundi(params.value("entry_factor_recent_s") / SimClock.TICK_DT)
 	_par_response_ticks = roundi(params.value("par_response_s") / SimClock.TICK_DT)
+	_air_swap_ratio = params.value("air_swap_ratio") if params.params.has("air_swap_ratio") else 0.5
 
 
 func emergency() -> bool:
@@ -150,14 +155,40 @@ func withdraw_all(tick: int, reason := "withdraw") -> void:
 		withdraw_crew(c, tick, reason)
 
 
-## 한 조를 가장 가까운 열린 외부 문 밖으로 내보낸다
-func withdraw_crew(c: Crew, tick: int, reason := "withdraw") -> void:
-	if not _indoor(c.leader.level, c.leader.pos):
+## 한 조를 밖으로 내보낸다. 수관을 깔고 있던 조는 (2026-11-24 사용자 결정):
+##   긴급 철수(reason 이 "withdraw" 가 아님 — 긴급탈출 등): 관창을 놓고 호스를 따라 바로 밖으로 (호스는 상황이 끝난 뒤 회수)
+##   공기호흡기 교체(조원 공기가 air_swap_ratio 아래이거나 경보): 관창을 놓고 호스를 따라 펌프차로 나와 교체 → 다시 들어가 잇는다
+##   보통 철수: 관창을 놓은 자리부터 호스를 거두며 펌프차로 돌아온다 (시간이 걸린다)
+## resume = 교체 뒤 이어 할 임무 {action, target} (TacticalSystem 이 넘긴다)
+func withdraw_crew(c: Crew, tick: int, reason := "withdraw", resume: Dictionary = {}) -> void:
+	var h: HoseLine = water.hose_of_crew(c.id) if water else null
+	var laid := h != null and h.held() and not h.to_outlet and h.fetch_until < 0 and h.points.size() >= 2
+	if not _indoor(c.leader.level, c.leader.pos) and not laid:
 		return
-	var exits := rescue.exit_cells()
 	doors.cancel(c.id)
 	rescue.cancel(c.id)
 	water.stop_spray(c.id, tick)
+	if laid:
+		if reason != "withdraw":
+			water.drop_nozzle(c.id, tick)
+			var out := _hose_exit(h)
+			if out.x >= 0:
+				units.order_move([c.id], _clear_of_building(out), pathfinder)
+				events.add(tick, reason, {"crew": _crew_name(c)})
+				return
+		elif _needs_air(c):
+			water.drop_nozzle(c.id, tick)
+			air_swaps[c.id] = {"tick": tick, "resume": resume, "state": "out"}
+			units.order_move([c.id], _swap_spot(c, h), pathfinder)
+			events.add(tick, "air_swap_out", {"crew": _crew_name(c), "crew_id": c.id})
+			return
+		else:
+			water.recover_hose(c.id, tick)
+			events.add(tick, reason, {"crew": _crew_name(c)})
+			return
+	if not _indoor(c.leader.level, c.leader.pos):
+		return
+	var exits := rescue.exit_cells()
 	var best := Vector3i(-1, -1, -1)
 	var best_d := INF
 	for e in exits:
@@ -170,6 +201,43 @@ func withdraw_crew(c: Crew, tick: int, reason := "withdraw") -> void:
 		return
 	units.order_move([c.id], _clear_of_building(best), pathfinder)
 	events.add(tick, reason, {"crew": _crew_name(c)})
+
+
+## 공기호흡기를 바꿔야 하는가: 조원 누구든 공기가 air_swap_ratio 아래이거나 공기 경보가 울렸다
+func _needs_air(c: Crew) -> bool:
+	for ff in c.members():
+		if ff.incapacitated:
+			continue
+		if ff.air_alarm_logged or ff.air_ratio() < _air_swap_ratio:
+			return true
+	return false
+
+
+## 공기호흡기를 바꾸러 가는 자리: 그 수관을 대 준 펌프차 옆 (펌프차 수관은 호스 시작점 = 차 후면).
+## 방수구(건물 안)에서 깐 수관이면 가장 가까운 펌프차 옆
+func _swap_spot(c: Crew, h: HoseLine) -> Vector3i:
+	if h.outlet < 0:
+		return h.points[0]
+	var best: Vehicle = null
+	var best_d := INF
+	for v in units.vehicles:
+		if v.is_pump() and v.distance_to_body(c.leader.pos) < best_d:
+			best_d = v.distance_to_body(c.leader.pos)
+			best = v
+	if best == null:
+		return h.points[0]
+	var near := pathfinder.nearest_walkable(best.level, Vector2i(best.closest_body_point(c.leader.pos).floor()))
+	return Vector3i(near.x, near.y, best.level) if near != Pathfinder.NO_CELL else h.points[0]
+
+
+## 호스를 따라 나가는 출구: 관창 쪽에서 펌프차 쪽으로 호스를 거슬러 가다 처음 만나는 바깥 칸 (진입한 문 바로 밖).
+## 바깥 칸이 없으면 (-1, -1, -1)
+func _hose_exit(h: HoseLine) -> Vector3i:
+	for k in range(h.points.size() - 1, -1, -1):
+		var p := h.points[k]
+		if not _indoor(p.z, Vector2(p.x, p.y) + Vector2(0.5, 0.5)):
+			return p
+	return Vector3i(-1, -1, -1)
 
 
 ## 문 밖 칸에서 건물 반대쪽으로 몇 칸 더 나간 곳 (조장 뒤를 따르는 짝까지 완전히 밖에 서도록)

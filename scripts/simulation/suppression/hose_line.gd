@@ -59,6 +59,18 @@ var to_outlet := false
 var fetch_until := -1
 ## 꺼내는 데 걸리는 전체 틱 (화면 진행 막대)
 var fetch_ticks := 0
+## 관창을 그 자리에 놓고 떠났다 (2026-11-24 사용자 결정 — 긴급 철수·공기호흡기 교체): 호스는 깔린 그대로, 관창은 points 끝에.
+## crew_id 는 놓고 간 조 (교대조가 이어받으면 그 조로 바뀐다)
+var dropped := false
+## 놓인 관창으로 호스를 따라 가는 중 (닿으면 다시 잡는다 — 교체 뒤 재진입 · 교대조 인수)
+var to_nozzle := false
+## 철수하며 호스를 거두는 중 (관창 쪽부터 걷으며 펌프차로 돌아간다. 다 거두면 수관이 없어진다)
+var recovering := false
+
+
+## 조가 손에 들고 있는 수관인가 (놓고 갔거나 관창으로 가는 중·거두는 중이면 아니다)
+func held() -> bool:
+	return not dropped and not to_nozzle and not recovering
 
 
 func pattern_name() -> String:

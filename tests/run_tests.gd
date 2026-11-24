@@ -7,6 +7,8 @@ extends SceneTree
 ## 끝에 파일별 걸린 시간(느린 순)과 실패 목록을 보여 준다.
 
 const TEST_DIR := "res://tests/"
+## 테스트 도중의 스크립트 오류를 세는 기록기 (class_name 을 쓰지 않는다 — 새 이름은 편집기 가져오기 전에는 등록되지 않는다)
+const ERROR_LOGGER := preload("res://tests/script_error_logger.gd")
 
 
 func _initialize() -> void:
@@ -22,10 +24,22 @@ func _initialize() -> void:
 			if f != "":
 				filters.append(f)
 	var start_all := Time.get_ticks_msec()
+	# 테스트 도중의 스크립트 오류를 센다 — 오류가 나면 단정이 실패하지 않았어도 그 테스트는 실패 (2026-11-24)
+	var err_log := ERROR_LOGGER.new()
+	OS.add_logger(err_log)
 	for file in DirAccess.get_files_at(TEST_DIR):
 		if not (file.begins_with("test_") and file.ends_with(".gd")) or file == "test_suite.gd":
 			continue
 		var script: GDScript = load(TEST_DIR + file)
+		if script == null or not script.can_instantiate():
+			# 컴파일이 안 된 테스트 파일 (또는 그것이 쓰는 게임 스크립트) — 전에는 조용히 건너뛰어 아무 실패도 안 보였다
+			if _matches(filters, file, ""):
+				failed += 1
+				failed_names.append("%s (컴파일 실패)" % file)
+				print("  실패  %s :: 컴파일 실패" % file)
+				for e in err_log.take():
+					print("        - " + e)
+			continue
 		for method in script.get_script_method_list():
 			var method_name: String = method.name
 			if not method_name.begins_with("test_"):
@@ -34,8 +48,11 @@ func _initialize() -> void:
 				continue
 			print("  실행  %s :: %s" % [file, method_name])
 			var t0 := Time.get_ticks_msec()
+			err_log.take()
 			var suite: TestSuite = script.new()
 			suite.call(method_name)
+			for e in err_log.take():
+				suite.failures.append("스크립트 오류: " + e)
 			file_ms[file] = int(file_ms.get(file, 0)) + Time.get_ticks_msec() - t0
 			if suite.failures.is_empty():
 				passed += 1

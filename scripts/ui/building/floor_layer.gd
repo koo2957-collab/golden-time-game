@@ -2026,6 +2026,8 @@ func _door_check_layout(crew: Crew, art: SpriteArt.SpriteSet) -> Dictionary:
 	var anim := "door_feel"
 	var frame := -1
 	var dt := sim.doors.task_of_crew(crew.id)
+	if dt != null and dt.stacked(crew.id):
+		dt = null
 	if dt != null and dt.open and dt.opening != null and not dt.opening.locked and not dt.waiting_people:
 		door = dt.opening
 		anim = "door_open"
@@ -2049,7 +2051,7 @@ func _window_layout(crew: Crew, art: SpriteArt.SpriteSet) -> Dictionary:
 	if crew == null or art == null or art.frames("window_break") <= 0 or sim.doors.tasks.is_empty():
 		return {}
 	var t := sim.doors.task_of_crew(crew.id)
-	if t == null or t.opening == null or t.opening.kind != Opening.Kind.WINDOW or t.opening.cells.is_empty() or t.waiting_people:
+	if t == null or t.stacked(crew.id) or t.opening == null or t.opening.kind != Opening.Kind.WINDOW or t.opening.cells.is_empty() or t.waiting_people:
 		return {}
 	var ff := crew.leader
 	if ff.incapacitated or ff.level != t.opening.level or ff.is_moving() or ff.pos.distance_to(door_center(t.opening)) > 3.5:
@@ -2123,6 +2125,41 @@ func _door_ready_layout(crew: Crew, art: SpriteArt.SpriteSet) -> Dictionary:
 	var fr := force_frame(door, lead.pos)
 	var spot := door_ready_spot(center, fr.facing, opener_spot, float(st.get("ready_back_m", 1.1)) / cell_m, float(st.get("ready_side_m", 0.4)) / cell_m)
 	return {"id": lead.id, "k": SpriteArt.dir8(center - spot), "spot": spot}
+
+
+## 문을 여는(확인·개방·파괴) 조의 선두가 그 일을 하지 않을 때 기다리는 자리 (방수태세가 없는 조 — 구조대 등).
+## 방수태세 자리(door_ready_spot)와 같은 곳: 문에서 ready_back_m 물러나 여는 사람의 반대쪽 옆.
+## 2026-11-24 — 선두가 실제 자리(문 앞 작업 칸)에 그대로 그려져 문틈 옆에서 문을 부수는 조원과 겹쳤다. 아니면 null
+func _door_lead_wait_spot(crew: Crew, art: SpriteArt.SpriteSet) -> Variant:
+	if crew == null or art == null:
+		return null
+	var lead := crew.leader
+	if lead == null or lead.incapacitated or lead.is_moving():
+		return null
+	if not _door_ready_layout(crew, art).is_empty():
+		return null
+	var door: Opening = null
+	var opener_spot: Variant = null
+	var dt := sim.doors.task_of_crew(crew.id)
+	var dl := _door_check_layout(crew, art)
+	if not dl.is_empty():
+		if int(dl.opener) == lead.id:
+			return null
+		door = dt.opening if dt != null and not dt.stacked(crew.id) and dt.opening != null else sim.cards.checking_door(crew.id)
+		opener_spot = dl.spot
+	elif dt != null and _forcing(dt, lead) and art.frames("force_a") > 0:
+		if _force_layout(dt, crew, art).anims.has(lead.id):
+			return null
+		door = dt.opening
+	if door == null or door.kind != Opening.Kind.DOOR or door.cells.is_empty():
+		return null
+	var center := door_center(door)
+	if lead.level != door.level or lead.pos.distance_to(center) > 3.5:
+		return null
+	var st := HoseDraw.style()
+	var cell_m := sim.units.cell_size_m
+	var fr := force_frame(door, lead.pos)
+	return door_ready_spot(center, fr.facing, opener_spot, float(st.get("ready_back_m", 1.1)) / cell_m, float(st.get("ready_side_m", 0.4)) / cell_m)
 
 
 ## 창을 깨는 대원 id (없으면 -1)
@@ -2695,6 +2732,9 @@ func _floor_clear(at_level: int, from: Vector2, to: Vector2) -> bool:
 func _forcing(task: DoorSystem.Task, ff: Firefighter) -> bool:
 	if not task.open or task.waiting_people or task.opening == null or not task.opening.locked or task.opening.cells.is_empty():
 		return false
+	# 문 옆에서 기다리는 분대는 문을 부수지 않는다 (2026-11-24 — 두 분대가 같은 두 자리에 겹쳐 그려졌다)
+	if task.stacked(ff.crew_id):
+		return false
 	return ff.level == task.opening.level and ff.pos.distance_to(door_center(task.opening)) <= 3.5
 
 
@@ -2889,6 +2929,11 @@ func _shown_pos(ff: Firefighter, alpha: float) -> Vector2:
 			var rl := _door_ready_layout(dc, dart)
 			if not rl.is_empty():
 				return rl.spot
+		# 호스 없는 조(구조대 등)의 선두는 방수태세 자리처럼 문에서 물러나 기다린다
+		if dc != null and dc.leader == ff:
+			var lw: Variant = _door_lead_wait_spot(dc, dart)
+			if lw != null:
+				return lw
 		var wl := _window_layout(dc, dart)
 		if not wl.is_empty() and int(wl.breaker) == ff.id:
 			return wl.spot

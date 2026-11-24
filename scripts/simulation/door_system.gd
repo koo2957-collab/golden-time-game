@@ -11,6 +11,8 @@ extends RefCounted
 ## 문 앞에 있다고 보는 거리 (셀, 약 1.2m). 조장 바로 뒤에 선 짝도 포함되도록 잡는다.
 const AT_DOOR_CELLS := 2.3
 
+## 한 문의 작업. crews[0] = 문을 여는 분대(먼저 요청한 분대), 그 뒤 = 문 옆에서 기다리는 분대
+## (2026-11-24 사용자 결정 — 전에는 두 분대가 한 문에 함께 붙어 문 앞 두 자리에 네 명이 겹쳐 그려지고 한 명씩 사라졌다)
 class Task:
 	var opening: Opening
 	var open := true
@@ -18,6 +20,14 @@ class Task:
 	var progress := 0.0
 	var required := 0.0
 	var waiting_people := false
+
+	## 문을 여는 분대 (없으면 -1)
+	func worker() -> int:
+		return crews[0] if not crews.is_empty() else -1
+
+	## 문 옆에서 기다리는 분대인가
+	func stacked(crew_id: int) -> bool:
+		return crew_id in crews and crew_id != worker()
 
 
 var fire: FireSim
@@ -34,6 +44,8 @@ var _open_s: float
 var _force_s: float
 var _force_people: int
 var _fire_door_factor: float
+## 기다리는 분대가 서는 거리 (칸)
+var _stack_cells: float
 ## 방화문 파괴기를 실었으면 0.5 (출동 준비, R10)
 var fire_door_factor_scale := 1.0
 ## 방화문 파괴에 파괴기가 있어야 하는가 (실제 플레이, P4-1). 없으면 질문 카드 → 차량에 가서 가져온다
@@ -52,6 +64,7 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, stats
 	_force_s = stats.value("forcible_entry_s")
 	_force_people = int(stats.value("forcible_entry_min_people"))
 	_fire_door_factor = stats.value("fire_door_force_factor")
+	_stack_cells = stats.value("door_stack_m") / maxf(0.01, units.cell_size_m)
 	sync_blocking()
 
 
@@ -121,7 +134,15 @@ func request(crew_id: int, door_cell: Vector3i, open: bool, tick: int) -> bool:
 		tasks.append(t)
 		if open and o.kind == Opening.Kind.DOOR and on_door_approach.is_valid():
 			on_door_approach.call(o, tick)
+	var waiting := not t.crews.is_empty()
 	t.crews.append(crew_id)
+	if waiting:
+		# 다른 분대가 이미 이 문을 연다: 문 옆 떨어진 자리에서 기다린다 (열리면 원래 임무대로 들어간다)
+		var stack := _stack_spot(c, t)
+		if stack != Pathfinder.NO_CELL:
+			units.order_move([crew_id] as Array[int], Vector3i(stack.x, stack.y, o.level), pathfinder)
+		events.add(tick, "door_stack", {"crew": _crew_name(c), "crew_id": crew_id, "worker": _crew_name(units.get_crew(t.worker())), "room": _door_name(o)})
+		return true
 	var spot := _work_spot(c, o)
 	if spot == Pathfinder.NO_CELL:
 		events.add(tick, "door_unreachable", {"crew": _crew_name(c)})
@@ -204,7 +225,7 @@ func fetch_progress(crew_id: int, tick: int) -> float:
 func step(dt: float, tick: int) -> void:
 	_step_fetches(tick)
 	for t in tasks.duplicate():
-		var people := _people_at_door(t.opening)
+		var people := _workers_at_door(t)
 		var need := _force_people if (t.open and t.opening.locked) else 1
 		if people <= 0:
 			continue
@@ -245,11 +266,20 @@ func _finish(t: Task, tick: int) -> void:
 	tasks.erase(t)
 
 
-## 문 앞(문 칸 근처)에 서 있고 움직이지 않는, 행동 가능한 대원 수
-func _people_at_door(o: Opening) -> int:
+## 문 앞에서 일할 수 있는 대원 수: 여는 분대의 대원만 센다. 그 분대만으로 모자라면(잠긴 문 2명) 기다리는 분대가 거든다
+func _workers_at_door(t: Task) -> int:
+	var need := _force_people if (t.open and t.opening.locked) else 1
+	var own := _people_at_door(t.opening, [t.worker()])
+	return own if own >= need else _people_at_door(t.opening, t.crews)
+
+
+## 문 앞(문 칸 근처)에 서 있고 움직이지 않는, 행동 가능한 대원 수 (crew_ids 를 주면 그 조들만)
+func _people_at_door(o: Opening, crew_ids: Array = []) -> int:
 	var n := 0
 	for ff in units.firefighters:
 		if ff.incapacitated or ff.level != o.level or ff.is_moving():
+			continue
+		if not crew_ids.is_empty() and not ff.crew_id in crew_ids:
 			continue
 		for c in o.cells:
 			if ff.pos.distance_to(Vector2(c) + Vector2(0.5, 0.5)) <= AT_DOOR_CELLS:
@@ -285,10 +315,69 @@ func _work_spot(c: Crew, o: Opening) -> Vector2i:
 	return Pathfinder.NO_CELL
 
 
+## 기다리는 분대가 설 자리: 문 가운데에서 door_stack_m 쯤 떨어지고, 여는 분대(조장·작업 자리)와도 그만큼 떨어진 칸.
+## 분대가 지금 있는 쪽(문 바깥·안)에서 고른다 — 길이 크게 돌아가는 칸(다른 출입구로 돌아 들어가는 곳)은 뺀다
+func _stack_spot(c: Crew, t: Task) -> Vector2i:
+	var o := t.opening
+	var center := Vector2.ZERO
+	for cell in o.cells:
+		center += Vector2(cell) + Vector2(0.5, 0.5)
+	center /= maxf(1.0, o.cells.size())
+	var avoid: Array[Vector2] = []
+	var w := units.get_crew(t.worker())
+	if w != null:
+		avoid.append(w.leader.pos)
+		var ws := _work_spot(w, o)
+		if ws != Pathfinder.NO_CELL:
+			avoid.append(Vector2(ws) + Vector2(0.5, 0.5))
+	# 먼저 와서 기다리는 다른 분대와도 겹치지 않게
+	for id in t.crews:
+		var other := units.get_crew(id)
+		if other != null and other != c and other != w:
+			var goal := other.leader.pos
+			if not other.leader.path.is_empty():
+				var last: Vector3i = other.leader.path[-1]
+				goal = Vector2(last.x, last.y) + Vector2(0.5, 0.5)
+			avoid.append(goal)
+	var r := ceili(_stack_cells) + 2
+	var cands: Array = []
+	for dy in range(-r, r + 1):
+		for dx in range(-r, r + 1):
+			var n := Vector2i(floori(center.x) + dx, floori(center.y) + dy)
+			if n in o.cells or not pathfinder.passable(o.level, n.x, n.y):
+				continue
+			var p := Vector2(n) + Vector2(0.5, 0.5)
+			var d := p.distance_to(center)
+			if d < _stack_cells:
+				continue
+			var clear := true
+			for a in avoid:
+				if p.distance_to(a) < _stack_cells * 0.75:
+					clear = false
+			if clear:
+				cands.append([absf(d - _stack_cells) + p.distance_to(c.leader.pos) * 0.05, n])
+	cands.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+	var here := c.leader.cell3()
+	for e in cands:
+		var n: Vector2i = e[1]
+		var path := pathfinder.find_path(here, Vector3i(n.x, n.y, o.level))
+		if not path.is_empty() and path.size() <= c.leader.pos.distance_to(Vector2(n)) * 1.6 + 8.0:
+			return n
+	return Pathfinder.NO_CELL
+
+
 func _remove_crew(t: Task, crew_id: int) -> void:
+	var was_worker := t.worker() == crew_id
 	t.crews.erase(crew_id)
 	if t.crews.is_empty():
 		tasks.erase(t)
+	elif was_worker:
+		# 문을 열던 분대가 빠졌다: 기다리던 분대가 이어서 연다
+		var next := units.get_crew(t.worker())
+		if next != null:
+			var spot := _work_spot(next, t.opening)
+			if spot != Pathfinder.NO_CELL:
+				units.order_move([next.id] as Array[int], Vector3i(spot.x, spot.y, t.opening.level), pathfinder)
 
 
 func _door_name(o: Opening) -> String:

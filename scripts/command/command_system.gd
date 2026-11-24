@@ -40,6 +40,7 @@ const REPORT_PRIORITY := {
 	"door_check_seen": Radio.Priority.VICTIM,
 	"hose_resupply": Radio.Priority.TACTICS,
 	"hose_charged": Radio.Priority.TACTICS,
+	"door_stack": Radio.Priority.TACTICS,
 	"steam_mix": Radio.Priority.SAFETY,
 	"firebrand_ignition": Radio.Priority.KEY_FACTOR,
 	"flow_short": Radio.Priority.KEY_FACTOR,

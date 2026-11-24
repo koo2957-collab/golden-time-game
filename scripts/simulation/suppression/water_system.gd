@@ -61,6 +61,11 @@ var _port_behind: float
 var _drag_factor: float
 var _damage_temp: float
 var _range := {}  # Pattern -> 셀
+## 물줄기를 막는 가구 높이 {Vector3i(x, y, 층): m} · 관창 높이(선 자세·낮은 자세) · 차체가 막는가 (data/fire/fire_params.json)
+var _furn_h: Dictionary = {}
+var _nozzle_h := 1.0
+var _nozzle_low_h := 0.7
+var _vehicles_block := true
 ## 주수 형태별 물 사용 비율 (펜슬링은 끊어 쏜다)
 var _flow := {HoseLine.Pattern.STRAIGHT: 1.0, HoseLine.Pattern.FOG: 1.0}
 var _cover_cells := 5.0
@@ -91,6 +96,21 @@ func _init(p_building: BuildingData, p_units: UnitSystem, p_pathfinder: Pathfind
 	_port_behind = config.value("hose_port_behind_m") / _cell_m
 	indoor_tank_l = p_building.indoor_tank_l
 	_damage_temp = config.value("water_damage_temp_c")
+	# 물줄기를 막는 가구 높이 (2026-11-24): 칸마다 그 칸 가구의 높이 {Vector3i(x, y, 층): m}
+	_nozzle_h = config.value("nozzle_height_m") if config.params.has("nozzle_height_m") else 1.0
+	_nozzle_low_h = config.value("nozzle_height_low_m") if config.params.has("nozzle_height_low_m") else 0.7
+	_vehicles_block = config.params.has("vehicle_blocks_water") and config.value("vehicle_blocks_water") > 0.0
+	var heights: Dictionary = config.params.get("furniture_height_m", {}).get("value", {})
+	for lv: int in building.levels():
+		for item: Dictionary in building.furniture(lv):
+			var fh := float(heights.get(str(item.get("name", "")), 0.0))
+			if fh <= 0.0:
+				continue
+			var r: Rect2i = item.rect
+			for y in range(r.position.y, r.end.y):
+				for x in range(r.position.x, r.end.x):
+					var key := Vector3i(x, y, lv)
+					_furn_h[key] = maxf(fh, float(_furn_h.get(key, 0.0)))
 	_range[HoseLine.Pattern.STRAIGHT] = config.value("straight_range_m") / _cell_m
 	_range[HoseLine.Pattern.FOG] = config.value("fog_range_m") / _cell_m
 	_radius[HoseLine.Pattern.STRAIGHT] = config.value("straight_radius_m") / _cell_m
@@ -511,7 +531,7 @@ func _can_spray_to(pos: Vector2, level: int, target: Vector2, target_level: int,
 		return false
 	if pos.distance_to(target) > _range[pattern] * APPROACH_RANGE_RATIO:
 		return false
-	return not _trace(level, pos, target, _range[pattern]).blocked
+	return not _trace(level, pos, target, _range[pattern], _nozzle_h).blocked
 
 
 ## target에 물줄기가 닿고 열기가 견딜 만한 위치 중 조장에게서 가장 가까운 셀. 없으면 NO_CELL.
@@ -862,7 +882,7 @@ func _apply_sprays(dt: float, tick: int) -> void:
 			# 더 다가가려고 걷기 시작했으면 이번 틱에는 쏘지 않는다
 			if h.approaching:
 				continue
-		var trace := _trace(leader.level, leader.pos, h.aim, _range[h.pattern])
+		var trace := _trace(leader.level, leader.pos, h.aim, _range[h.pattern], nozzle_height(leader))
 		h.impact = trace.impact
 		h.blocked = trace.blocked
 		h.spraying = true
@@ -930,7 +950,7 @@ func _sweep(h: HoseLine, leader: Firefighter, dt: float) -> bool:
 			if leader.pos.distance_to(p) > _range[h.pattern]:
 				continue
 			var d := h.aim.distance_squared_to(p)
-			if d < best_d and not _trace(leader.level, leader.pos, p, _range[h.pattern]).blocked:
+			if d < best_d and not _trace(leader.level, leader.pos, p, _range[h.pattern], nozzle_height(leader)).blocked:
 				best_d = d
 				goal = p
 				found = true
@@ -948,7 +968,7 @@ func _sweep(h: HoseLine, leader: Firefighter, dt: float) -> bool:
 			var d := leader.pos.distance_to(p)
 			if d > _range[h.pattern] or d >= reach or d >= best_d:
 				continue
-			if not _trace(leader.level, leader.pos, p, _range[h.pattern]).blocked:
+			if not _trace(leader.level, leader.pos, p, _range[h.pattern], nozzle_height(leader)).blocked:
 				best_d = d
 				goal = p
 				found = true
@@ -957,9 +977,11 @@ func _sweep(h: HoseLine, leader: Firefighter, dt: float) -> bool:
 
 
 ## from에서 to 방향으로 물줄기를 보낸다. 벽·닫힌 문·깨지지 않은 창에 막히면 그 앞에서 멈춘다.
-## origin = 물이 퍼지기 시작하는 곳: 표면(벽·문·창)에 맞았으면 그 바로 앞(쏘는 쪽)의 점, 아니면 맞은 곳 —
+## nozzle_h > 0 이면 그 높이 이상의 가구·바깥 차량 차체에도 막힌다 (2026-11-24) — 물은 그 가구·차 겉에 닿는다
+## (타는 장롱이면 거기에 물이 간다). 관창보다 낮은 가구(침대·탁자)는 넘어간다. 0 이면 가구·차량은 보지 않는다 (퍼지는 물).
+## origin = 물이 퍼지기 시작하는 곳: 표면(벽·문·창·가구)에 맞았으면 그 바로 앞(쏘는 쪽)의 점, 아니면 맞은 곳 —
 ## 퍼지는 물이 그 표면 뒤로 넘어가지 않게 하는 데 쓴다 (_reachable_cells)
-func _trace(level: int, from: Vector2, to: Vector2, max_cells: float) -> Dictionary:
+func _trace(level: int, from: Vector2, to: Vector2, max_cells: float, nozzle_h := 0.0) -> Dictionary:
 	var dir := to - from
 	var dist := minf(dir.length(), max_cells)
 	if dist < 0.01:
@@ -967,6 +989,7 @@ func _trace(level: int, from: Vector2, to: Vector2, max_cells: float) -> Diction
 	dir = dir.normalized()
 	var last := from
 	var goal_cell := Vector2i(to.floor())
+	var start_cell := Vector2i(from.floor())
 	var t := 0.25
 	while t <= dist:
 		var p := from + dir * t
@@ -976,10 +999,29 @@ func _trace(level: int, from: Vector2, to: Vector2, max_cells: float) -> Diction
 			if c == goal_cell:
 				return {"impact": p, "blocked": false, "origin": last}
 			return {"impact": last, "blocked": true, "origin": last}
+		if nozzle_h > 0.0 and c != start_cell and _stops_stream(level, c, p, nozzle_h):
+			# 키 큰 가구·차체: 물은 그 겉(이 칸)에 닿는다. 겨눈 곳이 그것이면 막힌 것이 아니다
+			return {"impact": p, "blocked": c != goal_cell, "origin": last}
 		last = p
 		t += 0.25
 	var end := from + dir * dist
 	return {"impact": end, "blocked": false, "origin": end}
+
+
+## 이 칸(점 p)에서 관창 높이 nozzle_h 의 물줄기가 멈추는가: 그 높이 이상의 가구, 또는 바깥에 선 차량 차체
+func _stops_stream(level: int, c: Vector2i, p: Vector2, nozzle_h: float) -> bool:
+	if float(_furn_h.get(Vector3i(c.x, c.y, level), 0.0)) >= nozzle_h:
+		return true
+	if _vehicles_block and building.cell(level, c.x, c.y) in BuildingData.OUTDOOR:
+		for v in units.vehicles:
+			if v.level == level and not v.away and v.height_m >= nozzle_h and Geometry2D.is_point_in_polygon(p, v.footprint()):
+				return true
+	return false
+
+
+## 관창 높이 (m): 낮은 자세면 낮다
+func nozzle_height(ff: Firefighter) -> float:
+	return _nozzle_low_h if ff != null and ff.crouched else _nozzle_h
 
 
 ## 맞은 곳 둘레의 칸들(cells — 연료 격자 번호) 가운데 물이 실제로 닿는 칸: origin(물이 퍼지기 시작하는 곳)에서 곧게 닿는 칸과

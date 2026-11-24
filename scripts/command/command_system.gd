@@ -415,12 +415,22 @@ func entry_verdict(c: Crew, tick: int) -> Dictionary:
 		out.reason = "공기 %d%% — 교체 후 진입" % roundi(low * 100.0)
 		return out
 	var task: TacticalSystem.Task = tactical.task_of_crew(c.id) if tactical else null
-	# 연결송수관(방수구) 수관은 건물 안 방수구에서 결합·충수하므로 입구에서는 마른 호스 가방이 맞다 (SOP 213)
+	# 진압 임무인가: 방 단위·층 진압(전술) 또는 지시 창의 층 화재진압 (floor_missions — 2026-11-24: 전에는 이것을 보지 않아
+	# 지시 창으로 보낸 진압 분대가 마른 호스로 들어가겠다고 해도 '허가'가 정답이었다)
+	var attack := task != null and task.action in ["attack", "attack_floor"]
+	var target_level := task.target.z if task != null else -1
+	if not attack and str(floor_missions.get(c.id, "")) == "attack":
+		attack = true
+		target_level = int(floor_goals.get(c.id, c.leader.level))
+	# 연결송수관(방수구) 수관은 건물 안 방수구에서 결합·충수하므로 입구에서는 마른 호스 가방이 맞다 (SOP 213).
+	# 목표 층의 방수구를 쓸 수 있으면 아직 수관이 없어도 그 층에서 결합한다
 	var standpipe := h != null and h.outlet >= 0
+	if attack and h == null and water and target_level > 0 and water.uses_outlet(target_level):
+		standpipe = true
 	if h and h.to_outlet:
 		hose_text = "방수구 호스 가방 휴대" if standpipe else "수관 가지러 가는 중"
 		out.hose = hose_text
-	if task and task.action in ["attack", "attack_floor"] and not standpipe and (h == null or not h.charged):
+	if attack and not standpipe and (h == null or not h.charged):
 		out.verdict = "wait"
 		out.reason = "진압 임무인데 %s — 물이 찬 수관으로 진입" % hose_text
 		return out

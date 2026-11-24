@@ -270,7 +270,10 @@ func _trigger_of(e: Dictionary) -> String:
 			return "air_alarm"
 		"knockdown_reported":
 			return "knockdown"
-		"rollover_sign", "jump_risk", "exposure_heating", "sign_warning", "debris_zone", "hydrant_out", "tank_empty", "mayday", \
+		"rollover_sign":
+			# 지휘관이 밖에서 열린 창으로 직접 본 것은 대원이 묻는 판단이 아니다 — 카드 없이 상황판에만 (2026-11-25)
+			return "" if bool(e.get("seen_by_commander", false)) else "rollover_sign"
+		"jump_risk", "exposure_heating", "sign_warning", "debris_zone", "hydrant_out", "tank_empty", "mayday", \
 				"victim_trapped", "end_suggested":
 			return str(e.type)
 		"shaft_heat", "shaft_smoke":

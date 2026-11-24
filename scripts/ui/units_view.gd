@@ -142,7 +142,7 @@ func _draw_room_marks() -> void:
 		var rect := Rect2(Vector2(c.rect.position) * px, Vector2(c.rect.size) * px)
 		if c.searched_tick >= 0:
 			draw_string(PlanStyle.font(), Vector2(rect.position.x, rect.get_center().y + 22), "[검색 완료]", HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 12, PlanStyle.SEARCHED)
-		if c.rollover and sim.perception.room_visible(c):
+		if c.rollover and sim.perception.rollover_visible(c):
 			var t := Time.get_ticks_msec() / 1000.0
 			draw_rect(rect.grow(-2.0), Color(1.0, 0.45, 0.1, 0.6 + 0.3 * sin(t * 8.0)), false, 3.0)
 

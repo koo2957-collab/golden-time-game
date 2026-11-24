@@ -3484,7 +3484,7 @@ func _draw_smoke() -> void:
 				proj.to_screen(Vector2(r.end.x, r.position.y), h), proj.to_screen(Vector2(r.end), h),
 				proj.to_screen(Vector2(r.position.x, r.end.y), h)])))
 		if _draw_smoke_cloud(c, h, layer_d, a, density, fires, spread, op):
-			if c.rollover and p.room_visible(c):
+			if c.rollover and p.rollover_visible(c):
 				_draw_rollover(r, h)
 			continue
 		# 덩어리 그림이 없을 때만 예전 판
@@ -3500,7 +3500,7 @@ func _draw_smoke() -> void:
 		_draw_smoke_texture(plane, r, a, c.index)
 		plane.append(plane[0])
 		draw_polyline(plane, Color(FireView.SMOKE_COLOR.darkened(0.3), minf(1.0, a + 0.15)), 1.5)
-		if c.rollover and p.room_visible(c):
+		if c.rollover and p.rollover_visible(c):
 			_draw_rollover(r, h)
 	if not _draw_smoke_spills():
 		_draw_smoke_plumes()

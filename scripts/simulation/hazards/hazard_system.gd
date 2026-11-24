@@ -29,6 +29,8 @@ var _bd_sign_gas: float
 var _bd_range: float
 var _fgi_temp: float
 var _warned: Dictionary = {}  # 키 -> 틱
+## 이번 롤오버를 이미 알린 구획 {index: true} — 징후가 사라지면 지운다 (다시 생기면 다시 알린다)
+var _rollover_told: Dictionary = {}
 
 
 func _init(p_fire: FireSim, p_units: UnitSystem, p_rescue: RescueSystem, p_perception: Perception, params: ParamTable, p_events: SimEventLog) -> void:
@@ -91,11 +93,41 @@ func _flashover_damage(c: Compartment, tick: int) -> void:
 	rescue.on_flashover(c, tick)
 
 
+## 롤오버는 천장을 직접 봐야 안다 (SOP 210-3 "복도에 대기 중인 소방대원들은 롤오버의 징후가 있는지 천장 부분을 확인한다").
+## 그 방 안을 유리 너머가 아니라 직접 본 사람이 있을 때만 알린다 — 닫힌 유리창 너머·벽 옆은 아니다 (2026-11-25 사용자 지적:
+## 밖에서 현관문을 여는 조가 옆 거실 창 너머로 롤오버를 보고했다). 본 조가 무전하고 카드를 받는다.
+## 지휘관(또는 밖에서 열린 창으로)만 봤으면 무전·카드 없이 지휘관이 직접 안 것으로 둔다 (seen_by_commander)
 func _update_rollover(c: Compartment, tick: int) -> void:
 	var near := not c.flashed and c.t_upper >= c.flashover_temp - _rollover_margin and c.layer_depth >= _rollover_layer
-	if near and not c.rollover and _noticeable(c):
-		_warn("rollover:%d" % c.index, tick, "rollover_sign", {"room": c.display_name()})
 	c.rollover = near
+	if not near:
+		_rollover_told.erase(c.index)
+		return
+	if _rollover_told.has(c.index):
+		return
+	# 아무도 직접 보지 못했으면 다음에 누가 보면 그때 알린다
+	var seer := perception.clear_seer(c) if perception.enabled else _nearest_in(c)
+	var crew := units.get_crew(seer) if seer >= 0 else null
+	if crew == null and seer != Perception.COMMANDER_SEER:
+		return
+	_rollover_told[c.index] = true
+	var data := {"room": c.display_name()}
+	if crew != null:
+		data["crew"] = units.crew_name(crew)
+		data["crew_id"] = crew.id
+	else:
+		data["crew"] = "지휘관"
+		data["seen_by_commander"] = true
+	_warn("rollover:%d" % c.index, tick, "rollover_sign", data)
+
+
+## 정보 안개가 꺼져 있을 때 (개발·시험): 그 방 안이나 둘레에 있는 조 (없으면 -1)
+func _nearest_in(c: Compartment) -> int:
+	for cr in units.crews:
+		var ff := cr.leader
+		if ff != null and not ff.incapacitated and not ff.aboard and ff.level == c.level and c.rect.grow(1).has_point(Vector2i(ff.pos.floor())):
+			return cr.id
+	return -1
 
 
 func _fgi_warning(c: Compartment, tick: int) -> void:
@@ -126,16 +158,6 @@ func _backdraft(c: Compartment, o: Opening, tick: int) -> void:
 		c.flashed = true
 		c.flashover_tick = tick
 	rescue.on_flashover(c, tick)
-
-
-## 지휘관이 알 수 있는 상황인지: 그 방이 보이거나, 대원이 그 방 또는 맞닿은 칸에 있음
-func _noticeable(c: Compartment) -> bool:
-	if perception.room_visible(c):
-		return true
-	for ff in units.firefighters:
-		if ff.level == c.level and c.rect.grow(1).has_point(Vector2i(ff.pos.floor())):
-			return true
-	return false
 
 
 func _warn(key: String, tick: int, type: String, data: Dictionary) -> void:

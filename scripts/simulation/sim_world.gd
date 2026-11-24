@@ -237,6 +237,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.tactical.entries = sim.entries
 	sim.command.interior.entries = sim.entries
 	sim.knowledge = KnowledgeBoard.new(sim.fire, sim.units, sim.rescue)
+	sim.command.on_seen = sim.knowledge.apply
 	# 지휘소 (P4-4): 지휘소를 떠나 이동지휘 중이면 상황판 갱신이 늦고 일상 보고를 놓친다
 	# 층·계단 고르기 (P4-5)
 	sim.command.stairs = StairCores.new(building)

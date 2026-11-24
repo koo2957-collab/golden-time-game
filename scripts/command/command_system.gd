@@ -194,6 +194,8 @@ var _stair_wait_ticks := 200
 var entry_order_required := false
 ## 중요한 사건에 자동 감속할지
 var auto_slow := true
+## 지휘관이 직접 본 사건을 상황판에 올린다 (KnowledgeBoard.apply — SimWorld가 넣는다). 무전으로 오지 않는다
+var on_seen: Callable
 ## 현장지휘관 (선착대장). 출동대 목록에는 없고 이 계층이 움직인다.
 var commander := Firefighter.new()
 var commander_title := "선착대장"
@@ -1117,6 +1119,11 @@ func _check_span(tick: int) -> void:
 
 
 func _report(e: Dictionary, tick: int) -> void:
+	# 지휘관이 직접 본 것 (밖에서 열린 창으로 — 롤오버 등): 무전이 아니라 바로 상황판에 (2026-11-25)
+	if bool(e.get("seen_by_commander", false)):
+		if on_seen.is_valid():
+			on_seen.call(e, tick)
+		return
 	var sender := str(e.get("crew", e.get("vehicle", e.get("squad", ""))))
 	if sender == "":
 		sender = "진입 대원"

@@ -41,6 +41,10 @@ var seen_burning: PackedByteArray
 var seen_burnt: PackedByteArray
 ## 구획별
 var room_visible_now: PackedByteArray
+## 이번 갱신에 그 구획 안을 '유리 너머가 아니라' 직접 본 사람: 조 id, 지휘관이면 COMMANDER_SEER, 아무도 없으면 -1 (2026-11-25).
+## 롤오버처럼 천장을 직접 봐야 아는 징후에 쓴다 — 닫힌 유리창 너머로는 화염 불빛·연기만 보인다
+var room_clear_by: PackedInt32Array
+const COMMANDER_SEER := -2
 var room_seen: PackedByteArray
 var room_seen_depth: PackedFloat32Array
 var room_seen_visibility: PackedFloat32Array
@@ -78,6 +82,8 @@ var _window_low_floors := 2
 var _window_high_range := 4.0
 var _window_count := 0
 var _window_cells := PackedInt32Array()
+## 창 들여다보기로 직접 본 구획 {구획 index: 본 사람} — 창 계산을 건너뛰는 갱신에서도 그대로 쓴다
+var _window_clear: Dictionary = {}
 ## 이번 갱신에 보인 칸 / 열화상으로 본 칸 / 대원이 직접 본 칸 목록 (그 칸만 지우고 기록 — 성능, P14)
 var _vis_list := PackedInt32Array()
 var _thermal_list := PackedInt32Array()
@@ -135,6 +141,8 @@ func _init(p_fire: FireSim, p_units: UnitSystem, stats: ParamTable) -> void:
 			_normal[o.index] = _outward(o)
 	var n := fire.comps.size()
 	room_visible_now.resize(n)
+	room_clear_by.resize(n)
+	room_clear_by.fill(-1)
 	room_seen.resize(n)
 	room_seen_depth.resize(n)
 	room_seen_visibility.resize(n)
@@ -173,6 +181,16 @@ func room_visible(c: Compartment) -> bool:
 	return not enabled or room_visible_now[c.index] == 1
 
 
+## 그 구획 안을 지금 직접(유리 너머가 아니라) 보는 사람: 조 id · COMMANDER_SEER(지휘관·바깥에서 열린 창으로) · -1(아무도 없음)
+func clear_seer(c: Compartment) -> int:
+	return room_clear_by[c.index]
+
+
+## 천장의 롤오버가 화면에 보이는가 — 누가 그 방 안을 직접 보고 있을 때만 (닫힌 유리창 너머로는 연기만, 무전 보고와 같다)
+func rollover_visible(c: Compartment) -> bool:
+	return not enabled or room_clear_by[c.index] != -1
+
+
 func update(tick: int) -> void:
 	_cast_levels.clear()
 	# 지난번에 보인 칸만 지운다 (전체 배열을 지우지 않음 — 성능, P14)
@@ -183,28 +201,33 @@ func update(tick: int) -> void:
 		thermal_now[i] = 0
 	_thermal_list.clear()
 	room_visible_now.fill(0)
+	room_clear_by.fill(-1)
 	_update_room_visibility()
+	# 대원이 직접 본 칸 (눈·손 — 닫힌 유리창 너머는 빼고, _cast·_touch 가 채운다)
+	for i in _crew_list:
+		crew_visible_now[i] = 0
+	_crew_list.clear()
 	for c in units.crews:
 		for ff in c.members():
 			if ff.incapacitated or not _should_cast(ff):
 				continue
 			var eye := _eye_crouch if ff.crouched else _eye_stand
-			_touch(ff.level, ff.pos)
-			_cast(ff.level, ff.pos, eye, RAYS, _max_sight, false)
+			_touch(ff.level, ff.pos, c.id)
+			# 닫힌 문 칸 위(문에 붙어 선 사람)에서는 시선을 쏘지 않는다 — 첫걸음이 문 칸을 건너뛰어 문 너머 방 안이 보였다 (2026-11-25)
+			if not _on_closed_door(ff):
+				_cast(ff.level, ff.pos, eye, RAYS, _max_sight, false, c.id, false, true)
 		if c.thermal_camera and not c.leader.incapacitated and _should_cast(c.leader):
-			_cast(c.leader.level, c.leader.pos, _eye_stand, RAYS, _tic_range, true)
-	# 대원이 직접 본 칸
-	for i in _crew_list:
-		crew_visible_now[i] = 0
-	_crew_list = _vis_list.duplicate()
-	for i in _crew_list:
-		crew_visible_now[i] = 1
+			_cast(c.leader.level, c.leader.pos, _eye_stand, RAYS, _tic_range, true, -1, false, true)
 	var crew_count := _vis_list.size()
 	_window_count += 1
 	if _window_count % _window_every != 0:
 		for i in _window_cells:
 			_see(i)
+		for r: int in _window_clear:
+			if room_clear_by[r] == -1:
+				room_clear_by[r] = int(_window_clear[r])
 	else:
+		_window_clear.clear()
 		_cast_windows()
 		# 창으로 보인 칸 (대원 눈으로 본 칸 다음에 붙은 것)을 다음 갱신 때까지 쓴다
 		_window_cells = _vis_list.slice(crew_count)
@@ -227,19 +250,24 @@ func _cast_windows() -> void:
 		for cell in o.cells:
 			center += Vector2(cell) + Vector2(0.5, 0.5)
 		center /= o.cells.size()
-		# 그 창이 향한 쪽에 보는 사람이 있어야 들여다볼 수 있다 (반대편 면은 둘러봐야 안다)
+		# 그 창이 향한 쪽에 보는 사람이 있어야 들여다볼 수 있다 (반대편 면은 둘러봐야 안다). 가장 가까운 사람이 본 것으로 한다
 		var n: Vector2 = _normal.get(o.index, Vector2.ZERO)
 		var watched := watchers.is_empty() and commander == null
-		for w: Vector2 in watchers:
-			var d := w - center
-			if d.length() <= WINDOW_VIEW_CELLS and (n == Vector2.ZERO or d.dot(n) > 0.5):
+		var who := -1
+		var best := INF
+		for w: Array in watchers:
+			var d: Vector2 = (w[0] as Vector2) - center
+			if d.length() <= WINDOW_VIEW_CELLS and (n == Vector2.ZERO or d.dot(n) > 0.5) and d.length() < best:
 				watched = true
-				break
+				best = d.length()
+				who = int(w[1])
+		# 닫힌 유리창 너머는 화염 불빛·연기만 — 방 안을 '직접 본' 것으로 치지 않는다 (열린 창·깨진 창·열린 문은 직접 본다)
+		var glass := o.kind == Opening.Kind.WINDOW and not o.is_open
 		if watched:
 			if o.level - ground < _window_low_floors:
-				_cast(o.level, center, _eye_stand, WINDOW_RAYS, WINDOW_RANGE_CELLS, false)
+				_cast(o.level, center, _eye_stand, WINDOW_RAYS, WINDOW_RANGE_CELLS, false, who, glass)
 			else:
-				_cast(o.level, center, _eye_stand, WINDOW_RAYS / 2, _window_high_range, false)
+				_cast(o.level, center, _eye_stand, WINDOW_RAYS / 2, _window_high_range, false, who, glass)
 
 
 func _see(i: int) -> void:
@@ -322,19 +350,47 @@ func _record(tick: int) -> void:
 			room_seen_reach[c.index] = 1.0e6 if c.smoke_covered() else c.smoke_reach_m
 
 
-func _touch(level: int, pos: Vector2) -> void:
+func _on_closed_door(ff: Firefighter) -> bool:
+	var c := Vector2i(ff.pos.floor())
+	if not building.in_bounds(c.x, c.y):
+		return false
+	var oi := _opening[fire.grid.index(ff.level, c.x, c.y)]
+	return oi >= 0 and _type[fire.grid.index(ff.level, c.x, c.y)] == BuildingData.Cell.DOOR and not fire.openings[oi].is_open
+
+
+## 손이 닿는 칸 (연기와 상관없이 안다). who = 그 대원의 조 id.
+## 닫힌 문 칸 위에 서 있으면 문 너머는 만질 수 없다 — 제 칸만 (2026-11-25: 문 칸 위에서 닫힌 문 너머 방 안을 '안다'고 했다)
+func _touch(level: int, pos: Vector2, who := -1) -> void:
 	_cast_levels[level] = true
 	var c := Vector2i(pos.floor())
-	for y in range(c.y - TOUCH_CELLS, c.y + TOUCH_CELLS + 1):
-		for x in range(c.x - TOUCH_CELLS, c.x + TOUCH_CELLS + 1):
+	var own := fire.grid.index(level, c.x, c.y) if building.in_bounds(c.x, c.y) else -1
+	var r := 0 if own >= 0 and _opening[own] >= 0 and not fire.openings[_opening[own]].is_open else TOUCH_CELLS
+	for y in range(c.y - r, c.y + r + 1):
+		for x in range(c.x - r, c.x + r + 1):
 			if building.in_bounds(x, y):
 				var i := fire.grid.index(level, x, y)
 				if _type[i] != BuildingData.Cell.WALL:
 					_see(i)
+					_see_clear(i, who, true)
+
+
+## 유리 너머가 아니라 직접 본 칸: eyes 면 대원이 직접 본 칸(crew_visible)으로, who 가 있으면 그 구획을 직접 본 사람으로 적는다
+func _see_clear(i: int, who: int, eyes: bool, from_window := false) -> void:
+	if eyes and crew_visible_now[i] == 0:
+		crew_visible_now[i] = 1
+		_crew_list.append(i)
+	var r := _room[i]
+	if who != -1 and r >= 0 and room_clear_by[r] == -1:
+		room_clear_by[r] = who
+		if from_window:
+			_window_clear[r] = who
 
 
 ## 사방으로 시선을 쏜다. thermal이면 연기를 무시하고 거리로만 제한한다.
-func _cast(level: int, origin: Vector2, eye: float, rays: int, max_cells: float, thermal: bool) -> void:
+## who = 보는 사람 (조 id · COMMANDER_SEER · -1 모름), glass = 닫힌 유리창에서 시작한다 (창 들여다보기),
+## eyes = 대원 자신의 눈이다 (직접 본 칸 crew_visible 로 적는다). 닫힌 유리창을 지나면 그 뒤는 '유리 너머'다 —
+## 보이기는 하지만(화염·연기) 직접 본 것으로 치지 않는다 (2026-11-25: 현관 앞 대원이 옆 거실 창 너머로 천장 롤오버를 보고했다)
+func _cast(level: int, origin: Vector2, eye: float, rays: int, max_cells: float, thermal: bool, who := -1, glass := false, eyes := false) -> void:
 	_cast_levels[level] = true
 	var state := fire.grid.state
 	var openings := fire.openings
@@ -348,6 +404,7 @@ func _cast(level: int, origin: Vector2, eye: float, rays: int, max_cells: float,
 		var py := origin.y
 		var haze := 0.0
 		var last := -1
+		var through := glass
 		var steps := int(max_cells / STEP_CELLS)
 		for s in steps:
 			px += dx
@@ -384,11 +441,17 @@ func _cast(level: int, origin: Vector2, eye: float, rays: int, max_cells: float,
 					_thermal_list.append(i)
 				if state[i] == FuelGrid.State.BURNING:
 					_see(i)
+					if eyes:
+						_see_clear(i, -1, true)
 			elif haze <= 1.0:
 				_see(i)
+				if not through:
+					_see_clear(i, who, eyes, not eyes)
 			elif haze <= _glow:
 				if state[i] == FuelGrid.State.BURNING:
 					_see(i)
+					if not through and eyes:
+						_see_clear(i, -1, true)
 			else:
 				break
 			# 닫힌 문은 시선을 막는다. 깨지지 않은 유리창은 눈에는 투명하지만 열화상(원적외선)은 통과하지 못한다
@@ -396,18 +459,20 @@ func _cast(level: int, origin: Vector2, eye: float, rays: int, max_cells: float,
 			if oi >= 0 and not openings[oi].is_open:
 				if type == BuildingData.Cell.DOOR or thermal:
 					break
+				through = true
 
 
-## 밖에서 보는 사람: 현장지휘관 + 건물 밖에 내린 대원
-func _outside_watchers() -> Array[Vector2]:
-	var out: Array[Vector2] = []
+## 밖에서 보는 사람: 현장지휘관 + 건물 밖에 내린 대원. [[위치, 누구 (조 id · 지휘관 COMMANDER_SEER)]]
+func _outside_watchers() -> Array[Array]:
+	var out: Array[Array] = []
 	if commander:
-		out.append(commander.pos)
-	for ff in units.firefighters:
-		if ff.incapacitated or ff.aboard:
-			continue
-		if building.cell(ff.level, floori(ff.pos.x), floori(ff.pos.y)) in BuildingData.OUTDOOR:
-			out.append(ff.pos)
+		out.append([commander.pos, COMMANDER_SEER])
+	for c in units.crews:
+		for ff in c.members():
+			if ff.incapacitated or ff.aboard:
+				continue
+			if building.cell(ff.level, floori(ff.pos.x), floori(ff.pos.y)) in BuildingData.OUTDOOR:
+				out.append([ff.pos, c.id])
 	return out
 
 

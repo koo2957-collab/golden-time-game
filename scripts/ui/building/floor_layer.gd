@@ -2120,11 +2120,87 @@ func _door_ready_layout(crew: Crew, art: SpriteArt.SpriteSet) -> Dictionary:
 	var center := door_center(door)
 	if lead.level != door.level or lead.pos.distance_to(center) > 3.5:
 		return {}
-	var st := HoseDraw.style()
-	var cell_m := sim.units.cell_size_m
-	var fr := force_frame(door, lead.pos)
-	var spot := door_ready_spot(center, fr.facing, opener_spot, float(st.get("ready_back_m", 1.1)) / cell_m, float(st.get("ready_side_m", 0.4)) / cell_m)
+	# 자리는 문 개방 분대 배치(경첩 쪽, 문 정면 띠 밖 — 2026-11-24)를 따른다
+	var tl := _door_team_layout(crew, art)
+	var spot: Vector2
+	if tl.get("spots", {}).has(lead.id):
+		spot = tl.spots[lead.id]
+	else:
+		var st := HoseDraw.style()
+		var cell_m := sim.units.cell_size_m
+		var fr := force_frame(door, lead.pos)
+		spot = door_ready_spot(center, fr.facing, opener_spot, float(st.get("ready_back_m", 1.1)) / cell_m, float(st.get("ready_side_m", 0.4)) / cell_m)
 	return {"id": lead.id, "k": SpriteArt.dir8(center - spot), "spot": spot}
+
+
+## 경첩 쪽 (칸 좌표의 단위 벡터, facing = 대원 쪽에서 문을 보는 방향). 문을 여는 사람은 손잡이 쪽 벽에 붙어 연다 —
+## B1 문 확인(door_feel)을 구울 때 선 쪽(right_m 부호)이 손잡이 쪽이므로 그 반대
+func _hinge_dir(facing: Vector2, art: SpriteArt.SpriteSet) -> Vector2:
+	var right := facing.rotated(PI / 2.0)
+	var r := -0.7
+	if art != null and art.frames("door_feel") > 0:
+		r = float(art.stand("door_feel").get("right_m", -0.7))
+	return -right * (signf(r) if r != 0.0 else -1.0)
+
+
+## 문 개방 때 분대 배치 (2026-11-24 사용자 결정 — 화재1 p.134 '문의 측면에 위치해 엄호방수하면서 서서히 문을 개방',
+## p.215 '문을 개방하는 대원 및 관창의 위치는 정면을 피한다', p.217 '관창수는 문의 측면에서 주수', 관창수는 경첩 쪽):
+## 문 일(확인·개방·파괴)을 하지 않는 조원은 문 정면 띠(문 폭 + 양옆 door_front_margin_m) 밖 경첩 쪽에 줄을 선다 —
+## 선두(관창수)가 맨 앞(문에서 nozzle_door_back_m), 그 뒤로 관창보조(door_assist_gap_m), 나머지(팀장 등)(door_rest_gap_m씩).
+## 그 조가 문을 여는 분대로서 문 일을 하고 있을 때만 → {door, facing, k 문을 보는 방향, spots {대원 id: 칸}}, 아니면 빈 것
+func _door_team_layout(crew: Crew, art: SpriteArt.SpriteSet) -> Dictionary:
+	if crew == null or art == null:
+		return {}
+	var door: Opening = null
+	var dt := sim.doors.task_of_crew(crew.id)
+	if dt != null and not dt.stacked(crew.id) and dt.open and dt.opening != null and not dt.waiting_people:
+		door = dt.opening
+	if door == null:
+		door = sim.cards.checking_door(crew.id)
+	if door == null or door.kind != Opening.Kind.DOOR or door.cells.is_empty():
+		return {}
+	var lead := crew.leader
+	if lead == null or lead.incapacitated or lead.is_moving() or lead.level != door.level:
+		return {}
+	var center := door_center(door)
+	if lead.pos.distance_to(center) > 3.5:
+		return {}
+	# 문 일을 하는 사람 (여는 사람 · 부수는 두 사람)은 뺀다
+	var busy: Array = []
+	var dl := _door_check_layout(crew, art)
+	if not dl.is_empty():
+		busy.append(int(dl.opener))
+	if dt != null and not dt.stacked(crew.id) and _forcing(dt, lead) and art.frames("force_a") > 0:
+		busy.append_array(_force_layout(dt, crew, art).anims.keys())
+	var st := HoseDraw.style()
+	var cell_m := maxf(0.01, sim.units.cell_size_m)
+	var fr := force_frame(door, lead.pos)
+	var facing: Vector2 = fr.facing
+	var hinge := _hinge_dir(facing, art)
+	var side := (door.cells.size() * cell_m * 0.5 + float(st.get("door_front_margin_m", 0.3))) / cell_m
+	var back := float(st.get("nozzle_door_back_m", 1.0)) / cell_m
+	var gap1 := float(st.get("door_assist_gap_m", 0.9)) / cell_m
+	var gap2 := float(st.get("door_rest_gap_m", 0.8)) / cell_m
+	# 줄 순서: 선두(관창수) → 일하는 조원 → 팀장(일하지 않는 지휘자)
+	var order: Array[Firefighter] = [lead]
+	for ff in crew.workers():
+		if not ff in order:
+			order.append(ff)
+	for ff in crew.members():
+		if not ff in order:
+			order.append(ff)
+	var spots := {}
+	var n := 0
+	for ff in order:
+		if ff.incapacitated or ff.id in busy or ff.level != door.level:
+			continue
+		var d := back + (0.0 if n == 0 else gap1 + gap2 * (n - 1))
+		spots[ff.id] = center - facing * d + hinge * side
+		n += 1
+	if spots.is_empty():
+		return {}
+	var first: Vector2 = spots.values()[0]
+	return {"door": door, "facing": facing, "k": SpriteArt.dir8(center - first), "spots": spots}
 
 
 ## 문을 여는(확인·개방·파괴) 조의 선두가 그 일을 하지 않을 때 기다리는 자리 (방수태세가 없는 조 — 구조대 등).
@@ -2156,6 +2232,9 @@ func _door_lead_wait_spot(crew: Crew, art: SpriteArt.SpriteSet) -> Variant:
 	var center := door_center(door)
 	if lead.level != door.level or lead.pos.distance_to(center) > 3.5:
 		return null
+	var tl := _door_team_layout(crew, art)
+	if tl.get("spots", {}).has(lead.id):
+		return tl.spots[lead.id]
 	var st := HoseDraw.style()
 	var cell_m := sim.units.cell_size_m
 	var fr := force_frame(door, lead.pos)
@@ -2897,6 +2976,10 @@ func _shown_pos(ff: Firefighter, alpha: float) -> Vector2:
 			var ds: Variant = _door_work_spot(ff, sc, sart)
 			if ds != null:
 				return ds
+			# 문 개방 중인 분대의 나머지 조원은 경첩 쪽 문 정면 띠 밖에 줄을 선다 (2026-11-24) — 호스 길 위(문 정면일 수 있다)가 아니라
+			var dtl := _door_team_layout(sc, sart)
+			if dtl.get("spots", {}).has(ff.id):
+				return dtl.spots[ff.id]
 			var sl := _spray_layout(sc, sart, alpha)
 			if not sl.is_empty():
 				return sl.spots.get(ff.id, p)
@@ -2924,6 +3007,11 @@ func _shown_pos(ff: Firefighter, alpha: float) -> Vector2:
 		var dl := _door_check_layout(dc, dart)
 		if not dl.is_empty() and int(dl.opener) == ff.id:
 			return dl.spot
+		# 호스 없는 조(구조대 등)의 조원도 문 개방 중에는 경첩 쪽 문 정면 띠 밖에 줄을 선다 (2026-11-24)
+		if dc != null and dc.leader != ff:
+			var dtl := _door_team_layout(dc, dart)
+			if dtl.get("spots", {}).has(ff.id):
+				return dtl.spots[ff.id]
 		# 문 앞 방수태세 (E4): 관창수는 문 옆 정해진 자리에
 		if dc != null and dc.leader == ff and not sim.water.hoses.is_empty():
 			var rl := _door_ready_layout(dc, dart)

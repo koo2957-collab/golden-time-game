@@ -23,8 +23,15 @@ func _two_at_door(locked := true, rescue_first := false) -> Array:
 	var order: Array[Crew] = [attack, rescue]
 	if rescue_first:
 		order.reverse()
-	for c in order:
-		sim.doors.request(c.id, FRONT_DOOR, true, sim.clock.tick)
+	# 앞 분대를 문 앞까지 먼저 보낸 뒤 뒤 분대가 요청한다 (먼저 온 분대가 연다)
+	sim.doors.request(order[0].id, FRONT_DOOR, true, sim.clock.tick)
+	for i in 3000:
+		var t0 := sim.doors.task_of_crew(order[0].id)
+		if t0 != null and not order[0].leader.is_moving() and i > 5:
+			break
+		sim.step_ticks(1)
+		sim.cards.queue.clear()
+	sim.doors.request(order[1].id, FRONT_DOOR, true, sim.clock.tick)
 	for i in 4000:
 		var t := sim.doors.task_of_crew(order[0].id)
 		if t != null and t.progress > 0.5 and not attack.leader.is_moving() and not rescue.leader.is_moving():
@@ -45,7 +52,7 @@ func test_second_squad_waits_beside_door() -> void:
 	assert_true(t != null, "문 작업이 있다")
 	if t == null:
 		return
-	assert_eq(t.worker(), attack.id, "먼저 요청한 진압 분대가 연다")
+	assert_eq(t.worker(), attack.id, "먼저 문에 온 진압 분대가 연다")
 	assert_true(t.stacked(rescue.id), "구조 분대는 기다린다")
 	assert_true(t.progress > 0.5, "문 작업이 진행된다")
 	var center := FloorLayer.door_center(door)
@@ -115,6 +122,32 @@ func test_rescue_opens_leader_steps_back() -> void:
 	assert_true(lead_at.distance_to(FloorLayer.door_center(door)) < 3.5, "선두는 문 가까이에서 기다린다")
 	sel.free()
 	layer.free()
+
+
+## 멀리서 먼저 요청한 분대가 문 앞에 먼저 온 분대를 막지 않는다 (전술 임무는 지시를 받자마자 문을 요청한다 —
+## 호스를 꺼내는 중이거나 계단을 오르는 중인 분대가 여는 분대로 잡혀, 먼저 온 분대가 기다리기만 했다: 아파트 봇 구조 0명)
+func test_far_requester_does_not_block() -> void:
+	var sim := SimWorld.from_scenario(SCENARIO, false)
+	var attack := sim.units.get_crew(0)
+	var rescue := sim.units.get_crew(1)
+	var door := sim.fire.opening_at(FRONT_DOOR)
+	door.locked = true
+	door.is_open = false
+	sim.doors.sync_blocking()
+	# 진압 분대는 멀리(펌프차로 호스를 꺼내러 가는 중)에서 먼저 요청만 해 둔다
+	sim.doors.request(attack.id, FRONT_DOOR, true, sim.clock.tick)
+	sim.water.lay_hose(attack.id, sim.water._nearest_pump(attack.leader.pos), sim.clock.tick)
+	sim.doors.request(rescue.id, FRONT_DOOR, true, sim.clock.tick)
+	for i in 6000:
+		if door.is_open:
+			break
+		sim.step_ticks(1)
+		sim.cards.queue.clear()
+		# 진압 분대는 호스를 꺼내느라 문에 오지 않는다
+		var h := sim.water.hose_of_crew(attack.id)
+		if h != null and h.fetch_until >= 0:
+			h.fetch_until = sim.clock.tick + 100
+	assert_true(door.is_open, "먼저 온 구조 분대가 문을 열었다")
 
 
 ## 문을 열던 분대가 다른 지시로 빠지면 기다리던 분대가 이어서 열어 끝낸다

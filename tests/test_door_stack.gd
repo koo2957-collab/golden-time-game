@@ -150,6 +150,105 @@ func test_far_requester_does_not_block() -> void:
 	assert_true(door.is_open, "먼저 온 구조 분대가 문을 열었다")
 
 
+## 기다리는 자리는 문 정면 띠 밖 (화재1 p.215 '정면을 피한다') — 2026-11-24 검사: 문에서 곧게 나간 정면 칸이 골라졌다
+func test_stack_spot_off_front() -> void:
+	var s := _two_at_door()
+	var sim: SimWorld = s[0]
+	var rescue: Crew = s[2]
+	var door: Opening = s[3]
+	var center := FloorLayer.door_center(door)
+	var along := sim.doors._door_along(door, rescue.leader.pos)
+	var band := door.cells.size() * 0.5 + 0.3 / sim.units.cell_size_m
+	var off := absf((rescue.leader.pos - center).dot(along))
+	assert_true(off >= band - 0.05, "기다리는 조장은 문 정면 띠 밖 (옆으로 %.2f칸, 띠 %.2f칸)" % [off, band])
+
+
+## 여는 분대에 일할 사람이 모자라면(짝이 쓰러짐) 기다리던 분대가 연다 — 전에는 대기 자리가 멀어 거들 사람으로 세지 않아 멈췄다
+func test_short_handed_worker_hands_over() -> void:
+	var s := _two_at_door()
+	var sim: SimWorld = s[0]
+	var attack: Crew = s[1]
+	var rescue: Crew = s[2]
+	var door: Opening = s[3]
+	for ff in attack.members():
+		if ff != attack.leader:
+			ff.incapacitated = true
+	var opened := false
+	for i in 8000:
+		sim.step_ticks(1)
+		sim.cards.queue.clear()
+		if door.is_open:
+			opened = true
+			break
+	assert_true(opened, "기다리던 구조 분대가 이어서 문을 열었다")
+
+
+## 여는 분대가 같은 문을 다시 요청해도 여는 분대는 그대로
+func test_rerequest_keeps_worker() -> void:
+	var s := _two_at_door()
+	var sim: SimWorld = s[0]
+	var attack: Crew = s[1]
+	sim.doors.request(attack.id, FRONT_DOOR, true, sim.clock.tick)
+	var t := sim.doors.task_of_crew(attack.id)
+	assert_true(t != null and t.worker() == attack.id, "다시 요청해도 진압 분대가 연다")
+
+
+## 문 옆에서 기다리기만 하는 분대는 문 작업(2단계) 호흡량으로 세지 않는다
+func test_stacked_breathing() -> void:
+	var s := _two_at_door()
+	var sim: SimWorld = s[0]
+	var rescue: Crew = s[2]
+	for ff in rescue.members():
+		if not ff.is_moving():
+			assert_true(sim.activity_level(ff) < 2, "대기 분대 #%d 활동 단계 %d" % [ff.id, sim.activity_level(ff)])
+
+
+## 진입구 흐름(지시 창 층 임무)으로 두 분대를 같은 문에 보내면, 기다리던 분대도 문이 열린 뒤 들어간다
+## (2026-11-24 검사: 대기 자리가 진입구 대기 반경(3칸) 밖이면 '다른 곳에 멈췄다'로 보고 진입을 잊었다)
+func test_entry_flow_both_enter() -> void:
+	var sim := SimWorld.from_scenario(SCENARIO, true)
+	sim.decision_pause = false
+	sim.issue(CommandOrder.make("arrive", [], 0, Vector3i.ZERO, {"gap_s": 1.0}))
+	for i in 1500:
+		sim.step_ticks(1)
+		sim.cards.queue.clear()
+	var attack := sim.units.get_crew(0)
+	var rescue := sim.units.get_crew(1)
+	var entry = null
+	for e in sim.entries.list:
+		if e.level == 1 and not e.neighbour and (entry == null or attack.leader.pos.distance_to(Vector2(e.door)) < attack.leader.pos.distance_to(Vector2(entry.door))):
+			entry = e
+	assert_true(entry != null, "1층 진입구")
+	if entry == null:
+		return
+	sim.issue(CommandOrder.make("floor_mission", [rescue.squad_id] as Array[int], 1, Vector3i.ZERO, {"kind": "search", "entry": entry.index}))
+	sim.issue(CommandOrder.make("floor_mission", [attack.squad_id] as Array[int], 1, Vector3i.ZERO, {"kind": "attack", "entry": entry.index}))
+	var inside := func(c: Crew) -> bool:
+		return not sim.building.cell(c.leader.level, floori(c.leader.pos.x), floori(c.leader.pos.y)) in BuildingData.OUTDOOR
+	# 같은 때 둘 다 안에 있을 필요는 없다 (진압 분대는 현관 밖에서 화점실로 방수하다가 들어가기도 한다) — 각각 한 번은 들어갔는가
+	var entered := {}
+	var both := false
+	for i in 9000:
+		sim.step_ticks(1)
+		for card in sim.cards.queue.duplicate():
+			var pick := -1
+			for k in card.options.size():
+				if str(card.options[k].get("effect", "")) in ["entry_grant", "force_door", "open_door", "vent_then_open"]:
+					pick = k
+					break
+			for k in card.options.size():
+				if pick < 0 and str(card.options[k].get("grade", "")) == "최선":
+					pick = k
+			sim.cards.answer(card.uid, maxi(pick, 0), sim.clock.tick)
+		for c: Crew in [attack, rescue]:
+			if inside.call(c):
+				entered[c.id] = true
+		if entered.size() == 2:
+			both = true
+			break
+	assert_true(both, "두 분대 모두 건물 안으로 들어갔다 (%s)" % [entered.keys()])
+
+
 ## 문을 열던 분대가 다른 지시로 빠지면 기다리던 분대가 이어서 열어 끝낸다
 func test_waiting_squad_takes_over() -> void:
 	var s := _two_at_door()

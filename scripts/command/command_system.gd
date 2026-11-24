@@ -42,6 +42,7 @@ const REPORT_PRIORITY := {
 	"hose_charged": Radio.Priority.TACTICS,
 	"door_stack": Radio.Priority.TACTICS,
 	"air_swap_out": Radio.Priority.SAFETY,
+	"door_close_failed": Radio.Priority.TACTICS,
 	"air_swap_done": Radio.Priority.TACTICS,
 	"hose_takeover": Radio.Priority.TACTICS,
 	"steam_mix": Radio.Priority.SAFETY,
@@ -174,6 +175,8 @@ var stair_asks: Dictionary = {}
 var floor_missions: Dictionary = {}
 ## 화재진압 임무를 받고 펌프차 후면에서 호스를 꺼내는 중인 밖의 조 {crew id: {level, entry, kind}} — 다 꺼내면 진입구로 간다 (2026-11-24)
 var _hose_first: Dictionary = {}
+## 진입구에서 다른 분대가 문을 여는 동안 문 옆 대기 자리에 섰던 조 {crew id: true} — 문이 열리면 그 자리(진입구에서 더 멀다)에서도 들어간다
+var _stacked_at_entry: Dictionary = {}
 ## 층 임무 화재진압이 닿았을 때 잔불정리로 바꾸는 곳 (crew id, 층, tick) -> 바꿨으면 true (SimWorld가 넣는다)
 var floor_overhaul: Callable
 ## 계단실 (SimWorld가 만든다)
@@ -424,7 +427,9 @@ func entry_verdict(c: Crew, tick: int) -> Dictionary:
 	var target_level := task.target.z if task != null else -1
 	if not attack and str(floor_missions.get(c.id, "")) == "attack":
 		attack = true
-		target_level = int(floor_goals.get(c.id, c.leader.level))
+		# 목표 층: 층 고르기 → 호스를 꺼내는 중이면 그때 정한 층 → 없으면 지금 층
+		var hf: Dictionary = _hose_first.get(c.id, {})
+		target_level = int(floor_goals.get(c.id, hf.get("level", c.leader.level)))
 	# 연결송수관(방수구) 수관은 건물 안 방수구에서 결합·충수하므로 입구에서는 마른 호스 가방이 맞다 (SOP 213).
 	# 목표 층의 방수구를 쓸 수 있으면 아직 수관이 없어도 그 층에서 결합한다
 	var standpipe := h != null and h.outlet >= 0
@@ -1613,12 +1618,19 @@ func _step_approach(tick: int) -> void:
 			approach.erase(id)
 			continue
 		var e: EntryPoints.Entry = list[ei]
-		if c.leader.is_moving() or (doors and doors.task_of_crew(id) != null):
+		var dtask: DoorSystem.Task = doors.task_of_crew(id) if doors else null
+		if dtask != null and dtask.stacked(id):
+			# 다른 분대가 문을 여는 동안 문 옆 대기 자리에 있다 — 그 자리는 진입구에서 멀 수 있다 (2026-11-24 검사에서 찾음)
+			_stacked_at_entry[id] = true
+		if c.leader.is_moving() or dtask != null:
 			continue
 		if _indoor(c.leader.level, c.leader.pos):
 			approach.erase(id)
+			_stacked_at_entry.erase(id)
 			continue
-		if c.leader.level != e.level or c.leader.pos.distance_to(Vector2(e.outside.x, e.outside.y) + Vector2(0.5, 0.5)) > ENTRY_WAIT_RADIUS:
+		var wait_r := ENTRY_WAIT_RADIUS + (doors.stack_reach_cells() if _stacked_at_entry.has(id) and doors else 0.0)
+		if c.leader.level != e.level or c.leader.pos.distance_to(Vector2(e.outside.x, e.outside.y) + Vector2(0.5, 0.5)) > wait_r:
+			_stacked_at_entry.erase(id)
 			# 다른 곳에 멈췄다 (다른 명령 등) — 잊는다
 			approach.erase(id)
 			continue
@@ -1636,6 +1648,7 @@ func _step_approach(tick: int) -> void:
 				doors.request(id, Vector3i(e.door.x, e.door.y, e.level), true, tick)
 			continue
 		approach.erase(id)
+		_stacked_at_entry.erase(id)
 		units.order_move([id] as Array[int], entry_inner(e), pathfinder)
 
 

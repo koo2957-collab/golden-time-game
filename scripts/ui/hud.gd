@@ -409,7 +409,11 @@ func _crew_status(crew: Crew) -> String:
 	if oh:
 		parts.append("잔불정리 %d/%d초" % [int(sim.rekindle.overhaul_seconds() - oh.remain), int(sim.rekindle.overhaul_seconds())])
 	var task := sim.doors.task_of_crew(crew.id)
-	if task:
+	if task and task.stacked(crew.id):
+		# 다른 분대가 이 문을 여는 동안 문 옆 대기 (2026-11-24)
+		var wc := sim.units.get_crew(task.worker())
+		parts.append("문 옆 대기 (%s 개방 중)" % (sim.units.crew_name(wc) if wc != null else "다른 분대"))
+	elif task:
 		var what := "문 파괴" if task.opening.locked else ("문 개방" if task.open else "문 폐쇄")
 		parts.append("%s %d/%d초%s" % [what, int(task.progress), int(task.required), " (인원 부족)" if task.waiting_people else ""])
 	# 현장 작업 (P4-1): 장비 가지러 감, 차량 타고 오는 중, 휴대 장비

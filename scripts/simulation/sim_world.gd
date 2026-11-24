@@ -1104,7 +1104,9 @@ func activity_level(ff: Firefighter) -> int:
 	if ff.is_moving() and building.cell(ff.level, floori(ff.pos.x), floori(ff.pos.y)) == BuildingData.Cell.STAIRS:
 		return 3
 	var h := water.hose_of_crew(ff.crew_id)
-	if (h and h.flowing) or doors.task_of_crew(ff.crew_id) != null:
+	var dt := doors.task_of_crew(ff.crew_id)
+	# 문 옆에서 기다리기만 하는 분대는 문 작업(2단계)이 아니다 (2026-11-24 검사에서 찾음)
+	if (h and h.flowing) or (dt != null and not dt.stacked(ff.crew_id)):
 		return 2
 	return 1 if ff.is_moving() else 0
 

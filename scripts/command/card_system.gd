@@ -74,6 +74,8 @@ var _event_index := 0
 var _done_watch: Dictionary = {}
 var _done_confirm_ticks := 30
 var _air_low_ratio := 0.5
+## 화재실 문을 닫고 잇기(close_then_resume)에서 문이 닫히기를 기다리는 최대 틱 — 넘으면 알리고 하던 일을 잇는다
+var _close_wait_ticks := 300
 var _next_uid := 1
 var _seed := 0
 ## 이어서 할 일: 창 배연이 끝나면 문을 열고 임무를 다시 시작 [{crew, window, door, action, target}]
@@ -102,6 +104,7 @@ func _init(p_units: UnitSystem, p_tactical: TacticalSystem, p_doors: DoorSystem,
 	_queue_max = int(params.value("queue_max"))
 	_done_confirm_ticks = roundi(params.value("mission_done_confirm_s") / SimClock.TICK_DT)
 	_air_low_ratio = params.value("mission_done_air_low_ratio")
+	_close_wait_ticks = roundi((params.value("close_door_wait_s") if params.params.has("close_door_wait_s") else 30.0) / SimClock.TICK_DT)
 
 
 func active() -> Card:
@@ -578,7 +581,7 @@ func _apply(effect: String, c: Card, tick: int) -> void:
 			if fd:
 				tactical.cancel(c.crew_id)
 				doors.request(c.crew_id, Vector3i(fd.cells[0].x, fd.cells[0].y, fd.level), false, tick)
-				_followups.append({"kind": "closed", "crew": c.crew_id, "door": fd.index, "action": action, "target": target})
+				_followups.append({"kind": "closed", "crew": c.crew_id, "door": fd.index, "action": action, "target": target, "tick": tick})
 		"attack_found":
 			tactical.order("attack", c.crew_id, _cell(c.ctx.get("room_cell", [])), tick)
 		"halt_here":
@@ -783,16 +786,33 @@ func _step_followups(tick: int) -> void:
 	for f in _followups.duplicate():
 		if str(f.get("kind", "")) == "closed":
 			var fd: Opening = fire.openings[int(f.door)]
-			if not fd.is_open or doors.task_of_crew(int(f.crew)) == null:
+			# 정한 시간 안에 닫지 못하면(통로에 사람·호스, 문 앞에 닿지 못함) 알리고 하던 일을 잇는다 — 2026-11-24: 현관이 곧 화재실 문인
+			# 집에서 구조 분대가 닫지 못한 문 옆에 2,000틱 넘게 아무 보고 없이 서 있었다
+			var stuck := tick - int(f.get("tick", tick)) >= _close_wait_ticks
+			if not fd.is_open or doors.task_of_crew(int(f.crew)) == null or stuck:
 				_followups.erase(f)
+				if stuck and fd.is_open:
+					doors.cancel(int(f.crew))
+					var sc := units.get_crew(int(f.crew))
+					events.add(tick, "door_close_failed", {"crew": units.crew_name(sc) if sc else "", "crew_id": int(f.crew)})
 				if str(f.action) != "":
-					tactical.order(str(f.action), int(f.crew), f.target, tick)
+					_resume(int(f.crew), str(f.action), f.target, tick)
 			continue
 		var win: Opening = fire.openings[int(f.window)]
 		if win.broken or win.is_open:
 			_followups.erase(f)
 			tactical.allow_door(int(f.crew), int(f.door))
 			tactical.order(str(f.action) if str(f.action) != "" else "attack", int(f.crew), f.target, tick)
+
+
+## 카드 뒤에 하던 임무를 잇는다. 층 임무(층 검색·층 진압)를 받은 조가 건물 밖에 있으면 지시 창의 층 임무 길
+## (진입구·진입 허가·계단 카드)로 보낸다 — 전술 층 임무는 건물 안의 조만 받는다 (2026-11-24: 현관 앞에서 '화재실 문 닫고 검색 잇기'를
+## 고른 구조 분대가 밖에서 층 검색을 받지 못해 아무 임무 없이 서 있었다)
+func _resume(crew_id: int, action: String, target: Vector3i, tick: int) -> void:
+	if action in ["search_floor", "attack_floor"] and sim != null and not sim.command.interior.crew_inside(crew_id):
+		sim.command.order_floor_mission([crew_id], target.z, null, "search" if action == "search_floor" else "attack", tick)
+		return
+	tactical.order(action, crew_id, target, tick)
 
 
 ## 지금 가장 많이 달궈진 인접·위층 창 (경계관창 목표)

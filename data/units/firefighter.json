@@ -40,5 +40,9 @@
   "forcible_entry_s": {"value": 60, "source": "추정", "note": "잠긴 문 파괴(강제 개방). SOP 202-3.3 현장지휘관 명령으로 실시"},
   "forcible_entry_min_people": {"value": 2, "source": "추정", "note": "파괴 작업에 문 앞에 있어야 하는 최소 인원"},
   "fire_door_force_factor": {"value": 2.0, "source": "추정", "note": "아파트 현관 방화문 파괴 시간 배율 (SOP 213-2.3 방화문 파괴기·동력절단기)"},
+  "door_near_extra_m": {"value": 1.0, "source": "게임 설정값", "note": "분대 조장이 문 가운데에서 (door_stack_m + 이 값) 안에 있으면 '문에 와 있다'로 본다 — 먼저 온 분대가 연다"},
+  "door_stack_avoid_ratio": {"value": 0.75, "source": "게임 설정값", "note": "기다리는 자리는 여는 분대(조장·작업 자리)·먼저 기다리는 분대에서 door_stack_m × 이 값 넘게 떨어진다"},
+  "door_stack_front_margin_m": {"value": 0.3, "source": "게임 설정값", "note": "기다리는 자리는 문 정면 띠(문 폭 + 양옆 이 값) 밖에서 고른다 (화재1 p.215 '정면을 피한다', 화면 배치 door_front_margin_m 과 같은 값)"},
+  "door_stack_path_slack_m": {"value": 3.0, "source": "게임 설정값", "note": "기다리는 자리까지의 길이 문 앞 작업 자리까지의 길보다 (door_stack_m × 2 + 이 값) 넘게 길면 뺀다 (다른 출입구로 돌아가는 칸)"},
   "door_stack_m": {"value": 2.0, "source": "게임 설정값", "note": "다른 분대가 문을 여는 동안 뒤에 온 분대가 기다리는 자리 — 문 가운데에서 이만큼 떨어진 옆 (2026-11-24 사용자 결정: 한 문은 한 분대가 열고 나머지는 문 옆 대기, Door Kickers식)"}
 }

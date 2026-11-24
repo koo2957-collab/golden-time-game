@@ -17,6 +17,8 @@ static var _lay_cache: Dictionary = {}
 const ENDS_PATH := "res://data/ui/hose_ends.json"
 static var _ends: Dictionary = {}
 static var _ends_loaded := false
+## 방수 줄을 2번에서 끊을 때 2번이 바꿔 쓰는 그림: 호스가 뒤 사람에게 이어지는 그림 → 등 뒤 바닥으로 떨어지는 그림 (2인용 관창보조)
+const DROP_ANIM := {"spray_h1": "spray_h", "spray_lh1": "spray_lh"}
 
 
 ## 설정값 {이름: 값} (파일의 value만)
@@ -60,10 +62,16 @@ static func end_spot(spot: Vector2, facing: Vector2, end: Vector3, cell_m: float
 ## 규칙: 뒤 사람은 앞사람 바로 뒤(구울 때의 자리 — 그림 속 호스가 그대로 이어진다)에 서되,
 ##   그 자리가 막혔거나(벽) 3번부터는 호스 길에서 벗어났으면, 자기 그림 속 호스의 앞 끝이 앞사람 호스의 뒤 끝에 닿게
 ##   방향을 틀어 선다 (호스가 온 쪽으로 — 8방향 가운데 막히지 않은 가장 가까운 방향).
-## 돌려주는 값: {spots [칸], ks [방향], tail {pos 칸, dir, h_m} 맨 뒤 사람의 호스가 끝나는 곳 (없으면 없음)}
-static func chain_spots(lead: Vector2, k: int, names: Array, stands: Dictionary, cell_m: float, trail: Dictionary, clear: Callable, near_cells: float) -> Dictionary:
+##   3번부터는 틀어 세우지 않는다 (2026-11-24 사용자: 꺾인 곳에서 3번이 2번과 엉긴다 → 곧은 곳에서는 셋이 그대로 방수하고,
+##   꺾인 곳에서는 3번이 호스 전개 때처럼 호스를 정리하며 호스를 따라 앞뒤로 움직인다): 3번의 곧은 자리가 막혔거나 호스 길에서
+##   벗어났으면 줄을 2번에서 끊고, 2번은 호스가 등 뒤 바닥으로 떨어지는 그림(2인용 관창보조 — DROP_ANIM)으로 바꾼다.
+##   줄에서 빠진 사람(loose 명)의 자리는 부르는 쪽이 정한다 (FloorLayer._spray_tidy).
+## 돌려주는 값: {spots [칸] 줄에 선 사람만, ks [방향], names [동작 — 바뀌었을 수 있다], loose 줄에서 빠진 사람 수, tail {pos 칸, dir, h_m} 맨 뒤 사람의 호스가 끝나는 곳 (없으면 없음)}
+static func chain_spots(lead: Vector2, k: int, names_in: Array, stands: Dictionary, cell_m: float, trail: Dictionary, clear: Callable, near_cells: float) -> Dictionary:
+	var names: Array = names_in.duplicate()
 	var spots: Array[Vector2] = [lead]
 	var ks: Array[int] = [k]
+	var loose := 0
 	for i in range(1, names.size()):
 		var anim := str(names[i])
 		var prev := str(names[i - 1])
@@ -81,6 +89,22 @@ static func chain_spots(lead: Vector2, k: int, names: Array, stands: Dictionary,
 			spots.append(straight)
 			ks.append(ks[i - 1])
 			continue
+		# 3번부터: 줄을 끊는다 — 앞사람의 호스는 바닥으로 떨어뜨리고, 뒤 사람은 호스를 정리하러 간다
+		if i >= 2 and not trail.is_empty() and DROP_ANIM.has(prev) and end_of(str(DROP_ANIM[prev]), "back") != null:
+			var drop := str(DROP_ANIM[prev])
+			# 구울 때의 자리가 다르면 (곧게 선 경우) 바꾼 그림의 자리로 옮긴다
+			if stands.has(drop) and ks[i - 1] == ks[i - 2]:
+				var c: Dictionary = stands.get(drop, {})
+				var e: Dictionary = stands.get(str(names[i - 2]), {})
+				var gf := Vector2.RIGHT.rotated(ks[i - 2] * PI / 4.0)
+				var moved := spots[i - 2] + (gf * (float(c.get("fwd_m", 0.0)) - float(e.get("fwd_m", 0.0))) \
+					+ gf.rotated(PI / 2.0) * (float(c.get("right_m", 0.0)) - float(e.get("right_m", 0.0)))) / maxf(0.01, cell_m)
+				if clear.call(spots[i - 2], moved):
+					spots[i - 1] = moved
+			names[i - 1] = drop
+			loose = names.size() - i
+			names.resize(i)
+			break
 		# 꺾어 세우기: 앞사람 호스의 뒤 끝(joint)에 내 호스의 앞 끝을 맞춘다
 		var j := end_spot(spots[i - 1], pf, joint, cell_m)
 		var want := -pf
@@ -98,7 +122,10 @@ static func chain_spots(lead: Vector2, k: int, names: Array, stands: Dictionary,
 				continue  # 곧게 뒤는 위에서 이미 안 된다고 봤다
 			var f := Vector2.RIGHT.rotated(kk * PI / 4.0)
 			var spot := j - (f * (front as Vector3).x + f.rotated(PI / 2.0) * (front as Vector3).y) / maxf(0.01, cell_m)
-			if clear.call(j, spot) and spot.distance_to(spots[i - 1]) > 0.5 / maxf(0.01, cell_m):
+			var roomy := true
+			for q in spots:
+				roomy = roomy and spot.distance_to(q) > 0.5 / maxf(0.01, cell_m)
+			if clear.call(j, spot) and roomy:
 				spots.append(spot)
 				ks.append(kk)
 				placed = true
@@ -106,7 +133,7 @@ static func chain_spots(lead: Vector2, k: int, names: Array, stands: Dictionary,
 		if not placed:
 			spots.append(straight)
 			ks.append(ks[i - 1])
-	var out := {"spots": spots, "ks": ks}
+	var out := {"spots": spots, "ks": ks, "names": names, "loose": loose}
 	var last := str(names[names.size() - 1])
 	var tail: Variant = end_of(last, "back")
 	if tail != null:

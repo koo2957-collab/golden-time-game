@@ -442,7 +442,7 @@ func test_baked_hose_ends_meet_in_line() -> void:
 		assert_true(tail != null and (tail as Vector3).z < 0.1 and (tail as Vector3).x < 0.0, "맨 뒤 사람의 호스는 등 뒤 바닥에서 끝난다 (%s)" % names[names.size() - 1])
 	assert_true(HoseDraw.end_of("spray_n", "front") == null, "관창수는 호스 조각이 없다 (관창 결합구만)")
 	var st := HoseDraw.style()
-	assert_true(float(st.join_length_m) > 0.0 and float(st.chain_near_m) > 0.0 and float(st.sprite_hose_width_m) > 0.0 and float(st.sprite_flat_width_m) > 0.0, "이음 설정값")
+	assert_true(float(st.join_length_m) > 0.0 and float(st.chain_near_m) > 0.0 and float(st.chain_min_sep_m) > 0.0 and float(st.spray_tidy_near_m) > 0.0 and float(st.spray_tidy_range_m) > 0.0 and float(st.spray_tidy_speed_mps) > 0.0 and float(st.sprite_hose_width_m) > 0.0 and float(st.sprite_flat_width_m) > 0.0, "이음 설정값")
 
 
 ## 방수하는 조의 자리 (2026-11-24 사용자 — 꺾이는 곳에서도 세 명이 일렬로 서던 것):
@@ -466,21 +466,25 @@ func test_spray_chain_turns_at_bends() -> void:
 	for i in 3:
 		assert_true((straight.spots[i] as Vector2).distance_to(FloorLayer.stand_spot(lead, Vector2.RIGHT, art.stand(names[i]), cell_m)) < 0.001, "곧은 곳: %s 는 구울 때의 자리" % names[i])
 	assert_true(straight.has("tail") and float(straight.tail.pos.x) < float(straight.spots[2].x) and float(straight.tail.h_m) < 0.1, "바닥 호스가 닿을 곳 = 3번 뒤 바닥")
-	# ② 호스가 남쪽에서 와서 관창수 자리에서 꺾인다 — 2번은 관창수 바로 뒤 그대로, 3번은 남쪽(호스가 온 쪽)으로 틀어 선다
+	# ② 호스가 남쪽에서 와서 관창수 자리에서 꺾인다 — 줄은 2번에서 끊긴다: 2번은 관창수 바로 뒤에서 호스가 바닥으로 떨어지는 그림,
+	#    3번은 줄에서 빠져 호스를 정리하러 간다 (2026-11-24 사용자: 꺾인 곳에서 3번이 2번과 엉긴다 — 호스 전개 때처럼 호스를 정리하며 오간다)
 	var south := _hose([Vector3i(20, 30, 1), Vector3i(20, 10, 1)])
+	stands["spray_h"] = art.stand("spray_h")
 	var bent := HoseDraw.chain_spots(lead, 0, names, stands, cell_m, HoseDraw.trail(south, 1, lead), open, 1.2)
+	assert_eq(names, ["spray_n", "spray_h1", "spray_h2"], "넘겨준 동작 목록은 바뀌지 않는다")
+	assert_eq((bent.spots as Array).size(), 2, "줄에는 관창수와 2번만")
+	assert_eq(int(bent.loose), 1, "3번은 줄에서 빠진다")
+	assert_eq(bent.names, ["spray_n", "spray_h"], "2번은 호스가 등 뒤 바닥으로 떨어지는 그림")
 	assert_eq(int(bent.ks[1]), 0, "2번은 관창수 바로 뒤 (반동을 받친다)")
-	assert_true((bent.spots[1] as Vector2).distance_to(straight.spots[1]) < 0.001, "2번 자리는 그대로")
-	assert_true(int(bent.ks[2]) != 0 and float(bent.spots[2].y) > float(bent.spots[1].y) + 0.5, "3번은 남쪽으로 틀어 선다 (방향 %d, %s)" % [int(bent.ks[2]), bent.spots[2]])
-	var f3 := Vector2.RIGHT.rotated(int(bent.ks[2]) * PI / 4.0)
-	var joint := HoseDraw.end_spot(bent.spots[1], Vector2.RIGHT, HoseDraw.end_of("spray_h1", "back"), cell_m)
-	var front3 := HoseDraw.end_spot(bent.spots[2], f3, HoseDraw.end_of("spray_h2", "front"), cell_m)
-	assert_true(joint.distance_to(front3) < 0.001, "3번 호스의 앞 끝이 2번 호스의 뒤 끝에 닿는다")
-	assert_true((bent.tail.dir as Vector2).distance_to(f3) < 0.001 and float(bent.tail.pos.y) > float(bent.spots[2].y), "바닥 호스는 3번 뒤(남쪽)에서 닿는다")
+	assert_true((bent.spots[1] as Vector2).distance_to(FloorLayer.stand_spot(lead, Vector2.RIGHT, art.stand("spray_h"), cell_m)) < 0.001, "2번 자리 = 2인 방수 때의 자리")
+	assert_true(HoseDraw.end_spot(bent.spots[1], Vector2.RIGHT, HoseDraw.end_of("spray_h", "front"), cell_m).distance_to(
+		HoseDraw.end_spot(lead, Vector2.RIGHT, HoseDraw.end_of("spray_n", "back"), cell_m)) < 0.05, "2번 호스의 앞 끝이 관창 결합구에 닿는다")
+	assert_true(float(bent.tail.h_m) < 0.1 and float(bent.tail.pos.x) < float(bent.spots[1].x), "바닥 호스는 2번 뒤 바닥에서 닿는다")
+	assert_true(int(straight.loose) == 0 and straight.names == names, "곧은 곳은 그대로 셋이 방수")
 	# ③ 관창수 바로 뒤가 벽이다 — 2번도 틀어 선다 (벽을 뚫고 서지 않는다)
 	var wall := func(_from: Vector2, to: Vector2) -> bool: return to.x >= 19.5
 	var blocked := HoseDraw.chain_spots(lead, 0, names, stands, cell_m, HoseDraw.trail(south, 1, lead), wall, 1.2)
-	for i in 3:
+	for i in (blocked.spots as Array).size():
 		assert_true(float(blocked.spots[i].x) >= 19.5, "%s 는 벽 안에 서지 않는다 (%s)" % [names[i], blocked.spots[i]])
 	assert_true(int(blocked.ks[1]) != 0, "2번도 방향을 튼다")
 	var f2 := Vector2.RIGHT.rotated(int(blocked.ks[1]) * PI / 4.0)
@@ -489,8 +493,8 @@ func test_spray_chain_turns_at_bends() -> void:
 	# ④ 갈 곳이 없으면 (사방이 막힘) 예전처럼 곧게 — 사람이 사라지지 않는다
 	var none := func(_from: Vector2, _to: Vector2) -> bool: return false
 	var stuck := HoseDraw.chain_spots(lead, 0, names, stands, cell_m, HoseDraw.trail(south, 1, lead), none, 1.2)
-	assert_eq(stuck.spots.size(), 3, "세 명 모두 자리가 있다")
-	assert_eq(stuck.ks, [0, 0, 0] as Array[int], "막히면 곧게")
+	assert_true((stuck.spots as Array).size() + int(stuck.loose) == 3, "세 명 모두 줄에 서거나 호스 정리로 빠진다")
+	assert_eq(int(stuck.ks[1]), 0, "막히면 곧게")
 
 
 ## 바닥 호스를 그림 속 호스의 끝으로 잇는 곡선: 끝 점에 닿고, 직각으로 꺾이지 않는다

@@ -1917,7 +1917,10 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		var sl := _spray_layout(crew, art)
 		anim = str(sl.anims.get(ff.id, "spray_n"))
 		dir = int(sl.ks.get(ff.id, sl.k))
-		moving = false
+		# 꺾인 곳의 3번은 호스를 정리하며 오간다 (_spray_tidy) — 걷는 동안만 걷는 그림이 움직인다
+		moving = bool(sl.get("walk", {}).get(ff.id, false))
+		if anim == "crouch_walk" and not moving:
+			fixed_frame = 0
 	elif hose and ff == crew.leader and int(_door_ready_layout(crew, art).get("id", -1)) == ff.id:
 		# 문 앞 방수태세 (E4): 다른 조원이 문을 확인·개방·파괴하는 동안 관창수는 문 옆에서 낮은 자세로 관창을 문에 겨눈다 (A5 그림의 첫 장)
 		var rl := _door_ready_layout(crew, art)
@@ -2565,13 +2568,17 @@ func _spray_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dictio
 	var stands := {}
 	for anim_name: String in line_names:
 		stands[anim_name] = art.stand(anim_name)
+		if HoseDraw.DROP_ANIM.has(anim_name):
+			stands[HoseDraw.DROP_ANIM[anim_name]] = art.stand(str(HoseDraw.DROP_ANIM[anim_name]))
 	var at_level := lead.level
 	var clear := func(from: Vector2, to: Vector2) -> bool: return _floor_clear(at_level, from, to)
 	var trail := HoseDraw.trail(hose, at_level, lp)
 	var chain := HoseDraw.chain_spots(lp, k, line_names, stands, cell_m, trail, clear,
 		float(HoseDraw.style().get("chain_near_m", 0.6)) / cell_m)
-	for i in line.size():
-		out.anims[line[i].id] = line_names[i]
+	# 줄에 선 사람만 (꺾인 곳에서는 줄이 2번에서 끊긴다 — 2번은 호스가 바닥으로 떨어지는 그림으로 바뀌어 있다)
+	var chained: int = (chain.spots as Array).size()
+	for i in chained:
+		out.anims[line[i].id] = chain.names[i]
 		out.spots[line[i].id] = chain.spots[i]
 		out.ks[line[i].id] = chain.ks[i]
 	# 바닥 호스는 맨 뒤 사람의 그림 속 호스가 끝나는 곳까지만 그린다 (그 앞은 그림에 들어 있다)
@@ -2582,7 +2589,69 @@ func _spray_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dictio
 		out.tail_dir = chain.tail.dir
 		out.tail_h = chain.tail.h_m
 		out.ground_end = clampf(_tail_dist(trail, chain.tail.pos, float(chain.tail.h_m), chain.spots[chain.spots.size() - 1], cell_m), first, end)
+	# 줄에서 빠진 사람(꺾인 곳의 3번)은 호스를 정리하며 호스를 따라 앞뒤로 움직인다
+	if chained < line.size() and not trail.is_empty():
+		_spray_tidy(out, line.slice(chained), art, trail, chain.spots, float(out.get("ground_end", trail.dist[trail.dist.size() - 1])), cell_m, alpha)
 	return out
+
+
+## 방수 중 호스 정리 (2026-11-24 사용자: 꺾인 곳에서는 3번이 호스 전개 때처럼 호스를 정리하며 호스 앞뒤로 움직인다).
+## 줄에서 빠진 사람(loose)을 깔린 호스 길 위에 세운다: 2번 뒤(ground = 바닥 호스가 2번 그림에 닿는 거리)에서 spray_tidy_near_m 물러난 곳과
+## 거기서 spray_tidy_range_m 더 뒤 사이를 낮은 자세로 오가고, 양 끝에서 잠깐 멈춘다. 줄에 선 사람(taken 자리)과는 chain_min_sep_m 넘게 떨어진다.
+## 시간은 현장 시간 — 일시정지하면 멈춘다. 호스가 짧아 설 자리가 없으면 아무것도 하지 않는다 (그 사람은 제자리에 서 있다).
+## out 에 anims·spots·ks 와 walk {대원 id: 걷는 중인가} 를 넣는다
+func _spray_tidy(out: Dictionary, loose: Array[Firefighter], art: SpriteArt.SpriteSet, trail: Dictionary, taken: Array, ground: float, cell_m: float, alpha: float) -> void:
+	if art.frames("crouch_walk") <= 0:
+		return
+	var st := HoseDraw.style()
+	var first: float = trail.dist[0]
+	var end: float = trail.dist[trail.dist.size() - 1]
+	var sep := float(st.get("chain_min_sep_m", 1.2)) / cell_m
+	var near := ground - float(st.get("spray_tidy_near_m", 1.0)) / cell_m
+	while near > first:
+		var apart := true
+		for q: Vector2 in taken:
+			apart = apart and HoseDraw.point_at(trail, near).distance_to(q) >= sep
+		if apart:
+			break
+		near -= 0.25
+	if near < first + 0.5:
+		return
+	var far := maxf(first + 0.5, near - float(st.get("spray_tidy_range_m", 2.5)) / cell_m)
+	var speed := maxf(0.05, float(st.get("spray_tidy_speed_mps", 0.5)))
+	var dwell := maxf(0.0, float(st.get("spray_tidy_dwell_s", 2.0)))
+	var walk_s := (near - far) * cell_m / speed
+	var now := (sim.clock.tick + alpha) * SimClock.TICK_DT
+	out.walk = {}
+	for n in loose.size():
+		var ff := loose[n]
+		# 가까운 끝에서 멈춤 → 뒤로 걷기 → 먼 끝에서 멈춤 → 앞으로 걷기
+		var t := fposmod(now + ff.id * 1.7, 2.0 * (walk_s + dwell)) if walk_s + dwell > 0.0 else 0.0
+		var d := near
+		var forward := true
+		var walking := false
+		if walk_s >= 0.5:
+			if t < dwell:
+				pass
+			elif t < dwell + walk_s:
+				d = lerpf(near, far, (t - dwell) / walk_s)
+				forward = false
+				walking = true
+			elif t < 2.0 * dwell + walk_s:
+				d = far
+				forward = false
+			else:
+				d = lerpf(far, near, (t - 2.0 * dwell - walk_s) / walk_s)
+				walking = true
+		# 둘째부터는 더 뒤에서
+		d = maxf(first, d - n * sep)
+		var along := HoseDraw.point_at(trail, minf(end, d + 0.6)) - HoseDraw.point_at(trail, maxf(first, d - 0.6))
+		if along.length_squared() < 0.0001:
+			continue
+		out.anims[ff.id] = "crouch_walk"
+		out.spots[ff.id] = HoseDraw.point_at(trail, d)
+		out.ks[ff.id] = SpriteArt.dir8(along if forward else -along)
+		out.walk[ff.id] = walking and not sim.clock.paused
 
 
 ## 문 앞 방수태세(E4)일 때 바닥 호스가 끝나는 곳 {ground_end, ground_tail, tail_dir, tail_h} — 관창수가 겨눈 관창의 결합구. 아니면 빈 것

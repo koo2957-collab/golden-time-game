@@ -143,3 +143,98 @@ func test_smoke_outline_at_drawn_position() -> void:
 			assert_true((it[2] as Vector2).is_equal_approx(layer._shown_pos(it[0], 0.0)), "테두리 자리 = 그리는 자리")
 	assert_eq(mine, crew.members().size(), "조원 모두")
 	_free(nodes)
+
+
+## 방수 중 호스 정리 (2026-11-24 사용자: "3명일 때 직선이면 3명이 그대로 방수하고, 곡각지에서는 호스 전개할 때처럼 3번이 호스를
+## 정리하면서 호스 앞뒤로 움직인다"). 호스가 옆에서 와 관창수 자리에서 꺾이면 줄은 2번에서 끊기고(2번 = 호스가 바닥으로 떨어지는 그림),
+## 3번은 깔린 호스 길 위에서 앞사람들과 떨어져 낮은 자세로 오간다. 곧게 오면 셋이 그대로 방수한다.
+func test_third_member_tidies_hose_at_bend() -> void:
+	var sim := SimWorld.from_scenario(SCENARIO, false)
+	var crew := sim.units.get_crew(0)
+	var nodes := _layer(sim)
+	var layer: FloorLayer = nodes[0]
+	var art := SpriteArt.get_set(str(SpriteArt.config().get("crew", "")))
+	var workers := crew.workers()
+	assert_true(art != null and workers.size() >= 3, "그림 묶음 · 일하는 조원 3명")
+	if art == null or workers.size() < 3:
+		_free(nodes)
+		return
+	# 사방이 트인 빈 터를 찾는다 (서쪽 14칸 · 남쪽 14칸 · 동쪽 4칸이 모두 걸을 수 있는 곳)
+	var b := sim.building
+	var at := Vector2i(-1, -1)
+	for y in range(4, b.height - 16):
+		for x in range(16, b.width - 6):
+			var free := true
+			for yy in range(y - 3, y + 15):
+				for xx in range(x - 15, x + 5):
+					free = free and b.is_walkable(1, xx, yy)
+					if not free:
+						break
+				if not free:
+					break
+			if free:
+				at = Vector2i(x, y)
+				break
+		if at.x >= 0:
+			break
+	assert_true(at.x >= 0, "빈 터")
+	if at.x < 0:
+		_free(nodes)
+		return
+	var hose := HoseLine.new()
+	hose.id = 900
+	hose.vehicle_id = sim.units.vehicles[0].id
+	hose.crew_id = crew.id
+	hose.flowing = true
+	hose.spraying = true
+	hose.charged = true
+	hose.water_head = 9999.0
+	hose.aim = Vector2(at) + Vector2(8.5, 0.5)
+	sim.water.hoses.append(hose)
+	for ff in crew.members():
+		ff.aboard = false
+		ff.level = 1
+		ff.prev_level = 1
+		ff.pos = Vector2(at) + Vector2(0.5, 0.5)
+		ff.prev_pos = ff.pos
+		ff.path.clear()
+	var cell_m := sim.units.cell_size_m
+	var sep := float(HoseDraw.style().chain_min_sep_m) / cell_m
+	# ① 호스가 남쪽에서 온다 — 꺾인 곳
+	for y in range(at.y + 14, at.y - 1, -1):
+		hose.points.append(Vector3i(at.x, y, 1))
+	var lo := INF
+	var hi := -INF
+	var walked := false
+	for step in 60:
+		var sl := layer._spray_layout(crew, art, 0.0)
+		assert_eq(str(sl.anims.get(workers[1].id, "")), "spray_h", "2번은 호스가 바닥으로 떨어지는 그림")
+		assert_eq(str(sl.anims.get(workers[2].id, "")), "crouch_walk", "3번은 낮은 자세로 호스를 정리한다")
+		if not sl.spots.has(workers[2].id):
+			break
+		var p3: Vector2 = sl.spots[workers[2].id]
+		assert_true(absf(p3.x - (at.x + 0.5)) < 0.3 and p3.y > at.y + 0.5, "3번은 깔린 호스 길 위에 있다 (%s)" % p3)
+		assert_true(p3.distance_to(sl.spots[workers[0].id]) >= sep - 0.01 and p3.distance_to(sl.spots[workers[1].id]) >= sep - 0.01, "3번은 앞사람들과 떨어져 있다 (%s)" % p3)
+		lo = minf(lo, p3.y)
+		hi = maxf(hi, p3.y)
+		walked = walked or bool(sl.walk.get(workers[2].id, false))
+		var pose: Array = layer._unit_pose(workers[2], crew, art)
+		assert_eq(str(pose[0]), "crouch_walk", "3번 자세")
+		assert_true(layer._shown_pos(workers[2], 0.0).distance_to(p3) < 0.001, "3번을 그리는 자리 = 정리하는 자리")
+		sim.clock.tick += 5
+	assert_true(hi - lo > 1.0 / cell_m and walked, "3번은 호스를 따라 앞뒤로 오간다 (%.1f칸)" % (hi - lo))
+	# 일시정지하면 걷는 그림도 멈춘다
+	sim.clock.paused = true
+	layer._spray_cache.clear()
+	assert_true(not bool(layer._spray_layout(crew, art, 0.0).walk.get(workers[2].id, false)), "일시정지 중에는 걷지 않는다")
+	sim.clock.paused = false
+	# ② 호스가 뒤(서쪽)에서 곧게 온다 — 셋이 그대로 방수
+	hose.points.clear()
+	for x in range(at.x - 14, at.x + 1):
+		hose.points.append(Vector3i(x, at.y, 1))
+	layer._spray_cache.clear()
+	var straight := layer._spray_layout(crew, art, 0.0)
+	assert_eq(str(straight.anims.get(workers[1].id, "")), "spray_h1", "곧은 곳: 2번")
+	assert_eq(str(straight.anims.get(workers[2].id, "")), "spray_h2", "곧은 곳: 3번도 방수")
+	assert_true(not straight.has("walk"), "곧은 곳: 아무도 오가지 않는다")
+	_free(nodes)

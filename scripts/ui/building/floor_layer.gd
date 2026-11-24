@@ -658,6 +658,17 @@ func _draw_window_signs(w: Dictionary, h0: float, fh: float) -> void:
 		var c3 := _face_point(w.face, lerpf(a, b, 0.85), lerpf(g0, g1, 0.7))
 		draw_polyline(PackedVector2Array([c0, c1, c2]), BROKEN_LINE, 1.2)
 		draw_line(c1, c3, BROKEN_LINE, 1.2)
+	# 백드래프트 징후 ③ 창에 짙은 연기 응축물(검은색 액체)이 흘러내린 얼룩 (화재1 p.44, 연기 읽기 2단계 2026-11-24) — 닫힌 창
+	if not o.broken and not o.is_open and seen and sim.hazards != null and sim.hazards.backdraft_sign(sim.fire.comps[o.room_a]):
+		var st := SmokeLook.style()
+		var sc: Array = st.get("bd_stain_color", [0.08, 0.06, 0.04, 0.6])
+		var stain := Color(float(sc[0]), float(sc[1]), float(sc[2]), float(sc[3]))
+		draw_colored_polygon(PackedVector2Array([_face_point(w.face, a, g1), _face_point(w.face, b, g1), _face_point(w.face, b, g0),
+			_face_point(w.face, a, g0)]), stain)
+		for k in 3:
+			var x := lerpf(a, b, 0.25 + 0.25 * k)
+			draw_line(_face_point(w.face, x, g1), _face_point(w.face, x + 0.04, lerpf(g1, g0, 0.55 + 0.12 * k)),
+				Color(stain.darkened(0.5), minf(1.0, stain.a + 0.25)), 2.0)
 	# 화염 분출: 불난 방(확인한 불)의 열린·깨진 창 위로 불꽃이 넘실댄다
 	if _fire_rooms.has(o.room_a) and (o.broken or o.is_open):
 		var base := _face_point(w.face, mid, g1)
@@ -742,6 +753,10 @@ func _draw_shell_plumes() -> void:
 			for sp in smoke_spills(sim, int(row[0])):
 				if not bool(sp[4]):
 					_draw_spill(sp, float(row[1]), float(row[2]), int(sp[5]))
+			# 백드래프트 징후: 바깥으로 난 닫힌 문·창 틈 (밖에서 늘 보인다)
+			for bs in backdraft_seeps(sim, int(row[0])):
+				if bool(bs[6]):
+					_draw_backdraft_seep(bs, float(row[1]))
 			continue
 		for line in smoke_outlets(sim, int(row[0])):
 			var at: Vector2 = line[0]
@@ -3780,6 +3795,13 @@ func _draw_smoke_spills() -> bool:
 	for s in smoke_spills(sim, level):
 		if not bool(s[4]):
 			_draw_spill(s, 0.0, CEILING_M, int(s[5]))
+	# 백드래프트 징후: 보이거나 본 적 있는 닫힌 문·창 틈에서만 (정보 안개 — 2026-11-24)
+	var p := sim.perception
+	for s in backdraft_seeps(sim, level):
+		var at: Vector2 = s[0]
+		if p.enabled and not (p.is_visible(level, floori(at.x), floori(at.y)) or p.is_seen(level, floori(at.x), floori(at.y))):
+			continue
+		_draw_backdraft_seep(s, 0.0)
 	return true
 
 
@@ -3840,6 +3862,59 @@ static func smoke_spills(p_sim: SimWorld, lv: int) -> Array[Array]:
 		var density := 1.0 - clampf(fire.visibility_m(src) / 10.0, 0.0, 1.0)
 		out.append([center, clampf(0.3 + density, 0.0, 1.0), _spill_dir(p_sim, lv, o, src, dst, center), o.top, interior, src.index, dst.index])
 	return out
+
+
+## 백드래프트 징후 (연기 읽기 2단계, 2026-11-24 — 화재1 p.44 '닫힌 문 주위에서 나오는 무겁고 검은 연기', '연기가 건물 내로
+## 되돌아오거나 맴도는 현상'): 징후가 있는 방(HazardSystem.backdraft_sign — 무전 징후 보고와 같은 조건)의 닫힌 문·창.
+## → [틈 위치(셀), 새어 나가는 방향, 인방 높이(m), 방 번호, 창인가, 개구부 번호, 바깥으로 난 것인가]
+static func backdraft_seeps(p_sim: SimWorld, lv: int) -> Array[Array]:
+	var out: Array[Array] = []
+	if p_sim.hazards == null:
+		return out
+	for o in p_sim.fire.openings:
+		if o.level != lv or o.is_open or o.cells.is_empty() or o.room_a == Opening.OUTSIDE:
+			continue
+		if o.kind == Opening.Kind.STAIR or (o.kind == Opening.Kind.WINDOW and o.broken):
+			continue
+		var rooms: Array[int] = [o.room_a]
+		if o.room_b != Opening.OUTSIDE:
+			rooms.append(o.room_b)
+		for r in rooms:
+			var src := p_sim.fire.comps[r]
+			if not p_sim.hazards.backdraft_sign(src):
+				continue
+			var other := o.room_b if r == o.room_a else o.room_a
+			var dst := p_sim.fire.comps[other] if other != Opening.OUTSIDE else src
+			var center := o.center()
+			out.append([center, _spill_dir(p_sim, lv, o, src, dst, center), o.top, r, o.kind == Opening.Kind.WINDOW, o.index,
+				o.room_b == Opening.OUTSIDE])
+			break
+	return out
+
+
+## 백드래프트 징후 연기 한 줄기: 닫힌 틈 위로 검은 연기가 새어 나왔다가 빨려 들어가기를 되풀이한다 (bd_pulse_s 주기)
+func _draw_backdraft_seep(s: Array, floor_h: float) -> void:
+	if FxArt.spill == null:
+		return
+	var st := SmokeLook.style()
+	var period := maxf(0.5, float(st.get("bd_pulse_s", 2.6)))
+	var t := Time.get_ticks_msec() / 1000.0
+	var phase := sin(TAU * t / period + float(s[5]) * 1.3)
+	# 밀려 나올 때 길고 진하게, 빨려 들어갈 때 짧고 옅게
+	var push := 0.5 + 0.5 * phase
+	var cell := sim.building.cell_size_m
+	var at: Vector2 = s[0]
+	var dir: Vector2 = s[1]
+	var top: float = s[2]
+	var wall := at + dir * 0.5
+	var out := (0.15 + 0.55 * push) / cell
+	var lo := floor_h + top - 0.12
+	var hi := floor_h + top + 0.35 + 0.45 * push
+	var col: Color = SmokeLook.look(sim.fire, sim.fire.comps[int(s[3])]).get("color", Color(0.1, 0.1, 0.11))
+	col = col.darkened(0.25)
+	col.a = float(st.get("bd_alpha", 0.8)) * (0.45 + 0.55 * push)
+	FxArt.draw_flip(self, FxArt.spill, "smoke_spill", PackedVector2Array([proj.to_screen(wall, hi), proj.to_screen(wall + dir * out, hi),
+		proj.to_screen(wall + dir * out, lo), proj.to_screen(wall, lo)]), Vector2.ZERO, Vector2.ONE, col, int(s[5]) + 11, 1.0, 0.6)
 
 
 ## 나오는 방에서 멀어지는 축 방향: 개구부 칸 양옆을 보고 정한다 (안 되면 방 가운데 → 개구부)

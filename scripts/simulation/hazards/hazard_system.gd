@@ -67,11 +67,17 @@ func on_door_opened(o: Opening, tick: int) -> void:
 			return
 
 
+## 백드래프트 징후가 있는 방인가 (미연소가스·산소 부족·고온). 화면의 문틈 검은 연기(연기 읽기)도 이 조건을 쓴다 —
+## 화면에 보이는 징후와 무전 보고가 늘 같다 (2026-11-24)
+func backdraft_sign(c: Compartment) -> bool:
+	return c.gas_percent() >= _bd_sign_gas and c.o2_percent() <= _bd_o2 + 2.0 and c.t_upper >= _bd_temp * 0.6
+
+
 ## 조가 닫힌 문 앞 작업을 시작할 때: 백드래프트 징후
 func on_door_approach(o: Opening, tick: int) -> void:
 	for r in _rooms_of(o):
 		var c := fire.comps[r]
-		if c.gas_percent() >= _bd_sign_gas and c.o2_percent() <= _bd_o2 + 2.0 and c.t_upper >= _bd_temp * 0.6:
+		if backdraft_sign(c):
 			_warn("bd_sign:%d" % o.index, tick, "backdraft_sign", {"room": c.display_name()})
 			return
 

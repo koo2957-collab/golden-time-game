@@ -59,6 +59,20 @@ func _run() -> void:
 		await _shot(str(st[0]), fire_room)
 	# 방수: 모든 방 고온층의 열을 빼앗는다고 보고(시뮬레이션 값을 직접 넣는다) 수증기를 본다
 	await _shot("4_steam", fire_room)
+	# 백드래프트 징후: 바깥 문·창을 닫고 불난 방을 징후 조건(가스·산소 부족·고온)으로 — 문틈 검은 연기 맥동·창 얼룩
+	for c in sim.fire.comps:
+		c.cooling_kw = 0.0
+	for o in sim.fire.openings:
+		if o.room_b == Opening.OUTSIDE and o.kind != Opening.Kind.STAIR:
+			o.is_open = false
+			o.broken = false
+	sim.doors.sync_blocking()
+	if fire_room >= 0:
+		var fc: Compartment = sim.fire.comps[fire_room]
+		fc.gas = 0.2 * 1.2 * fc.volume
+		fc.y_o2 = 0.23 * 10.0 / 21.0
+		fc.t_upper = 500.0
+	await _shot("5_backdraft", fire_room)
 	quit()
 
 

@@ -61,6 +61,32 @@ func test_steam_whitens() -> void:
 	assert_true(float(lk.steam) > 0.5, "수증기 비율 %.2f" % lk.steam)
 
 
+## 백드래프트 징후 (연기 읽기 2단계, 화재1 p.44): 징후가 있는 방의 닫힌 문 틈에서만 검은 연기가 새어 나온다 —
+## 조건은 무전 징후 보고(HazardSystem.backdraft_sign)와 같다. 문을 열면(또는 징후가 없으면) 없다
+func test_backdraft_seep_only_on_sign() -> void:
+	var s := _room()
+	var sim: SimWorld = s[0]
+	var door: Opening = null
+	for o in sim.fire.openings:
+		if o.kind == Opening.Kind.DOOR and o.room_a != Opening.OUTSIDE and o.level == 1:
+			door = o
+			break
+	assert_true(door != null, "1층 문")
+	if door == null:
+		return
+	var c: Compartment = sim.fire.comps[door.room_a]
+	door.is_open = false
+	assert_true(FloorLayer.backdraft_seeps(sim, 1).filter(func(e: Array) -> bool: return int(e[5]) == door.index).is_empty(), "징후 없으면 없다")
+	c.gas = 0.2 * 1.2 * c.volume
+	c.y_o2 = 0.23 * 10.0 / 21.0
+	c.t_upper = 500.0
+	assert_true(sim.hazards.backdraft_sign(c), "징후 조건 (가스 %.1f%% · 산소 %.1f%% · %.0f℃)" % [c.gas_percent(), c.o2_percent(), c.t_upper])
+	var seeps := FloorLayer.backdraft_seeps(sim, 1).filter(func(e: Array) -> bool: return int(e[5]) == door.index)
+	assert_eq(seeps.size(), 1, "닫힌 문 틈에서 검은 연기")
+	door.is_open = true
+	assert_true(FloorLayer.backdraft_seeps(sim, 1).filter(func(e: Array) -> bool: return int(e[5]) == door.index).is_empty(), "문을 열면 없다")
+
+
 ## 색은 단계가 아니라 이어진다 (온도가 오르면 점점 어두워진다)
 func test_continuous() -> void:
 	var s := _room()

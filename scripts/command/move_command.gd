@@ -29,6 +29,8 @@ func execute(sim: SimWorld) -> void:
 		# 관창을 잠그고 이동한다 (README 조작표: '방수 중이면 방수를 멈추고 이동' — 2026-11-24: 실제로는 잠그지 않아
 		# 옮겨 간 뒤에도 예전 목표로 끝없이 방수했다)
 		sim.water.stop_spray(id, tick)
+		# 호스를 꺼내러 가던 중이면 거둔다 — 안 그러면 멈춘 뒤 다시 펌프차로 끌려간다 (2026-11-24)
+		sim.water.cancel_fetch(id, tick)
 	sim.units.order_move(crew_ids, target, sim.pathfinder, via)
 
 

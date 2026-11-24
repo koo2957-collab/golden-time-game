@@ -178,6 +178,9 @@ func _order(action: String, crew_id: int, target: Vector3i, tick: int) -> bool:
 	# 새 임무를 받으면 관창부터 잠근다 (방수 임무는 방수 위치에 닿아 다시 연다). 2026-11-24 — 전에는 외부 방수를 하던 조에게
 	# 진압·검색을 시켜도 잠그지 않아, 걸어가고 문을 여는 동안에도 예전 목표로 물이 나갔다 (물 낭비 + 물줄기가 엉뚱한 쪽으로 그려짐)
 	water.stop_spray(crew_id, tick)
+	# 호스가 필요 없는 임무를 받았으면 꺼내러 가던 호스는 거둔다 (2026-11-24 — 전에는 그대로 펌프차로 끌려갔다)
+	if not action in ["attack", "attack_floor", "exterior"]:
+		water.cancel_fetch(crew_id, tick)
 	if action == "withdraw":
 		water.stop_spray(crew_id, tick)
 		safety.withdraw_crew(c, tick, "withdraw")

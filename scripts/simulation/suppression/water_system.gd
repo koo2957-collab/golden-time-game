@@ -417,6 +417,23 @@ func fetching(crew_id: int) -> bool:
 	return h != null and h.outlet < 0 and (h.to_outlet or h.fetch_until >= 0)
 
 
+## 아직 깔기 전의 수관을 거둔다 — 펌프차 후면으로 가는 중 · 차 뒤에서 꺼내는 중 · 방수구로 호스 가방을 들고 가는 중에
+## 다른 지시(이동·검색·구조·대기 등 호스가 필요 없는 일)를 받았다. 호스는 차(가방)에 도로 넣은 것으로 친다.
+## 2026-11-24 — 전에는 지울 길이 없어, 다른 곳으로 보내도 멈추면 1초마다 다시 펌프차로 끌려갔고(_update_hoses),
+## 꺼내는 동안은 속도 0으로 묶여 아예 움직이지 않았다. 이미 깔기 시작한 수관은 그대로 둔다 (false)
+func cancel_fetch(crew_id: int, tick: int) -> bool:
+	var h := hose_of_crew(crew_id)
+	if h == null or not (h.to_outlet or h.fetch_until >= 0):
+		return false
+	hoses.erase(h)
+	var c := units.get_crew(crew_id)
+	if c != null:
+		for ff in c.members():
+			ff.speed_factor = 1.0
+		events.add(tick, "hose_fetch_cancel", {"crew": _crew_name(c), "crew_id": crew_id})
+	return true
+
+
 ## 그 조의 출동대 펌프차 (여러 대면 가장 가까운 것). 없으면 -1
 func _own_pump(c: Crew) -> int:
 	var best := -1

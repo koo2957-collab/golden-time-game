@@ -1467,6 +1467,10 @@ func order_floor_mission(crew_ids: Array, level: int, e: EntryPoints.Entry, kind
 		var c := units.get_crew(int(id))
 		if c == null:
 			continue
+		# 층 검색을 받았으면 꺼내러 가던 호스는 거둔다 (2026-11-24 — 호스가 필요 없는 임무)
+		if kind != "attack" and water:
+			water.cancel_fetch(c.id, tick)
+			_hose_first.erase(c.id)
 		if kind == "attack" and water and not _indoor(c.leader.level, c.leader.pos) and not water.uses_outlet(level) \
 				and (water.hose_of_crew(c.id) != null or water.ensure_hose(c.id, level, tick)) and water.fetching(c.id):
 			if tactical:

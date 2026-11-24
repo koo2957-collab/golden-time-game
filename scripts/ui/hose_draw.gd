@@ -783,6 +783,69 @@ static func draw(ci: CanvasItem, h: HoseLine, level: int, to_screen: Callable, p
 			ci.draw_line(a + side * joint_w * 0.25, b + side * joint_w * 0.25, Color(str(st.get("coupling_light_color", "#eef2f5"))), maxf(1.0, joint_w * 0.22))
 
 
+## 바닥에 놓인 관창 (2026-11-25 사용자: 관창을 내려놓는 동작 그림은 없어도 되고, 바닥에 관창이 결합된 호스 모양이 있어야 한다).
+## 관창을 놓고 떠났거나(긴급 철수·공기호흡기 교체) 다시 잡으러 가는 중인 수관만 — 호스 끝(관창 쪽) 칸에서 호스가 오던 방향으로
+## 결합구 → 몸통(개폐 손잡이·권총 손잡이) → 노즐 끝 순서로 바닥에 누운 모양. 그 층에 끝이 없으면 그리지 않는다.
+## 크기·색은 data/ui/hose_style.json nozzle_* (화면 설정)
+static func draw_nozzle(ci: CanvasItem, h: HoseLine, level: int, to_screen: Callable, px_per_m: float, cell_m: float, up := Vector2.ZERO) -> void:
+	if not (h.dropped or h.to_nozzle) or h.points.is_empty():
+		return
+	var end := h.points[h.points.size() - 1]
+	if end.z != level:
+		return
+	var st := style()
+	var at := Vector2(end.x + 0.5, end.y + 0.5)
+	# 호스가 오던 방향 (같은 층의 앞 점 — 겹친 점은 건너뛴다). 없으면 오른쪽 아래
+	var dir := Vector2(1, 1).normalized()
+	for k in range(h.points.size() - 2, -1, -1):
+		var p := h.points[k]
+		if p.z != level:
+			break
+		var d := at - Vector2(p.x + 0.5, p.y + 0.5)
+		if d.length_squared() > 0.0001:
+			dir = d.normalized()
+			break
+	var round_w := float(st.get("round_width_m", 0.13)) * px_per_m
+	var light := _vec(st.get("light_dir", [-0.5, -0.85])).normalized()
+	var shadow := Color(Color(str(st.get("shadow_color", "#000000"))), float(st.get("shadow_alpha", 0.35)))
+	var cast := -light * round_w * float(st.get("shadow_offset_ratio", 0.45))
+	# 물이 찬 호스는 반지름만큼 떠 있다 — 관창도 같은 높이에 눕힌다
+	var lift: Vector2 = up * float(st.get("round_width_m", 0.13)) * 0.5 if h.charged else Vector2.ZERO
+	var m := func(len_m: float) -> Vector2: return at + dir * len_m / maxf(0.01, cell_m)
+	var joint_m := float(st.get("nozzle_coupling_m", 0.08))
+	var body_m := float(st.get("nozzle_body_m", 0.3))
+	var tip_m := float(st.get("nozzle_tip_m", 0.1))
+	var a: Vector2 = to_screen.call(at) + lift
+	var j: Vector2 = to_screen.call(m.call(joint_m)) + lift
+	var b: Vector2 = to_screen.call(m.call(joint_m + body_m)) + lift
+	var t: Vector2 = to_screen.call(m.call(joint_m + body_m + tip_m)) + lift
+	if a.distance_to(t) < 2.0:
+		return
+	var body_w := round_w * float(st.get("nozzle_width_ratio", 1.6))
+	var tip_w := round_w * float(st.get("nozzle_tip_width_ratio", 2.0))
+	var n := (t - a).normalized().orthogonal()
+	var side := n * n.dot(light)
+	# 그림자 (바닥)
+	ci.draw_line(a - lift + cast, t - lift + cast, shadow, tip_w)
+	# 결합구 (금속 고리)
+	ci.draw_line(a, j, Color(str(st.get("coupling_edge_color", "#2b3138"))), body_w + 2.0)
+	ci.draw_line(a, j, Color(str(st.get("coupling_color", "#aab2ba"))), body_w)
+	# 몸통
+	ci.draw_line(j, b, Color(str(st.get("nozzle_edge_color", "#111418"))), body_w + 2.0)
+	ci.draw_line(j, b, Color(str(st.get("nozzle_body_color", "#3b4148"))), body_w)
+	ci.draw_line(j + side * body_w * 0.25, b + side * body_w * 0.25, Color(str(st.get("nozzle_light_color", "#8a939c"))), maxf(1.0, body_w * 0.22))
+	# 노즐 끝 (고무 범퍼 — 몸통보다 굵다)
+	ci.draw_line(b, t, Color(str(st.get("nozzle_edge_color", "#111418"))), tip_w + 2.0)
+	ci.draw_line(b, t, Color(str(st.get("nozzle_tip_color", "#1c1f23"))), tip_w)
+	# 개폐 손잡이 (빨간 레버 — 몸통 위에 눕힌 고리)와 권총 손잡이 (몸통 아래로 짧게)
+	var mid := j.lerp(b, 0.35)
+	var bail := n * body_w * float(st.get("nozzle_bail_ratio", 0.9))
+	ci.draw_line(mid - bail, j.lerp(b, 0.75) - bail, Color(str(st.get("nozzle_bail_color", "#c62828"))), maxf(1.5, body_w * 0.35))
+	ci.draw_line(mid - bail, mid, Color(str(st.get("nozzle_bail_color", "#c62828"))), maxf(1.5, body_w * 0.3))
+	ci.draw_line(j.lerp(b, 0.75) - bail, j.lerp(b, 0.75), Color(str(st.get("nozzle_bail_color", "#c62828"))), maxf(1.5, body_w * 0.3))
+	ci.draw_line(mid, mid + n * body_w * float(st.get("nozzle_grip_ratio", 1.1)), Color(str(st.get("nozzle_edge_color", "#111418"))), maxf(2.0, body_w * 0.55))
+
+
 ## 호스 선을 그릴 조각들 [[바닥 점들, 그릴 점들, 폭]]: 앞의 joined 개 점은 제 폭(w) 한 줄,
 ## 그 뒤(그림 속 호스로 이은 곡선)는 구간마다 나눠 끝 폭(end_w)까지 가늘어진다. joined 가 0이면 전체가 한 줄
 static func _pieces(floor_pts: PackedVector2Array, pts: PackedVector2Array, joined: int, w: float, end_w: float) -> Array:

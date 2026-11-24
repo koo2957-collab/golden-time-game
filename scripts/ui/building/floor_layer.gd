@@ -3166,7 +3166,8 @@ func _draw_hoses(alpha := 0.0) -> void:
 	for h in sim.water.hoses:
 		var lay := HoseDraw.layout(h, sim.units.get_vehicle(h.vehicle_id), sim.building)
 		# 호스 끼고 걷는 중: 바닥 호스는 2번 뒤에서 끝나고 3번이 들어 올린 구간은 비운다 (그 부분은 대원 그림에 들어 있다)
-		var hose_crew := sim.units.get_crew(h.crew_id)
+		# 관창을 놓고 떠났거나 다시 잡으러 가는 수관은 아무도 들고 있지 않다 — 호스는 바닥에 깔린 그대로, 끝에 놓인 관창 (draw_nozzle)
+		var hose_crew := sim.units.get_crew(h.crew_id) if h.held() else null
 		var carry := _hose_carry_layout(hose_crew, art, alpha) if not h.charged else {}
 		# 방수 중: 바닥 호스는 맨 뒤 사람의 그림 속 호스가 바닥에 닿은 곳에서 끝난다 (2026-11-24 — 전에는 관창수 발밑까지 그려 그림과 어긋났다)
 		if carry.is_empty() and hose_crew != null and art != null and h.flowing:
@@ -3188,6 +3189,7 @@ func _draw_hoses(alpha := 0.0) -> void:
 			if carry.has("gap"):
 				lay.gap = carry.gap
 		HoseDraw.draw(self, h, level, to_screen, IsoProjection.PX_PER_M, sim.building.cell_size_m, h.water_head, one, up, lay)
+		HoseDraw.draw_nozzle(self, h, level, to_screen, IsoProjection.PX_PER_M, sim.building.cell_size_m, up)
 
 
 ## 열린 후면 셔터 (2026-11-22 사용자 결정: 차 그림을 다시 굽지 않고 게임에서 덧그린다 — 펌프차는 후면 셔터 안에 접어 쌓은 호스와

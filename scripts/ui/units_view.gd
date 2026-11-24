@@ -199,6 +199,7 @@ func _draw_hoses() -> void:
 	for h in sim.water.hoses:
 		HoseDraw.draw(self, h, level, to_screen, PlanStyle.CELL_PX / cell_m, cell_m, h.water_head, one, Vector2.ZERO,
 			HoseDraw.layout(h, sim.units.get_vehicle(h.vehicle_id), sim.building))
+		HoseDraw.draw_nozzle(self, h, level, to_screen, PlanStyle.CELL_PX / cell_m, cell_m)
 
 
 func _draw_vehicle(v: Vehicle, alpha: float) -> void:

@@ -63,6 +63,13 @@ static func rollover_alpha(strength: float) -> float:
 	return lerpf(num("roll_alpha_min", 0.5), num("roll_alpha_max", 0.95), clampf(strength, 0.0, 1.0))
 
 
+## 플래시오버 전이 0~1 (3단계, 2026-11-25): 플래시오버 순간 0, flash_surge_s 초 뒤 1. 그 사이 천장 화염이 바닥까지 내려오고
+## 번쩍 밝아졌던 것이 가라앉는다. 처음에 빠르고 끝에 느리다 (화면에만 쓴다 — 플래시오버 시각은 시뮬레이션이 정한다)
+static func flash_progress(seconds: float) -> float:
+	var x := clampf(seconds / maxf(0.1, num("flash_surge_s", 3.0)), 0.0, 1.0)
+	return 1.0 - (1.0 - x) * (1.0 - x)
+
+
 ## 타는 칸들 → 불(채) 목록.
 ## cells: [{x, y 칸, kw 열방출률, room 방 번호, base 불 뿌리 높이(m), faded 기억 속의 불인가, full 방 전체가 타는 중인가(플래시오버 뒤)}]
 ## 화염 높이는 방 하나의 불 전체(열방출률 합·타는 넓이 합)로 셈한다 — 불 하나를 바둑판으로 나눠 따로 셈하면 실제보다 낮게 나온다.

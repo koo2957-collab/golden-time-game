@@ -258,3 +258,34 @@ func test_baked_rollover_images() -> void:
 	if not band.is_empty():
 		assert_true(float(band.band_m) > 0.3 and float(band.band_m) <= 1.2, "화염 띠 높이 (m)")
 	assert_true(FxArt.load_all() and FxArt.roll_sheet != null and FxArt.roll_curtain != null, "게임이 두 그림을 불러온다")
+
+
+## 플래시오버 전이 (3단계, 2026-11-25): 플래시오버 순간부터 flash_surge_s 동안 0 → 1, 처음에 빠르다
+func test_flash_progress() -> void:
+	var s := FireDraw.num("flash_surge_s", 3.0)
+	assert_true(s >= 1.0 and s <= 10.0, "전이 시간 (%.1f초)" % s)
+	assert_eq(FireDraw.flash_progress(0.0), 0.0, "플래시오버 순간 0")
+	assert_eq(FireDraw.flash_progress(s), 1.0, "전이가 끝나면 1")
+	assert_eq(FireDraw.flash_progress(s * 10.0), 1.0, "그 뒤로도 1")
+	assert_eq(FireDraw.flash_progress(INF), 1.0, "플래시오버 시각을 모르면 다 끝난 것으로")
+	var half := FireDraw.flash_progress(s * 0.5)
+	assert_true(half > 0.5 and half < 1.0, "처음에 빠르다 (절반 시간에 %.2f)" % half)
+	assert_true(FireDraw.flash_progress(s * 0.25) < half, "시간이 갈수록 커진다")
+	# 전실 화재의 진하기: 처음부터 보이고, 방 안이 조금 비친다
+	assert_true(FireDraw.num("full_sheet_alpha") >= FireDraw.rollover_alpha(1.0) - 0.001, "최성기 천장 화염은 롤오버보다 옅지 않다")
+	assert_true(FireDraw.num("full_wall_alpha") > 0.5 and FireDraw.num("full_wall_alpha") < 1.0, "화염 벽 너머로 방 안이 조금 비친다")
+	assert_true(FireDraw.num("full_glow_ratio") >= FireDraw.num("roll_glow_ratio"), "불빛 번짐도 롤오버보다 넓다")
+
+
+## 구운 화염 벽 그림: 바닥에서 천장까지 (가로 타일)
+func test_baked_fire_wall_image() -> void:
+	var meta: Variant = JsonData.load_file("res://art/fx/fx.json")
+	var m: Dictionary = meta.get("fire_wall", {}) if meta is Dictionary else {}
+	assert_true(not m.is_empty(), "fire_wall 그림 정보")
+	if m.is_empty():
+		return
+	assert_true(FileAccess.file_exists("res://art/fx/fire_wall.png") or ResourceLoader.exists("res://art/fx/fire_wall.png"), "fire_wall.png")
+	assert_true(int(m.frames) >= 8 and float(m.fps) > 0.0 and float(m.tile_m) >= 2.0, "장 수·속도·타일 길이")
+	assert_true(float(m.height_m) >= 2.0, "방 높이를 채운다 (%.1fm)" % float(m.height_m))
+	assert_true(float(m.mean_alpha) > 0.4, "방 전체가 타는 모습 — 롤오버 띠보다 빽빽하다 (평균 진하기 %.2f)" % float(m.mean_alpha))
+	assert_true(FxArt.load_all() and FxArt.fire_wall != null, "게임이 그림을 불러온다")

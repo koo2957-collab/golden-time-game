@@ -18,6 +18,11 @@
 #          방 크기에 맞춰 이어 붙이고, 게임이 무늬를 불에서 멀어지는 쪽으로 흘린다)
 #   rollc  잘린 앞면에 보이는 천장 화염 띠: 천장에 붙어 아래로 날름거리며 옆으로 굴러가는 화염 (정면). 가로 타일. 그림 위 = 천장
 #   결과: art/fx/fire_roll.png · fire_rollc.png + fx.json 의 "fire_roll" · "fire_rollc"
+#
+# 전실 화재의 화염 벽 (3단계, 2026-11-25 — 참고 그림 '플래시오버: 구획 내 광범위한 발화, 전면화'):
+#   wall   플래시오버 뒤 방 전체가 탈 때 잘린 앞면에 보이는 모습: 바닥에서 천장까지 차오르는 화염, 천장에서는 옆으로 굴러간다 (정면).
+#          가로 타일. 그림 아래 = 바닥, 위 = 천장. 플래시오버 순간에는 위쪽부터 잘라 써서 천장 화염이 바닥으로 내려오는 것처럼 그린다
+#   결과: art/fx/fire_wall.png + fx.json 의 "fire_wall"
 
 import bpy
 import json
@@ -60,6 +65,9 @@ ROLL_KINDS = {
     "rollc": {"px": (640, 128), "box": ((0.0, 4.0), (-0.2, 0.2), (0.0, 0.8)), "cam": "front", "scale": 4.0, "center": (2.0, 0.4),
               "tile": "x", "fps": 8.0, "samples": 24, "w_step": 0.05, "flow": (0.03, 0.0, 0.008), "thick": 0.4, "gain": 0.8, "floor": 0.05,
               "meta": {"tile_m": 2.0, "band_m": 0.8}},
+    "wall": {"px": (768, 250), "box": ((0.0, 8.0), (-0.2, 0.2), (0.0, 2.6)), "cam": "front", "scale": 8.0, "center": (4.0, 1.3),
+             "tile": "x", "fps": 9.0, "samples": 24, "w_step": 0.045, "flow": (0.012, 0.0, 0.09), "thick": 0.4, "gain": 0.85, "floor": 0.05, "top": (1.0, 0.82, 0.36, 1.0),
+             "meta": {"tile_m": 4.0, "height_m": 2.6}},
 }
 # 불꽃 꼭대기는 그림 높이의 이 비율까지 (그 위는 혀가 날름거릴 여유)
 TOP_RATIO = 0.93
@@ -396,6 +404,35 @@ def make_roll_material(obj, kind, cfg):
         lick = g.smooth(fine, 0.36, 0.62)
         core = g.smooth(big, 0.6, 0.74)
         inten = g.mul(g.mul(patch, g.add(g.mul(lick, 1.15), 0.14)), g.add(0.8, g.mul(core, 0.4)))
+    elif kind == "wall":
+        top = cfg["box"][2][1]
+        zn = g.div(z, top)                                  # 0 바닥 … 1 천장
+        zt = g.sub(top, z)
+        tall = g.n.new("ShaderNodeMapping")                 # 위로 길게 뻗는 혀 (가로로 촘촘)
+        tall.inputs["Scale"].default_value = (2.0, 2.0, 0.7)
+        g.link(flow, tall.inputs["Vector"])
+        big = g.noise("big", tall.outputs["Vector"], 1.0, 2.5, 0.55, 0.7)
+        streak = g.n.new("ShaderNodeMapping")
+        streak.inputs["Scale"].default_value = (1.0, 1.0, 0.45)
+        g.link(flow, streak.inputs["Vector"])
+        fine = g.noise("fine", streak.outputs["Vector"], 4.2, 4.0, 0.55, 0.35)
+        col = g.n.new("ShaderNodeMapping")                  # 자리마다 불꽃이 닿는 높이 (세로로는 거의 안 변한다)
+        col.inputs["Scale"].default_value = (1.0, 1.0, 0.04)
+        g.link(flow, col.inputs["Vector"])
+        coln = g.remap(g.noise("col", col.outputs["Vector"], 1.4, 2.0, 0.5, 0.2), 0.32, 0.68, 0.0, 1.0)
+        # 바닥에서 솟는 불: 자리마다 높이가 다르다 (낮은 곳은 천장 아래에서 끊기고, 높은 곳은 천장에 닿아 눕는다)
+        reach = g.add(0.72, g.mul(coln, 0.5))
+        rise = g.smooth(zn, g.mul(reach, 0.45), reach, inv=True)
+        gaps = g.smooth(big, 0.3, 0.52)
+        fire = g.mul(rise, g.add(g.mul(gaps, 0.8), 0.2))
+        # 천장에 고인 화염: 천장 아래 0.2~0.7m 까지 늘어진다
+        depth = g.add(0.2, g.mul(g.sub(1.0, coln), 0.5))
+        ceil = g.smooth(zt, g.mul(depth, 0.3), depth, inv=True)
+        body = g.math("MAXIMUM", fire, g.mul(ceil, 0.9))
+        lick = g.smooth(fine, g.add(0.3, g.mul(zn, 0.1)), 0.64)
+        foot = g.smooth(z, 0.0, 0.12)
+        hot = g.add(0.8, g.mul(g.smooth(zn, 0.0, 0.35, inv=True), 0.4))
+        inten = g.mul(g.mul(g.mul(body, g.add(g.mul(lick, 1.15), 0.16)), foot), hot)
     else:
         top = cfg["box"][2][1]
         zt = g.sub(top, z)                                  # 0 천장 … 아래로
@@ -414,7 +451,7 @@ def make_roll_material(obj, kind, cfg):
         lick = g.smooth(fine, 0.36, 0.62)
         hot = g.add(0.7, g.mul(g.smooth(zt, 0.0, 0.3, inv=True), 0.55))
         inten = g.mul(g.mul(g.mul(body, g.add(g.mul(gaps, 0.85), 0.15)), g.add(g.mul(lick, 1.15), 0.14)), hot)
-    flame_ramp(g, inten, em, STRENGTH * cfg["gain"] / cfg["thick"])
+    flame_ramp(g, inten, em, STRENGTH * cfg["gain"] / cfg["thick"], cfg.get("top", (1.0, 0.72, 0.2, 1.0)))
     obj.data.materials.append(mat)
     return nt
 

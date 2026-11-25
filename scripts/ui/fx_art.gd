@@ -29,6 +29,8 @@ static var fires: Dictionary = {}
 ## 롤오버 천장 화염 (tools/blender/fire_fx.py roll · rollc, 2026-11-25): 위에서 본 화염 판(가로·세로 타일) · 잘린 앞면의 화염 띠(가로 타일, 위 = 천장)
 static var roll_sheet: Texture2D
 static var roll_curtain: Texture2D
+## 전실 화재의 화염 벽 (fire_fx.py wall, 2026-11-25): 잘린 앞면에 바닥에서 천장까지 차는 화염 (가로 타일, 위 = 천장)
+static var fire_wall: Texture2D
 static var meta: Dictionary = {}
 
 
@@ -56,6 +58,7 @@ static func load_all() -> bool:
 			fires[kind] = tex
 	roll_sheet = _tex(DIR + "/fire_roll.png")
 	roll_curtain = _tex(DIR + "/fire_rollc.png")
+	fire_wall = _tex(DIR + "/fire_wall.png")
 	return flame != null
 
 

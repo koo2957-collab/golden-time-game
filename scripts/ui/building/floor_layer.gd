@@ -3450,6 +3450,9 @@ func _draw_smoke() -> void:
 	# 대원 머리 높이를 지나면 대원 상체가 연기에 묻혀 보인다.
 	# 지금 보이는 방은 실제 상태, 본 적 있는 방은 마지막으로 확인한 상태(흐리게), 모르는 방은 그리지 않는다
 	var p := sim.perception
+	# 불이 보이는(또는 본 적 있는) 방 — 전실 화재 그림(_draw_room_fire)이 쓴다. 외부 화면은 _draw 가 이미 갱신했다
+	if not _outside():
+		_update_fire_rooms()
 	# 불에서 솟는 연기 기둥 (연기층보다 먼저 — 위쪽은 연기층에 묻힌다)
 	var fires := _draw_fire_plumes()
 	for c in rooms:
@@ -3493,6 +3496,8 @@ func _draw_smoke() -> void:
 		if _draw_smoke_cloud(c, h, layer_d, a, density, fires, spread, op):
 			if c.rollover and p.rollover_visible(c):
 				_draw_rollover(c, h, fires, spread)
+			elif c.flashed and _fire_rooms.has(c.index):
+				_draw_room_fire(c, fires, spread, fade)
 			continue
 		# 덩어리 그림이 없을 때만 예전 판
 		var plane := PackedVector2Array([
@@ -3509,6 +3514,8 @@ func _draw_smoke() -> void:
 		draw_polyline(plane, Color(FireView.SMOKE_COLOR.darkened(0.3), minf(1.0, a + 0.15)), 1.5)
 		if c.rollover and p.rollover_visible(c):
 			_draw_rollover(c, h, fires, spread)
+		elif c.flashed and _fire_rooms.has(c.index):
+			_draw_room_fire(c, fires, spread, fade)
 	if not _draw_smoke_spills():
 		_draw_smoke_plumes()
 	if _smoke_outline:
@@ -4014,25 +4021,12 @@ func _draw_rollover(c: Compartment, h: float, fires: Array[Vector2] = [], reach 
 		var k := FireDraw.rollover_strength(c.t_upper, c.flashover_temp)
 		var a := FireDraw.rollover_alpha(k) * (1.0 + FireDraw.num("roll_pulse", 0.12) * sin(t0 * 2.3 + c.index))
 		var col := Color(1, 1, 1, clampf(a, 0.0, 1.0))
-		var cell := sim.building.cell_size_m
-		# 흘러가는 쪽: 이 방의 불에서 방 가운데 쪽 (불이 가운데면 정해 둔 쪽), 다른 방의 불이면 그 불에서 멀어지는 쪽
-		var dir := _spread_dir(r, fires)
-		for f in fires:
-			if Rect2(r).has_point(f):
-				dir = Vector2(r.get_center()) - f
-				dir = dir.normalized() if dir.length() > 0.6 else Vector2(0.93, 0.37)
-		if dir == Vector2.ZERO:
-			dir = Vector2(0.93, 0.37)
-		var m: Dictionary = FxArt.meta.get("fire_roll", {})
-		var tile := maxf(1.0, float(m.get("tile_m", 4.0)) / cell)
-		var off := (-dir * FireDraw.num("roll_flow_mps", 0.6) / cell * t0).posmod(tile)
-		_draw_sheet_tiles(FxArt.roll_sheet, "fire_roll", r, CEILING_M + 0.02, col, Color(0, 0, 0, 0), c.index, tile, off, reach)
+		_draw_roll_sheet(c, col, fires, reach, c.index)
 		if FxArt.roll_curtain != null:
-			_draw_roll_faces(r, h, col, c.index, reach)
-		# 불빛 번짐: 방 가운데 천장 아래에서 방 전체로
-		var ground := (proj.to_screen(Vector2(1, -1), 0.0) - proj.to_screen(Vector2.ZERO, 0.0)).length() / (sqrt(2.0) * cell)
-		var diag_m := Vector2(r.size).length() * cell
-		_glow_spots.append([proj.to_screen(Vector2(r.get_center()), 0.0), diag_m * FireDraw.num("roll_glow_ratio", 0.55) * ground, lerpf(0.5, 1.0, k), (c.index * 131 + 7) % 9973])
+			# 띠 높이는 그림의 band_m 이되 연기층 두께를 넘지 않는다
+			var band := clampf(CEILING_M - h, 0.3, float(FxArt.meta.get("fire_rollc", {}).get("band_m", 0.8)))
+			_draw_fire_faces(FxArt.roll_curtain, "fire_rollc", r, CEILING_M - band, 1.0, col, c.index, reach)
+		_room_glow(r, FireDraw.num("roll_glow_ratio", 0.55), lerpf(0.5, 1.0, k), c.index)
 		return
 	var t := Time.get_ticks_msec() / 1000.0
 	for k in 4:
@@ -4045,12 +4039,76 @@ func _draw_rollover(c: Compartment, h: float, fires: Array[Vector2] = [], reach 
 		draw_polyline(pts, Color(1.0, 0.45 + 0.2 * sin(t * 9.0 + k), 0.1, 0.75), 2.5)
 
 
-## 롤오버 화염 띠: 잘린 앞면(동·남)의 천장 바로 아래에, 가로는 tile_m 마다 한 장. 띠 높이는 그림의 band_m 이되 연기층 두께를 넘지 않는다
-func _draw_roll_faces(r: Rect2i, h: float, col: Color, seed: int, front := Vector3(0, 0, -1)) -> void:
-	var m: Dictionary = FxArt.meta.get("fire_rollc", {})
+## 천장 화염 판 (롤오버·전실 화재가 같이 쓴다): 윗면(천장 높이)에 깔고, 무늬를 불에서 멀어지는 쪽으로 흘린다.
+## 흘러가는 쪽 = 이 방의 불에서 방 가운데 쪽 (불이 가운데면 정해 둔 쪽), 다른 방의 불이면 그 불에서 멀어지는 쪽
+func _draw_roll_sheet(c: Compartment, col: Color, fires: Array[Vector2], reach: Vector3, seed: int) -> void:
+	var r := c.rect
+	var cell := sim.building.cell_size_m
+	var dir := _spread_dir(r, fires)
+	for f in fires:
+		if Rect2(r).has_point(f):
+			dir = Vector2(r.get_center()) - f
+			dir = dir.normalized() if dir.length() > 0.6 else Vector2(0.93, 0.37)
+	if dir == Vector2.ZERO:
+		dir = Vector2(0.93, 0.37)
+	var m: Dictionary = FxArt.meta.get("fire_roll", {})
+	var tile := maxf(1.0, float(m.get("tile_m", 4.0)) / cell)
+	var off := (-dir * FireDraw.num("roll_flow_mps", 0.6) / cell * (Time.get_ticks_msec() / 1000.0)).posmod(tile)
+	_draw_sheet_tiles(FxArt.roll_sheet, "fire_roll", r, CEILING_M + 0.02, col, Color(0, 0, 0, 0), seed, tile, off, reach)
+
+
+## 방 전체에 번지는 불빛 (방 가운데에서 방 대각선 × ratio 크기)
+func _room_glow(r: Rect2i, ratio: float, strength: float, key: int) -> void:
+	var cell := sim.building.cell_size_m
+	var ground := (proj.to_screen(Vector2(1, -1), 0.0) - proj.to_screen(Vector2.ZERO, 0.0)).length() / (sqrt(2.0) * cell)
+	var diag_m := Vector2(r.size).length() * cell
+	_glow_spots.append([proj.to_screen(Vector2(r.get_center()), 0.0), diag_m * ratio * ground, strength, (key * 131 + 7) % 9973])
+
+
+## 플래시오버 전이와 최성기 (불·연기 그림 3단계, 2026-11-25 — 사용자: 플래시오버 표현이 이상하다. 참고 그림 '플래시오버: 구획 내 광범위한
+## 발화 — 전면화'). 전에는 플래시오버가 나면 롤오버 화염이 사라져 오히려 불이 약해진 것처럼 보였고, 최성기에는 불꽃이 연기에 묻혀 탁했다.
+##   전이 (플래시오버 순간부터 flash_surge_s): 천장 화염이 한 겹 더 겹쳐 번쩍 밝아지고, 잘린 앞면의 화염이 천장에서 바닥까지 내려온다
+##   최성기: 천장 화염 판 + 잘린 앞면에 바닥에서 천장까지 차는 화염 벽 — 방 전체가 탄다
+##   쇠퇴: 상부층이 플래시오버 온도 아래로 식으면 roll_ramp_c 에 걸쳐 옅어져 사라진다 (불꽃 그림·연기는 그대로 남는다)
+## 불이 보이는(또는 본 적 있는) 방만 그린다 (_fire_rooms). fade = 지금 보이지 않는 방의 흐림. 화염에 덮인 사람은 테두리로
+func _draw_room_fire(c: Compartment, fires: Array[Vector2], reach: Vector3, fade := 1.0) -> void:
+	if not FxArt.load_all() or FxArt.roll_sheet == null:
+		return
+	var k := FireDraw.rollover_strength(c.t_upper, c.flashover_temp) * fade
+	if k <= 0.01:
+		return
+	var r := c.rect
+	var t0 := Time.get_ticks_msec() / 1000.0
+	var sec := (sim.clock.tick - c.flashover_tick) * SimClock.TICK_DT if c.flashover_tick >= 0 else INF
+	var prog := FireDraw.flash_progress(sec)
+	var pulse := 1.0 + FireDraw.num("roll_pulse", 0.12) * 0.5 * sin(t0 * 2.9 + c.index)
+	_draw_roll_sheet(c, Color(1, 1, 1, clampf(FireDraw.num("full_sheet_alpha", 0.95) * k * pulse, 0.0, 1.0)), fires, reach, c.index)
+	var boost := (1.0 - prog) * FireDraw.num("surge_boost", 0.6) * k
+	if boost > 0.01:
+		_draw_roll_sheet(c, Color(1, 1, 1, boost), fires, reach, c.index + 5)
+	var wall_col := Color(1, 1, 1, clampf(FireDraw.num("full_wall_alpha", 0.85) * k, 0.0, 1.0))
+	var band := minf(CEILING_M, float(FxArt.meta.get("fire_rollc", {}).get("band_m", 0.8)))
+	if FxArt.fire_wall != null:
+		# 화염 벽: 그림 위쪽부터 잘라 쓴다 — 전이 동안 천장에서 바닥으로 내려온다
+		var depth := lerpf(band, CEILING_M, prog)
+		_draw_fire_faces(FxArt.fire_wall, "fire_wall", r, CEILING_M - depth, depth / CEILING_M, wall_col, c.index, reach)
+	elif FxArt.roll_curtain != null:
+		_draw_fire_faces(FxArt.roll_curtain, "fire_rollc", r, CEILING_M - band, 1.0, wall_col, c.index, reach)
+	_room_glow(r, lerpf(FireDraw.num("roll_glow_ratio", 0.55), FireDraw.num("full_glow_ratio", 0.8), prog) * (1.0 + 0.5 * (1.0 - prog)), k, c.index)
+	# 화면에서 이 화염 상자(윗면 + 앞면)에 덮인 사람은 테두리로 (연기 상자와 같다)
+	if k >= 0.5:
+		_smoke_hulls.append(Geometry2D.convex_hull(PackedVector2Array([
+			proj.to_screen(Vector2(r.position), CEILING_M), proj.to_screen(Vector2(r.end.x, r.position.y), CEILING_M),
+			proj.to_screen(Vector2(r.end), CEILING_M), proj.to_screen(Vector2(r.position.x, r.end.y), CEILING_M),
+			proj.to_screen(Vector2(r.end.x, r.position.y), 0.0), proj.to_screen(Vector2(r.end), 0.0),
+			proj.to_screen(Vector2(r.position.x, r.end.y), 0.0)])))
+
+
+## 잘린 앞면(동·남)에 화염 그림 (롤오버 띠 fire_rollc · 화염 벽 fire_wall): 위 = 천장, 아래 = bottom, 가로는 tile_m 마다 한 장.
+## v1 = 그림의 위에서부터 쓰는 비율 (1 = 그림 전체)
+func _draw_fire_faces(tex: Texture2D, key: String, r: Rect2i, bottom: float, v1: float, col: Color, seed: int, front := Vector3(0, 0, -1)) -> void:
+	var m: Dictionary = FxArt.meta.get(key, {})
 	var tile := maxf(1.0, float(m.get("tile_m", 2.0)) / sim.building.cell_size_m)
-	var band := clampf(CEILING_M - h, 0.3, float(m.get("band_m", 0.8)))
-	var bottom := CEILING_M - band
 	for face in 2:
 		var from := float(r.position.y if face == 0 else r.position.x)
 		var to := float(r.end.y if face == 0 else r.end.x)
@@ -4071,8 +4129,8 @@ func _draw_roll_faces(r: Rect2i, h: float, col: Color, seed: int, front := Vecto
 			var u1 := u0 + (e - s) / tile
 			var pa := Vector2(fixed, s) if face == 0 else Vector2(s, fixed)
 			var pb := Vector2(fixed, e) if face == 0 else Vector2(e, fixed)
-			FxArt.draw_flip(self, FxArt.roll_curtain, "fire_rollc", PackedVector2Array([proj.to_screen(pa, CEILING_M), proj.to_screen(pb, CEILING_M),
-				proj.to_screen(pb, bottom), proj.to_screen(pa, bottom)]), Vector2(u0, 0.0), Vector2(u1, 1.0), col, seed + face)
+			FxArt.draw_flip(self, tex, key, PackedVector2Array([proj.to_screen(pa, CEILING_M), proj.to_screen(pb, CEILING_M),
+				proj.to_screen(pb, bottom), proj.to_screen(pa, bottom)]), Vector2(u0, 0.0), Vector2(u1, clampf(v1, 0.05, 1.0)), col, seed + face)
 			s = e
 
 

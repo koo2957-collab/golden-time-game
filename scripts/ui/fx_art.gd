@@ -93,7 +93,12 @@ static func draw_flame(ci: CanvasItem, base: Vector2, w: float, h: float, seed: 
 ## 불 한 채 (FireDraw.bodies 의 kind): base = 화면의 불 뿌리, w·h = 불꽃의 화면 폭·높이(px — 그림 위쪽 여백은 빼고 준다).
 ## seed 로 시작 장과 좌우 뒤집기를 다르게 한다. 그 크기의 그림이 없으면 false (부르는 쪽이 예전 불꽃으로)
 ## lean = 불꽃 꼭대기를 화면에서 이만큼 민다 (px) — 개구부 밖으로 기울어 뿜는 화염
-static func draw_fire(ci: CanvasItem, kind: String, base: Vector2, w: float, h: float, seed: int, modulate := Color.WHITE, lean := Vector2.ZERO) -> bool:
+## point = 밑동을 V자로 내리는 정도 (2026-11-25 사용자: 아이소메트릭 시점이면 불꽃 아래가 일자가 아니라 역삼각형이어야 한다):
+##   바닥의 네모난 자리는 이 시점에서 마름모로 보인다 — 불의 밑동은 그 앞쪽 두 변을 따라 가운데가 가장 낮은 V자다.
+##   1 = 불꽃 폭만 한 마름모의 앞 모서리까지 (가운데가 양옆보다 폭 × HALF_H ÷ HALF_W ÷ 2 낮다), 0 = 수평 (벽의 개구부에서 뿜는 화염),
+##   음수 = 설정값 (data/ui/fire_style.json base_point). 그림의 아래쪽 절반만 휘고 위쪽은 그대로다
+static func draw_fire(ci: CanvasItem, kind: String, base: Vector2, w: float, h: float, seed: int, modulate := Color.WHITE, lean := Vector2.ZERO,
+		point := -1.0) -> bool:
 	if not load_all() or not fires.has(kind):
 		return false
 	var key := "fire_" + kind
@@ -111,8 +116,26 @@ static func draw_fire(ci: CanvasItem, kind: String, base: Vector2, w: float, h: 
 	var right := base.x + half
 	var bottom := base.y + full * root
 	var mirror := posmod(seed, 2) == 1
-	return draw_flip(ci, fires[kind], key, PackedVector2Array([Vector2(left, bottom - full) + lean, Vector2(right, bottom - full) + lean, Vector2(right, bottom), Vector2(left, bottom)]),
-		Vector2(1.0 if mirror else 0.0, 0.0), Vector2(0.0 if mirror else 1.0, 1.0), modulate, seed)
+	if point < 0.0:
+		point = float(FireDraw.style().get("base_point", 1.0))
+	var drop := w * 0.5 * IsoProjection.HALF_H / IsoProjection.HALF_W * point
+	if drop < 1.0:
+		return draw_flip(ci, fires[kind], key, PackedVector2Array([Vector2(left, bottom - full) + lean, Vector2(right, bottom - full) + lean, Vector2(right, bottom), Vector2(left, bottom)]),
+			Vector2(1.0 if mirror else 0.0, 0.0), Vector2(0.0 if mirror else 1.0, 1.0), modulate, seed)
+	# 3 × 3 격자로 나눠 아래 줄만 V자로 옮긴다: 가운데는 drop 의 절반만큼 내려가고 양옆은 그만큼 올라간다 (평균 자리는 그대로)
+	var ok := false
+	for row in 2:
+		for col in 2:
+			var pts := PackedVector2Array()
+			var uvs := PackedVector2Array()
+			for corner: Vector2i in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1), Vector2i(0, 1)]:
+				var u := (col + corner.x) * 0.5
+				var v := (row + corner.y) * 0.5
+				var shift := ((1.0 - absf(2.0 * u - 1.0)) - 0.5) * drop if v >= 1.0 else 0.0
+				pts.append(Vector2(lerpf(left, right, u), lerpf(bottom - full, bottom, v) + shift) + lean * (1.0 - v))
+				uvs.append(Vector2(1.0 - u if mirror else u, v))
+			ok = draw_flip_poly(ci, fires[kind], key, pts, uvs, modulate, seed) or ok
+	return ok
 
 
 ## 연기 덩어리 하나 (뭉게뭉게한 결이 있는 구름): center·size = 화면 자리·크기(px), seed 로 시작 장·좌우 뒤집기를 다르게.

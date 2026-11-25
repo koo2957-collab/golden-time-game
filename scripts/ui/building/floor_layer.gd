@@ -4064,7 +4064,7 @@ func _draw_vent_flame(v: Array, floor_h: float, fh: float, facade: bool) -> void
 		var each_w := maxf(open_m / n * 1.25, flame_h * 0.8)
 		for i in spots.size():
 			FxArt.draw_fire(self, FireDraw.kind_for(flame_h, each_w), proj.to_screen(spots[i], lo), each_w * IsoProjection.PX_PER_M,
-				flame_h * IsoProjection.PX_PER_M * (0.88 + 0.12 * _rand01(key + i * 7)), key + i * 5, Color(1, 1, 1, a), lean)
+				flame_h * IsoProjection.PX_PER_M * (0.88 + 0.12 * _rand01(key + i * 7)), key + i * 5, Color(1, 1, 1, a), lean, 0.0)
 		# 불꽃 위로 피어오르는 연기 (그 방의 연기 색)
 		var look: Dictionary = _smoke_look(room)
 		var scol: Color = look.get("color", Color(0.2, 0.2, 0.22))

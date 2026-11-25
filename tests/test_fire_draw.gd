@@ -449,7 +449,17 @@ func test_fire_art_from_user_images() -> void:
 	assert_true(FxArt.load_all() and FxArt.billow != null, "게임이 연기 덩어리 그림을 불러온다")
 	# 불꽃 색은 롤오버 천장 화염의 색(짙은 주황)에 맞춘다: 빨강은 그대로, 초록·파랑을 줄인다
 	var tint: Array = FireDraw.style().get("flame_tint", [])
-	# 불꽃 밑동은 타원의 앞쪽 호를 따라 가운데가 부드럽게 낮다 (아이소메트릭 시점), 맨 아래 가장자리는 옅게
-	assert_true(FireDraw.num("base_point") > 0.3 and FireDraw.num("base_point") <= 1.0, "밑동을 둥글게 내리는 정도 (%.2f)" % FireDraw.num("base_point"))
-	assert_true(FireDraw.num("base_soft") > 0.0 and FireDraw.num("base_soft") < 1.0, "밑동 가장자리를 옅게 (%.2f)" % FireDraw.num("base_soft"))
-	assert_true(tint.size() == 3 and float(tint[0]) >= float(tint[1]) and float(tint[1]) > float(tint[2]) and float(tint[2]) > 0.2, "불꽃에 곱하는 색 %s" % [tint])
+	# 화염이미지의 형태 그대로 (2026-11-25 사용자 결정): 밑을 따로 휘지 않고, 늘이지 않고, 색도 그림 그대로
+	assert_eq(FireDraw.num("base_point"), 0.0, "밑동을 휘지 않는다 (그림의 둥근 밑 그대로)")
+	assert_eq(FireDraw.num("max_stretch"), 1.0, "불덩이를 늘이지 않는다 (그림의 제 비율)")
+	assert_eq(tint, [1.0, 1.0, 1.0], "불꽃 색은 그림 그대로")
+	for kind in FireDraw.KINDS:
+		var h := 1.5
+		assert_true(absf(FireDraw.draw_width_m(kind, h, 0.5) - h * float(FireDraw.style().kind_aspect[kind])) < 0.001, "%s: 폭 = 높이 × 그림 비율" % kind)
+		assert_true(absf(FireDraw.draw_width_m(kind, h, 5.0) - h * float(FireDraw.style().kind_aspect[kind])) < 0.001, "%s: 타는 자리가 넓어도 늘이지 않는다" % kind)
+	# 불에 붙은 연기: 불꽃 윗부분에 걸친다
+	assert_true(FireDraw.num("smoke_cap_at") > 0.5 and FireDraw.num("smoke_cap_at") <= 1.0 and FireDraw.num("smoke_cap_size") >= 1.0, "불에 붙은 연기 덩어리의 자리·크기")
+	# 롤오버 천장 화염의 색은 불꽃 그림의 색에 맞춘다 (tools/prep_fire_art.py grade)
+	var meta2: Variant = JsonData.load_file("res://art/fx/fx.json")
+	for key: String in ["fire_roll", "fire_rollc", "fire_wall"]:
+		assert_true(bool(meta2.get(key, {}).get("graded", false)), "%s: 불꽃 그림 색으로 맞춘 그림" % key)

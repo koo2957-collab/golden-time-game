@@ -164,7 +164,8 @@ static func bodies(cells: Array, cell_m: float, ceiling_m: float) -> Array[Dicti
 			body.height_m = maxf(min_h, (ceiling_m - float(body.base_m)) * reach)
 			# 불기둥(l — 혀가 갈라져 틈이 보인다)과 불바다(xl — 넓고 밝다)를 섞는다: 모두 xl 이면 겹쳐서 밝은 한 덩어리로 뭉개진다
 			body.kind = "xl" if _unit((seed >> 7) + 29) < num("full_xl_share", 0.3) else "l"
-			body.width_m = maxf(draw_width_m(str(body.kind), float(body.height_m), float(body.diameter_m)), size * cell_m * num("full_width_ratio", 1.7))
+			# 폭은 그림의 제 비율 그대로 (2026-11-25 사용자: 화염이미지처럼 둥근 불덩이 — 늘여서 기둥을 만들지 않는다)
+			body.width_m = draw_width_m(str(body.kind), float(body.height_m), float(body.diameter_m))
 			body.full = true
 		out.append(body)
 	out.append_array(_merged_bodies(loose, cell_m, ceiling_m))
@@ -288,7 +289,7 @@ static func _merged_bodies(cells: Array, cell_m: float, ceiling_m: float) -> Arr
 				# 폭은 덩어리 전체의 폭 그대로 (이웃 조각과 크게 겹친다), 그림 종류는 그 높이와 덩어리 지름으로
 				body.diameter_m = d
 				body.kind = kind_for(float(body.height_m), d)
-				body.width_m = maxf(draw_width_m(str(body.kind), float(body.height_m), d), float(whole.width_m) * 0.85)
+				body.width_m = draw_width_m(str(body.kind), float(body.height_m), d)
 				body.room = int(first.room)
 				out.append(body)
 	return out

@@ -13,6 +13,11 @@
 #   불꽃은 시트의 장면들을 그대로 장으로 쓴다 — 장마다 불꽃 모양이 실제로 다르다 (한 장을 일그러뜨린 것보다 살아 있다).
 #   시트의 바탕은 투명이 아니라 바둑판 무늬가 그려져 있어, 불꽃(붉고 노란 칸)만 색으로 가려 오려 낸다.
 #   연기 덩어리(smoke_billow)는 화염 그림에서 그대로 만든다 (시트의 연기는 바둑판 무늬가 비쳐 쓰지 않는다)
+#
+# 블렌더로 구운 화염(롤오버 천장 화염 fire_roll·fire_rollc, 화염 벽 fire_wall)의 색을 불꽃 그림의 색에 맞추기 (2026-11-25 사용자 결정):
+#   python tools/prep_fire_art.py grade <출력 폴더 art>
+#   구운 그림은 짙은 주황, 사용자 그림의 불꽃은 속이 흰 노랑이다 — 초록·파랑을 올려 같은 색으로. 한 번만 적용한다 (fx.json 에 graded 표시).
+#   tools/blender/fire_fx.py 로 다시 구웠으면 이것을 다시 돌린다
 # 필요: pillow, numpy
 import json
 import os
@@ -346,7 +351,34 @@ def fires_from_sheet(sheet_path, fx_dir, meta):
                                 "source": "tools/prep_fire_art.py — 사용자 제공 화염연기 스프라이트 시트이미지.png 의 장면들"}
 
 
+# 구운 화염에 곱하는 색 [빨강, 초록, 파랑]: 두 그림의 밝은 부분 색을 재서 — 불꽃 (1.00, 0.89, 0.58) ÷ 구운 화염 (1.00, 0.72, 0.32)
+GRADE_GAIN = (1.0, 1.23, 1.8)
+GRADE_KEYS = ("fire_roll", "fire_rollc", "fire_wall")
+
+
+def grade_baked(art):
+    fx_dir = os.path.join(art, "fx")
+    fx_json = os.path.join(fx_dir, "fx.json")
+    meta = json.load(open(fx_json, encoding="utf-8"))
+    for key in GRADE_KEYS:
+        path = os.path.join(fx_dir, key + ".png")
+        if key not in meta or not os.path.exists(path):
+            continue
+        if meta[key].get("graded"):
+            print("이미 맞춤", key)
+            continue
+        a = np.array(Image.open(path).convert("RGBA")).astype(np.float32) / 255.0
+        a[..., :3] = np.clip(a[..., :3] * np.array(GRADE_GAIN, dtype=np.float32), 0.0, 1.0)
+        Image.fromarray((a * 255).astype(np.uint8), "RGBA").save(path)
+        meta[key]["graded"] = True
+        print("색 맞춤", key)
+    json.dump(meta, open(fx_json, "w", encoding="utf-8"), ensure_ascii=False, indent=2, sort_keys=True)
+
+
 def main():
+    if sys.argv[1] == "grade":
+        grade_baked(sys.argv[2])
+        return
     src = sys.argv[1]
     art = sys.argv[2]
     check = sys.argv[4] if len(sys.argv) > 4 and sys.argv[3] == "check" else ""

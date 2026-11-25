@@ -23,6 +23,9 @@
 #   wall   플래시오버 뒤 방 전체가 탈 때 잘린 앞면에 보이는 모습: 바닥에서 천장까지 차오르는 화염, 천장에서는 옆으로 굴러간다 (정면).
 #          가로 타일. 그림 아래 = 바닥, 위 = 천장. 플래시오버 순간에는 위쪽부터 잘라 써서 천장 화염이 바닥으로 내려오는 것처럼 그린다
 #   결과: art/fx/fire_wall.png + fx.json 의 "fire_wall"
+#
+# 색 (2026-11-25): roll·rollc·wall 을 다시 구웠으면 `python tools/prep_fire_art.py grade art` 를 돌려 사용자 제공 불꽃 그림의 색에 맞춘다.
+# 불꽃 네 크기(s·m·l·xl)는 이제 이 스크립트가 아니라 tools/prep_fire_art.py 가 사용자 제공 그림에서 만든다 — 여기서 굽지 말 것
 
 import bpy
 import json

@@ -26,6 +26,7 @@
   "fire_roll": {
     "fps": 8.0,
     "frames": 16,
+    "graded": true,
     "h": 256,
     "mean_alpha": 0.321,
     "source": "tools/blender/fire_fx.py — Blender Cycles 빛을 내는 부피 노이즈(정면 정사영), 시간 루프",
@@ -36,6 +37,7 @@
     "band_m": 0.8,
     "fps": 8.0,
     "frames": 16,
+    "graded": true,
     "h": 128,
     "mean_alpha": 0.306,
     "source": "tools/blender/fire_fx.py — Blender Cycles 빛을 내는 부피 노이즈(정면 정사영), 시간 루프",
@@ -68,6 +70,7 @@
   "fire_wall": {
     "fps": 9.0,
     "frames": 16,
+    "graded": true,
     "h": 250,
     "height_m": 2.6,
     "mean_alpha": 0.918,

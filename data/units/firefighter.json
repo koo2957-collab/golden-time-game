@@ -41,6 +41,8 @@
   "forcible_entry_min_people": {"value": 2, "source": "추정", "note": "파괴 작업에 문 앞에 있어야 하는 최소 인원"},
   "fire_door_force_factor": {"value": 2.0, "source": "추정", "note": "아파트 현관 방화문 파괴 시간 배율 (SOP 213-2.3 방화문 파괴기·동력절단기)"},
   "trapped_report_s": {"value": 30.0, "source": "게임 설정값", "note": "건물 안의 조가 이 시간(현장 초) 동안 줄곧 열기에 길이 막히면 '퇴로 차단 — 고립'을 보고한다 (SOP 109 대원 고립 — 지휘관이 엄호 방수·사다리·RIT 로 퇴로를 연다, 2026-11-25)"},
+  "retreat_cooler_ratio": {"value": 0.5, "source": "게임 설정값", "note": "열기를 피해 물러날 때 뜨거운 칸을 밟지 않고 닿는 곳에 식은 칸(일상 수준 아래)이 없으면, 닿는 곳 중 가장 덜 뜨거운 칸으로 옮긴다 — 일상 수준을 넘는 열이 지금 자리의 이 비율 아래로 줄 때만 (조금 식자고 왔다 갔다 하지 않게, 2026-11-25)"},
+  "path_reopen_heat_ratio": {"value": 0.8, "source": "게임 설정값", "note": "열기에 막혀 멈춘 철수를 다시 잇는 기준: 나가는 길의 모든 칸이 위험 상한(heat_hazard_kw_m2)의 이 비율 아래여야 '길이 열렸다'고 본다 (상한 바로 아래에서 나섰다가 몇 걸음 만에 다시 막히지 않게, 2026-11-25)"},
   "door_near_extra_m": {"value": 1.0, "source": "게임 설정값", "note": "분대 조장이 문 가운데에서 (door_stack_m + 이 값) 안에 있으면 '문에 와 있다'로 본다 — 먼저 온 분대가 연다"},
   "door_stack_avoid_ratio": {"value": 0.75, "source": "게임 설정값", "note": "기다리는 자리는 여는 분대(조장·작업 자리)·먼저 기다리는 분대에서 door_stack_m × 이 값 넘게 떨어진다"},
   "door_stack_front_margin_m": {"value": 0.3, "source": "게임 설정값", "note": "기다리는 자리는 문 정면 띠(문 폭 + 양옆 이 값) 밖에서 고른다 (화재1 p.215 '정면을 피한다', 화면 배치 door_front_margin_m 과 같은 값)"},

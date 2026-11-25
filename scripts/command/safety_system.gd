@@ -58,6 +58,16 @@ var air_full_ratio := 0.95
 ## 공기호흡기 교체로 관창을 놓고 나온 조 {crew id: {tick, resume {action, target} 또는 {}, state "out"·"back"}}.
 ## 교체가 끝나면 CommandSystem 이 호스를 따라 다시 들여보낸다 (_step_air_swaps)
 var air_swaps: Dictionary = {}
+## 철수 중인 조 {crew id: {tick, reason, goal 가려던 칸, blocked 열기에 막힘}} (2026-11-25 사용자 결정): 나가는 길이 열기에 막히면
+## 식은 곳에서 기다리다가, 길이 열리면 스스로 다시 나오며 "퇴로 확보, 철수 재개"를 보고한다. 밖에 닿거나 다른 지시를 받으면 지운다.
+## 전에는 막힌 뒤 철수 지시를 잊어, 길이 열려도 건물 안에 서 있다가 쓰러졌다 (튜토리얼 자동 진행)
+var withdrawing: Dictionary = {}
+## 막혔던 길이 다시 열렸는가 (crew, path) -> bool · 열기로 나갈 길이 없음을 알린다 (crew, tick) — CrewConditionSystem. SimWorld가 넣는다
+var way_reopened := Callable()
+var note_blocked := Callable()
+## 그 조가 철수 말고 다른 일을 받았는가 (crew id) -> bool — 임무·층 이동·진입구 접근·방수 등. SimWorld가 넣는다
+var other_duty := Callable()
+var _heat_cut := false
 
 
 func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, p_rescue: RescueSystem, p_water: WaterSystem, p_doors: DoorSystem, params: ParamTable, p_events: SimEventLog) -> void:
@@ -171,12 +181,15 @@ func withdraw_crew(c: Crew, tick: int, reason := "withdraw", resume: Dictionary 
 	doors.cancel(c.id)
 	rescue.cancel(c.id)
 	water.stop_spray(c.id, tick)
+	withdrawing.erase(c.id)
 	if laid:
 		if reason != "withdraw":
 			water.drop_nozzle(c.id, tick)
 			var out := _hose_exit(h)
 			if out.x >= 0:
-				units.order_move([c.id], _clear_of_building(out), pathfinder)
+				var clear := _clear_of_building(out)
+				units.order_move([c.id], clear, pathfinder)
+				_mark_withdraw(c, tick, reason, clear)
 				events.add(tick, reason, {"crew": _crew_name(c)})
 				return
 		elif _needs_air(c):
@@ -186,10 +199,13 @@ func withdraw_crew(c: Crew, tick: int, reason := "withdraw", resume: Dictionary 
 			var spot := _swap_spot(c, h)
 			if spot.x >= 0:
 				units.order_move([c.id], spot, pathfinder)
+				_mark_withdraw(c, tick, "air_swap", spot)
 				return
 			# 교체할 펌프차 옆이 없다: 아래 보통 출구로 나간다
 		else:
+			var start := h.points[0]
 			water.recover_hose(c.id, tick)
+			_mark_withdraw(c, tick, reason, start)
 			events.add(tick, reason, {"crew": _crew_name(c)})
 			return
 	if not _indoor(c.leader.level, c.leader.pos):
@@ -205,8 +221,94 @@ func withdraw_crew(c: Crew, tick: int, reason := "withdraw", resume: Dictionary 
 	if best.x < 0:
 		events.add(tick, "exit_blocked", {"crew": _crew_name(c)})
 		return
-	units.order_move([c.id], _clear_of_building(best), pathfinder)
+	var to := _clear_of_building(best)
+	units.order_move([c.id], to, pathfinder)
+	_mark_withdraw(c, tick, reason, to)
 	events.add(tick, reason, {"crew": _crew_name(c)})
+
+
+## 건물 안에서 철수를 시작한 조를 적어 둔다 (열기에 막히면 길이 열릴 때 다시 잇는다 — step_withdrawing)
+func _mark_withdraw(c: Crew, tick: int, reason: String, goal: Vector3i) -> void:
+	if _indoor(c.leader.level, c.leader.pos):
+		withdrawing[c.id] = {"tick": tick, "reason": reason, "goal": goal, "blocked": false}
+
+
+## 새 지시를 받았다: '교체 뒤 관창으로 돌아가기'와 '막힌 철수 다시 잇기'를 잊는다
+func forget_return(crew_id: int) -> void:
+	air_swaps.erase(crew_id)
+	withdrawing.erase(crew_id)
+
+
+## 철수하던 조가 열기에 길이 막혔다 (SimWorld._on_heat_stop): 식은 곳으로 물러나 길이 열리기를 기다린다. 철수 중이었으면 true
+func withdraw_blocked(crew_id: int) -> bool:
+	if not withdrawing.has(crew_id):
+		return false
+	withdrawing[crew_id].blocked = true
+	return true
+
+
+## 철수 중인 조 (2026-11-25): 건물 안에 멈춰 서 있으면 1초마다 열기에 막히지 않는 나갈 길을 찾아 다시 보낸다.
+## 열기에 막혔다가 다시 나서면 "퇴로 확보, 철수 재개" 보고. 나갈 길이 열기로 모두 막혀 있으면 퇴로 차단 시간을 이어 센다 (고립 보고).
+## 대원이 움직인 바로 뒤에 본다 (CommandSystem.after_move — 열기에 막혀 멈추는 판단과 같은 틱의 불 상태로)
+func step_withdrawing(tick: int) -> void:
+	if withdrawing.is_empty():
+		return
+	for id: int in withdrawing.keys():
+		var c := units.get_crew(id)
+		var w: Dictionary = withdrawing[id]
+		if c == null or c.leader.incapacitated or (other_duty.is_valid() and bool(other_duty.call(id))):
+			withdrawing.erase(id)
+			continue
+		var leader := c.leader
+		var h: HoseLine = water.hose_of_crew(id) if water else null
+		# 걷는 중이거나 호스를 거두며 나오는 중(WaterSystem 이 길을 잡는다)이면 그대로 둔다
+		if leader.is_moving() or (h != null and h.recovering):
+			continue
+		var goal: Vector3i = w.goal
+		if not _indoor(leader.level, leader.pos):
+			# 밖으로 나왔다. 공기호흡기 교체는 다른 문으로 나왔어도 펌프차 옆까지 간다 (거기서 교체한다)
+			withdrawing.erase(id)
+			if str(w.reason) == "air_swap" and leader.cell3().distance_to(goal) > 2.0:
+				units.order_move([id] as Array[int], goal, pathfinder)
+			continue
+		if tick % roundi(1.0 / SimClock.TICK_DT) != 0:
+			continue
+		var to := _way_out(c, goal)
+		if to.x < 0:
+			if _heat_cut:
+				w.blocked = true
+				if note_blocked.is_valid():
+					note_blocked.call(c, tick)
+			continue
+		units.order_move([id] as Array[int], to, pathfinder)
+		if bool(w.blocked):
+			w.blocked = false
+			events.add(tick, "withdraw_resume", {"crew": _crew_name(c), "crew_id": id})
+
+
+## 열기에 막히지 않고 밖으로 나가는 길의 끝 칸: 처음 가려던 곳 먼저, 아니면 가까운 열린 출구부터. 없으면 (-1, -1, -1).
+## _heat_cut = 길은 있는데 열기에 막힌 것이 있었다 (길이 아예 없는 것 — 닫힌 문 등 — 과 가른다)
+func _way_out(c: Crew, goal: Vector3i) -> Vector3i:
+	_heat_cut = false
+	var from := c.leader.cell3()
+	var exits := rescue.exit_cells()
+	exits.sort_custom(func(a: Vector3i, b: Vector3i) -> bool:
+		return from.distance_squared_to(a) + absi(a.z - from.z) * 10000.0 < from.distance_squared_to(b) + absi(b.z - from.z) * 10000.0)
+	var list: Array[Vector3i] = []
+	if goal.x >= 0:
+		list.append(goal)
+	for e in exits:
+		var out := _clear_of_building(e)
+		if not out in list:
+			list.append(out)
+	for to in list:
+		var path := pathfinder.find_path(from, to)
+		if path.is_empty():
+			continue
+		if not way_reopened.is_valid() or bool(way_reopened.call(c, path)):
+			return to
+		_heat_cut = true
+	return Vector3i(-1, -1, -1)
 
 
 ## 공기호흡기를 바꿔야 하는가: 조원 누구든 공기가 air_swap_ratio 아래이거나 공기 경보가 울렸다
@@ -335,7 +437,7 @@ func _on_role_received(tick: int, crew_id: int, role: Role) -> void:
 		roles[crew_id] = role
 		deployed.erase(crew_id)
 		# 역할(RIT 등)을 받은 조는 교체 뒤 관창으로 돌아가지 않고, 놓고 간 관창은 주인을 푼다 (2026-11-24 검사)
-		air_swaps.erase(crew_id)
+		forget_return(crew_id)
 		water.release_dropped(crew_id)
 		# 건물 안에 있었으면 하던 일을 멈추고 밖으로 나온다
 		if _indoor(c.leader.level, c.leader.pos):

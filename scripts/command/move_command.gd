@@ -33,7 +33,7 @@ func execute(sim: SimWorld) -> void:
 		sim.water.cancel_fetch(id, tick)
 		# 놓고 간 관창은 주인을 풀고, '교체 뒤 관창으로 돌아가기'는 잊는다 (2026-11-24 검사)
 		sim.water.release_dropped(id)
-		sim.command.safety.air_swaps.erase(id)
+		sim.command.safety.forget_return(id)
 	sim.units.order_move(crew_ids, target, sim.pathfinder, via)
 
 

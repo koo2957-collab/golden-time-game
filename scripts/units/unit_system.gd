@@ -449,6 +449,12 @@ func _route_crew(c: Crew, goal: Vector3i, pathfinder: Pathfinder, via := Vector3
 		if not first.is_empty() and not second.is_empty():
 			first.append_array(second.slice(1))
 			lead_path = first
+	route_along(c, lead_path, pathfinder, outdoor)
+
+
+## 조장을 정해 준 길(lead_path — 조장이 선 칸에서 시작)로 보내고, 조원은 그 길을 따라 줄지어 간다.
+## 가장 짧은 길이 아닌 길로 보낼 때 쓴다 (열기를 피해 물러나는 길 — CrewConditionSystem, 2026-11-25)
+func route_along(c: Crew, lead_path: Array[Vector3i], pathfinder: Pathfinder, outdoor := false) -> void:
 	if lead_path.is_empty():
 		return
 	c.leader.set_path(lead_path)

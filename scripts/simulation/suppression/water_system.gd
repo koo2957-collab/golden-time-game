@@ -470,6 +470,8 @@ func cancel_fetch(crew_id: int, tick: int) -> bool:
 		h.approaching = false
 		h.flowing = false
 		h.standby = false
+		# 제한 시간은 다시 잡으러 갈 때 새로 센다 (안 지우면 한참 뒤 다시 갈 때 가자마자 '못 감'으로 끝난다)
+		h.detach_tick = -1
 		var dc := units.get_crew(crew_id)
 		if dc != null:
 			for ff in dc.members():
@@ -484,6 +486,31 @@ func cancel_fetch(crew_id: int, tick: int) -> bool:
 			ff.speed_factor = 1.0
 		events.add(tick, "hose_fetch_cancel", {"crew": _crew_name(c), "crew_id": crew_id})
 	return true
+
+
+## 열기에 길이 막혔다 (2026-11-25, SimWorld._on_heat_stop): 호스를 거두던 조·놓인 관창으로 가던 조는 수관을 그 자리에 놓아 둔다
+## (긴급 철수와 같은 처리 — 수관은 놓인 채 남아 다시 잡으러 오거나 다른 조가 이어받는다).
+## 전에는 멈출 때마다 1초 뒤 다시 길을 잡아(_update_detached) 열기를 피해 물러나지 못했고, 불난 방 문턱에 선 채 열 스트레스로 쓰러졌다.
+## 놓았으면 "recover"(거두던 중) · "nozzle"(관창으로 가던 중), 해당 없으면 ""
+func leave_for_heat(crew_id: int, tick: int) -> String:
+	var h := hose_of_crew(crew_id)
+	if h == null or not (h.recovering or h.to_nozzle):
+		return ""
+	var kind := "recover" if h.recovering else "nozzle"
+	h.to_nozzle = false
+	h.recovering = false
+	h.dropped = true
+	h.approaching = false
+	h.flowing = false
+	h.standby = false
+	h.detach_tick = -1
+	var c := units.get_crew(crew_id)
+	if c != null:
+		for ff in c.members():
+			ff.speed_factor = 1.0
+		if kind == "recover":
+			events.add(tick, "hose_left_heat", {"crew": _crew_name(c), "crew_id": crew_id})
+	return kind
 
 
 ## 조가 손에 들고 있는 수관 (놓고 갔거나 관창으로 가는 중·거두는 중이면 null) — 그림·방수 배치는 이것을 본다

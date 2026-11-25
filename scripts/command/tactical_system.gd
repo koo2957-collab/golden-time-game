@@ -192,8 +192,9 @@ func _order(action: String, crew_id: int, target: Vector3i, tick: int) -> bool:
 		if action != "withdraw":
 			water.release_dropped(crew_id)
 	# 새 지시를 받았으면 '교체 뒤 관창으로 돌아가기'는 잊는다 (2026-11-24 검사: 대기 지시 뒤에도 스스로 다시 들어갔다)
+	# 막힌 철수를 다시 잇는 것도 잊는다 (2026-11-25)
 	if action != "withdraw" and safety:
-		safety.air_swaps.erase(crew_id)
+		safety.forget_return(crew_id)
 	if action == "withdraw":
 		water.stop_spray(crew_id, tick)
 		safety.withdraw_crew(c, tick, "withdraw", resume)

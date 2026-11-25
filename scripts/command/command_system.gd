@@ -44,6 +44,8 @@ const REPORT_PRIORITY := {
 	"door_stack": Radio.Priority.TACTICS,
 	"air_swap_out": Radio.Priority.SAFETY,
 	"crew_trapped": Radio.Priority.SAFETY,
+	"hose_left_heat": Radio.Priority.SAFETY,
+	"withdraw_resume": Radio.Priority.SAFETY,
 	"door_close_failed": Radio.Priority.TACTICS,
 	"air_swap_done": Radio.Priority.TACTICS,
 	"hose_takeover": Radio.Priority.TACTICS,
@@ -506,6 +508,8 @@ func after_move(dt: float, tick: int) -> void:
 		if inside and not _inside.get(c.id, false):
 			events.add(tick, "crew_entered", {"crew": _crew_name(c), "floor": fire.building.floor_name(c.leader.level)})
 		_inside[c.id] = inside
+	# 열기에 막혀 멈춘 철수: 길이 열렸으면 다시 보낸다 (2026-11-25)
+	safety.step_withdrawing(tick)
 
 
 ## 사건을 보고 무전·자동 감속으로 바꾸고 무전 채널을 진행한다.
@@ -1500,8 +1504,8 @@ func order_floor_mission(crew_ids: Array, level: int, e: EntryPoints.Entry, kind
 		var c := units.get_crew(int(id))
 		if c == null:
 			continue
-		# 새 임무: '교체 뒤 관창으로 돌아가기'는 잊는다 (2026-11-24 검사)
-		safety.air_swaps.erase(c.id)
+		# 새 임무: '교체 뒤 관창으로 돌아가기'·'막힌 철수 다시 잇기'는 잊는다 (2026-11-24 검사)
+		safety.forget_return(c.id)
 		# 층 검색을 받았으면 꺼내러 가던 호스는 거두고 놓고 간 관창은 주인을 푼다 (2026-11-24 — 호스가 필요 없는 임무)
 		if kind != "attack" and water:
 			water.cancel_fetch(c.id, tick)

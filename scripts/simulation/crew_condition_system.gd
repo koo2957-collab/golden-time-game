@@ -67,6 +67,14 @@ var _blocked_since: Dictionary = {}
 var _blocked_last: Dictionary = {}
 var _trapped: Dictionary = {}
 var _trapped_ticks := 300
+## 물러날 곳 찾기 (2026-11-25): 식은 곳을 못 찾은 틱 {crew id: tick} · 마지막 탐색의 결과 (식은 곳을 찾았는가 · 열기를 뚫는 길인가 · 지나온 칸)
+var _retreat_wait: Dictionary = {}
+var _cool_found := false
+var _cool_through := false
+var _cool_parent: Dictionary = {}
+## 식은 곳이 없을 때 덜 뜨거운 곳으로 옮기는 기준 · 막혔던 길이 다시 열렸다고 보는 기준 (data/units/firefighter.json)
+var _cooler_ratio := 0.5
+var _reopen_ratio := 0.8
 
 
 func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, stats: ParamTable, p_events: SimEventLog) -> void:
@@ -100,6 +108,10 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, stats
 	_swap_range = stats.value("scba_swap_range_m") / _cell_m
 	_air_full = stats.value("scba_air_l")
 	_trapped_ticks = roundi((stats.value("trapped_report_s") if stats.params.has("trapped_report_s") else 30.0) / SimClock.TICK_DT)
+	if stats.params.has("retreat_cooler_ratio"):
+		_cooler_ratio = stats.value("retreat_cooler_ratio")
+	if stats.params.has("path_reopen_heat_ratio"):
+		_reopen_ratio = stats.value("path_reopen_heat_ratio")
 	for ff in units.firefighters:
 		init_member(ff)
 
@@ -179,7 +191,7 @@ func before_move(tick: int) -> void:
 		if hot:
 			# 하던 인명검색·구조를 멈춘다 — 멈추지 않으면 물러난 자리에 닿자마자 다시 불 쪽으로 간다
 			_stop_task(c, tick, "retreat")
-			_retreat(c, tick)
+			_retreat(c, tick, "heat_retreat", true)
 			continue
 		if stressed and warm:
 			var idle := activity_of.is_valid() and int(activity_of.call(leader)) == 0 and not leader.is_moving()
@@ -229,7 +241,21 @@ func _check_trapped(c: Crew, tick: int) -> void:
 	var room := fire.compartment_at(leader.level, floori(leader.pos.x), floori(leader.pos.y))
 	events.add(tick, "crew_trapped", {"crew": _crew_name(c), "crew_id": c.id, "floor": fire.building.floor_name(leader.level),
 		"room": room.display_name() if room else ""})
-	_retreat(c, tick, "heat_retreat")
+	# 이미 문턱에서 물러나 식은 곳에서 기다리는 조는 또 옮기지 않는다 (2026-11-25 — 막힌 철수는 물러난 자리에서 길이 열리기를 기다린다)
+	if not _settled(leader):
+		_retreat(c, tick, "heat_retreat")
+
+
+## 식은 곳에 자리를 잡았는가: 선 칸이 일상 수준 아래이고, 바로 옆에 위험한 칸(불난 방 문턱)이 없다
+func _settled(ff: Firefighter) -> bool:
+	var here := Vector2i(ff.pos.floor())
+	if _flux_there(ff.level, here) > _routine:
+		return false
+	for d: Vector2i in [Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP]:
+		var n := here + d
+		if pathfinder.passable(ff.level, n.x, n.y) and _flux_there(ff.level, n) >= _hazard:
+			return false
+	return true
 
 
 ## 열기 때문에 하던 임무를 멈춘다 (SimWorld가 넣은 on_heat_stop) — 멈춘 임무가 있었는가
@@ -247,7 +273,7 @@ func _guard_members(c: Crew) -> void:
 			if ff.path.is_empty() or not safe_to_enter(ff.path.back().z, Vector2i(ff.path.back().x, ff.path.back().y)):
 				var to := _cool_cell(ff.level, here, 0)
 				if to.x >= 0 and to != here:
-					ff.set_path(pathfinder.find_path(ff.cell3(), Vector3i(to.x, to.y, ff.level)))
+					ff.set_path(_cool_path(ff.cell3(), to, ff.crouched))
 			continue
 		if ff.path.is_empty():
 			continue
@@ -259,7 +285,7 @@ func _guard_members(c: Crew) -> void:
 			ff.path.clear()
 			var back := _cool_cell(ff.level, here, 0)
 			if back.x >= 0 and back != here:
-				ff.set_path(pathfinder.find_path(ff.cell3(), Vector3i(back.x, back.y, ff.level)))
+				ff.set_path(_cool_path(ff.cell3(), back, ff.crouched))
 
 
 ## 이동 후: 자세·복사열·열 스트레스·공기호흡기·용기 교체·행동 불능
@@ -340,17 +366,34 @@ func _flux_there(level: int, cell: Vector2i) -> float:
 
 ## 물러날 곳: 열 스트레스가 쌓이지 않는 곳(일상 복사열 아래)이 가까이 있으면 그리로, 없으면 위험 상한의 0.6 아래.
 ## (전에는 0.6 아래 첫 칸으로만 물러나 스트레스가 계속 쌓였다)
-func _retreat(c: Crew, tick: int, event_type := "heat_retreat") -> void:
+## urgent = 지금 선 칸이 위험 상한 이상 (뜨거운 칸을 뚫고라도 나간다 · 곧바로 다시 찾는다)
+func _retreat(c: Crew, tick: int, event_type := "heat_retreat", urgent := false) -> void:
 	var leader := c.leader
 	# 이미 물러나는 중이면 그대로 간다 — 틱마다 다시 명령하면 걸음을 떼기 전에 길이 새로 잡혀 제자리에 선 채
 	# 쓰러졌다 (2026-11-17 골목 주택 재발화)
 	if not leader.path.is_empty() and _retreat_goal.get(c.id, Vector3i(-1, -1, -1)) == leader.path.back():
 		return
+	# 식은 곳에 닿지 못해 덜 뜨거운 곳에서 버티는 조는 틱마다 다시 찾지 않는다 (2026-11-25): 선 칸이 위험하면 1초, 아니면 알림 간격마다
+	var since := tick - int(_retreat_wait.get(c.id, -HEAT_EVENT_COOLDOWN_TICKS))
+	if since < (roundi(1.0 / SimClock.TICK_DT) if urgent else HEAT_EVENT_COOLDOWN_TICKS):
+		return
 	var start := Vector2i(leader.pos.floor())
-	var target := _cool_cell(leader.level, start, (c.list.size() - 1) * units.line_gap_cells)
+	# 다른 조가 서 있는 칸은 고르지 않는다 (같은 칸에 두 분대가 겹쳐 서지 않게)
+	var taken := {}
+	for other in units.crews:
+		if other == c:
+			continue
+		for ff in other.list:
+			if not ff.incapacitated and ff.level == leader.level and not ff.is_moving():
+				taken[Vector2i(ff.pos.floor())] = true
+	var target := _cool_cell(leader.level, start, (c.list.size() - 1) * units.line_gap_cells, taken)
+	if _cool_found:
+		_retreat_wait.erase(c.id)
+	else:
+		_retreat_wait[c.id] = tick
 	if target.x < 0 or target == start:
 		return
-	units.order_move([c.id] as Array[int], Vector3i(target.x, target.y, leader.level), pathfinder)
+	units.route_along(c, _cool_path(leader.cell3(), target, leader.crouched), pathfinder)
 	if not leader.path.is_empty():
 		_retreat_goal[c.id] = leader.path.back()
 	_heat_event(c, event_type, tick)
@@ -358,35 +401,124 @@ func _retreat(c: Crew, tick: int, event_type := "heat_retreat") -> void:
 
 ## start 에서 걸어서 닿는 가장 가까운 식은 칸 (없으면 (-1, -1)).
 ## 지금 있는 방을 벗어난다 — 가까운 '식은 칸'이 불난 방 문턱이면 뒤따르는 짝이 방 안에 남아 플래시오버에 쓰러졌다.
-## trail = 뒤따르는 대원 수만큼(줄 간격) 더 가서 설 칸 수
-func _cool_cell(level: int, start: Vector2i, trail: int) -> Vector2i:
+## trail = 뒤따르는 대원 수만큼(줄 간격) 더 가서 설 칸 수 · taken = 고르지 않을 칸 (다른 조가 선 칸)
+##
+## 뜨거운 칸(위험 상한 이상)은 밟지 않고 닿는 곳에서 고른다 (2026-11-25 — 전에는 걸음 수만 보고 골라, 불난 거실 건너 현관 밖을 고르고는
+## 그 길의 첫 칸이 뜨거워 매 틱 막혔다. 뒤쪽 복도·방에 식은 칸이 200칸 넘게 있었는데도 5~7kW/㎡ 자리에 선 채 열 스트레스로 쓰러졌다).
+## 그렇게 닿는 식은 칸이 없으면 닿는 곳 중 가장 덜 뜨거운 칸 (지금 자리보다 뚜렷이 식을 때만 — retreat_cooler_ratio).
+## 뜨거운 칸을 밟지 않고는 한 걸음도 못 떼는데 선 칸이 위험 상한 이상이면 예전처럼 열기를 가리지 않고 찾는다 (뚫고라도 나가야 한다).
+## 찾은 길은 _cool_path 로 꺼낸다. 열 스트레스가 쌓이지 않는 곳을 찾았으면 _cool_found
+func _cool_cell(level: int, start: Vector2i, trail: int, taken: Dictionary = {}) -> Vector2i:
+	_cool_through = false
+	var safe := _search_cool(level, start, trail, taken, false)
+	_cool_found = safe[0].x >= 0
+	if _cool_found:
+		return safe[0]
+	if safe[1].x >= 0 or _flux_there(level, start) < _hazard:
+		return safe[1]
+	var any := _search_cool(level, start, trail, taken, true)
+	_cool_found = any[0].x >= 0
+	var pick := any[0] if _cool_found else any[1]
+	_cool_through = pick.x >= 0
+	return pick
+
+
+## _cool_cell 의 탐색 한 번 → [식은 칸, 차선] (없으면 (-1, -1)).
+## through_heat = 뜨거운 칸도 지나간다 (차선: 위험 상한의 0.6 아래 첫 칸). 아니면 뜨거운 칸은 밟지 않는다 (차선: 닿는 곳 중 가장 덜 뜨거운 칸)
+func _search_cool(level: int, start: Vector2i, trail: int, taken: Dictionary, through_heat: bool) -> Array[Vector2i]:
 	var here_room := fire.compartment_at(level, start.x, start.y)
 	var queue: Array[Vector2i] = [start]
 	var depth := {start: 0}
+	var flux := {}
 	var head := 0
 	var fallback := Vector2i(-1, -1)
 	var target := Vector2i(-1, -1)
 	var first_ok := -1
+	var coolest := start
+	var coolest_q := INF
+	var here_q := _flux_there(level, start)
+	_cool_parent = {}
 	while head < queue.size() and head < RETREAT_SEARCH_LIMIT:
 		var p := queue[head]
 		head += 1
 		# 늘 낮은 자세로 보면 연기층이 높아 서는 방에서 '식은 칸'을 잘못 골라 한 칸씩만 물러나다 쓰러졌다 (2026-11-17)
-		var q := _flux_there(level, p)
+		var q: float = flux[p] if flux.has(p) else _flux_there(level, p)
+		var free := not taken.has(p)
 		var room := fire.compartment_at(level, p.x, p.y)
-		if q <= _routine and (here_room == null or room != here_room):
+		if free and q <= _routine and (here_room == null or room != here_room):
 			target = p
 			if first_ok < 0:
 				first_ok = int(depth[p])
 			if int(depth[p]) >= first_ok + trail:
 				break
-		if fallback.x < 0 and q < _hazard * 0.6:
-			fallback = p
+		if through_heat:
+			if free and fallback.x < 0 and q < _hazard * 0.6:
+				fallback = p
+		elif free and q < coolest_q:
+			coolest_q = q
+			coolest = p
+		var pose := _crouch_in(_room_for(level, p))
 		for d: Vector2i in [Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP]:
 			var n := p + d
-			if not depth.has(n) and pathfinder.passable(level, n.x, n.y):
-				depth[n] = int(depth[p]) + 1
-				queue.append(n)
-	return target if target.x >= 0 else fallback
+			if depth.has(n) or not pathfinder.passable(level, n.x, n.y):
+				continue
+			if not through_heat:
+				# 걸어 들어갈 때의 자세(지금 칸의 연기층)와 그 칸에 선 뒤의 자세 둘 다로 본다 — before_move 가 막는 기준과 같게
+				var there := _crouch_in(_room_for(level, n))
+				var qn := heat_at(level, n, there)
+				flux[n] = qn
+				if qn >= _hazard or (pose != there and heat_at(level, n, pose) >= _hazard):
+					continue
+			depth[n] = int(depth[p]) + 1
+			_cool_parent[n] = p
+			queue.append(n)
+	if not through_heat:
+		# 지금 자리보다 뚜렷이 식은 곳일 때만 옮긴다 (일상 수준을 넘는 열이 retreat_cooler_ratio 아래로 줄어야)
+		var gain := here_q >= _hazard or maxf(0.0, coolest_q - _routine) <= maxf(0.0, here_q - _routine) * _cooler_ratio
+		fallback = coolest if coolest != start and gain else Vector2i(-1, -1)
+	return [target, fallback]
+
+
+## from 에서 _cool_cell 이 고른 칸까지의 길: 가장 짧은 길이 뜨거운 칸을 지나지 않으면 그 길, 지나면 찾을 때 지나온(뜨거운 칸을 피한) 길
+func _cool_path(from: Vector3i, to: Vector2i, crouched: bool) -> Array[Vector3i]:
+	var path := pathfinder.find_path(from, Vector3i(to.x, to.y, from.z))
+	if _cool_through or (not path.is_empty() and route_clear(path, crouched)):
+		return path
+	var out: Array[Vector3i] = []
+	var p := to
+	while _cool_parent.has(p):
+		out.push_front(Vector3i(p.x, p.y, from.z))
+		p = _cool_parent[p]
+	if out.is_empty() or p != Vector2i(from.x, from.y):
+		return path
+	out.push_front(from)
+	return out
+
+
+## 이 길을 걸어도 열기에 막히지 않는가 (before_move 가 막는 기준과 같다): 칸마다 걸어 들어갈 때의 자세와 그 칸에 선 뒤의 자세로 본
+## 복사열이 위험 상한 아래. path[0] 은 지금 선 칸. ratio = 여유 (1 미만이면 더 엄격하게)
+func route_clear(path: Array[Vector3i], crouched: bool, ratio := 1.0) -> bool:
+	var limit := _hazard * ratio
+	var pose := crouched
+	for k in range(1, path.size()):
+		var p := path[k]
+		var cell := Vector2i(p.x, p.y)
+		var there := _crouch_in(_room_for(p.z, cell))
+		if heat_at(p.z, cell, there) >= limit or (pose != there and heat_at(p.z, cell, pose) >= limit):
+			return false
+		pose = there
+	return true
+
+
+## 막혔던 길이 다시 열렸는가 (SafetySystem — 열기에 막혀 멈춘 철수를 다시 잇는다): 위험 상한의 path_reopen_heat_ratio 아래여야
+## 열렸다고 본다 (상한 바로 아래에서 나섰다가 몇 걸음 만에 다시 막히지 않게)
+func way_reopened(c: Crew, path: Array[Vector3i]) -> bool:
+	return not path.is_empty() and route_clear(path, c.leader.crouched, _reopen_ratio)
+
+
+## 열기로 나갈 길이 없다 (SafetySystem — 식은 곳에서 기다리는 철수 조): 퇴로 차단 시간을 이어 센다
+func note_blocked(c: Crew, tick: int) -> void:
+	_check_trapped(c, tick)
 
 
 func _heat_event(c: Crew, type: String, tick: int) -> void:

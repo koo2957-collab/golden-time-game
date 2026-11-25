@@ -216,6 +216,10 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.conditions.exits = sim.rescue.exit_cells
 	sim.conditions.covered = sim.water.is_covered
 	sim.conditions.on_heat_stop = sim._on_heat_stop
+	# 열기에 막힌 철수: 길이 열리면 다시 잇는다 (2026-11-25)
+	safety.way_reopened = sim.conditions.way_reopened
+	safety.note_blocked = sim.conditions.note_blocked
+	safety.other_duty = sim._has_other_duty
 	sim.tactical.exposure_heat = sim.exposure.heat_near
 	sim.monitors =MonitorSystem.new(sim.fire, sim.units, fire_config, sim.events)
 	sim.aerial = AerialSystem.new(sim.fire, sim.units, sim.rescue, sim.falls, sim.events)
@@ -1082,22 +1086,48 @@ func apply_loadout(items: Array, tick: int) -> void:
 ## 열기에 막히거나 밀려난 조가 인명검색·구조 중이었으면 그 임무를 멈추고 알린다 (2026-11-24 사용자: 화염으로 진입이 안 되면
 ## 스스로 후퇴해야 하는데 제자리에서 왔다 갔다 한다 — 검색·구조가 계속 다시 길을 잡았고, 물러나도 임무가 남아 되돌아갔다).
 ## 이미 구조대상자를 업었으면 그대로 데리고 나간다. 방수하러 가는 조는 건드리지 않는다. 멈춘 임무가 있었으면 true
+##
+## 2026-11-25 (튜토리얼에서 철수하던 구조 분대가 쓰러짐): 수관·철수도 같이 멈춘다 —
+##   호스를 거두며 나오던 조 → 수관을 그 자리에 놓는다 (전에는 1초마다 다시 불난 방 쪽으로 길을 잡았다)
+##   놓인 관창으로 가던 조(교체 뒤 재진입·교대조 인수) → 수관을 놓아 두고 "재진입 보류, 지시 바람"
+##   철수 중이던 조 → 식은 곳으로 물러나 길이 열리기를 기다린다 (SafetySystem.withdrawing — 열리면 스스로 다시 나온다)
 func _on_heat_stop(c: Crew, tick: int, _kind: String) -> bool:
+	var stopped := false
 	var t := rescue.task_of_crew(c.id)
-	if t == null:
-		return false
-	if t is RescueSystem.CarryTask and (t as RescueSystem.CarryTask).carrying:
-		return false
-	var place := "내부"
-	if t is RescueSystem.SearchTask:
-		var st := t as RescueSystem.SearchTask
-		if st.room >= 0 and st.room < fire.comps.size():
-			place = fire.comps[st.room].display_name()
-	else:
-		place = "구조대상자 쪽"
-	rescue.cancel(c.id)
-	tactical.halt_for_heat(c.id, tick, place)
-	return true
+	if t != null:
+		if t is RescueSystem.CarryTask and (t as RescueSystem.CarryTask).carrying:
+			return false
+		var place := "내부"
+		if t is RescueSystem.SearchTask:
+			var st := t as RescueSystem.SearchTask
+			if st.room >= 0 and st.room < fire.comps.size():
+				place = fire.comps[st.room].display_name()
+		else:
+			place = "구조대상자 쪽"
+		rescue.cancel(c.id)
+		tactical.halt_for_heat(c.id, tick, place)
+		stopped = true
+	match water.leave_for_heat(c.id, tick):
+		"recover":
+			stopped = true
+		"nozzle":
+			command.safety.air_swaps.erase(c.id)
+			tactical.halt_for_heat(c.id, tick, "관창 쪽")
+			stopped = true
+	if command.safety.withdraw_blocked(c.id):
+		stopped = true
+	return stopped
+
+
+## 그 조가 철수 말고 다른 일을 받았는가 (SafetySystem.other_duty — 막힌 철수를 다시 잇지 않는다):
+## 전술 임무·검색·구조·문 작업·잔불정리·층 이동·진입구 접근·방수·호스 꺼내기·놓인 관창으로 가기
+func _has_other_duty(crew_id: int) -> bool:
+	if tactical.task_of_crew(crew_id) or rescue.task_of_crew(crew_id) or doors.task_of_crew(crew_id) or rekindle.task_of_crew(crew_id):
+		return true
+	if command.floor_goals.has(crew_id) or command.approach.has(crew_id):
+		return true
+	var h := water.hose_of_crew(crew_id)
+	return h != null and (h.flowing or h.to_nozzle or h.to_outlet or h.fetch_until >= 0)
 
 
 ## 대원의 활동 단계 (호흡량): 0 대기·보행 40 / 1 수색·호스 전개 55 / 2 방수·파괴 65 / 3 구조·계단 80 ℓ/분 (기획안 5-6)

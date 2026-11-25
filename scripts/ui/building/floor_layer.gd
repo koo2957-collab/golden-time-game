@@ -200,7 +200,9 @@ var _furniture_h: Dictionary = {}  # level -> PackedFloat32Array
 var _opening_of: Dictionary = {}  # Vector3i -> Opening
 var _footprint: Dictionary = {}  # level -> Rect2i
 var _lit: Array[Opening] = []  # 불빛이 보이는 창 (그릴 때마다 갱신)
-## 구운 그림(P15)의 마지막 방향 {대원 id: 0~7} — 멈춰 있으면 마지막으로 움직인 쪽을 본다
+## 구운 그림(P15)의 마지막 방향 {대원 id: 0~7, 지휘관 -1} — 멈춰 있으면 마지막으로 움직인 쪽을 본다.
+## 입체 화면(IsoView)의 겹들은 한 사전을 같이 쓴다 (share_facing) — 겹마다 따로 기억하면 외부 화면 겹과 내부 화면 겹이
+## 같은 대원을 다른 방향으로 그린다 (2026-11-25 사용자: 내부 화면을 눌렀다 외부로 나오면 대원 방향·자리가 달라져 있다)
 var _facing: Dictionary = {}
 ## 가구 그림 (P15): 층 -> {칸 index: 가구 번호} (그림으로 그리는 칸은 블록을 그리지 않는다), 층 -> {앞쪽 칸 index: 그릴 정보}
 var _furn_cells: Dictionary = {}
@@ -243,6 +245,11 @@ var _furn_shadow_cols := PackedColorArray()
 var _furn_shadow_idx := PackedInt32Array()
 ## 밤 정도 (0 낮 … 1 밤, 시나리오 시각) — 해 그림자를 옅게
 var _night := 0.0
+
+
+## 방향 기억을 다른 겹과 같이 쓴다 (IsoView.setup — 사전은 참조로 넘어온다)
+func share_facing(store: Dictionary) -> void:
+	_facing = store
 
 
 func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProjection, p_stack: FloorStack = null) -> void:

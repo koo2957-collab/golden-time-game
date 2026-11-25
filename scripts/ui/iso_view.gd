@@ -49,6 +49,11 @@ var _hole_shader: Shader
 var _proj: IsoProjection
 ## 직하층의 불·연기·사람 색 겹 (내부 화면에서 이웃 층이 둘일 때)
 var partner_live_low: FloorLayer
+## 대원 그림이 보는 방향 {대원 id: 0~7, 지휘관 -1} — 모든 겹이 같이 쓴다 (FloorLayer.share_facing).
+## 2026-11-25: 전에는 겹마다 따로 기억했고, 그 겹이 그리는 동안 걸은 것만 적었다. 외부 화면은 지상층 겹이, 내부 화면은 색 겹이
+## 대원을 그리므로 화면을 바꾸면 서 있던 대원이 기본 방향으로 돌아섰고, 내부 화면을 보는 동안 걸은 대원은 외부 화면에서 옛 방향이었다
+## (조장 방향을 기준으로 서는 조원 — 호스 끼고 걷기 2번 등 — 은 자리까지 달라졌다)
+var _facing: Dictionary = {}
 
 
 func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProjection) -> void:
@@ -104,6 +109,8 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 	add_child(ghost)
 	ghost.setup(sim, p_selection, p_proj, stack)
 	ghost.visible = false
+	for node: FloorLayer in _all_layers():
+		node.share_facing(_facing)
 	_apply()
 
 
@@ -441,7 +448,25 @@ func _draw_links() -> void:
 			Color(1, 0.92, 0.55, 1.0) if mine else Color(1, 1, 1, 0.55))
 
 
+## 걷는 대원·지휘관이 가는 쪽을 방향 기억에 적는다 — 어느 겹이 그리는지, 그 층이 보이는지와 상관없이 (매 프레임)
+func update_facing() -> void:
+	if sim == null:
+		return
+	for ff in sim.units.firefighters:
+		if ff.level != ff.prev_level:
+			continue
+		var d := ff.pos - ff.prev_pos
+		if d.length_squared() > 0.000001:
+			_facing[ff.id] = SpriteArt.dir8(d)
+	var c := sim.command.commander
+	if c != null and c.level == c.prev_level:
+		var cd := c.pos - c.prev_pos
+		if cd.length_squared() > 0.000001:
+			_facing[-1] = SpriteArt.dir8(cd)
+
+
 func _process(_delta: float) -> void:
+	update_facing()
 	if _links:
 		_links.queue_redraw()
 	# 지금 층 색 겹은 바탕 층의 전환 연출(위치·투명도)을 그대로 따라간다

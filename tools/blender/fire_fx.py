@@ -38,6 +38,12 @@ KIND = ARGS[1] if len(ARGS) > 1 else "m"
 MODE = ARGS[2] if len(ARGS) > 2 else ""
 ONE = MODE == "one"
 QUICK = MODE in ("quick", "one")
+# 게임 시점으로 굽기 (2026-11-25 사용자: 게임은 아이소메트릭 시점인데 화염은 정면에서 본 평면형이라 어색하다):
+#   blender ... -- <작업 폴더> <종류> [one|quick|full] iso
+# 대원 그림(tools/blender/bake.py)과 같은 카메라 — 내려다보는 각도 asin(21/28) ≈ 48.6°. 불의 윗면과 바닥 자리가 보인다.
+# 그림 안에서 불 뿌리(바닥 가운데)의 자리는 fx.json 의 anchor_v (아래에서부터의 비율)
+ISO = "iso" in ARGS[2:]
+ELEV = math.asin(21.0 / 28.0)
 PROJECT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 FX_JSON = os.path.join(PROJECT, "art", "fx", "fx.json")
 
@@ -269,10 +275,33 @@ def make_material(obj, cfg):
     return nt
 
 
+def iso_cfg(cfg):
+    """게임 시점으로 구울 때의 설정: 불 단면을 둥글게(어느 쪽에서 봐도 같은 불), 그림 높이 = 불 높이 × cos + 깊이 × sin"""
+    c = dict(cfg)
+    rx = cfg["r"][0]
+    c["r"] = (rx, rx * 0.9)
+    depth = 2.0 * max(c["r"][1] * 1.8, 0.3)
+    ext_h = cfg["h"] * math.cos(ELEV) + depth * math.sin(ELEV)
+    ppm = cfg["px"][0] / cfg["w"]
+    c["px"] = (cfg["px"][0], int(math.ceil(ext_h * ppm / 2.0) * 2))
+    c["iso_ext_h"] = ext_h
+    c["anchor_v"] = round(depth * math.sin(ELEV) * 0.5 / ext_h, 4)
+    return c
+
+
 def make_camera(cfg):
     sc = bpy.context.scene
     cam = bpy.data.cameras.new("cam")
     cam.type = "ORTHO"
+    if "iso_ext_h" in cfg:
+        # 게임 시점: 위에서 ELEV 만큼 내려다본다. 상자의 가운데(높이 절반)를 겨눈다
+        cam.ortho_scale = max(cfg["w"], cfg["iso_ext_h"])
+        co = bpy.data.objects.new("cam", cam)
+        co.location = (0.0, -10.0 * math.cos(ELEV), cfg["h"] * 0.5 + 10.0 * math.sin(ELEV))
+        co.rotation_euler = (math.pi / 2.0 - ELEV, 0.0, 0.0)
+        sc.collection.objects.link(co)
+        sc.camera = co
+        return
     # 정사영 크기 = 긴 변의 길이 (m)
     aspect = cfg["px"][0] / cfg["px"][1]
     cam.ortho_scale = cfg["w"] if aspect >= 1.0 else cfg["h"]
@@ -603,14 +632,17 @@ def bake(kind):
         return
     global KIND
     KIND = kind
-    cfg = KINDS[kind]
+    cfg = iso_cfg(KINDS[kind]) if ISO else KINDS[kind]
     reset_scene(cfg)
     obj = make_box(cfg)
     nt = make_material(obj, cfg)
     make_camera(cfg)
     paths = render_frames(nt, cfg)
     if ONE:
-        save_png(to_rgba(load_rgb(paths[0])), os.path.join(WORK, "fire_%s_one.png" % kind))
+        one = to_rgba(load_rgb(paths[0]))
+        save_png(one, os.path.join(WORK, "fire_%s_one%s.png" % (kind, "_iso" if ISO else "")))
+        # 어두운 바닥색 위에 올린 견본 (모양 보기)
+        save_png(over_smoke(one), os.path.join(WORK, "fire_%s_view%s.png" % (kind, "_iso" if ISO else "")))
     else:
         assemble(paths, cfg)
 

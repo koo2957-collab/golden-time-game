@@ -1775,10 +1775,13 @@ func _draw_fires_at(x: int, y: int) -> void:
 
 ## 불 한 채: 바닥의 주황빛 + 불빛 번짐 + 불꽃 그림 (크기는 화염 높이에 맞춘 s·m·l·xl).
 ## 열화상에서는 화염 모양 대신 바닥 온도 색으로만 보인다
-func _draw_fire_body(f: Dictionary) -> void:
+## through > 0: 연기 상자 위에 다시 그리는 불 (연기 너머로 비치는 불 — 그 진하기로, 불꽃 그림만)
+func _draw_fire_body(f: Dictionary, through := 0.0) -> void:
 	if thermal:
 		return
 	var fade := FireDraw.num("remembered_fade", 0.4) if bool(f.faded) else 1.0
+	if through > 0.0:
+		fade *= through
 	var at: Vector2 = f.pos
 	var base_m := float(f.base_m)
 	var base := proj.to_screen(at, base_m)
@@ -1787,7 +1790,7 @@ func _draw_fire_body(f: Dictionary) -> void:
 	var key := int(f.seed)
 	# 바닥에서 1m가 화면에서 차지하는 길이 (px)
 	var ground := (proj.to_screen(Vector2(1, -1), 0.0) - proj.to_screen(Vector2.ZERO, 0.0)).length() / (sqrt(2.0) * sim.building.cell_size_m)
-	if not bool(f.satellite):
+	if not bool(f.satellite) and through <= 0.0:
 		var rx := maxf(float(f.diameter_m) * 0.65, 0.3) * ground
 		ShadowDraw.soft_ellipse(self, base, rx, rx * GROUND_RATIO, Color(1.0, 0.45, 0.1, FireDraw.num("ember_alpha", 0.4) * fade))
 		# 전실 화재의 기둥은 저마다 불빛을 더하지 않는다 — 수십 개가 겹치면 방 전체가 뿌옇고 밝은 한 덩어리가 된다 (방 하나의 불빛은 _draw_room_fire 가 더한다)
@@ -1806,6 +1809,10 @@ func _draw_fire_body(f: Dictionary) -> void:
 			var sec := (sim.clock.tick - sim.fire.comps[room_i].flashover_tick) * SimClock.TICK_DT
 			h_px *= lerpf(FireDraw.num("surge_start_ratio", 0.6), 1.0, FireDraw.flash_progress(sec))
 	if FxArt.draw_fire(self, str(f.kind), base, w_px, h_px, key, tint):
+		# 연기 덩어리는 연기 판 위에 다시 그릴 때도 그린다 (판 아래에서만 그리면 가려져 보이지 않는다) — 진하기는 제 값으로
+		_draw_fire_smoke(f, h_px / IsoProjection.PX_PER_M, fade if through <= 0.0 else fade / through)
+		return
+	if through > 0.0:
 		return
 	# 구운 불꽃 그림이 없으면 예전 불꽃(셰이더로 구운 것), 그것도 없으면 도형
 	if FxArt.draw_flame(self, base, w_px, h_px, key, Color(1, 1, 1, fade)):
@@ -1813,6 +1820,51 @@ func _draw_fire_body(f: Dictionary) -> void:
 	var half := w_px * 0.35
 	_fill(_flame_shape(base, half, proj.to_screen(at, base_m + float(f.height_m))), Color(0.95, 0.3, 0.06, 0.9 * fade))
 	_fill(_flame_shape(base, half * 0.55, proj.to_screen(at, base_m + float(f.height_m) * 0.6)), Color(1.0, 0.8, 0.3, 0.95 * fade))
+
+
+## 연기 너머로 비치는 불 (2026-11-25 — 성장기의 불이 천장 연기 판에 덮여 주황 얼룩으로만 보였다): 그 방의 불을 연기 상자 위에
+## fire_through_smoke 진하기로 한 번 더 그린다. 불기둥은 연기층을 뚫고 올라가고 불빛은 연기를 밝힌다 — 위에서 봐도 불의 모양이 보인다.
+## 전실 화재의 방은 연기 상자를 옅게 하므로(full_smoke_cut) 다시 그리지 않는다
+func _draw_fires_through_smoke(c: Compartment) -> void:
+	var a := FireDraw.num("fire_through_smoke", 0.6)
+	if thermal or a <= 0.0 or c.flashed:
+		return
+	for f: Dictionary in _fire_layout():
+		if int(f.get("room", -1)) == c.index and not bool(f.get("full", false)):
+			_draw_fire_body(f, a)
+
+
+## 불과 함께 솟는 연기 (2026-11-25 사용자: 불꽃과 연기가 같이 움직이지 않는다 · 화염과 함께 연기도 뭉게뭉게 나와야 한다 ·
+## 천장에 막혀 좌우로 퍼지는 연기 기둥 그림은 위에서 보는 화면에 맞지 않는다):
+## 불꽃 끝에서 둥근 연기 덩어리가 차례로 솟아 커지며 천장 연기 속으로 들어간다. 둥근 덩어리라 어느 쪽에서 봐도 같고,
+## 불꽃 자리에서 나오므로 불이 옮겨 가면 같이 옮겨 간다. 색·빠르기는 그 방의 연기 읽기(SmokeLook).
+## 불이 클수록 덩어리가 많고 크다. 천장까지 찬 불(전실 화재)은 솟을 틈이 없어 그리지 않는다. flame_m = 지금 그린 불꽃 높이
+func _draw_fire_smoke(f: Dictionary, flame_m: float, fade: float) -> void:
+	if FxArt.puffs == null or bool(f.get("full", false)):
+		return
+	var tip := float(f.base_m) + flame_m * FireDraw.num("smoke_puff_from", 1.0)
+	var top := CEILING_M + 0.15
+	if top - tip < 0.25:
+		return
+	var room_i := int(f.get("room", -1))
+	var look: Dictionary = _smoke_look(sim.fire.comps[room_i]) if room_i >= 0 and room_i < sim.fire.comps.size() else {}
+	var col: Color = look.get("color", Color(0.34, 0.34, 0.36))
+	var width := float(f.width_m)
+	var n := clampi(2 + int(width / FireDraw.num("smoke_puff_per_m", 0.5)), 2, int(FireDraw.num("smoke_puff_max", 6)))
+	var t := Time.get_ticks_msec() / 1000.0 * FireDraw.num("smoke_puff_speed", 0.4) * float(look.get("rate", 1.0))
+	var key := int(f.seed)
+	var at: Vector2 = f.pos
+	var cell := sim.building.cell_size_m
+	var alpha := FireDraw.num("smoke_puff_alpha", 0.6) * fade
+	for j in n:
+		var ph := fposmod(t + float(j) / n + _rand01(key + j * 17), 1.0)
+		# 솟으면서 옆으로 조금 흔들리고 퍼진다
+		var sway := Vector2(sin(t * 2.1 + j * 2.3 + key), cos(t * 1.7 + j * 1.9 + key * 0.7)) * (0.12 + 0.3 * ph) * width / cell
+		var pos := proj.to_screen(at + sway, lerpf(tip, top, ph))
+		# 불꽃을 가리지 않게 작게 시작해 솟으면서 커진다 (처음엔 불꽃 폭의 절반)
+		var size := width * IsoProjection.PX_PER_M * lerpf(0.5, 1.25, ph)
+		var a := alpha * minf(1.0, ph * 5.0) * (1.0 - ph * ph * 0.55)
+		FxArt.draw_puff(self, pos, size, FxArt.PUFF_WHITE, key + j, Color(col, a))
 
 
 func _draw_unit(ff: Firefighter, alpha: float) -> void:
@@ -3527,6 +3579,7 @@ func _draw_smoke() -> void:
 				proj.to_screen(Vector2(r.end.x, r.position.y), h), proj.to_screen(Vector2(r.end), h),
 				proj.to_screen(Vector2(r.position.x, r.end.y), h)])))
 		if _draw_smoke_cloud(c, h, layer_d, a, density, fires, spread, op):
+			_draw_fires_through_smoke(c)
 			if c.rollover and p.rollover_visible(c):
 				_draw_rollover(c, h, fires, spread)
 			elif c.flashed and _fire_rooms.has(c.index):
@@ -3545,6 +3598,7 @@ func _draw_smoke() -> void:
 		_draw_smoke_texture(plane, r, a, c.index)
 		plane.append(plane[0])
 		draw_polyline(plane, Color(FireView.SMOKE_COLOR.darkened(0.3), minf(1.0, a + 0.15)), 1.5)
+		_draw_fires_through_smoke(c)
 		if c.rollover and p.rollover_visible(c):
 			_draw_rollover(c, h, fires, spread)
 		elif c.flashed and _fire_rooms.has(c.index):
@@ -3846,7 +3900,9 @@ func _draw_fire_plumes() -> Array[Vector2]:
 		var n := float(acc[1])
 		var at: Vector2 = acc[0] / n
 		fires.append(at)
-		if FxArt.plume == null:
+		# 연기 기둥 그림(앞에서 본 모양 — 천장에 막혀 좌우로 퍼진다)은 위에서 보는 화면에 맞지 않아 쓰지 않는다 (2026-11-25 사용자).
+		# 불꽃 끝에서 솟는 둥근 연기 덩어리(_draw_fire_smoke)가 대신한다. 덩어리 그림이 없을 때만 예전 기둥
+		if FxArt.plume == null or FxArt.puffs != null:
 			continue
 		var base := _furniture_height(floori(at.x), floori(at.y)) + 0.5
 		if base > CEILING_M - 0.4:
@@ -3945,8 +4001,9 @@ static func flame_vents(p_sim: SimWorld, lv: int) -> Array[Array]:
 		# 타고 있고 연기층이 인방 아래로 내려온 방만 (불꽃은 고온층을 타고 나온다)
 		if src.q_potential <= 0.5 or src.height - src.layer_depth >= o.top:
 			continue
-		# 방 사이 문은 롤오버·플래시오버 뒤에만 (성장기의 작은 불은 옆 방으로 넘치지 않는다)
-		if interior and not (src.flashed or src.rollover):
+		# 롤오버·플래시오버 뒤에만 뿜는다 (2026-11-25 사용자 확인 화면: 성장기의 작은 불인데 창마다 화염이 크게 나왔다 —
+		# 성장기에는 개구부로 연기만 나온다)
+		if not (src.flashed or src.rollover):
 			continue
 		var center := o.center()
 		var width := maxf(float(o.cells.size()) * fire.building.cell_size_m, 0.5)

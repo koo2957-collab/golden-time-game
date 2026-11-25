@@ -91,10 +91,12 @@ static func vent_rise_m(strength: float) -> float:
 
 ## 타는 칸들 → 불(채) 목록.
 ## cells: [{x, y 칸, kw 열방출률, room 방 번호, base 불 뿌리 높이(m), faded 기억 속의 불인가, full 방 전체가 타는 중인가(플래시오버 뒤)}]
-## 화염 높이는 방 하나의 불 전체(열방출률 합·타는 넓이 합)로 셈한다 — 불 하나를 바둑판으로 나눠 따로 셈하면 실제보다 낮게 나온다.
-## 그 방에서 가장 센 채가 그 높이, 약한 채는 weak_ratio 까지 낮다. full 인 방은 천장까지 찬다 (전실 화재).
 ## 돌려주는 값 (하나가 불꽃 그림 하나): {pos 칸 좌표, kw, cells 칸 수, diameter_m, height_m, width_m 그릴 폭, kind, base_m, faded, seed,
-##   capped 천장에 닿았는가, satellite 곁불인가}. 깊이(x + y) 순서 — 뒤에서 앞으로
+##   capped 천장에 닿았는가, satellite(쓰지 않음 — 늘 false), full, shade, room}. 깊이(x + y) 순서 — 뒤에서 앞으로
+##
+## 붙어 있는 불은 하나로 (2026-11-25 사용자: 한 칸의 불이 다음 칸으로 가면 합쳐져서 더 크게 보여야 한다 — 칸마다 불씨가 하나씩 있는 것 같다):
+## 플래시오버 전의 불은 서로 가까운(merge_gap_m 안) 타는 칸들을 한 덩어리로 묶어 불 하나로 그린다 (_merged_bodies).
+## 번질수록 그 한 덩어리가 커진다. 전에는 2m 바둑판마다 하나 + 떨어진 칸의 작은 곁불을 따로 세웠다.
 ##
 ## 전실 화재의 입체감 (2026-11-25 사용자: 화염이 입체감이 없다 — 방에 화염 그림을 바른 상자처럼 보였다):
 ## full 인 방은 더 촘촘한 바둑판(full_tile_m)으로 묶어 불기둥을 여러 줄 세우고, 기둥마다 높이를 달리해(full_reach_min~max × 방 높이 —
@@ -106,7 +108,12 @@ static func bodies(cells: Array, cell_m: float, ceiling_m: float) -> Array[Dicti
 	var groups := {}
 	# 방마다(보이는 불 · 기억 속의 불 따로): 열방출률 합, 칸 수, 전체가 타는가, 가장 센 채의 열방출률
 	var rooms := {}
+	# 플래시오버 전의 불 (붙어 있는 칸끼리 한 덩어리로 묶는다)
+	var loose: Array = []
 	for c: Dictionary in cells:
+		if not bool(c.get("full", false)):
+			loose.append(c)
+			continue
 		var room_key := "%d|%d" % [int(c.room), 1 if bool(c.get("faded", false)) else 0]
 		var size := full_tile if bool(c.get("full", false)) else tile
 		var key := "%s|%d|%d|%d" % [room_key, size, floori(float(c.x) / size), floori(float(c.y) / size)]
@@ -125,9 +132,6 @@ static func bodies(cells: Array, cell_m: float, ceiling_m: float) -> Array[Dicti
 	var min_h := num("min_height_m", 0.35)
 	var base_max := num("base_max_m", 1.0)
 	var jitter := num("jitter_m", 0.2) / cell_m
-	var sat_min := int(num("satellite_min_cells", 5))
-	var sat_count := int(num("satellite_count", 2))
-	var sat_dist := num("satellite_min_dist_m", 0.7) / cell_m
 	for key: String in groups:
 		var list: Array = groups[key]
 		var kw := 0.0
@@ -163,33 +167,7 @@ static func bodies(cells: Array, cell_m: float, ceiling_m: float) -> Array[Dicti
 			body.width_m = maxf(draw_width_m(str(body.kind), float(body.height_m), float(body.diameter_m)), size * cell_m * num("full_width_ratio", 1.7))
 			body.full = true
 		out.append(body)
-		# 곁불: 무게 중심에서 먼 타는 칸에 작은 불 — 큰 그림 하나만 덩그러니 있지 않게
-		if list.size() >= sat_min and sat_count > 0:
-			var far := list.duplicate()
-			far.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-				var da := Vector2(float(a.x) + 0.5, float(a.y) + 0.5).distance_squared_to(pos)
-				var db := Vector2(float(b.x) + 0.5, float(b.y) + 0.5).distance_squared_to(pos)
-				return da > db if da != db else (int(a.x) + int(a.y) * 1000) < (int(b.x) + int(b.y) * 1000))
-			var placed: Array[Vector2] = []
-			for c: Dictionary in far:
-				if placed.size() >= sat_count:
-					break
-				var at := Vector2(float(c.x) + 0.5, float(c.y) + 0.5)
-				if at.distance_to(pos) < sat_dist:
-					break
-				var near := false
-				for q in placed:
-					if q.distance_to(at) < sat_dist:
-						near = true
-				if near:
-					continue
-				placed.append(at)
-				# 곁불의 높이는 그 칸 하나의 불로 셈하되 몸통보다는 낮게
-				var sat_h := minf(flame_height_m(float(c.kw), diameter_m(cell_m * cell_m)), float(body.height_m) * num("satellite_max_ratio", 0.6))
-				var sat := _make(at, float(c.kw), 1, minf(float(c.get("base", 0.0)), base_max), sat_h, cell_m, ceiling_m, min_h, faded,
-					absi(hash(Vector3i(int(c.x), int(c.y), int(first.room) + 77))))
-				sat.satellite = true
-				out.append(sat)
+	out.append_array(_merged_bodies(loose, cell_m, ceiling_m))
 	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		var da: float = a.pos.x + a.pos.y
 		var db: float = b.pos.x + b.pos.y
@@ -205,6 +183,114 @@ static func bodies(cells: Array, cell_m: float, ceiling_m: float) -> Array[Dicti
 		if bool(f.full):
 			var mm: Array = span[int(f.room)]
 			f.shade = clampf((f.pos.x + f.pos.y - float(mm[0])) / maxf(0.5, float(mm[1]) - float(mm[0])), 0.0, 1.0)
+	return out
+
+
+## 플래시오버 전의 불: 가까운 타는 칸들을 한 덩어리로 묶어 (같은 방, 보이는 불·기억 속의 불 따로, merge_gap_m 안이면 이어진 것)
+## 덩어리마다 불 하나 — 그 덩어리의 열방출률 합·타는 넓이로 화염 높이를 셈하고(Heskestad), 열방출률 무게 중심에 선다.
+## 덩어리가 불꽃 그림 폭보다 길게 퍼졌으면 긴 쪽을 따라 몇 개로 나눠 세우되, 서로 크게 겹쳐(cluster_overlap) 한 불로 보이게 한다
+static func _merged_bodies(cells: Array, cell_m: float, ceiling_m: float) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	if cells.is_empty():
+		return out
+	var min_h := num("min_height_m", 0.35)
+	var base_max := num("base_max_m", 1.0)
+	var weak := num("weak_ratio", 0.6)
+	var gap := maxi(1, roundi(num("merge_gap_m", 1.0) / cell_m))
+	var overlap := clampf(num("cluster_overlap", 0.6), 0.2, 1.0)
+	var most := maxi(1, int(num("cluster_max", 4)))
+	# "방|기억" → {칸: 그 칸}
+	var maps := {}
+	for c: Dictionary in cells:
+		var key := "%d|%d" % [int(c.room), 1 if bool(c.get("faded", false)) else 0]
+		if not maps.has(key):
+			maps[key] = {}
+		maps[key][Vector2i(int(c.x), int(c.y))] = c
+	var keys: Array = maps.keys()
+	keys.sort()
+	for key: String in keys:
+		var m: Dictionary = maps[key]
+		var starts: Array = m.keys()
+		starts.sort()
+		var seen := {}
+		for s0: Vector2i in starts:
+			if seen.has(s0):
+				continue
+			# 이어진 칸 모으기 (gap 칸 안이면 이어진 것 — 가구 사이 빈 바닥 한두 칸은 건너뛴다)
+			var comp: Array = []
+			var queue: Array[Vector2i] = [s0]
+			seen[s0] = true
+			var head := 0
+			while head < queue.size():
+				var p := queue[head]
+				head += 1
+				comp.append(m[p])
+				for dy in range(-gap, gap + 1):
+					for dx in range(-gap, gap + 1):
+						var n := p + Vector2i(dx, dy)
+						if not seen.has(n) and m.has(n):
+							seen[n] = true
+							queue.append(n)
+			var kw := 0.0
+			var sum := Vector2.ZERO
+			var base := 0.0
+			var lo := Vector2(INF, INF)
+			var hi := Vector2(-INF, -INF)
+			for c: Dictionary in comp:
+				var w := maxf(float(c.kw), 0.001)
+				var at := Vector2(float(c.x) + 0.5, float(c.y) + 0.5)
+				kw += w
+				sum += at * w
+				base += float(c.get("base", 0.0)) * w
+				lo = lo.min(at)
+				hi = hi.max(at)
+			var first: Dictionary = comp[0]
+			var faded := bool(first.get("faded", false))
+			var seed := absi(hash(Vector3i(s0.x, s0.y, int(first.room) + 500)))
+			var d := diameter_m(comp.size() * cell_m * cell_m)
+			var free := flame_height_m(kw, d)
+			var whole := _make(sum / kw, kw, comp.size(), minf(base / kw, base_max), free, cell_m, ceiling_m, min_h, faded, seed)
+			whole.room = int(first.room)
+			# 길게 퍼진 덩어리: 긴 쪽을 따라 나눠 세운다 (크게 겹쳐 한 불로 보인다)
+			var along_x := hi.x - lo.x >= hi.y - lo.y
+			var long_m := ((hi.x - lo.x) if along_x else (hi.y - lo.y)) * cell_m + cell_m
+			# 작은 덩어리(cluster_min_m 보다 짧은)는 나누지 않는다 — 두세 칸짜리 불이 불꽃 여러 개로 갈라지지 않게
+			var parts := clampi(ceili(long_m / maxf(num("cluster_min_m", 1.2), float(whole.width_m) * overlap) - 0.001), 1, mini(most, comp.size()))
+			if parts <= 1:
+				out.append(whole)
+				continue
+			var order := comp.duplicate()
+			order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+				var ka := int(a.x) if along_x else int(a.y)
+				var kb := int(b.x) if along_x else int(b.y)
+				return ka < kb if ka != kb else (int(a.x) + int(a.y) * 1000) < (int(b.x) + int(b.y) * 1000))
+			var slices: Array = []
+			var top_kw := 0.0
+			for k in parts:
+				var from := k * order.size() / parts
+				var to := (k + 1) * order.size() / parts
+				var skw := 0.0
+				var ssum := Vector2.ZERO
+				var sbase := 0.0
+				for q in range(from, to):
+					var c: Dictionary = order[q]
+					var w := maxf(float(c.kw), 0.001)
+					skw += w
+					ssum += Vector2(float(c.x) + 0.5, float(c.y) + 0.5) * w
+					sbase += float(c.get("base", 0.0)) * w
+				slices.append([ssum / skw, skw, to - from, sbase / skw])
+				top_kw = maxf(top_kw, skw / maxf(1.0, float(to - from)))  # 칸당 열방출률로 견준다 (칸 수가 하나 많다고 더 센 조각이 되지 않게)
+			for k in slices.size():
+				var sl: Array = slices[k]
+				# 높이는 덩어리 전체의 불로 셈한 높이 — 가장 센 조각이 그 높이, 약한 조각은 weak_ratio 까지
+				var body := _make(sl[0], float(sl[1]), int(sl[2]), minf(float(sl[3]), base_max), free * lerpf(weak, 1.0, clampf(float(sl[1]) / maxf(1.0, float(sl[2])) / maxf(top_kw, 0.001), 0.0, 1.0)),
+					cell_m, ceiling_m, min_h, faded, absi(hash(Vector3i(s0.x + k * 131, s0.y, int(first.room) + 500))))
+				# 폭은 덩어리 전체의 폭 그대로 (이웃 조각과 크게 겹친다), 그림 종류는 그 높이와 덩어리 지름으로
+				body.diameter_m = d
+				body.kind = kind_for(float(body.height_m), d)
+				body.width_m = maxf(draw_width_m(str(body.kind), float(body.height_m), d), float(whole.width_m) * 0.85)
+				body.room = int(first.room)
+				out.append(body)
 	return out
 
 

@@ -23,6 +23,15 @@ func _main(list: Array[Dictionary]) -> Array[Dictionary]:
 	return list.filter(func(f: Dictionary) -> bool: return not bool(f.satellite))
 
 
+## 가장 높은 불 (한 덩어리를 여러 그림으로 나눠 세웠을 때의 대표)
+func _tallest(list: Array[Dictionary]) -> Dictionary:
+	var best: Dictionary = list[0]
+	for f in list:
+		if float(f.height_m) > float(best.height_m):
+			best = f
+	return best
+
+
 func test_style_values_have_source() -> void:
 	var data: Variant = JsonData.load_file(FireDraw.PATH)
 	assert_true(data is Dictionary, "설정 파일")
@@ -63,7 +72,7 @@ func test_flame_grows_through_four_sizes() -> void:
 	var last_h := 0.0
 	var last_rank := 0
 	for kw_per_cell: float in [2.0, 20.0, 45.0, 75.0, 90.0, 160.0]:
-		var f: Dictionary = _main(FireDraw.bodies(_block(0, 0, 4, 4, kw_per_cell), CELL_M, CEILING_M))[0]
+		var f: Dictionary = _tallest(FireDraw.bodies(_block(0, 0, 4, 4, kw_per_cell), CELL_M, CEILING_M))
 		var rank := FireDraw.KINDS.find(str(f.kind))
 		assert_true(float(f.height_m) >= last_h, "%.0fkW/칸: 높이가 줄지 않는다 (%.2f)" % [kw_per_cell, float(f.height_m)])
 		assert_true(rank >= last_rank, "%.0fkW/칸: 그림이 작아지지 않는다 (%s)" % [kw_per_cell, f.kind])
@@ -75,7 +84,7 @@ func test_flame_grows_through_four_sizes() -> void:
 
 
 func test_height_is_capped_at_ceiling() -> void:
-	var f: Dictionary = _main(FireDraw.bodies(_block(0, 0, 4, 4, 300.0), CELL_M, CEILING_M))[0]
+	var f: Dictionary = _tallest(FireDraw.bodies(_block(0, 0, 4, 4, 300.0), CELL_M, CEILING_M))
 	assert_true(absf(float(f.height_m) - CEILING_M) < 0.001, "천장 높이까지만 (%.2f)" % float(f.height_m))
 	assert_true(bool(f.capped), "천장에 닿았다는 표시")
 	assert_eq(f.kind, "xl", "넓게 타며 천장에 닿으면 불바다 그림")
@@ -83,28 +92,32 @@ func test_height_is_capped_at_ceiling() -> void:
 	var cells := _block(0, 0, 4, 4, 300.0)
 	for c: Dictionary in cells:
 		c.base = 0.8
-	var on_top: Dictionary = _main(FireDraw.bodies(cells, CELL_M, CEILING_M))[0]
+	var on_top: Dictionary = _tallest(FireDraw.bodies(cells, CELL_M, CEILING_M))
 	assert_true(absf(float(on_top.base_m) - 0.8) < 0.001, "불 뿌리 = 가구 높이")
 	assert_true(absf(float(on_top.height_m) - (CEILING_M - 0.8)) < 0.001, "천장까지 남은 높이 (%.2f)" % float(on_top.height_m))
 
 
 ## 화염 높이는 방 하나의 불 전체로 셈한다: 바둑판 여러 칸에 걸친 불을 조각마다 따로 셈하면 실제보다 낮아진다
 func test_height_uses_whole_room_fire() -> void:
-	# 4m × 2m 가 60kW/칸으로 탄다 (두 채): 전체 1,920kW · 지름 3.19m → 약 1.6m
-	var wide := _main(FireDraw.bodies(_block(0, 0, 8, 4, 60.0), CELL_M, CEILING_M))
-	assert_eq(wide.size(), 2, "두 채")
+	# 4m × 2m 가 60kW/칸으로 탄다 (한 덩어리 — 길어서 그림 몇 개로 나눠 세운다): 전체 1,920kW · 지름 3.19m → 약 1.6m
+	var wide := FireDraw.bodies(_block(0, 0, 8, 4, 60.0), CELL_M, CEILING_M)
+	assert_true(wide.size() >= 2 and wide.size() <= int(FireDraw.num("cluster_max")), "길게 퍼진 불은 그림 몇 개로 (%d)" % wide.size())
 	var whole := FireDraw.flame_height_m(60.0 * 32, FireDraw.diameter_m(32 * CELL_M * CELL_M))
 	var alone := FireDraw.flame_height_m(60.0 * 16, FireDraw.diameter_m(16 * CELL_M * CELL_M))
 	assert_true(whole > alone, "한 덩어리로 셈한 높이가 더 높다 (%.2f > %.2f)" % [whole, alone])
 	for f in wide:
-		assert_true(absf(float(f.height_m) - whole) < 0.001, "두 채 모두 방 전체로 셈한 높이 (%.2f)" % float(f.height_m))
-	# 센 채와 약한 채: 약한 쪽이 낮되 weak_ratio 아래로는 내려가지 않는다
+		assert_true(absf(float(f.height_m) - whole) < 0.001, "나눠 세운 그림 모두 덩어리 전체로 셈한 높이 (%.2f)" % float(f.height_m))
+	# 센 쪽과 약한 쪽: 약한 쪽이 낮되 weak_ratio 아래로는 내려가지 않는다
 	var cells := _block(0, 0, 4, 4, 100.0)
 	cells.append_array(_block(4, 0, 4, 4, 10.0))
-	var mixed := _main(FireDraw.bodies(cells, CELL_M, CEILING_M))
-	mixed.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a.kw) > float(b.kw))
-	assert_true(float(mixed[1].height_m) < float(mixed[0].height_m), "약한 채가 더 낮다")
-	assert_true(float(mixed[1].height_m) >= float(mixed[0].height_m) * FireDraw.num("weak_ratio") - 0.001, "그래도 센 채의 %.0f%% 이상" % (FireDraw.num("weak_ratio") * 100.0))
+	var mixed := FireDraw.bodies(cells, CELL_M, CEILING_M)
+	var lo := INF
+	var hi := 0.0
+	for f in mixed:
+		lo = minf(lo, float(f.height_m))
+		hi = maxf(hi, float(f.height_m))
+	assert_true(mixed.size() >= 2 and lo < hi, "약한 쪽이 더 낮다 (%.2f < %.2f)" % [lo, hi])
+	assert_true(lo >= hi * FireDraw.num("weak_ratio") - 0.001, "그래도 센 쪽의 %.0f%% 이상" % (FireDraw.num("weak_ratio") * 100.0))
 	# 다른 방의 불은 높이에 끼어들지 않는다
 	var other := _block(0, 0, 2, 2, 5.0, 1)
 	other.append_array(_block(2, 0, 2, 2, 300.0, 2))
@@ -159,22 +172,20 @@ func test_narrow_strong_fire_is_a_column() -> void:
 func test_room_fire_is_a_few_bodies_not_one_per_cell() -> void:
 	var cells := _block(0, 0, 12, 8, 120.0)
 	var list := FireDraw.bodies(cells, CELL_M, CEILING_M)
-	var main := _main(list)
-	assert_eq(main.size(), 6, "2m 바둑판 3 × 2 = 여섯 채")
-	assert_true(list.size() <= main.size() * (1 + int(FireDraw.num("satellite_count"))), "곁불은 한 채에 둘까지 (%d)" % list.size())
+	assert_true(list.size() >= 2 and list.size() <= int(FireDraw.num("cluster_max")), "한 덩어리 — 그림 몇 개로 (%d)" % list.size())
 	assert_true(list.size() < cells.size() / 4, "그리는 불꽃이 타는 칸보다 훨씬 적다 (%d < %d칸)" % [list.size(), cells.size()])
 	var total := 0.0
-	for f in main:
+	for f in list:
 		total += float(f.kw)
-		assert_eq(f.kind, "xl", "다 타는 방은 불바다 그림")
+		assert_eq(f.kind, "xl", "넓게 세게 타는 불은 불바다 그림")
+		assert_true(not bool(f.satellite), "따로 선 곁불은 없다")
 	assert_true(absf(total - 120.0 * cells.size()) < 0.01, "열방출률 합은 그대로 (%.0fkW)" % total)
-	# 자리가 줄 맞춰 서지 않는다: 바둑판 칸 가운데에서 조금씩 흩어져 있다
-	var off_grid := 0
-	for f in main:
-		var p: Vector2 = f.pos
-		if absf(fmod(p.x, 4.0) - 2.0) > 0.01 or absf(fmod(p.y, 4.0) - 2.0) > 0.01:
-			off_grid += 1
-	assert_true(off_grid >= 4, "여섯 채 중 넷 이상이 칸 가운데에서 벗어나 있다 (%d)" % off_grid)
+	# 서로 크게 겹친다 (한 불로 보인다): 이웃 그림 사이 거리가 그림 폭보다 짧다
+	var sorted := list.duplicate()
+	sorted.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.pos.x < b.pos.x)
+	for k in range(1, sorted.size()):
+		var gap_m: float = (sorted[k].pos as Vector2).distance_to(sorted[k - 1].pos) * CELL_M
+		assert_true(gap_m < float(sorted[k].width_m), "이웃 그림과 겹친다 (거리 %.2fm < 폭 %.2fm)" % [gap_m, float(sorted[k].width_m)])
 	# 뒤에서 앞으로 (깊이 순서)
 	for k in range(1, list.size()):
 		assert_true(list[k].pos.x + list[k].pos.y >= list[k - 1].pos.x + list[k - 1].pos.y, "깊이 순서")
@@ -182,9 +193,11 @@ func test_room_fire_is_a_few_bodies_not_one_per_cell() -> void:
 
 ## 불 자리 = 열방출률 무게 중심 (세게 타는 쪽으로 쏠린다)
 func test_position_is_heat_weighted() -> void:
-	var list := FireDraw.bodies([_cell(0, 0, 10.0), _cell(3, 0, 300.0)], CELL_M, CEILING_M)
-	var f: Dictionary = _main(list)[0]
-	assert_true(f.pos.x > 2.5, "센 칸 쪽으로 (x = %.2f)" % f.pos.x)
+	# 붙어 있는 두 칸: 한 덩어리로 묶이고, 자리는 센 칸 쪽으로 쏠린다
+	var list := FireDraw.bodies([_cell(0, 0, 10.0), _cell(1, 0, 300.0)], CELL_M, CEILING_M)
+	assert_eq(list.size(), 1, "불 하나")
+	var f: Dictionary = list[0]
+	assert_true(f.pos.x > 1.3, "센 칸 쪽으로 (x = %.2f)" % f.pos.x)
 	assert_eq(int(f.cells), 2, "두 칸을 묶음")
 
 
@@ -198,17 +211,37 @@ func test_rooms_and_remembered_fire_are_kept_apart() -> void:
 	assert_eq(mixed.filter(func(f: Dictionary) -> bool: return bool(f.faded)).size(), 1, "기억 속의 불 하나")
 
 
-func test_satellites_sit_on_far_burning_cells() -> void:
-	var cells := _block(0, 0, 4, 4, 60.0)
-	var list := FireDraw.bodies(cells, CELL_M, CEILING_M)
-	var sats := list.filter(func(f: Dictionary) -> bool: return bool(f.satellite))
-	assert_eq(sats.size(), int(FireDraw.num("satellite_count")), "곁불 수")
-	var body: Dictionary = _main(list)[0]
-	for s: Dictionary in sats:
-		assert_true(float(s.height_m) < float(body.height_m), "곁불은 몸통보다 낮다")
-		assert_true(s.pos.distance_to(body.pos) * CELL_M >= FireDraw.num("satellite_min_dist_m") - 0.001, "몸통에서 떨어져 있다")
-		assert_eq(Vector2(s.pos) - Vector2(s.pos).floor(), Vector2(0.5, 0.5), "타는 칸 가운데")
-	# 작은 불에는 곁불이 없다
+## 붙어 있는 불은 하나로 (2026-11-25 사용자: 한 칸의 불이 다음 칸으로 가면 합쳐져서 더 크게 보여야 한다)
+func test_adjacent_fire_merges_and_grows() -> void:
+	# 한 칸 → 옆 칸으로 번짐 → 더 번짐: 불은 늘 하나이고 점점 크다
+	var last_h := 0.0
+	var last_w := 0.0
+	for n: int in [1, 2, 4]:
+		var cells: Array = []
+		for k in n:
+			cells.append(_cell(5 + k % 2, 5 + k / 2, 60.0))
+		var list := FireDraw.bodies(cells, CELL_M, CEILING_M)
+		assert_eq(list.size(), 1, "%d칸이 타도 불은 하나" % n)
+		assert_eq(int(list[0].cells), n, "그 칸들을 다 묶었다")
+		assert_true(float(list[0].height_m) >= last_h and float(list[0].width_m) >= last_w, "번질수록 커진다 (%d칸: 높이 %.2f · 폭 %.2f)" % [n, float(list[0].height_m), float(list[0].width_m)])
+		last_h = float(list[0].height_m)
+		last_w = float(list[0].width_m)
+	assert_true(last_h > FireDraw.num("min_height_m"), "네 칸이면 갓 붙은 불보다 높다")
+	# 가구 사이 빈 바닥 한 칸을 건너뛴 불도 한 덩어리 (merge_gap_m 안)
+	var gap_cells := maxi(1, roundi(FireDraw.num("merge_gap_m") / CELL_M))
+	var two := FireDraw.diameter_m(2 * CELL_M * CELL_M)
+	var one := FireDraw.diameter_m(CELL_M * CELL_M)
+	var near := FireDraw.bodies([_cell(0, 0, 60.0), _cell(gap_cells, 0, 60.0)], CELL_M, CEILING_M)
+	for f in near:
+		assert_true(absf(float(f.diameter_m) - two) < 0.001, "%d칸 떨어진 불은 한 덩어리로 셈한다" % gap_cells)
+	# 멀리 떨어진 불은 따로
+	var far := FireDraw.bodies([_cell(0, 0, 60.0), _cell(gap_cells + 3, 0, 60.0)], CELL_M, CEILING_M)
+	assert_eq(far.size(), 2, "멀리 떨어진 불은 따로")
+	for f in far:
+		assert_true(absf(float(f.diameter_m) - one) < 0.001, "저마다 한 칸짜리 불")
+	# 따로 선 작은 곁불은 없다
+	for f in FireDraw.bodies(_block(0, 0, 4, 4, 60.0), CELL_M, CEILING_M):
+		assert_true(not bool(f.satellite), "곁불 없음")
 	assert_eq(FireDraw.bodies(_block(0, 0, 2, 2, 60.0), CELL_M, CEILING_M).size(), 1, "네 칸짜리 불은 하나만")
 
 
@@ -345,12 +378,17 @@ func test_flame_vents_pick_open_openings_of_burning_room() -> void:
 	living.q_potential = 800.0
 	living.layer_depth = living.height - 0.8
 	living.t_upper = 300.0
-	var growth := FloorLayer.flame_vents(sim, 1)
-	assert_true(not growth.is_empty(), "성장기: 바깥으로 난 열린 문에서 작은 불꽃")
-	for v: Array in growth:
-		assert_true(not bool(v[4]) and int(v[5]) == living.index, "성장기에는 옆 방으로 넘치지 않는다 (바깥 개구부만)")
-		assert_eq(float(v[1]), FireDraw.num("vent_growth_k"), "성장기 세기")
+	assert_eq(FloorLayer.flame_vents(sim, 1).size(), 0, "성장기의 불은 개구부로 뿜지 않는다 (연기만 나온다)")
+	# 롤오버 징후: 열린 문 위로 넘실댄다 (닫힌·안 깨진 창에서는 아니다)
+	living.rollover = true
+	living.t_upper = living.flashover_temp - 20.0
+	var roll := FloorLayer.flame_vents(sim, 1)
+	assert_true(not roll.is_empty(), "롤오버: 열린 문에서 뿜는다")
+	for v: Array in roll:
+		assert_eq(int(v[5]), living.index, "뿜는 방은 거실")
+		assert_true(float(v[1]) > FireDraw.num("vent_growth_k") and float(v[1]) <= FireDraw.num("vent_roll_k") + 0.001, "롤오버 세기 (%.2f)" % float(v[1]))
 		assert_true(not bool(v[8]), "닫힌(안 깨진) 창에서는 뿜지 않는다")
+	living.rollover = false
 	# 플래시오버 뒤: 방 사이 문으로도 뿜고, 깨진 창에서도 뿜는다
 	living.flashed = true
 	living.t_upper = living.flashover_temp + 50.0

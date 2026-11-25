@@ -4,9 +4,10 @@
 #   art/portraits/crew_command.png        — 현장지휘관 (지휘관이 거는 무전)
 #   art/portraits/half_fire·rescue·ems.png — 조장의 판단 장면: 얼굴의 반쪽만 (프로스트펑크 독백 방식, 사용자 예시 그림)
 #   art/ui/ink_blot.png — 가운데가 불투명하고 가장자리가 번진 검은 얼룩 (프로스트펑크 사건 창 방식)
-# 구조대원 그림만 따로 (2026-11-25 사용자 제공 '구조대원.png' — 주황 헬멧에 무전기를 든 모습):
+# 구조대원·구급대원 그림만 따로 (2026-11-25 사용자 제공 '구조대원.png' — 주황 헬멧에 무전기 / '구급대원.png' — 흰 헬멧·마스크에 무전기):
 #   python tools/prep_radio_art.py rescue <구조대원 그림> <출력 폴더 art>
-#   art/portraits/crew_rescue.png · half_rescue.png 를 그 그림으로 바꾼다 (헬멧이 이미 주황이라 물들이지 않는다)
+#   python tools/prep_radio_art.py ems <구급대원 그림> <출력 폴더 art>
+#   art/portraits/crew_<종류>.png · half_<종류>.png 를 그 그림으로 바꾼다 (헬멧 색이 이미 맞아 물들이지 않는다)
 # 필요: pillow, numpy
 import os
 import sys
@@ -22,9 +23,12 @@ CREW_HELMET = (232, 0, 468, 150)
 # 헬멧 색 (data/art.json helmet_color, 2026-11-11 사용자 결정). None = 그림 그대로(검정)
 KINDS = {"fire": None, "rescue": (255, 122, 26), "ems": (238, 238, 238)}
 SIZE = 640
-# 구조대원 그림(2048×2048)에서 쓸 영역 (다른 대원 그림과 같은 가로세로 비)과 얼굴 가운데 세로선
-RESCUE_BOX = (250, 0, 1950, 1410)
-RESCUE_FACE_X = 1200
+# 종류별 그림 한 장(2048×2048)에서 쓸 영역 (다른 대원 그림과 같은 가로세로 비 690 : 572)과 얼굴 가운데 세로선
+SINGLE = {
+    "rescue": {"box": (250, 0, 1950, 1410), "face_x": 1200},
+    # half_y: 얼굴 반쪽 그림만 더 가까이 잡을 때의 세로 범위 (없으면 box 와 같다) — 얼굴이 작게 찍힌 그림
+    "ems": {"box": (240, 100, 1808, 1400), "face_x": 1023, "half_y": (230, 1130)},
+}
 
 
 def ink_mask(w: int, h: int, seed: int, cut_right: bool = False) -> np.ndarray:
@@ -105,16 +109,18 @@ def portraits(crew_src: str, cmd_src: str, out_dir: str) -> None:
     save(half, ink_mask(half.shape[1], half.shape[0], 37, True), os.path.join(out_dir, "portraits", "half_command.png"), SIZE)
 
 
-def rescue_portrait(src: str, out_dir: str) -> None:
-    """구조대원 그림 한 장으로 무전 장면 그림과 판단 장면의 얼굴 반쪽을 만든다 (번짐 무늬는 다른 대원 그림과 같은 씨앗)"""
+def single_portrait(key: str, src: str, out_dir: str) -> None:
+    """그 종류의 그림 한 장으로 무전 장면 그림과 판단 장면의 얼굴 반쪽을 만든다 (번짐 무늬는 다른 대원 그림과 같은 씨앗)"""
     a = np.array(Image.open(src).convert("RGB")).astype(np.float32)
-    x0, y0, x1, y1 = RESCUE_BOX
+    x0, y0, x1, y1 = SINGLE[key]["box"]
+    face_x = SINGLE[key]["face_x"]
     part = a[y0:y1, x0:x1]
-    save(part, ink_mask(part.shape[1], part.shape[0], 11), os.path.join(out_dir, "portraits", "crew_rescue.png"), SIZE)
+    save(part, ink_mask(part.shape[1], part.shape[0], 11), os.path.join(out_dir, "portraits", "crew_%s.png" % key), SIZE)
     # 반쪽 그림의 가로세로 비는 다른 대원 그림과 같게 (300 : 572)
-    half_w = round((y1 - y0) * 300.0 / 572.0)
-    half = a[y0:y1, max(0, RESCUE_FACE_X - half_w):RESCUE_FACE_X]
-    save(half, ink_mask(half.shape[1], half.shape[0], 23, True), os.path.join(out_dir, "portraits", "half_rescue.png"), SIZE)
+    hy0, hy1 = SINGLE[key].get("half_y", (y0, y1))
+    half_w = round((hy1 - hy0) * 300.0 / 572.0)
+    half = a[hy0:hy1, max(0, face_x - half_w):face_x]
+    save(half, ink_mask(half.shape[1], half.shape[0], 23, True), os.path.join(out_dir, "portraits", "half_%s.png" % key), SIZE)
 
 
 def ink_blot(out_dir: str, w: int = 1400, h: int = 760, seed: int = 7) -> None:
@@ -166,8 +172,8 @@ def ink_blot(out_dir: str, w: int = 1400, h: int = 760, seed: int = 7) -> None:
 
 
 if __name__ == "__main__":
-    if sys.argv[1] == "rescue":
-        rescue_portrait(sys.argv[2], sys.argv[3])
+    if sys.argv[1] in SINGLE:
+        single_portrait(sys.argv[1], sys.argv[2], sys.argv[3])
     else:
         portraits(sys.argv[1], sys.argv[2], sys.argv[3])
         ink_blot(sys.argv[3])

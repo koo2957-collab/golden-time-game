@@ -32,5 +32,13 @@
   "surge_boost": {"value": 0.6, "source": "화면 설정", "note": "플래시오버 순간 천장 화염을 한 겹 더 겹치는 진하기 (전이가 끝나면 0)"},
   "full_sheet_alpha": {"value": 0.95, "source": "화면 설정", "note": "플래시오버 뒤 방 전체가 탈 때 천장 화염 판의 진하기 (상부층이 플래시오버 온도 아래로 식으면 roll_ramp_c 에 걸쳐 옅어진다)"},
   "full_wall_alpha": {"value": 0.85, "source": "화면 설정", "note": "그때 잘린 앞면의 화염 벽 진하기 — 1보다 작아 방 안이 조금 비친다"},
-  "full_glow_ratio": {"value": 0.8, "source": "화면 설정", "note": "그때 불빛 번짐 크기 = 방 대각선 길이 × 이 값"}
+  "full_glow_ratio": {"value": 0.8, "source": "화면 설정", "note": "그때 불빛 번짐 크기 = 방 대각선 길이 × 이 값"},
+  "vent_growth_k": {"value": 0.15, "source": "화면 설정", "note": "창·문 밖 분출 화염 (4단계, 2026-11-25): 성장기의 불이 보이는 방 — 열린·깨진 창과 열린 문 윗부분에서 작은 불꽃만 (세기 0~1)"},
+  "vent_roll_k": {"value": 0.45, "source": "화면 설정", "note": "롤오버 징후가 가장 셀 때(플래시오버 직전)의 분출 화염 세기 — 천장 화염이 개구부 위로 넘실댄다"},
+  "vent_rise_min_m": {"value": 0.4, "source": "화면 설정", "note": "세기 0일 때 분출 화염이 개구부 윗면 위로 솟는 높이 (m)"},
+  "vent_rise_max_m": {"value": 2.4, "source": "화면 설정", "note": "세기 1(플래시오버 뒤 전실 화재)일 때 솟는 높이 (m) — 한 층 높이쯤. 방 안에서 못 탄 가스가 밖에서 타며 외벽을 타고 오른다"},
+  "vent_drop_m": {"value": 0.6, "source": "화면 설정", "note": "세기 1일 때 화염 뿌리가 개구부 윗면에서 내려오는 깊이 (m) — 셀수록 개구부를 더 많이 채운다"},
+  "vent_out_m": {"value": 0.7, "source": "화면 설정", "note": "세기 1일 때 화염이 벽에서 밖으로 나온 거리 (m)"},
+  "vent_width_gain": {"value": 0.6, "source": "화면 설정", "note": "화염 폭 = 개구부 폭 × (0.8 + 이 값 × 세기)"},
+  "vent_alpha": {"value": 0.95, "source": "화면 설정", "note": "분출 화염의 진하기 (지금 보이지 않고 본 적만 있는 방은 remembered_fade 를 곱한다)"}
 }

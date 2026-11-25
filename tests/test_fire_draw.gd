@@ -289,3 +289,67 @@ func test_baked_fire_wall_image() -> void:
 	assert_true(float(m.height_m) >= 2.0, "방 높이를 채운다 (%.1fm)" % float(m.height_m))
 	assert_true(float(m.mean_alpha) > 0.4, "방 전체가 타는 모습 — 롤오버 띠보다 빽빽하다 (평균 진하기 %.2f)" % float(m.mean_alpha))
 	assert_true(FxArt.load_all() and FxArt.fire_wall != null, "게임이 그림을 불러온다")
+
+
+## 창·문 밖 분출 화염 (4단계, 2026-11-25): 세기는 방의 상태로 — 성장기 < 롤오버 < 플래시오버 뒤, 식으면 줄어든다
+func test_vent_strength_follows_room_state() -> void:
+	var low := FireDraw.num("vent_growth_k")
+	var roll := FireDraw.num("vent_roll_k")
+	assert_true(low > 0.0 and low < roll and roll < 1.0, "성장기 %.2f < 롤오버 %.2f < 1" % [low, roll])
+	assert_eq(FireDraw.vent_strength(false, false, 300.0, 600.0), low, "성장기의 불: 작은 불꽃")
+	assert_eq(FireDraw.vent_strength(false, true, 500.0, 600.0), low, "롤오버가 막 시작될 때는 성장기와 같다")
+	assert_true(absf(FireDraw.vent_strength(false, true, 600.0, 600.0) - roll) < 0.001, "플래시오버 직전의 롤오버")
+	assert_eq(FireDraw.vent_strength(true, false, 700.0, 600.0), 1.0, "플래시오버 뒤 전실 화재: 가장 세다")
+	var cooling := FireDraw.vent_strength(true, false, 550.0, 600.0)
+	assert_true(cooling < 1.0 and cooling > low, "식으면 줄어든다 (%.2f)" % cooling)
+	assert_eq(FireDraw.vent_strength(true, false, 100.0, 600.0), low, "타는 동안은 성장기 아래로 내려가지 않는다")
+	assert_true(FireDraw.vent_rise_m(1.0) > FireDraw.vent_rise_m(low) and FireDraw.vent_rise_m(low) > 0.2, "셀수록 높이 솟는다 (%.1fm → %.1fm)" % [FireDraw.vent_rise_m(low), FireDraw.vent_rise_m(1.0)])
+	assert_true(FireDraw.vent_rise_m(1.0) >= 2.0, "전실 화재는 한 층 높이쯤 솟는다")
+
+
+## 어느 개구부에서 뿜는가: 타는 방의 열린 문·깨진 창. 방 사이 문은 롤오버·플래시오버 뒤에만
+func test_flame_vents_pick_open_openings_of_burning_room() -> void:
+	var sim := make_sim()
+	var living := sim.fire.compartment_at(1, 12, 16)
+	assert_true(living != null, "거실")
+	if living == null:
+		return
+	assert_eq(FloorLayer.flame_vents(sim, 1).size(), 0, "타는 방이 없으면 없다")
+	# 성장기: 타고 있고 연기층이 인방 아래로 내려왔다 (모든 문은 열려 있다 — make_sim)
+	living.q_potential = 800.0
+	living.layer_depth = living.height - 0.8
+	living.t_upper = 300.0
+	var growth := FloorLayer.flame_vents(sim, 1)
+	assert_true(not growth.is_empty(), "성장기: 바깥으로 난 열린 문에서 작은 불꽃")
+	for v: Array in growth:
+		assert_true(not bool(v[4]) and int(v[5]) == living.index, "성장기에는 옆 방으로 넘치지 않는다 (바깥 개구부만)")
+		assert_eq(float(v[1]), FireDraw.num("vent_growth_k"), "성장기 세기")
+		assert_true(not bool(v[8]), "닫힌(안 깨진) 창에서는 뿜지 않는다")
+	# 플래시오버 뒤: 방 사이 문으로도 뿜고, 깨진 창에서도 뿜는다
+	living.flashed = true
+	living.t_upper = living.flashover_temp + 50.0
+	var window: Opening = null
+	for o in sim.fire.openings:
+		if o.kind == Opening.Kind.WINDOW and o.level == 1 and o.room_a == living.index and o.room_b == Opening.OUTSIDE:
+			window = o
+			break
+	assert_true(window != null, "거실의 바깥 창")
+	if window != null:
+		window.broken = true
+		window.is_open = true
+	var full := FloorLayer.flame_vents(sim, 1)
+	var inner := full.filter(func(v: Array) -> bool: return bool(v[4]))
+	var windows := full.filter(func(v: Array) -> bool: return bool(v[8]))
+	assert_true(not inner.is_empty(), "전실 화재: 열린 방 사이 문으로 옆 방에 뿜는다")
+	assert_eq(windows.size(), 1, "깨진 창 하나에서 뿜는다")
+	for v: Array in full:
+		assert_eq([int(v[5]), float(v[1])], [living.index, 1.0], "뿜는 방은 거실, 세기 1")
+		var dir: Vector2 = v[2]
+		var out_cell := Vector2i((v[0] as Vector2 + dir).floor())
+		assert_true(sim.fire.compartment_at(1, out_cell.x, out_cell.y) != living, "방 밖으로 뿜는다 (%s → %s)" % [v[0], dir])
+	# 문을 닫으면 그 문에서는 뿜지 않는다
+	var n := full.size()
+	for o in sim.fire.openings:
+		if o.kind == Opening.Kind.DOOR and o.level == 1 and (o.room_a == living.index or o.room_b == living.index):
+			o.is_open = false
+	assert_eq(FloorLayer.flame_vents(sim, 1).size(), 1, "문을 다 닫으면 깨진 창만 남는다 (%d → 1)" % n)

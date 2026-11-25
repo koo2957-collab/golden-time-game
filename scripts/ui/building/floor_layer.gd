@@ -678,7 +678,8 @@ func _draw_window_signs(w: Dictionary, h0: float, fh: float) -> void:
 			draw_line(_face_point(w.face, x, g1), _face_point(w.face, x + 0.04, lerpf(g1, g0, 0.55 + 0.12 * k)),
 				Color(stain.darkened(0.5), minf(1.0, stain.a + 0.25)), 2.0)
 	# 화염 분출: 불난 방(확인한 불)의 열린·깨진 창 위로 불꽃이 넘실댄다
-	if _fire_rooms.has(o.room_a) and (o.broken or o.is_open):
+	# (구운 불꽃 그림이 있으면 _draw_vent_flame 이 방의 상태에 맞는 크기로 그린다 — 4단계, 2026-11-25)
+	if FxArt.fires.is_empty() and _fire_rooms.has(o.room_a) and (o.broken or o.is_open):
 		var base := _face_point(w.face, mid, g1)
 		var half := (_face_point(w.face, b, g1) - _face_point(w.face, a, g1)).length() * 0.5
 		var flick := 0.8 + 0.25 * sin(t * 9.0 + o.index * 1.7)
@@ -765,6 +766,10 @@ func _draw_shell_plumes() -> void:
 			for bs in backdraft_seeps(sim, int(row[0])):
 				if bool(bs[6]):
 					_draw_backdraft_seep(bs, float(row[1]))
+			# 바깥으로 난 열린·깨진 창, 열린 문 밖으로 뿜는 화염 (외관의 창은 창 그림 높이에 맞춘다)
+			for fv in flame_vents(sim, int(row[0])):
+				if not bool(fv[4]):
+					_draw_vent_flame(fv, float(row[1]), float(row[2]), true)
 			continue
 		for line in smoke_outlets(sim, int(row[0])):
 			var at: Vector2 = line[0]
@@ -3820,6 +3825,9 @@ func _draw_smoke_spills() -> bool:
 	for s in smoke_spills(sim, level):
 		if not bool(s[4]):
 			_draw_spill(s, 0.0, CEILING_M, int(s[5]))
+	# 열린·깨진 창과 열린 문 밖으로 뿜는 화염 — 밖으로도, 옆 방(복도)으로도 (4단계, 2026-11-25)
+	for fv in flame_vents(sim, level):
+		_draw_vent_flame(fv, 0.0, CEILING_M, false)
 	# 백드래프트 징후: 지금 보이는 닫힌 문·창 틈에서만 (정보 안개 — 본 적만 있는 곳의 지금 상태를 보여 주지 않는다, 2026-11-24 검사)
 	var p := sim.perception
 	for s in backdraft_seeps(sim, level):
@@ -3855,6 +3863,83 @@ func _draw_spill(s: Array, floor_h: float, ceil_m: float, seed: int) -> void:
 	col.a = stack.params.smoke_spill_alpha * clampf(float(s[1]), 0.3, 1.0)
 	FxArt.draw_flip(self, FxArt.spill, "smoke_spill", PackedVector2Array([proj.to_screen(wall, hi), proj.to_screen(wall + dir * out, hi),
 		proj.to_screen(wall + dir * out, lo), proj.to_screen(wall, lo)]), Vector2.ZERO, Vector2.ONE, col, seed, 1.0, float(lk.get("rate", 1.0)))
+
+
+## 개구부 밖으로 뿜는 화염 (불·연기 그림 4단계, 2026-11-25 — 전에는 외부 화면의 창 위에만 늘 같은 크기의 작은 불꽃을 그렸고,
+## 열린 문으로 뿜는 화염은 없었다): 타는 방의 열린·깨진 창, 열린 문마다 방의 상태에 맞는 세기로 (FireDraw.vent_strength).
+## 방 사이 문은 더 센 쪽에서 약한 쪽으로 — 둘 다 플래시오버 뒤면 그리지 않는다 (양쪽이 이미 화염으로 찼다).
+## → [위치(개구부 가운데, 셀), 세기 0~1, 뿜는 방향(셀 단위 축), 인방 높이(m), 방 사이 문인가, 뿜는 방 번호, 개구부 번호, 개구부 폭(m), 창인가]
+static func flame_vents(p_sim: SimWorld, lv: int) -> Array[Array]:
+	var out: Array[Array] = []
+	var fire := p_sim.fire
+	for o in fire.openings:
+		if o.level != lv or o.cells.is_empty() or o.room_a == Opening.OUTSIDE or o.kind == Opening.Kind.STAIR:
+			continue
+		if not (o.is_open or o.broken):
+			continue
+		var src := fire.comps[o.room_a]
+		var dst := src
+		var interior := o.room_b != Opening.OUTSIDE
+		if interior:
+			var cb := fire.comps[o.room_b]
+			if cb.flashed and src.flashed:
+				continue
+			if _vent_k(cb) > _vent_k(src):
+				dst = src
+				src = cb
+			else:
+				dst = cb
+		# 타고 있고 연기층이 인방 아래로 내려온 방만 (불꽃은 고온층을 타고 나온다)
+		if src.q_potential <= 0.5 or src.height - src.layer_depth >= o.top:
+			continue
+		# 방 사이 문은 롤오버·플래시오버 뒤에만 (성장기의 작은 불은 옆 방으로 넘치지 않는다)
+		if interior and not (src.flashed or src.rollover):
+			continue
+		var center := o.center()
+		var width := maxf(float(o.cells.size()) * fire.building.cell_size_m, 0.5)
+		out.append([center, _vent_k(src), _spill_dir(p_sim, lv, o, src, dst, center), o.top, interior, src.index, o.index, width,
+			o.kind == Opening.Kind.WINDOW])
+	return out
+
+
+static func _vent_k(c: Compartment) -> float:
+	return FireDraw.vent_strength(c.flashed, c.rollover, c.t_upper, c.flashover_temp) if c.q_potential > 0.5 else 0.0
+
+
+## 분출 화염 하나. floor_h = 그 층 바닥 높이, fh = 층 높이, facade = 외부 화면인가 (창은 외관의 창 그림 높이에 맞춘다).
+## 불이 보이는(또는 본 적 있는) 방만 — 지금 보이지 않으면 흐리게. 방 사이 문은 천장을 넘지 않는다
+func _draw_vent_flame(v: Array, floor_h: float, fh: float, facade: bool) -> void:
+	var src := int(v[5])
+	if not _fire_rooms.has(src) or FxArt.fires.is_empty():
+		return
+	var cell := sim.building.cell_size_m
+	var at: Vector2 = v[0]
+	var k := float(v[1])
+	var dir: Vector2 = v[2]
+	var interior: bool = v[4]
+	var top := float(v[3])
+	# 외부 화면에서 건물 뒤쪽 면(북·서)의 개구부는 건물에 가려 보이지 않는다 — 그리면 지붕 위에 뜬 불처럼 보인다 (연기는 위로 솟아 보인다)
+	if facade and (dir.x < 0.0 or dir.y < 0.0):
+		return
+	# 외관의 창은 창 그림(층 높이의 0.3~0.8)에 맞추고, 문은 층 높이를 넘지 않게
+	var lintel := floor_h + (fh * 0.8 if facade and bool(v[8]) else minf(top, fh * 0.9))
+	var drop := FireDraw.num("vent_drop_m", 0.6) * k
+	var rise := FireDraw.vent_rise_m(k)
+	if interior:
+		rise = minf(rise, maxf(0.2, floor_h + fh - lintel))
+	var height := rise + drop
+	var width := float(v[7]) * (0.8 + FireDraw.num("vent_width_gain", 0.6) * k)
+	var base_at := at + dir * (0.5 + FireDraw.num("vent_out_m", 0.7) * k * 0.5 / cell)
+	var base := proj.to_screen(base_at, lintel - drop)
+	var p := sim.perception
+	var room := sim.fire.comps[src]
+	var now := not p.enabled or p.room_visible(room) or p.is_visible(room.level, floori(at.x), floori(at.y))
+	var a := FireDraw.num("vent_alpha", 0.95) * (1.0 if now else FireDraw.num("remembered_fade", 0.4))
+	var key := int(v[6]) * 7 + 3
+	# 외벽·옆 방 천장에 번지는 불빛
+	var glow := maxf(width, height) * IsoProjection.PX_PER_M * (0.7 + 0.5 * k)
+	ShadowDraw.soft_ellipse(self, base + Vector2(0, -height * IsoProjection.PX_PER_M * 0.45), glow, glow * 0.8, Color(1.0, 0.5, 0.12, 0.28 * k * a))
+	FxArt.draw_fire(self, FireDraw.kind_for(height, width), base, width * IsoProjection.PX_PER_M, height * IsoProjection.PX_PER_M, key, Color(1, 1, 1, a))
 
 
 ## 개구부로 넘치는 연기: [위치(개구부 가운데, 셀), 세기 0~1, 흐르는 방향(셀 단위 축), 인방 높이(m),

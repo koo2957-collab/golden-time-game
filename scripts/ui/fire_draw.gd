@@ -70,6 +70,25 @@ static func flash_progress(seconds: float) -> float:
 	return 1.0 - (1.0 - x) * (1.0 - x)
 
 
+## 개구부(열린·깨진 창, 열린 문) 밖으로 뿜는 화염의 세기 0~1 (4단계, 2026-11-25) — 방의 상태로:
+##   플래시오버 뒤: 상부층 온도로 (rollover_strength — 플래시오버 온도 위에서 1, 식으면 줄어든다). 타는 동안은 vent_growth_k 아래로 안 내려간다
+##   롤오버 징후: vent_growth_k → vent_roll_k (플래시오버에 가까울수록 크게)
+##   그 밖(성장기의 불이 보일 때): vent_growth_k — 개구부 윗부분에서 작은 불꽃만
+static func vent_strength(flashed: bool, rollover: bool, t_upper: float, flashover_temp: float) -> float:
+	var low := num("vent_growth_k", 0.15)
+	var s := rollover_strength(t_upper, flashover_temp)
+	if flashed:
+		return maxf(low, s)
+	if rollover:
+		return lerpf(low, num("vent_roll_k", 0.45), s)
+	return low
+
+
+## 그 세기의 분출 화염이 개구부 윗면(인방) 위로 솟는 높이 (m)
+static func vent_rise_m(strength: float) -> float:
+	return lerpf(num("vent_rise_min_m", 0.4), num("vent_rise_max_m", 2.4), clampf(strength, 0.0, 1.0))
+
+
 ## 타는 칸들 → 불(채) 목록.
 ## cells: [{x, y 칸, kw 열방출률, room 방 번호, base 불 뿌리 높이(m), faded 기억 속의 불인가, full 방 전체가 타는 중인가(플래시오버 뒤)}]
 ## 화염 높이는 방 하나의 불 전체(열방출률 합·타는 넓이 합)로 셈한다 — 불 하나를 바둑판으로 나눠 따로 셈하면 실제보다 낮게 나온다.

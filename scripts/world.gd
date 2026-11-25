@@ -439,9 +439,7 @@ func _view_bounds() -> Rect2:
 	return r
 
 
-## 외부 화면에 있던 카메라 [위치, 배율] — 내부 화면에서 나올 때 되돌린다
-var _exterior_cam: Array = []
-## 내부 화면 층 수 단추 (2026-11-14): 한 화면에 맞춰 넣을 층 수.
+## 내부 화면 층 수 단추 (2026-11-14): 한 화면에 맞춰 넣을 층 수 — 누를 때만 화면에 맞춘다 (2026-11-25).
 ## 1(기본) = 고른 층을 가운데에 크게, 2 = 고른 층 + 짝 층, 3 = 고른 층 + 직상층 + 직하층
 var interior_span := 1
 ## '2개 층'에서 고른 층의 짝: false = 직상층, true = 직하층.
@@ -453,22 +451,26 @@ var _glide: Tween
 
 
 ## 화면이 바뀔 때의 카메라:
-##   외부 → 내부: 층 수 단추(1·2·3개 층)만큼 화면에 들어오게 맞춘다. 외부 화면의 카메라는 기억해 둔다
+##   외부 ↔ 내부 (2026-11-25 사용자 결정): 배율·위치를 그대로 둔다 — 같은 자리에서 벽만 걷어 낸 것처럼 (심즈·XCOM·Door Kickers 처럼
+##     확대는 휠로만). 전에는 들어갈 때 고른 층에 꽉 차게 맞추고 나올 때 외부 카메라를 되돌려, 오갈 때마다 배율이 바뀌었다.
+##     위층은 외부 화면에서는 외벽의 그 층 높이에, 내부 화면에서는 땅 높이에 그리므로 그만큼만 카메라를 옮겨 그 층이 화면에서 제자리에 있게 한다.
+##     내부 화면에서 외부 최소 배율보다 더 축소한 채 나오면 외부 최소 배율로 맞춘다.
+##     화면에 맞추는 것은 층 수 단추(1·2·3개 층)를 누를 때만
 ##   내부에서 층 바꿈(층 막대·PgUp): 그 층(과 짝 층)을 가운데로 옮기되 배율은 그대로
 ##   지도에서 다른 층을 눌러 바꿈(keep_screen): 클릭은 제자리에서 처리하고, 단추를 떼면 그 층이 가운데로 미끄러져 온다
 ##     2개 층: 보고 있던 두 층 안에서 눌렀으면 제자리, 밖의 층을 눌렀으면 한 층만 따라간다
 ##     3개 층: 세 층이 다 보이므로 제자리에 둔다
-##   내부 → 외부: 기억해 둔 카메라로
 func _fit_view_change(was_exterior: bool, old_level: int, keep_screen: bool) -> void:
 	if view_mode != ViewMode.ISO:
 		return
 	_stop_glide()
 	if exterior_view:
 		camera.zoom_min = RtsCamera.ZOOM_MIN
-		if not was_exterior and _exterior_cam.size() == 2:
-			camera.position = _exterior_cam[0]
-			camera.zoom = _exterior_cam[1]
-			_exterior_cam = []
+		if not was_exterior:
+			_stop_arrival_zoom()
+			camera.position -= _shell_shift(old_level)
+			if camera.zoom.x < camera.zoom_min:
+				camera.zoom = Vector2(camera.zoom_min, camera.zoom_min)
 		return
 	camera.zoom_min = iso_view.params.split_zoom_min
 	# 2개 층의 짝: 보고 있던 두 층 안에서 옮겼는가, 그리고 새 짝은 어느 쪽인가
@@ -479,13 +481,25 @@ func _fit_view_change(was_exterior: bool, old_level: int, keep_screen: bool) -> 
 		_pair_lower = step > 0
 	_pair_lower = stack.neighbor_step(view_level, stack.pair_level(view_level, _pair_lower)) < 0
 	if was_exterior:
-		_exterior_cam = [camera.position, camera.zoom]
-		_frame_interior(true)
+		_stop_arrival_zoom()
+		camera.position += _shell_shift(view_level)
 	elif keep_screen:
 		camera.position += iso_view.level_shift(old_level, view_level)
 		_glide_pending = interior_span <= 1 or (interior_span == 2 and not in_pair)
 	elif old_level != view_level:
 		_frame_interior(false)
+
+
+## 외부 화면에서 그 층이 그려지는 높이만큼의 화면 거리 (world 좌표): 외부 화면은 외벽의 그 층 높이에, 내부 화면은 땅 높이에 그린다.
+## 외관에 없는 층(1층·지하)은 0
+func _shell_shift(level: int) -> Vector2:
+	if iso_view.layers.is_empty():
+		return Vector2.ZERO
+	var band: Array = iso_view.layers[0].shell_band(level)
+	if band.is_empty():
+		return Vector2.ZERO
+	var p := projection()
+	return p.to_screen(Vector2.ZERO, 0.0) - p.to_screen(Vector2.ZERO, float(band[0]))
 
 
 ## '내부 보기' 단추: 켜면 내부 화면(고른 조가 건물 안에 있으면 그 층, 아니면 지상층), 끄면 외부 화면

@@ -306,6 +306,28 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	root.get_texture().get_image().save_png("user://smoke_exterior.png")
+	# 외부 ↔ 내부를 오가도 카메라 배율·위치가 그대로 (2026-11-25 사용자 결정 — 전에는 들어갈 때 고른 층에 맞춰 확대하고 나올 때 되돌렸다)
+	world.camera.zoom = Vector2(0.8, 0.8)
+	world.camera.retarget(world._view_bounds(), world.camera.position)
+	var cam_pos: Vector2 = world.camera.position
+	var cam_zoom: Vector2 = world.camera.zoom
+	world.set_view_level(1, false)
+	_check("외부 → 내부(1층): 카메라 배율·위치 그대로", [world.exterior_view, world.camera.position.distance_to(cam_pos) < 0.5, world.camera.zoom], [false, true, cam_zoom])
+	world.set_view_level(1, true)
+	_check("내부(1층) → 외부: 카메라 그대로", [world.exterior_view, world.camera.position.distance_to(cam_pos) < 0.5, world.camera.zoom], [true, true, cam_zoom])
+	# 위층은 외부 화면에서 외벽의 그 층 높이에, 내부 화면에서 땅 높이에 그린다 — 그만큼만 카메라가 내려가 그 층이 화면 제자리에 있다
+	var band: Array = world.iso_view.layers[0].shell_band(2)
+	var iso_proj = world.projections[world.ViewMode.ISO]
+	var lift: Vector2 = iso_proj.to_screen(Vector2.ZERO, 0.0) - iso_proj.to_screen(Vector2.ZERO, float(band[0])) if not band.is_empty() else Vector2.ZERO
+	world.set_view_level(2, false)
+	_check("외부 → 내부(2층): 배율 그대로, 2층이 화면 제자리", [lift.y > 0.0, world.camera.position.distance_to(cam_pos + lift) < 0.5, world.camera.zoom], [true, true, cam_zoom])
+	world.set_view_level(1, true)
+	_check("내부(2층) → 외부: 처음 카메라로", [world.camera.position.distance_to(cam_pos) < 0.5, world.camera.zoom], [true, cam_zoom])
+	# 층 수 단추를 누르면 그때 화면에 맞춘다 (명시적으로 맞추는 단추)
+	world.set_view_level(1, false)
+	world.set_interior_span(1)
+	_check("층 수 단추를 누르면 고른 층에 맞춘다 (배율이 바뀜)", world.camera.zoom != cam_zoom, true)
+	world.set_view_level(1, true)
 	world.set_view_mode(world.ViewMode.PLAN)
 	_key(KEY_PAGEUP)
 	_check("외부 보기에서 PgUp → 1층 단면", [world.view_level, world.exterior_view], [1, false])

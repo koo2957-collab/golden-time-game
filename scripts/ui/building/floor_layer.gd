@@ -621,6 +621,16 @@ func _draw_facade_window(w: Dictionary, h0: float, fh: float) -> void:
 	var g0 := h0 + fh * 0.3
 	var g1 := h0 + fh * 0.8
 	_face_quad(w.face, a, b, g0, g1, _facade_glass(w.o))
+	# 불난 방(확인한 불)의 창 안쪽은 움직이는 불로 (2026-11-25 — 단색 주황 유리 대신): 창 밖 분출 화염이 이 불에서 이어져 나온다.
+	# 진하기는 방의 상태로 (성장기에는 옅게 비치고, 플래시오버 뒤에는 창 가득)
+	if not thermal and FxArt.fire_wall != null and _fire_rooms.has(w.o.room_a):
+		var fm: Dictionary = FxArt.meta.get("fire_wall", {})
+		var du := clampf((b - a) * sim.building.cell_size_m / maxf(1.0, float(fm.get("tile_m", 4.0))), 0.05, 0.9)
+		var u0 := fposmod(float(w.o.index) * 0.37, 1.0 - du)
+		var fk := _vent_k(sim.fire.comps[w.o.room_a])
+		FxArt.draw_flip(self, FxArt.fire_wall, "fire_wall", PackedVector2Array([_face_point(w.face, a, g1), _face_point(w.face, b, g1),
+			_face_point(w.face, b, g0), _face_point(w.face, a, g0)]), Vector2(u0, 0.3), Vector2(u0 + du, 1.0),
+			Color(1, 1, 1, lerpf(0.45, 1.0, fk)), w.o.index)
 	if not thermal:
 		var p0 := _face_point(w.face, a, g0)
 		var p1 := _face_point(w.face, b, g0)
@@ -1780,10 +1790,22 @@ func _draw_fire_body(f: Dictionary) -> void:
 	if not bool(f.satellite):
 		var rx := maxf(float(f.diameter_m) * 0.65, 0.3) * ground
 		ShadowDraw.soft_ellipse(self, base, rx, rx * GROUND_RATIO, Color(1.0, 0.45, 0.1, FireDraw.num("ember_alpha", 0.4) * fade))
-		if depth == 0 and fade >= 1.0:
+		# 전실 화재의 기둥은 저마다 불빛을 더하지 않는다 — 수십 개가 겹치면 방 전체가 뿌옇고 밝은 한 덩어리가 된다 (방 하나의 불빛은 _draw_room_fire 가 더한다)
+		if depth == 0 and fade >= 1.0 and not bool(f.get("full", false)):
 			var glow_m := float(f.width_m) * FireDraw.num("glow_per_m", 1.7) + FireDraw.num("glow_base_m", 1.6)
 			_glow_spots.append([base, glow_m * ground, clampf(float(f.height_m) / CEILING_M, 0.3, 1.0), key % 9973])
-	if FxArt.draw_fire(self, str(f.kind), base, w_px, h_px, key, Color(1, 1, 1, fade)):
+	var tint := Color(1, 1, 1, fade)
+	if bool(f.get("full", false)):
+		# 전실 화재의 기둥 (2026-11-25): 뒤쪽 줄은 어둡고 붉게, 앞쪽 줄은 밝게 — 앞뒤 깊이가 보인다.
+		# 플래시오버 순간에는 낮게 시작해 flash_surge_s 동안 제 높이로 솟는다
+		var back: Array = FireDraw.style().get("full_back_tint", [0.8, 0.42, 0.3])
+		var shade := float(f.get("shade", 1.0))
+		tint = Color(lerpf(float(back[0]), 1.0, shade), lerpf(float(back[1]), 1.0, shade), lerpf(float(back[2]), 1.0, shade), fade)
+		var room_i := int(f.get("room", -1))
+		if room_i >= 0 and room_i < sim.fire.comps.size() and sim.fire.comps[room_i].flashover_tick >= 0:
+			var sec := (sim.clock.tick - sim.fire.comps[room_i].flashover_tick) * SimClock.TICK_DT
+			h_px *= lerpf(FireDraw.num("surge_start_ratio", 0.6), 1.0, FireDraw.flash_progress(sec))
+	if FxArt.draw_fire(self, str(f.kind), base, w_px, h_px, key, tint):
 		return
 	# 구운 불꽃 그림이 없으면 예전 불꽃(셰이더로 구운 것), 그것도 없으면 도형
 	if FxArt.draw_flame(self, base, w_px, h_px, key, Color(1, 1, 1, fade)):
@@ -3491,6 +3513,12 @@ func _draw_smoke() -> void:
 		# 커튼 천장 쪽·윗면 판이 같은 값을 쓴다
 		var sp0 := stack.params
 		var op := minf(sp0.smoke_max_opacity, 1.0 - exp(-sp0.smoke_opacity_k * (0.25 + 0.75 * density) * layer_d)) * fade
+		# 전실 화재의 방 (2026-11-25): 연기 상자를 옅게 한다 — 방을 채운 불기둥이 연기 판·커튼에 덮여 탁해지지 않게.
+		# 상부층이 식으면(쇠퇴) 제 진하기로 돌아온다
+		if c.flashed and _fire_rooms.has(c.index):
+			var cut := 1.0 - FireDraw.num("full_smoke_cut", 0.75) * FireDraw.rollover_strength(c.t_upper, c.flashover_temp)
+			a *= cut
+			op *= cut
 		# 화면에서 이 연기 상자(윗면 + 앞면)에 덮인 사람은 테두리로 — 어느 방 연기든 (2026-11-12 사용자 결정)
 		if op >= stack.params.smoke_outline_opacity:
 			_smoke_hulls.append(Geometry2D.convex_hull(PackedVector2Array([
@@ -3697,8 +3725,10 @@ func _draw_smoke_sheet(r: Rect2i, h: float, col: Color, seed: int, spread: Vecto
 ## 가로·세로로 이어지는 플립북을 방 바닥 모양 그대로 높이 h 에 깐다 (연기 윗면·롤오버 천장 화염이 같이 쓴다).
 ## tile = 그림 한 장의 길이(칸), off = 무늬를 민 거리(칸, 0~tile), base = 그림 아래에 까는 고른 색 (진하기 0이면 안 깐다),
 ## front = 연기 선두 원 — 그 안쪽만 그린다
+## feather > 0 (칸): 방 가장자리에서 이 거리에 걸쳐 흐려진다 — 판을 그 크기의 조각으로 나눠 꼭짓점마다 진하기를 준다
+## (천장 화염 판이 칼로 자른 직사각형으로 보이지 않게, 2026-11-25)
 func _draw_sheet_tiles(tex: Texture2D, key: String, r: Rect2i, h: float, col: Color, base: Color, seed: int, tile: float, off: Vector2,
-		front := Vector3(0, 0, -1)) -> void:
+		front := Vector3(0, 0, -1), feather := 0.0) -> void:
 	var x := float(r.position.x)
 	while x < r.end.x - 0.001:
 		var kx := floorf((x + off.x) / tile + 0.0001)
@@ -3712,7 +3742,27 @@ func _draw_sheet_tiles(tex: Texture2D, key: String, r: Rect2i, h: float, col: Co
 			var v0 := maxf(0.0, (y + off.y) / tile - ky)
 			var v1 := v0 + (ye - y) / tile
 			var cut := _front_cut(front, Rect2(x, y, xe - x, ye - y))
-			if cut.is_empty():
+			if cut.is_empty() and feather > 0.0:
+				# 가장자리 흐림: feather 크기의 조각으로 나눠, 꼭짓점의 진하기 = 방 가장자리까지의 거리 ÷ feather
+				var sx := x
+				while sx < xe - 0.001:
+					var ex := minf(xe, sx + feather)
+					var sy := y
+					while sy < ye - 0.001:
+						var ey := minf(ye, sy + feather)
+						var corners: Array[Vector2] = [Vector2(sx, sy), Vector2(ex, sy), Vector2(ex, ey), Vector2(sx, ey)]
+						var fpts := PackedVector2Array()
+						var fuvs := PackedVector2Array()
+						var fcols := PackedColorArray()
+						for q in corners:
+							fpts.append(proj.to_screen(q, h))
+							fuvs.append(Vector2(u0 + (q.x - x) / tile, v0 + (q.y - y) / tile))
+							var edge := minf(minf(q.x - r.position.x, r.end.x - q.x), minf(q.y - r.position.y, r.end.y - q.y))
+							fcols.append(Color(col, col.a * clampf(edge / feather, 0.0, 1.0)))
+						FxArt.draw_flip_poly(self, tex, key, fpts, fuvs, col, seed, fcols)
+						sy = ey
+					sx = ex
+			elif cut.is_empty():
 				var pts := PackedVector2Array([proj.to_screen(Vector2(x, y), h), proj.to_screen(Vector2(xe, y), h),
 					proj.to_screen(Vector2(xe, ye), h), proj.to_screen(Vector2(x, ye), h)])
 				if base.a > 0.0:
@@ -3811,6 +3861,9 @@ func _draw_fire_plumes() -> Array[Vector2]:
 		var plk: Dictionary = _smoke_look(sim.fire.comps[key]) if key >= 0 and key < sim.fire.comps.size() else {}
 		var col: Color = plk.get("color", Color(0.32, 0.32, 0.34))
 		col.a = sp.smoke_plume_alpha * float(acc[2]) * clampf(0.5 + 0.1 * n, 0.5, 1.0)
+		# 전실 화재의 방은 불 위 연기 기둥도 옅게 (불기둥 한가운데에 검은 기둥이 서지 않게 — 연기 상자와 같은 비율, 2026-11-25)
+		if key >= 0 and key < sim.fire.comps.size() and sim.fire.comps[key].flashed:
+			col.a *= 1.0 - FireDraw.num("full_smoke_cut", 0.75) * FireDraw.rollover_strength(sim.fire.comps[key].t_upper, sim.fire.comps[key].flashover_temp)
 		FxArt.draw_flip(self, FxArt.plume, "smoke_plume", PackedVector2Array([top + Vector2(-hw, 0), top + Vector2(hw, 0),
 			bottom + Vector2(hw, 0), bottom + Vector2(-hw, 0)]), Vector2.ZERO, Vector2.ONE, col, key + 3, 1.0, float(plk.get("rate", 1.0)))
 	return fires
@@ -3955,6 +4008,24 @@ func _draw_vent_flame(v: Array, floor_h: float, fh: float, facade: bool) -> void
 		var glow_at := proj.to_screen(at + dir * (0.5 + reach * 0.4), lintel + rise * 0.3)
 		var glow_r := maxf(float(v[7]), rise) * IsoProjection.PX_PER_M * (0.7 + 0.5 * k)
 		ShadowDraw.soft_ellipse(self, glow_at, glow_r, glow_r * 0.8, Color(1.0, 0.5, 0.12, 0.28 * k * a))
+		# 부피 (2026-11-25 사용자: 입체감이 없고 안쪽 불과 이어지지 않는다 — 얇은 판 몇 장만 벽 밖에 서 있었다):
+		#   ① 개구부 안쪽에서 시작해 밖으로 굽어 오르는 길을 따라 둥근 불덩이가 흘러간다 — 안쪽 불이 밀려 나오는 모습, 판 사이를 메운다
+		#   ② 그 길 가운데에 정면으로 선 불꽃 하나 — 벽에 수직인 판과 엇갈려 어느 쪽에서 봐도 두께가 있다
+		var t := Time.get_ticks_msec() / 1000.0
+		var open_w := float(v[7]) * IsoProjection.PX_PER_M
+		var p0 := proj.to_screen(at - dir * 0.4, lintel - (lintel - lo) * 0.55)
+		var p1 := proj.to_screen(at + dir * (0.5 + reach * 0.55), lintel + rise * 0.05)
+		var p2 := proj.to_screen(at + dir * (0.5 + reach * 0.4), lintel + rise * 0.75)
+		var puffs := int(FireDraw.num("vent_puffs", 4))
+		for j in puffs:
+			var f := fposmod(float(j) / puffs + t * 0.55 + key * 0.13, 1.0)
+			var pos := p0.lerp(p1, f).lerp(p1.lerp(p2, f), f)
+			var size := open_w * lerpf(0.75, 1.5, f) * lerpf(0.7, 1.0, k)
+			FxArt.draw_puff(self, pos, size, FxArt.PUFF_FIRE, key + j, Color(1, 1, 1, a * 0.75 * (1.0 - f * f) * minf(1.0, f * 6.0)))
+		var front_h := rise * 0.8 + (lintel - lo) * 0.4
+		var front_w := maxf(float(v[7]) * 0.9, front_h * 0.5)
+		FxArt.draw_fire(self, FireDraw.kind_for(front_h, front_w), proj.to_screen(at + dir * (0.5 + reach * 0.3), lintel - (lintel - lo) * 0.4),
+			front_w * IsoProjection.PX_PER_M, front_h * IsoProjection.PX_PER_M, key + 2, Color(1, 1, 1, a * 0.6))
 		for i in walls.size():
 			var wall := walls[i]
 			var far := wall + dir * reach
@@ -4144,7 +4215,8 @@ func _draw_rollover(c: Compartment, h: float, fires: Array[Vector2] = [], reach 
 		if FxArt.roll_curtain != null:
 			# 띠 높이는 그림의 band_m 이되 연기층 두께를 넘지 않는다
 			var band := clampf(CEILING_M - h, 0.3, float(FxArt.meta.get("fire_rollc", {}).get("band_m", 0.8)))
-			_draw_fire_faces(FxArt.roll_curtain, "fire_rollc", r, CEILING_M - band, 1.0, col, c.index, reach)
+			# 앞면 띠는 윗면보다 옅게 — 진하면 방 가장자리를 따라 밝은 직사각형 테두리처럼 보인다 (2026-11-25)
+			_draw_fire_faces(FxArt.roll_curtain, "fire_rollc", r, CEILING_M - band, 1.0, Color(col, col.a * FireDraw.num("roll_band_alpha", 0.55)), c.index, reach)
 		_room_glow(r, FireDraw.num("roll_glow_ratio", 0.55), lerpf(0.5, 1.0, k), c.index)
 		return
 	var t := Time.get_ticks_msec() / 1000.0
@@ -4173,7 +4245,8 @@ func _draw_roll_sheet(c: Compartment, col: Color, fires: Array[Vector2], reach: 
 	var m: Dictionary = FxArt.meta.get("fire_roll", {})
 	var tile := maxf(1.0, float(m.get("tile_m", 4.0)) / cell)
 	var off := (-dir * FireDraw.num("roll_flow_mps", 0.6) / cell * (Time.get_ticks_msec() / 1000.0)).posmod(tile)
-	_draw_sheet_tiles(FxArt.roll_sheet, "fire_roll", r, CEILING_M + 0.02, col, Color(0, 0, 0, 0), seed, tile, off, reach)
+	_draw_sheet_tiles(FxArt.roll_sheet, "fire_roll", r, CEILING_M + 0.02, col, Color(0, 0, 0, 0), seed, tile, off, reach,
+		maxf(1.0, FireDraw.num("roll_feather_m", 1.0) / cell))
 
 
 ## 방 전체에 번지는 불빛 (방 가운데에서 방 대각선 × ratio 크기)
@@ -4205,14 +4278,8 @@ func _draw_room_fire(c: Compartment, fires: Array[Vector2], reach: Vector3, fade
 	var boost := (1.0 - prog) * FireDraw.num("surge_boost", 0.6) * k
 	if boost > 0.01:
 		_draw_roll_sheet(c, Color(1, 1, 1, boost), fires, reach, c.index + 5)
-	var wall_col := Color(1, 1, 1, clampf(FireDraw.num("full_wall_alpha", 0.85) * k, 0.0, 1.0))
-	var band := minf(CEILING_M, float(FxArt.meta.get("fire_rollc", {}).get("band_m", 0.8)))
-	if FxArt.fire_wall != null:
-		# 화염 벽: 그림 위쪽부터 잘라 쓴다 — 전이 동안 천장에서 바닥으로 내려온다
-		var depth := lerpf(band, CEILING_M, prog)
-		_draw_fire_faces(FxArt.fire_wall, "fire_wall", r, CEILING_M - depth, depth / CEILING_M, wall_col, c.index, reach)
-	elif FxArt.roll_curtain != null:
-		_draw_fire_faces(FxArt.roll_curtain, "fire_rollc", r, CEILING_M - band, 1.0, wall_col, c.index, reach)
+	# 잘린 앞면에는 화염 벽을 바르지 않는다 (2026-11-25 사용자: 입체감이 없다 — 상자에 그림을 바른 것처럼 보였다).
+	# 방 안은 겹겹이 선 불기둥(FireDraw.bodies 의 full 기둥 — 깊이 순서로 그려진다)이 채운다
 	_room_glow(r, lerpf(FireDraw.num("roll_glow_ratio", 0.55), FireDraw.num("full_glow_ratio", 0.8), prog) * (1.0 + 0.5 * (1.0 - prog)), k, c.index)
 	# 화면에서 이 화염 상자(윗면 + 앞면)에 덮인 사람은 테두리로 (연기 상자와 같다)
 	if k >= 0.5:

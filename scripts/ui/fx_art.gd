@@ -148,8 +148,10 @@ static func mean_alpha(key: String, fallback: float) -> float:
 	return clampf(float(meta.get(key, {}).get("mean_alpha", fallback)), 0.05, 1.0)
 
 
-## 플립북을 아무 다각형에: uvs = 점마다 한 장 안의 좌표(0~1). 잘라 낸 조각(연기 선두 안쪽)을 그릴 때
-static func draw_flip_poly(ci: CanvasItem, tex: Texture2D, key: String, pts: PackedVector2Array, uvs: PackedVector2Array, modulate: Color, seed: int) -> bool:
+## 플립북을 아무 다각형에: uvs = 점마다 한 장 안의 좌표(0~1). 잘라 낸 조각(연기 선두 안쪽)을 그릴 때.
+## point_cols = 점마다 색·진하기 (비우면 modulate 하나로) — 가장자리를 흐리게 할 때
+static func draw_flip_poly(ci: CanvasItem, tex: Texture2D, key: String, pts: PackedVector2Array, uvs: PackedVector2Array, modulate: Color, seed: int,
+		point_cols := PackedColorArray()) -> bool:
 	if tex == null or pts.size() < 3:
 		return false
 	var m: Dictionary = meta.get(key, {})
@@ -166,7 +168,11 @@ static func draw_flip_poly(ci: CanvasItem, tex: Texture2D, key: String, pts: Pac
 		var fu := PackedVector2Array()
 		for uv in uvs:
 			fu.append(Vector2(uv.x, clampf(base + uv.y * span, base + inset, base + span - inset)))
-		cols.fill(Color(modulate, modulate.a * float(pair[1])))
+		if point_cols.size() == pts.size():
+			for i in pts.size():
+				cols[i] = Color(point_cols[i], point_cols[i].a * float(pair[1]))
+		else:
+			cols.fill(Color(modulate, modulate.a * float(pair[1])))
 		ci.draw_polygon(pts, cols, fu, tex)
 	return true
 

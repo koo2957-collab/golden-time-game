@@ -95,14 +95,21 @@ static func vent_rise_m(strength: float) -> float:
 ## 그 방에서 가장 센 채가 그 높이, 약한 채는 weak_ratio 까지 낮다. full 인 방은 천장까지 찬다 (전실 화재).
 ## 돌려주는 값 (하나가 불꽃 그림 하나): {pos 칸 좌표, kw, cells 칸 수, diameter_m, height_m, width_m 그릴 폭, kind, base_m, faded, seed,
 ##   capped 천장에 닿았는가, satellite 곁불인가}. 깊이(x + y) 순서 — 뒤에서 앞으로
+##
+## 전실 화재의 입체감 (2026-11-25 사용자: 화염이 입체감이 없다 — 방에 화염 그림을 바른 상자처럼 보였다):
+## full 인 방은 더 촘촘한 바둑판(full_tile_m)으로 묶어 불기둥을 여러 줄 세우고, 기둥마다 높이를 달리해(full_reach_min~max × 방 높이 —
+## 일부는 천장 위로 솟는다) 끝이 들쭉날쭉하게 한다. shade = 그 방 안에서의 앞뒤 자리 (0 맨 뒤 … 1 맨 앞 — 뒤는 어둡고 붉게 칠한다),
+## full = 전실 화재의 기둥인가, room = 방 번호
 static func bodies(cells: Array, cell_m: float, ceiling_m: float) -> Array[Dictionary]:
 	var tile := maxi(1, roundi(num("tile_m", 2.0) / cell_m))
+	var full_tile := maxi(1, roundi(num("full_tile_m", 1.0) / cell_m))
 	var groups := {}
 	# 방마다(보이는 불 · 기억 속의 불 따로): 열방출률 합, 칸 수, 전체가 타는가, 가장 센 채의 열방출률
 	var rooms := {}
 	for c: Dictionary in cells:
 		var room_key := "%d|%d" % [int(c.room), 1 if bool(c.get("faded", false)) else 0]
-		var key := "%s|%d|%d" % [room_key, floori(float(c.x) / tile), floori(float(c.y) / tile)]
+		var size := full_tile if bool(c.get("full", false)) else tile
+		var key := "%s|%d|%d|%d" % [room_key, size, floori(float(c.x) / size), floori(float(c.y) / size)]
 		if not groups.has(key):
 			groups[key] = []
 		groups[key].append(c)
@@ -132,9 +139,10 @@ static func bodies(cells: Array, cell_m: float, ceiling_m: float) -> Array[Dicti
 			sum += Vector2(float(c.x) + 0.5, float(c.y) + 0.5) * w
 			base += float(c.get("base", 0.0)) * w
 		var first: Dictionary = list[0]
-		var tx := floori(float(first.x) / tile)
-		var ty := floori(float(first.y) / tile)
-		var seed := absi(hash(Vector3i(tx, ty, int(first.room))))
+		var size := full_tile if bool(first.get("full", false)) else tile
+		var tx := floori(float(first.x) / size)
+		var ty := floori(float(first.y) / size)
+		var seed := absi(hash(Vector3i(tx, ty, int(first.room) + (1000 if size != tile else 0))))
 		var pos := sum / kw
 		# 한 칸짜리 불은 그 칸 가운데에 그대로, 여러 칸이면 조금 흩는다 (줄 맞춰 보이지 않게)
 		if list.size() > 1:
@@ -145,6 +153,15 @@ static func bodies(cells: Array, cell_m: float, ceiling_m: float) -> Array[Dicti
 		var room_h := ceiling_m * 2.0 if bool(room.full) else flame_height_m(float(room.kw), diameter_m(int(room.cells) * cell_m * cell_m))
 		var free := room_h * lerpf(weak, 1.0, kw / maxf(float(room.top), 0.001))
 		var body := _make(pos, kw, list.size(), minf(base / kw, base_max), free, cell_m, ceiling_m, min_h, faded, seed)
+		body.room = int(first.room)
+		if bool(room.full) and bool(first.get("full", false)):
+			# 전실 화재의 기둥: 높이가 제각각 (일부는 천장 위로), 폭은 이웃 기둥과 겹치게
+			var reach := lerpf(num("full_reach_min", 0.8), num("full_reach_max", 1.18), _unit((seed >> 5) + 11))
+			body.height_m = maxf(min_h, (ceiling_m - float(body.base_m)) * reach)
+			# 불기둥(l — 혀가 갈라져 틈이 보인다)과 불바다(xl — 넓고 밝다)를 섞는다: 모두 xl 이면 겹쳐서 밝은 한 덩어리로 뭉개진다
+			body.kind = "xl" if _unit((seed >> 7) + 29) < num("full_xl_share", 0.3) else "l"
+			body.width_m = maxf(draw_width_m(str(body.kind), float(body.height_m), float(body.diameter_m)), size * cell_m * num("full_width_ratio", 1.7))
+			body.full = true
 		out.append(body)
 		# 곁불: 무게 중심에서 먼 타는 칸에 작은 불 — 큰 그림 하나만 덩그러니 있지 않게
 		if list.size() >= sat_min and sat_count > 0:
@@ -177,6 +194,17 @@ static func bodies(cells: Array, cell_m: float, ceiling_m: float) -> Array[Dicti
 		var da: float = a.pos.x + a.pos.y
 		var db: float = b.pos.x + b.pos.y
 		return da < db if da != db else a.seed < b.seed)
+	# 전실 화재의 기둥: 방 안에서의 앞뒤 자리 (깊이 x + y 가 가장 작은 기둥 0 … 가장 큰 기둥 1)
+	var span := {}
+	for f in out:
+		if bool(f.full):
+			var d: float = f.pos.x + f.pos.y
+			var mm: Array = span.get(int(f.room), [d, d])
+			span[int(f.room)] = [minf(float(mm[0]), d), maxf(float(mm[1]), d)]
+	for f in out:
+		if bool(f.full):
+			var mm: Array = span[int(f.room)]
+			f.shade = clampf((f.pos.x + f.pos.y - float(mm[0])) / maxf(0.5, float(mm[1]) - float(mm[0])), 0.0, 1.0)
 	return out
 
 
@@ -189,6 +217,7 @@ static func _make(pos: Vector2, kw: float, count: int, base_m: float, free: floa
 	return {
 		"pos": pos, "kw": kw, "cells": count, "diameter_m": d, "height_m": h, "width_m": draw_width_m(kind, h, d), "kind": kind,
 		"base_m": base_m, "faded": faded, "seed": seed, "capped": free > room, "satellite": false,
+		"full": false, "shade": 1.0, "room": -1,
 	}
 
 

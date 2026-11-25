@@ -120,9 +120,30 @@ func test_fully_involved_room_fills_to_ceiling() -> void:
 		c.full = true
 	var after := _main(FireDraw.bodies(cells, CELL_M, CEILING_M))
 	assert_true(float(before[0].height_m) < 1.0, "같은 세기라도 방 전체가 타기 전에는 낮다 (%.2f)" % float(before[0].height_m))
+	# 전실 화재의 입체감 (2026-11-25): 촘촘한 바둑판(full_tile_m)마다 기둥 하나 — 여러 줄, 높이는 제각각, 뒤는 어둡게
+	var per_side := roundi(8 * CELL_M / FireDraw.num("full_tile_m"))
+	assert_eq(after.size(), per_side * per_side, "촘촘하게 여러 줄 (%d채)" % after.size())
+	assert_true(after.size() > before.size(), "방 전체가 타기 전보다 많다")
+	var lo := INF
+	var hi := 0.0
+	var shades := {}
+	var kinds := {}
 	for f in after:
-		assert_true(absf(float(f.height_m) - CEILING_M) < 0.001 and bool(f.capped), "천장까지 (%.2f)" % float(f.height_m))
-		assert_eq(f.kind, "xl", "불바다 그림")
+		var h := float(f.height_m)
+		lo = minf(lo, h)
+		hi = maxf(hi, h)
+		shades[snappedf(float(f.shade), 0.01)] = true
+		assert_true(bool(f.full) and bool(f.capped), "전실 화재의 기둥")
+		assert_true(h >= CEILING_M * FireDraw.num("full_reach_min") - 0.001 and h <= CEILING_M * FireDraw.num("full_reach_max") + 0.001, "천장 높이쯤 (%.2f)" % h)
+		assert_true(str(f.kind) in ["l", "xl"], "불기둥·불바다 그림 (%s)" % f.kind)
+		kinds[str(f.kind)] = true
+		assert_true(float(f.width_m) >= FireDraw.num("full_tile_m") * 1.1, "이웃 기둥과 겹친다 (폭 %.2fm)" % float(f.width_m))
+	assert_true(hi - lo > 0.2, "높이가 제각각이다 (%.2f ~ %.2f)" % [lo, hi])
+	assert_true(hi > CEILING_M, "일부는 천장 위로 솟는다 (%.2f)" % hi)
+	assert_true(kinds.has("l"), "혀가 갈라진 불기둥 그림이 섞여 있다 (한 덩어리로 뭉개지지 않게)")
+	assert_true(shades.has(0.0) and shades.has(1.0) and shades.size() >= 4, "앞뒤 자리에 따라 음영이 여러 단계 (%d)" % shades.size())
+	for f in before:
+		assert_true(not bool(f.full) and float(f.shade) == 1.0, "방 전체가 타기 전의 불은 음영 없이")
 
 
 ## 좁게 솟는 센 불은 불바다(xl)가 아니라 불기둥(l)
@@ -272,8 +293,13 @@ func test_flash_progress() -> void:
 	assert_true(half > 0.5 and half < 1.0, "처음에 빠르다 (절반 시간에 %.2f)" % half)
 	assert_true(FireDraw.flash_progress(s * 0.25) < half, "시간이 갈수록 커진다")
 	# 전실 화재의 진하기: 처음부터 보이고, 방 안이 조금 비친다
-	assert_true(FireDraw.num("full_sheet_alpha") >= FireDraw.rollover_alpha(1.0) - 0.001, "최성기 천장 화염은 롤오버보다 옅지 않다")
-	assert_true(FireDraw.num("full_wall_alpha") > 0.5 and FireDraw.num("full_wall_alpha") < 1.0, "화염 벽 너머로 방 안이 조금 비친다")
+	# 전실 화재: 천장 화염은 옅게 깔아 불기둥 끝이 비치고, 연기 상자는 옅게 한다 (2026-11-25 — 상자에 그림을 바른 것처럼 보이지 않게)
+	assert_true(FireDraw.num("full_sheet_alpha") > 0.3 and FireDraw.num("full_sheet_alpha") < 0.8, "천장 화염은 옅게 깔린다")
+	assert_true(FireDraw.num("full_smoke_cut") > 0.4 and FireDraw.num("full_smoke_cut") < 1.0, "연기 상자를 옅게 하되 없애지는 않는다")
+	assert_true(FireDraw.num("surge_start_ratio") > 0.3 and FireDraw.num("surge_start_ratio") < 1.0, "플래시오버 순간 기둥은 낮게 시작한다")
+	assert_true(FireDraw.num("roll_feather_m") >= 0.5, "천장 화염 가장자리는 흐려진다")
+	var back: Array = FireDraw.style().get("full_back_tint", [])
+	assert_true(back.size() == 3 and float(back[0]) > float(back[1]) and float(back[1]) >= float(back[2]) and float(back[0]) < 1.0, "뒤 줄은 어둡고 붉게")
 	assert_true(FireDraw.num("full_glow_ratio") >= FireDraw.num("roll_glow_ratio"), "불빛 번짐도 롤오버보다 넓다")
 
 

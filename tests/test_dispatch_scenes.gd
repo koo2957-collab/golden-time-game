@@ -283,3 +283,27 @@ func test_dispatch_answers_apply_on_arrival() -> void:
 			seen = true
 			break
 	assert_true(seen, "명령이 없으면 도착 후 카드로")
+
+
+## 상황실이 말하는 장면은 상황실 그림 (2026-11-25 사용자 제공 그림): 출동 지령 장면, 상황실이 거는 무전 카드
+func test_dispatch_center_portrait() -> void:
+	var path := "res://art/portraits/crew_dispatch.png"
+	var portraits: Dictionary = SpriteArt.config().get("portraits", {})
+	assert_eq(str(portraits.get(CommandSystem.DISPATCH_CENTER, "")), path, "상황실 그림이 정해져 있다")
+	assert_true(ResourceLoader.exists(path) or FileAccess.file_exists(path), "그림 파일")
+	var sim := SimWorld.from_scenario(HOUSE)
+	var ui := _ui(sim)
+	var briefs := ui.steps.filter(func(s: Dictionary) -> bool: return str(s.kind) == "brief")
+	assert_true(not briefs.is_empty(), "지령 장면이 있다")
+	for s: Dictionary in briefs:
+		assert_eq([str(s.who), str(s.portrait)], [CommandSystem.DISPATCH_CENTER, path], "지령 장면: 상황실이 말하고 상황실 그림")
+	# 차량 안의 선착대가 말하는 장면(장비·배치)은 그대로 차량 안 그림
+	for s: Dictionary in ui.steps:
+		if str(s.kind) in ["loadout", "placement"]:
+			assert_true(str(s.portrait) != path and str(s.portrait) != "", "%s 장면은 상황실 그림이 아니다" % s.kind)
+	ui.free()
+	# 조가 아닌 쪽이 거는 무전 카드: 묻는 쪽 이름으로 그림을 찾는다
+	var card := CardSystem.Card.new()
+	card.crew_id = -1
+	card.spec = {"asker": CommandSystem.DISPATCH_CENTER}
+	assert_eq(str(CardUi.speaker(sim, card).portrait), path, "상황실이 거는 무전 카드도 상황실 그림")

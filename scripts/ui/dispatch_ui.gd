@@ -116,16 +116,18 @@ func build_steps() -> void:
 	var lines: Array = d.get("lines", [])
 	var first := clampi(int(num("brief_first_lines", 2)), 1, maxi(1, lines.size()))
 	var stand_in := _portrait_path(str(p.get("portrait_key", "출동")))
+	# 상황실이 말하는 지령 장면은 상황실 그림 (2026-11-25 사용자 제공 그림 — data/art.json portraits 에 그 이름이 있으면)
+	var center := _portrait_path(t("brief_who"), stand_in)
 	for part: String in p.get("order", ["brief", "cards", "brief_more", "loadout", "preassign", "placement"]):
 		match part:
 			"brief":
 				if not lines.is_empty():
-					steps.append(_step("brief", "pick", t("brief_title"), t("brief_tag"), t("brief_who"), stand_in,
+					steps.append(_step("brief", "pick", t("brief_title"), t("brief_tag"), t("brief_who"), center,
 						str(d.get("title", t("brief_title"))), _joined(lines.slice(0, first)), [{"text": t("brief_ok"), "value": 0}],
 						{"lines": lines.slice(0, first)}))
 			"brief_more":
 				if lines.size() > first:
-					steps.append(_step("brief", "pick", t("brief_more_title"), t("brief_tag"), t("brief_who"), stand_in,
+					steps.append(_step("brief", "pick", t("brief_more_title"), t("brief_tag"), t("brief_who"), center,
 						t("brief_more_title"), _joined(lines.slice(first)), [{"text": t("brief_more_ok"), "value": 0}],
 						{"lines": lines.slice(first)}))
 			"cards":
@@ -181,9 +183,10 @@ func _joined(lines: Array) -> String:
 	return "\n".join(PackedStringArray(lines))
 
 
-func _portrait_path(key: String) -> String:
+## fallback: 그 이름의 그림이 없을 때 쓸 경로 (비우면 기본 그림)
+func _portrait_path(key: String, fallback := "") -> String:
 	var portraits: Dictionary = SpriteArt.config().get("portraits", {})
-	return str(portraits.get(key, portraits.get("default", "")))
+	return str(portraits.get(key, fallback if fallback != "" else portraits.get("default", "")))
 
 
 ## 보기 순서를 섞는다 (같은 시나리오·같은 카드는 늘 같은 순서 — 자리로 외우지 못하게, 다시 하기에서도 같게)

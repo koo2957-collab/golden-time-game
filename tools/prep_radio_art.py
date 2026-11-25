@@ -7,6 +7,7 @@
 # 구조대원·구급대원 그림만 따로 (2026-11-25 사용자 제공 '구조대원.png' — 주황 헬멧에 무전기 / '구급대원.png' — 흰 헬멧·마스크에 무전기):
 #   python tools/prep_radio_art.py rescue <구조대원 그림> <출력 폴더 art>
 #   python tools/prep_radio_art.py ems <구급대원 그림> <출력 폴더 art>
+#   python tools/prep_radio_art.py dispatch <상황실 그림> <출력 폴더 art>   ('상황실.png' — 헤드셋을 쓴 상황요원. 얼굴 반쪽 그림은 만들지 않는다)
 #   art/portraits/crew_<종류>.png · half_<종류>.png 를 그 그림으로 바꾼다 (헬멧 색이 이미 맞아 물들이지 않는다)
 # 필요: pillow, numpy
 import os
@@ -28,6 +29,8 @@ SINGLE = {
     "rescue": {"box": (250, 0, 1950, 1410), "face_x": 1200},
     # half_y: 얼굴 반쪽 그림만 더 가까이 잡을 때의 세로 범위 (없으면 box 와 같다) — 얼굴이 작게 찍힌 그림
     "ems": {"box": (240, 100, 1808, 1400), "face_x": 1023, "half_y": (230, 1130)},
+    # 119종합상황실 (무전 장면만 — 조장의 판단 장면에는 나오지 않으므로 얼굴 반쪽은 없다)
+    "dispatch": {"box": (480, 190, 2048, 1490), "face_x": 1367, "half": False},
 }
 
 
@@ -117,6 +120,8 @@ def single_portrait(key: str, src: str, out_dir: str) -> None:
     part = a[y0:y1, x0:x1]
     save(part, ink_mask(part.shape[1], part.shape[0], 11), os.path.join(out_dir, "portraits", "crew_%s.png" % key), SIZE)
     # 반쪽 그림의 가로세로 비는 다른 대원 그림과 같게 (300 : 572)
+    if not SINGLE[key].get("half", True):
+        return
     hy0, hy1 = SINGLE[key].get("half_y", (y0, y1))
     half_w = round((hy1 - hy0) * 300.0 / 572.0)
     half = a[hy0:hy1, max(0, face_x - half_w):face_x]

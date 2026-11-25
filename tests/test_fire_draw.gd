@@ -447,3 +447,6 @@ func test_fire_art_from_user_images() -> void:
 	var b: Dictionary = meta.get("smoke_billow", {})
 	assert_true(not b.is_empty() and int(b.get("frames", 0)) >= 8, "연기 덩어리 그림 정보")
 	assert_true(FxArt.load_all() and FxArt.billow != null, "게임이 연기 덩어리 그림을 불러온다")
+	# 불꽃 색은 롤오버 천장 화염의 색(짙은 주황)에 맞춘다: 빨강은 그대로, 초록·파랑을 줄인다
+	var tint: Array = FireDraw.style().get("flame_tint", [])
+	assert_true(tint.size() == 3 and float(tint[0]) >= float(tint[1]) and float(tint[1]) > float(tint[2]) and float(tint[2]) > 0.2, "불꽃에 곱하는 색 %s" % [tint])

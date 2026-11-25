@@ -98,6 +98,9 @@ static func draw_fire(ci: CanvasItem, kind: String, base: Vector2, w: float, h: 
 		return false
 	var key := "fire_" + kind
 	var m: Dictionary = meta.get(key, {})
+	# 불꽃 색을 롤오버 천장 화염의 색(짙은 주황)에 맞춘다 (2026-11-25 사용자 — data/ui/fire_style.json flame_tint)
+	var tint: Array = FireDraw.style().get("flame_tint", [1.0, 1.0, 1.0])
+	modulate = Color(modulate.r * float(tint[0]), modulate.g * float(tint[1]), modulate.b * float(tint[2]), modulate.a)
 	# 그림 안에서 불꽃이 차지하는 높이 = 1 - 위쪽 여백(flame_top_v) - 뿌리 아래(base_v).
 	# base_v (2026-11-25): 위에서 내려다본 불이라 밑면이 둥글다 — 불 뿌리(바닥 가운데)는 그림 맨 아래가 아니라 그만큼 위다
 	var root := float(m.get("base_v", 0.0))

@@ -12,6 +12,12 @@
 #   xl  불바다: 넓게 깔려 천장까지 넘실대는 불 (3.2m × 2.6m)
 # 게임은 불의 열방출률로 화염 높이를 셈해(Heskestad 식) 맞는 크기의 그림을 골라 늘여 그린다 (scripts/ui/fire_draw.gd).
 # 그림 아래 가운데 = 불 뿌리. 검은 바탕에 빛만 렌더한 뒤, 밝기를 불투명도로 바꿔 투명 배경 그림으로 만든다.
+#
+# 롤오버 천장 화염 (2단계, 2026-11-25 — 참고 그림 '롤오버: 상부에 모인 가연성 가스층에서 화염 발생'):
+#   roll   위에서 본 천장 화염 판: 연기층 속에서 군데군데 불붙어 굽이치는 화염 덩어리. 가로·세로 타일 (연기 윗면 smoke_sheet 처럼
+#          방 크기에 맞춰 이어 붙이고, 게임이 무늬를 불에서 멀어지는 쪽으로 흘린다)
+#   rollc  잘린 앞면에 보이는 천장 화염 띠: 천장에 붙어 아래로 날름거리며 옆으로 굴러가는 화염 (정면). 가로 타일. 그림 위 = 천장
+#   결과: art/fx/fire_roll.png · fire_rollc.png + fx.json 의 "fire_roll" · "fire_rollc"
 
 import bpy
 import json
@@ -44,6 +50,16 @@ KINDS = {
           "fps": 10.0, "gain": 1.0, "samples": 24},
     "xl": {"px": (240, 208), "w": 3.2, "h": 2.77, "r": (1.35, 0.6), "tongues": 1.9, "rise": 0.11, "w_step": 0.04,
            "fps": 9.0, "gain": 1.0, "samples": 24},
+}
+# 롤오버 천장 화염. px = 렌더 크기(타일로 이어 붙이면 그 방향이 절반이 된다), box = 부피 상자, cam = "top" 위 / "front" 정면,
+# scale = 정사영 크기(m), flow = 한 장에 무늬가 흘러가는 거리(m), thick = 보는 방향 두께(m, 빛이 쌓이는 길이)
+ROLL_KINDS = {
+    "roll": {"px": (512, 512), "box": ((0.0, 8.0), (0.0, 8.0), (0.0, 0.3)), "cam": "top", "scale": 8.0, "center": (4.0, 4.0),
+             "tile": "xy", "fps": 8.0, "samples": 24, "w_step": 0.05, "flow": (0.03, 0.012, 0.0), "thick": 0.3, "gain": 0.6, "floor": 0.16,
+             "meta": {"tile_m": 4.0}},
+    "rollc": {"px": (640, 128), "box": ((0.0, 4.0), (-0.2, 0.2), (0.0, 0.8)), "cam": "front", "scale": 4.0, "center": (2.0, 0.4),
+              "tile": "x", "fps": 8.0, "samples": 24, "w_step": 0.05, "flow": (0.03, 0.0, 0.008), "thick": 0.4, "gain": 0.8, "floor": 0.05,
+              "meta": {"tile_m": 2.0, "band_m": 0.8}},
 }
 # 불꽃 꼭대기는 그림 높이의 이 비율까지 (그 위는 혀가 날름거릴 여유)
 TOP_RATIO = 0.93
@@ -283,12 +299,17 @@ def load_rgb(path):
     return np.flipud(a)[..., :3]  # 위가 0번 줄
 
 
-def to_rgba(rgb):
+def to_rgba(rgb, floor=0.0):
     """검은 바탕의 빛 → 투명 배경 그림: 불투명도 = 가장 밝은 색 성분(조금 키움), 색 = 그 빛깔을 가장 밝게 편 것.
     어두운 가장자리가 '어두운 색'이 아니라 '옅은 주황'이 되어, 밝은 바닥 위에서도 갈색 얼룩으로 보이지 않는다"""
     peak = rgb.max(axis=2, keepdims=True)
-    alpha = np.clip(peak * 1.3, 0.0, 1.0) ** 0.9
+    # floor: 이보다 어두운 빛은 버린다 (롤오버 판 — 옅은 빛이 넓게 깔리면 연기 위에서 탁한 얼룩으로 보인다)
+    alpha = np.clip((peak - floor) / (1.0 - floor) * 1.3, 0.0, 1.0) ** 0.9
     col = np.where(peak > 1e-4, rgb / np.maximum(peak, 1e-4), 0.0)
+    if floor > 0.0:
+        # 옅은 빛일수록 붉게 (노란빛이 옅게 깔리면 어두운 연기 위에서 풀색 얼룩이 된다)
+        warm = np.clip(peak, 0.0, 1.0)
+        col = col * np.concatenate([np.ones_like(warm), 0.45 + 0.55 * warm, warm], axis=2)
     return np.concatenate([np.clip(col, 0.0, 1.0), alpha], axis=2)
 
 
@@ -319,7 +340,188 @@ def assemble(paths, cfg):
     json.dump(meta, open(FX_JSON, "w", encoding="utf-8"), ensure_ascii=False, indent=2, sort_keys=True)
 
 
+def flame_ramp(g, inten, em, strength, top=(1.0, 0.72, 0.2, 1.0)):
+    """세기 → 불빛 색(검붉음 → 주황 → 노랑)과 밝기. 가장 센 곳의 색 top 은 불기둥(흰 노랑)보다 짙게 —
+    연기 속 천장 화염은 그을음에 가려 주황빛이고, 흰 노랑이면 어두운 연기 위에서 회색 얼룩으로 보인다"""
+    ramp = g.n.new("ShaderNodeValToRGB")
+    ramp.color_ramp.interpolation = "LINEAR"
+    els = ramp.color_ramp.elements
+    els[0].position = 0.0
+    els[0].color = (0.0, 0.0, 0.0, 1.0)
+    els[1].position = 1.0
+    els[1].color = top
+    for pos, col in ((0.15, (0.5, 0.03, 0.0, 1.0)), (0.42, (1.0, 0.16, 0.01, 1.0)), (0.75, (1.0, 0.42, 0.04, 1.0))):
+        e = els.new(pos)
+        e.color = col
+    g.link(g.math("MINIMUM", inten, 1.0), ramp.inputs["Fac"])
+    g.link(ramp.outputs["Color"], em.inputs["Color"])
+    g.link(g.mul(inten, strength), em.inputs["Strength"])
+
+
+def make_roll_box(cfg):
+    mesh = bpy.data.meshes.new("roll_box")
+    xs, ys, zs = cfg["box"]
+    verts = [(x, y, z) for x in xs for y in ys for z in zs]
+    faces = [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]
+    mesh.from_pydata(verts, [], faces)
+    obj = bpy.data.objects.new("roll_box", mesh)
+    bpy.context.scene.collection.objects.link(obj)
+    return obj
+
+
+def make_roll_material(obj, kind, cfg):
+    """롤오버: 연기층의 가연성 가스가 군데군데 불붙어 천장을 타고 굴러간다.
+    roll(위에서) = 불붙은 덩어리(큰 무늬) × 날름거리는 결(잔 무늬), 덩어리 사이는 어둡다(연기가 비친다).
+    rollc(정면) = 천장에 붙어 아래로 늘어지는 화염: 늘어지는 깊이가 자리마다 다르고, 옆으로 길게 눕는다."""
+    mat = bpy.data.materials.new("roll")
+    mat.use_nodes = True
+    nt = mat.node_tree
+    nt.nodes.clear()
+    g = G(nt)
+    out = g.n.new("ShaderNodeOutputMaterial")
+    em = g.n.new("ShaderNodeEmission")
+    g.link(em.outputs["Emission"], out.inputs["Volume"])
+    tc = g.n.new("ShaderNodeTexCoord")
+    mp = g.n.new("ShaderNodeMapping")
+    mp.name = "flow"
+    g.link(tc.outputs["Object"], mp.inputs["Vector"])
+    sep = g.n.new("ShaderNodeSeparateXYZ")
+    g.link(tc.outputs["Object"], sep.inputs["Vector"])
+    z = sep.outputs["Z"]
+    flow = mp.outputs["Vector"]
+    if kind == "roll":
+        big = g.noise("big", flow, 1.15, 2.5, 0.55, 1.1)
+        fine = g.noise("fine", flow, 3.4, 4.0, 0.55, 0.6)
+        patch = g.smooth(big, 0.5, 0.64)
+        lick = g.smooth(fine, 0.36, 0.62)
+        core = g.smooth(big, 0.6, 0.74)
+        inten = g.mul(g.mul(patch, g.add(g.mul(lick, 1.15), 0.14)), g.add(0.8, g.mul(core, 0.4)))
+    else:
+        top = cfg["box"][2][1]
+        zt = g.sub(top, z)                                  # 0 천장 … 아래로
+        flat = g.n.new("ShaderNodeMapping")                 # 옆으로 길게 눕는 무늬 (세로로 촘촘)
+        flat.inputs["Scale"].default_value = (1.0, 1.0, 2.4)
+        g.link(flow, flat.inputs["Vector"])
+        big = g.noise("big", flat.outputs["Vector"], 1.3, 2.5, 0.55, 0.9)
+        fine = g.noise("fine", flat.outputs["Vector"], 3.6, 4.0, 0.55, 0.5)
+        col = g.n.new("ShaderNodeMapping")                  # 자리마다 늘어지는 깊이 (세로로는 거의 안 변한다)
+        col.inputs["Scale"].default_value = (1.0, 1.0, 0.05)
+        g.link(flow, col.inputs["Vector"])
+        hang = g.remap(g.noise("col", col.outputs["Vector"], 1.6, 2.0, 0.5, 0.3), 0.32, 0.68, 0.0, 1.0)
+        depth = g.add(0.1, g.mul(hang, 0.55))
+        body = g.smooth(zt, g.mul(depth, 0.3), depth, inv=True)
+        gaps = g.smooth(big, 0.36, 0.56)
+        lick = g.smooth(fine, 0.36, 0.62)
+        hot = g.add(0.7, g.mul(g.smooth(zt, 0.0, 0.3, inv=True), 0.55))
+        inten = g.mul(g.mul(g.mul(body, g.add(g.mul(gaps, 0.85), 0.15)), g.add(g.mul(lick, 1.15), 0.14)), hot)
+    flame_ramp(g, inten, em, STRENGTH * cfg["gain"] / cfg["thick"])
+    obj.data.materials.append(mat)
+    return nt
+
+
+def make_roll_camera(cfg):
+    sc = bpy.context.scene
+    cam = bpy.data.cameras.new("cam")
+    cam.type = "ORTHO"
+    cam.ortho_scale = cfg["scale"]
+    co = bpy.data.objects.new("cam", cam)
+    cx, cy = cfg["center"]
+    if cfg["cam"] == "top":
+        co.location = (cx, cy, 10.0)
+        co.rotation_euler = (0.0, 0.0, 0.0)
+    else:
+        co.location = (cx, -10.0, cy)
+        co.rotation_euler = (math.radians(90), 0.0, 0.0)
+    sc.collection.objects.link(co)
+    sc.camera = co
+
+
+def render_roll_frames(nt, cfg):
+    os.makedirs(WORK, exist_ok=True)
+    sc = bpy.context.scene
+    paths = []
+    frames = [5] if ONE else range(LOOP * 2)
+    for k in frames:
+        nt.nodes["big"].inputs["W"].default_value = k * cfg["w_step"]
+        nt.nodes["fine"].inputs["W"].default_value = k * cfg["w_step"] * 1.6 + 7.0
+        if "col" in nt.nodes:
+            nt.nodes["col"].inputs["W"].default_value = k * cfg["w_step"] * 0.6 + 3.0
+        fx, fy, fz = cfg["flow"]
+        nt.nodes["flow"].inputs["Location"].default_value = (-k * fx, -k * fy, -k * fz)
+        p = os.path.join(WORK, "fire_%s_%02d.png" % (KIND, k))
+        sc.render.filepath = p
+        bpy.ops.render.render(write_still=True)
+        log(KIND, "render", k + 1, "/", LOOP * 2)
+        paths.append(p)
+    return paths
+
+
+def tile_x(f):
+    # 가로 두 장 너비 → 한 장: out(x) = F(x+W)(1 - x/W) + F(x)(x/W) → 끝과 처음이 이어진다 (빛은 더하면 되므로 그대로 섞는다)
+    w = f.shape[1] // 2
+    t = (np.arange(w, dtype=np.float32) / w)[None, :, None]
+    return f[:, w:2 * w] * (1.0 - t) + f[:, 0:w] * t
+
+
+def tile_y(f):
+    return np.transpose(tile_x(np.transpose(f, (1, 0, 2))), (1, 0, 2))
+
+
+def tiled(f, cfg):
+    if "x" in cfg["tile"]:
+        f = tile_x(f)
+    if "y" in cfg["tile"]:
+        f = tile_y(f)
+    return f
+
+
+def over_smoke(rgba):
+    """어두운 연기색 바탕 위에 올린 견본 (one 모드에서 모양을 볼 때)"""
+    bg = np.array([0.24, 0.24, 0.26], dtype=np.float32)
+    rgb = rgba[..., :3] * rgba[..., 3:4] + bg * (1.0 - rgba[..., 3:4])
+    return np.concatenate([rgb, np.ones_like(rgba[..., 3:4])], axis=2)
+
+
+def assemble_roll(paths, cfg):
+    frames = [tiled(load_rgb(p), cfg) for p in paths]
+    out = []
+    for k in range(LOOP):
+        s = k / LOOP
+        out.append(to_rgba(frames[k + LOOP] * (1.0 - s) + frames[k] * s, cfg.get("floor", 0.0)))
+    atlas = np.concatenate(out, axis=0)
+    h, w = atlas.shape[:2]
+    save_png(atlas, os.path.join(PROJECT, "art", "fx", "fire_%s.png" % KIND))
+    meta = json.load(open(FX_JSON, encoding="utf-8")) if os.path.exists(FX_JSON) else {}
+    entry = {"w": w, "h": h // LOOP, "frames": LOOP, "fps": cfg["fps"], "mean_alpha": round(float(out[0][..., 3].mean()), 3), "source": SOURCE}
+    entry.update(cfg["meta"])
+    meta["fire_" + KIND] = entry
+    json.dump(meta, open(FX_JSON, "w", encoding="utf-8"), ensure_ascii=False, indent=2, sort_keys=True)
+
+
+def bake_roll(kind):
+    global KIND
+    KIND = kind
+    cfg = ROLL_KINDS[kind]
+    reset_scene(cfg)
+    obj = make_roll_box(cfg)
+    nt = make_roll_material(obj, kind, cfg)
+    make_roll_camera(cfg)
+    paths = render_roll_frames(nt, cfg)
+    if ONE:
+        one = to_rgba(tiled(load_rgb(paths[0]), cfg), cfg.get("floor", 0.0))
+        # 타일이 이어지는지 보이게 나란히 붙여, 연기색 바탕 위에
+        both = np.concatenate([one, one], axis=1)
+        if "y" in cfg["tile"]:
+            both = np.concatenate([both, both], axis=0)
+        save_png(over_smoke(both), os.path.join(WORK, "fire_%s_one.png" % kind))
+    else:
+        assemble_roll(paths, cfg)
+
+
 def bake(kind):
+    if kind in ROLL_KINDS:
+        bake_roll(kind)
+        return
     global KIND
     KIND = kind
     cfg = KINDS[kind]
@@ -335,7 +537,7 @@ def bake(kind):
 
 
 def main():
-    kinds = list(KINDS) if KIND == "all" else KIND.split(",")
+    kinds = (list(KINDS) + list(ROLL_KINDS)) if KIND == "all" else KIND.split(",")
     for k in kinds:
         bake(k)
 

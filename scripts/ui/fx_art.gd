@@ -26,6 +26,9 @@ static var water_fog: Texture2D
 static var water_fog_splash: Texture2D
 ## Blender로 구운 불꽃 플립북 (tools/blender/fire_fx.py, 장을 세로로 쌓음): {"s" · "m" · "l" · "xl": 그림}. 없는 크기는 빠진다
 static var fires: Dictionary = {}
+## 롤오버 천장 화염 (tools/blender/fire_fx.py roll · rollc, 2026-11-25): 위에서 본 화염 판(가로·세로 타일) · 잘린 앞면의 화염 띠(가로 타일, 위 = 천장)
+static var roll_sheet: Texture2D
+static var roll_curtain: Texture2D
 static var meta: Dictionary = {}
 
 
@@ -51,6 +54,8 @@ static func load_all() -> bool:
 		var tex := _tex(DIR + "/fire_%s.png" % kind)
 		if tex != null:
 			fires[kind] = tex
+	roll_sheet = _tex(DIR + "/fire_roll.png")
+	roll_curtain = _tex(DIR + "/fire_rollc.png")
 	return flame != null
 
 

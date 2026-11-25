@@ -19,6 +19,25 @@
     "w": 112,
     "width_m": 1.3
   },
+  "fire_roll": {
+    "fps": 8.0,
+    "frames": 16,
+    "h": 256,
+    "mean_alpha": 0.321,
+    "source": "tools/blender/fire_fx.py — Blender Cycles 빛을 내는 부피 노이즈(정면 정사영), 시간 루프",
+    "tile_m": 4.0,
+    "w": 256
+  },
+  "fire_rollc": {
+    "band_m": 0.8,
+    "fps": 8.0,
+    "frames": 16,
+    "h": 128,
+    "mean_alpha": 0.306,
+    "source": "tools/blender/fire_fx.py — Blender Cycles 빛을 내는 부피 노이즈(정면 정사영), 시간 루프",
+    "tile_m": 2.0,
+    "w": 320
+  },
   "fire_s": {
     "flame_top_v": 0.07,
     "fps": 14.0,

@@ -21,5 +21,11 @@
   "base_max_m": {"value": 1.0, "source": "화면 설정", "note": "불 뿌리 높이 상한 (m) — 가구 위에서 타면 가구 높이에서 솟지만 이 값을 넘지 않는다"},
   "ember_alpha": {"value": 0.4, "source": "화면 설정", "note": "불 밑 바닥에 깔리는 주황빛 타원의 가운데 진하기"},
   "glow_per_m": {"value": 1.7, "source": "화면 설정", "note": "불빛 번짐 크기 = (불꽃 폭 × 이 값 + glow_base_m) m"},
-  "glow_base_m": {"value": 1.6, "source": "화면 설정", "note": "불빛 번짐 크기의 기본값 (m)"}
+  "glow_base_m": {"value": 1.6, "source": "화면 설정", "note": "불빛 번짐 크기의 기본값 (m)"},
+  "roll_ramp_c": {"value": 100, "source": "화면 설정 — data/fire/hazard_params.json rollover_margin_c 와 같은 폭", "note": "롤오버 천장 화염 (2단계, 2026-11-25): 상부층 온도가 플래시오버 온도보다 이만큼 낮을 때 가장 옅고, 플래시오버 온도에 이르면 가장 진하다. 롤오버 여부 자체는 시뮬레이션이 정한다 — 이 값은 진하기에만 쓴다"},
+  "roll_alpha_min": {"value": 0.5, "source": "화면 설정", "note": "롤오버가 막 시작됐을 때 천장 화염의 진하기"},
+  "roll_alpha_max": {"value": 0.95, "source": "화면 설정", "note": "플래시오버 직전 천장 화염의 진하기"},
+  "roll_flow_mps": {"value": 0.6, "source": "화면 설정", "note": "천장 화염 무늬가 불에서 멀어지는 쪽으로 흘러가는 빠르기 (m/s) — 천장을 타고 굴러가는 모습"},
+  "roll_pulse": {"value": 0.12, "source": "화면 설정", "note": "천장 화염이 숨 쉬듯 밝아졌다 어두워지는 폭 (진하기 × (1 ± 이 값))"},
+  "roll_glow_ratio": {"value": 0.55, "source": "화면 설정", "note": "롤오버 불빛 번짐 크기 = 방 대각선 길이 × 이 값 (방 전체가 주황빛으로 물든다)"}
 }

@@ -223,3 +223,38 @@ func test_baked_images_match_style() -> void:
 		var aspect := float(m.width_m) / float(m.height_m)
 		assert_true(absf(aspect - float(FireDraw.style().kind_aspect[kind])) < 0.02, "%s 모양 (그림 %.3f / 설정 %.3f)" % [kind, aspect, float(FireDraw.style().kind_aspect[kind])])
 		assert_true(int(m.frames) >= 8 and float(m.fps) > 0.0, "%s 장 수·속도" % kind)
+
+
+## 롤오버 천장 화염 (2단계, 2026-11-25): 플래시오버에 가까울수록 진하다
+func test_rollover_strength_grows_toward_flashover() -> void:
+	var ramp := FireDraw.num("roll_ramp_c", 100.0)
+	assert_eq(FireDraw.rollover_strength(600.0 - ramp, 600.0), 0.0, "롤오버가 막 시작될 때 0")
+	assert_true(absf(FireDraw.rollover_strength(600.0 - ramp * 0.5, 600.0) - 0.5) < 0.001, "가운데는 0.5")
+	assert_eq(FireDraw.rollover_strength(600.0, 600.0), 1.0, "플래시오버 온도에서 1")
+	assert_eq(FireDraw.rollover_strength(900.0, 600.0), 1.0, "넘어도 1")
+	assert_eq(FireDraw.rollover_strength(100.0, 600.0), 0.0, "한참 아래는 0")
+	var lo := FireDraw.rollover_alpha(0.0)
+	var hi := FireDraw.rollover_alpha(1.0)
+	assert_true(lo > 0.2 and hi <= 1.0 and hi > lo, "진하기: 처음에도 보이고(%.2f) 갈수록 진하다(%.2f)" % [lo, hi])
+	assert_true(FireDraw.rollover_alpha(0.5) > lo and FireDraw.rollover_alpha(0.5) < hi, "가운데는 그 사이")
+	# 진해지는 온도 폭은 롤오버 징후가 뜨는 폭(시뮬레이션)과 같아야 처음부터 끝까지 고르게 진해진다
+	var hz: Variant = JsonData.load_file("res://data/fire/hazard_params.json")
+	assert_eq(ramp, float(hz.rollover_margin_c.value), "roll_ramp_c = rollover_margin_c")
+
+
+## 구운 롤오버 그림: 위에서 본 화염 판(가로·세로 타일)과 앞면 화염 띠(가로 타일)
+func test_baked_rollover_images() -> void:
+	var meta: Variant = JsonData.load_file("res://art/fx/fx.json")
+	assert_true(meta is Dictionary, "art/fx/fx.json")
+	for key: String in ["fire_roll", "fire_rollc"]:
+		var m: Dictionary = meta.get(key, {})
+		assert_true(not m.is_empty(), "%s 그림 정보" % key)
+		if m.is_empty():
+			continue
+		assert_true(FileAccess.file_exists("res://art/fx/%s.png" % key) or ResourceLoader.exists("res://art/fx/%s.png" % key), "%s.png" % key)
+		assert_true(int(m.frames) >= 8 and float(m.fps) > 0.0 and float(m.tile_m) >= 1.0, "%s 장 수·속도·타일 길이" % key)
+		assert_true(float(m.mean_alpha) > 0.05 and float(m.mean_alpha) < 0.8, "%s: 화염 사이로 연기가 비친다 (평균 진하기 %.2f)" % [key, float(m.mean_alpha)])
+	var band: Dictionary = meta.get("fire_rollc", {})
+	if not band.is_empty():
+		assert_true(float(band.band_m) > 0.3 and float(band.band_m) <= 1.2, "화염 띠 높이 (m)")
+	assert_true(FxArt.load_all() and FxArt.roll_sheet != null and FxArt.roll_curtain != null, "게임이 두 그림을 불러온다")

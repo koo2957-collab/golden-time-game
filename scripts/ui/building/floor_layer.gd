@@ -1864,7 +1864,8 @@ func _draw_fire_smoke(f: Dictionary, flame_m: float, fade: float) -> void:
 		# 불꽃을 가리지 않게 작게 시작해 솟으면서 커진다 (처음엔 불꽃 폭의 절반)
 		var size := width * IsoProjection.PX_PER_M * lerpf(0.5, 1.25, ph)
 		var a := alpha * minf(1.0, ph * 5.0) * (1.0 - ph * ph * 0.55)
-		FxArt.draw_puff(self, pos, size, FxArt.PUFF_WHITE, key + j, Color(col, a))
+		if not FxArt.draw_billow(self, pos, size * 1.25, key + j, Color(col, a)):
+			FxArt.draw_puff(self, pos, size, FxArt.PUFF_WHITE, key + j, Color(col, a))
 
 
 func _draw_unit(ff: Firefighter, alpha: float) -> void:
@@ -4041,56 +4042,40 @@ func _draw_vent_flame(v: Array, floor_h: float, fh: float, facade: bool) -> void
 	var now := not p.enabled or p.room_visible(room) or p.is_visible(room.level, floori(at.x), floori(at.y))
 	var a := FireDraw.num("vent_alpha", 0.95) * (1.0 if now else FireDraw.num("remembered_fade", 0.4))
 	var key := int(v[6]) * 7 + 3
-	if FxArt.fire_vent != null:
-		# 옆에서 본 분출 화염 그림(왼쪽 = 벽)을 벽에 수직인 판에 그린다 — 개구부에서 밖으로 뿜어 나와 위로 말려 오른다
-		# (2026-11-25 사용자: 아래에서 위로 솟는 불꽃 그림을 세워 놓으니 밖으로 분출되는 느낌이 아니다). 연기 넘침(_draw_spill)과 같은 방식.
-		# 세기에 따라 그림 전체가 작아지고, 개구부 폭에 걸쳐 여러 장을 나란히 세운다
-		var m: Dictionary = FxArt.meta.get("fire_vent", {})
-		var img_h := float(m.get("height_m", 3.0))
-		var img_l := float(m.get("lintel_m", 1.0))
-		# 인방 위(솟는 부분)와 아래(개구부에서 나오는 부분)를 따로 늘인다 — 방 사이 문은 천장 때문에 위가 낮아도
-		# 개구부에서 쏟아져 나오는 부분은 제 크기로 (통째로 줄이면 납작한 줄로 보인다)
-		var lintel_v := 1.0 - img_l / maxf(0.1, img_h)
-		var lo := maxf(floor_h, lintel - img_l * lerpf(0.5, 1.0, k))
-		var hi := lintel + rise
-		var reach := float(m.get("width_m", 1.65)) * lerpf(0.55, 1.0, k) * (0.8 if interior else 1.0) / cell
-		var span := float(v[7]) * 0.8 / cell
-		var n := clampi(roundi(float(v[7]) / FireDraw.num("vent_sheet_gap_m", 0.55)), 1, 4)
+	if FxArt.billow != null:
+		# 사용자 제공 화염 그림으로 (2026-11-25 — 참고 그림 '건물화재 화염표시 예시': 창 안이 타고, 불꽃이 창 밖으로 기울어 나와 위로 솟고,
+		# 그 위로 검은 연기가 피어오른다). 불꽃 그림은 내려다본 시점이라 화면을 보고 세워도 부피가 있다 —
+		# 개구부 폭에 걸쳐 1~3개를 세우고, 꼭대기를 밖으로 밀어 뿜어 나오는 모양으로 기울인다
+		var lo := lintel - minf(top, fh * 0.9) * lerpf(0.35, 0.6, k)
+		var flame_h := (lintel - lo) + rise
+		var open_m := float(v[7])
+		var n := clampi(roundi(open_m / FireDraw.num("vent_sheet_gap_m", 0.55) * 0.6), 1, 3)
+		var out_px := proj.to_screen(at + dir, lintel) - proj.to_screen(at, lintel)
+		var lean := out_px * (FireDraw.num("vent_out_m", 0.7) * lerpf(0.5, 1.0, k) / cell)
 		var tangent := Vector2(-dir.y, dir.x)
-		var walls: Array[Vector2] = []
+		var spots: Array[Vector2] = []
 		for i in n:
-			walls.append(at + dir * 0.5 + tangent * ((float(i) + 0.5) / n - 0.5) * span)
-		# 뒤(북서)에서 앞(남동)으로
-		walls.sort_custom(func(m0: Vector2, m1: Vector2) -> bool: return m0.x + m0.y < m1.x + m1.y)
-		var glow_at := proj.to_screen(at + dir * (0.5 + reach * 0.4), lintel + rise * 0.3)
-		var glow_r := maxf(float(v[7]), rise) * IsoProjection.PX_PER_M * (0.7 + 0.5 * k)
+			spots.append(at + dir * 0.55 + tangent * ((float(i) + 0.5) / n - 0.5) * open_m * 0.7 / cell)
+		spots.sort_custom(func(m0: Vector2, m1: Vector2) -> bool: return m0.x + m0.y < m1.x + m1.y)
+		var glow_at := proj.to_screen(at + dir * 0.8, lintel + rise * 0.3) + lean * 0.5
+		var glow_r := maxf(open_m, rise) * IsoProjection.PX_PER_M * (0.7 + 0.5 * k)
 		ShadowDraw.soft_ellipse(self, glow_at, glow_r, glow_r * 0.8, Color(1.0, 0.5, 0.12, 0.28 * k * a))
-		# 부피 (2026-11-25 사용자: 입체감이 없고 안쪽 불과 이어지지 않는다 — 얇은 판 몇 장만 벽 밖에 서 있었다):
-		#   ① 개구부 안쪽에서 시작해 밖으로 굽어 오르는 길을 따라 둥근 불덩이가 흘러간다 — 안쪽 불이 밀려 나오는 모습, 판 사이를 메운다
-		#   ② 그 길 가운데에 정면으로 선 불꽃 하나 — 벽에 수직인 판과 엇갈려 어느 쪽에서 봐도 두께가 있다
-		var t := Time.get_ticks_msec() / 1000.0
-		var open_w := float(v[7]) * IsoProjection.PX_PER_M
-		var p0 := proj.to_screen(at - dir * 0.4, lintel - (lintel - lo) * 0.55)
-		var p1 := proj.to_screen(at + dir * (0.5 + reach * 0.55), lintel + rise * 0.05)
-		var p2 := proj.to_screen(at + dir * (0.5 + reach * 0.4), lintel + rise * 0.75)
-		var puffs := int(FireDraw.num("vent_puffs", 4))
+		# 폭은 개구부 폭을 덮되, 높이에 견줘 너무 가늘어지지 않게 (가늘면 불꽃이 아니라 줄기로 보인다)
+		var each_w := maxf(open_m / n * 1.25, flame_h * 0.8)
+		for i in spots.size():
+			FxArt.draw_fire(self, FireDraw.kind_for(flame_h, each_w), proj.to_screen(spots[i], lo), each_w * IsoProjection.PX_PER_M,
+				flame_h * IsoProjection.PX_PER_M * (0.88 + 0.12 * _rand01(key + i * 7)), key + i * 5, Color(1, 1, 1, a), lean)
+		# 불꽃 위로 피어오르는 연기 (그 방의 연기 색)
+		var look: Dictionary = _smoke_look(room)
+		var scol: Color = look.get("color", Color(0.2, 0.2, 0.22))
+		var t := Time.get_ticks_msec() / 1000.0 * FireDraw.num("smoke_puff_speed", 0.4) * float(look.get("rate", 1.0))
+		var tip := proj.to_screen(at + dir * 0.55, lintel + rise * 0.8) + lean
+		var puffs := 2 + int(k * 2.0)
 		for j in puffs:
-			var f := fposmod(float(j) / puffs + t * 0.55 + key * 0.13, 1.0)
-			var pos := p0.lerp(p1, f).lerp(p1.lerp(p2, f), f)
-			var size := open_w * lerpf(0.75, 1.5, f) * lerpf(0.7, 1.0, k)
-			FxArt.draw_puff(self, pos, size, FxArt.PUFF_FIRE, key + j, Color(1, 1, 1, a * 0.75 * (1.0 - f * f) * minf(1.0, f * 6.0)))
-		var front_h := rise * 0.8 + (lintel - lo) * 0.4
-		var front_w := maxf(float(v[7]) * 0.9, front_h * 0.5)
-		FxArt.draw_fire(self, FireDraw.kind_for(front_h, front_w), proj.to_screen(at + dir * (0.5 + reach * 0.3), lintel - (lintel - lo) * 0.4),
-			front_w * IsoProjection.PX_PER_M, front_h * IsoProjection.PX_PER_M, key + 2, Color(1, 1, 1, a * 0.6))
-		for i in walls.size():
-			var wall := walls[i]
-			var far := wall + dir * reach
-			var col := Color(1, 1, 1, a * (1.0 if n == 1 else 0.85))
-			FxArt.draw_flip(self, FxArt.fire_vent, "fire_vent", PackedVector2Array([proj.to_screen(wall, hi), proj.to_screen(far, hi),
-				proj.to_screen(far, lintel), proj.to_screen(wall, lintel)]), Vector2.ZERO, Vector2(1.0, lintel_v), col, key + i * 5)
-			FxArt.draw_flip(self, FxArt.fire_vent, "fire_vent", PackedVector2Array([proj.to_screen(wall, lintel), proj.to_screen(far, lintel),
-				proj.to_screen(far, lo), proj.to_screen(wall, lo)]), Vector2(0.0, lintel_v), Vector2.ONE, col, key + i * 5)
+			var ph := fposmod(t + float(j) / puffs + _rand01(key + j * 13), 1.0)
+			var pos := tip + Vector2(sin(t * 2.0 + j * 2.1 + key) * 6.0, -ph * (0.6 + 1.2 * k) * IsoProjection.PX_PER_M) + lean * ph * 0.4
+			var size := open_m * IsoProjection.PX_PER_M * lerpf(0.9, 2.2, ph) * lerpf(0.8, 1.2, k)
+			FxArt.draw_billow(self, pos, size, key + j, Color(scol, FireDraw.num("smoke_puff_alpha", 0.6) * a * minf(1.0, ph * 5.0) * (1.0 - ph * ph * 0.7)))
 		return
 	# 분출 화염 그림이 없으면: 불꽃 그림을 개구부 위에 세운다
 	var drop := FireDraw.num("vent_drop_m", 0.6) * k

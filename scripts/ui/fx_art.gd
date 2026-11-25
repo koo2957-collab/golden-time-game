@@ -33,6 +33,8 @@ static var roll_curtain: Texture2D
 static var fire_wall: Texture2D
 ## 개구부(창·문) 밖으로 뿜는 화염을 옆에서 본 그림 (fire_fx.py vent, 2026-11-25): 왼쪽 = 벽, 아래에서 lintel_m = 개구부 윗면
 static var fire_vent: Texture2D
+## 불 위로 피어오르는 연기 덩어리 (tools/prep_fire_art.py — 사용자 제공 화염 그림의 연기 구름에서, 2026-11-25): 밝은 회색 — 연기 색을 곱한다
+static var billow: Texture2D
 static var meta: Dictionary = {}
 
 
@@ -62,6 +64,7 @@ static func load_all() -> bool:
 	roll_curtain = _tex(DIR + "/fire_rollc.png")
 	fire_wall = _tex(DIR + "/fire_wall.png")
 	fire_vent = _tex(DIR + "/fire_vent.png")
+	billow = _tex(DIR + "/smoke_billow.png")
 	return flame != null
 
 
@@ -89,15 +92,36 @@ static func draw_flame(ci: CanvasItem, base: Vector2, w: float, h: float, seed: 
 
 ## 불 한 채 (FireDraw.bodies 의 kind): base = 화면의 불 뿌리, w·h = 불꽃의 화면 폭·높이(px — 그림 위쪽 여백은 빼고 준다).
 ## seed 로 시작 장과 좌우 뒤집기를 다르게 한다. 그 크기의 그림이 없으면 false (부르는 쪽이 예전 불꽃으로)
-static func draw_fire(ci: CanvasItem, kind: String, base: Vector2, w: float, h: float, seed: int, modulate := Color.WHITE) -> bool:
+## lean = 불꽃 꼭대기를 화면에서 이만큼 민다 (px) — 개구부 밖으로 기울어 뿜는 화염
+static func draw_fire(ci: CanvasItem, kind: String, base: Vector2, w: float, h: float, seed: int, modulate := Color.WHITE, lean := Vector2.ZERO) -> bool:
 	if not load_all() or not fires.has(kind):
 		return false
 	var key := "fire_" + kind
-	var full := h / maxf(0.2, 1.0 - float(meta.get(key, {}).get("flame_top_v", 0.07)))
-	var left := base.x - w * 0.5
-	var right := base.x + w * 0.5
+	var m: Dictionary = meta.get(key, {})
+	# 그림 안에서 불꽃이 차지하는 높이 = 1 - 위쪽 여백(flame_top_v) - 뿌리 아래(base_v).
+	# base_v (2026-11-25): 위에서 내려다본 불이라 밑면이 둥글다 — 불 뿌리(바닥 가운데)는 그림 맨 아래가 아니라 그만큼 위다
+	var root := float(m.get("base_v", 0.0))
+	var full := h / maxf(0.2, 1.0 - float(m.get("flame_top_v", 0.07)) - root)
+	# flame_w_u: 그림 폭 가운데 불꽃이 차지하는 비율 (양옆은 여백) — w 는 불꽃의 폭이다
+	var half := w * 0.5 / clampf(float(m.get("flame_w_u", 1.0)), 0.3, 1.0)
+	var left := base.x - half
+	var right := base.x + half
+	var bottom := base.y + full * root
 	var mirror := posmod(seed, 2) == 1
-	return draw_flip(ci, fires[kind], key, PackedVector2Array([Vector2(left, base.y - full), Vector2(right, base.y - full), Vector2(right, base.y), Vector2(left, base.y)]),
+	return draw_flip(ci, fires[kind], key, PackedVector2Array([Vector2(left, bottom - full) + lean, Vector2(right, bottom - full) + lean, Vector2(right, bottom), Vector2(left, bottom)]),
+		Vector2(1.0 if mirror else 0.0, 0.0), Vector2(0.0 if mirror else 1.0, 1.0), modulate, seed)
+
+
+## 연기 덩어리 하나 (뭉게뭉게한 결이 있는 구름): center·size = 화면 자리·크기(px), seed 로 시작 장·좌우 뒤집기를 다르게.
+## 그림이 없으면 false (부르는 쪽이 예전 둥근 덩어리로)
+static func draw_billow(ci: CanvasItem, center: Vector2, size: float, seed: int, modulate: Color) -> bool:
+	if not load_all() or billow == null:
+		return false
+	var m: Dictionary = meta.get("smoke_billow", {})
+	var hh := size * float(m.get("h", 168)) / maxf(1.0, float(m.get("w", 192)))
+	var mirror := posmod(seed, 2) == 1
+	return draw_flip(ci, billow, "smoke_billow", PackedVector2Array([center + Vector2(-size * 0.5, -hh * 0.5), center + Vector2(size * 0.5, -hh * 0.5),
+		center + Vector2(size * 0.5, hh * 0.5), center + Vector2(-size * 0.5, hh * 0.5)]),
 		Vector2(1.0 if mirror else 0.0, 0.0), Vector2(0.0 if mirror else 1.0, 1.0), modulate, seed)
 
 

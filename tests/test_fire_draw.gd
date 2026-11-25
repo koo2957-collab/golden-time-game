@@ -432,3 +432,18 @@ func test_baked_vent_image() -> void:
 	assert_true(float(m.lintel_m) > 0.3 and float(m.height_m) - float(m.lintel_m) >= 1.5, "개구부 윗면 위로 솟는 높이가 있다")
 	assert_true(FxArt.load_all() and FxArt.fire_vent != null, "게임이 그림을 불러온다")
 	assert_true(FireDraw.num("vent_sheet_gap_m") > 0.2, "개구부 폭에 걸쳐 여러 장")
+
+
+## 사용자 제공 화염 그림으로 만든 불꽃·연기 (2026-11-25, tools/prep_fire_art.py): 내려다본 시점의 불이라 뿌리가 그림 맨 아래가 아니다
+func test_fire_art_from_user_images() -> void:
+	var meta: Variant = JsonData.load_file("res://art/fx/fx.json")
+	assert_true(meta is Dictionary, "art/fx/fx.json")
+	for kind in FireDraw.KINDS:
+		var m: Dictionary = meta.get("fire_" + kind, {})
+		assert_true(float(m.get("base_v", 0.0)) > 0.02 and float(m.get("base_v", 0.0)) < 0.3, "%s: 불 뿌리가 그림 아래에서 조금 위 (%.3f)" % [kind, float(m.get("base_v", 0.0))])
+		assert_true(float(m.get("flame_w_u", 0.0)) > 0.5 and float(m.get("flame_w_u", 0.0)) <= 1.0, "%s: 불꽃이 그림 폭에서 차지하는 비율" % kind)
+		assert_true(int(m.get("frames", 0)) >= 8, "%s: 장면 8장 이상 (%d)" % [kind, int(m.get("frames", 0))])
+		assert_true(int(m.get("h", 0)) * int(m.get("frames", 0)) <= 4096, "%s: 세로로 쌓은 그림이 4096px 을 넘지 않는다 (%d)" % [kind, int(m.get("h", 0)) * int(m.get("frames", 0))])
+	var b: Dictionary = meta.get("smoke_billow", {})
+	assert_true(not b.is_empty() and int(b.get("frames", 0)) >= 8, "연기 덩어리 그림 정보")
+	assert_true(FxArt.load_all() and FxArt.billow != null, "게임이 연기 덩어리 그림을 불러온다")

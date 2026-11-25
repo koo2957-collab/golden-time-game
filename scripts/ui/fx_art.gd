@@ -95,8 +95,8 @@ static func draw_flame(ci: CanvasItem, base: Vector2, w: float, h: float, seed: 
 ## lean = 불꽃 꼭대기를 화면에서 이만큼 민다 (px) — 개구부 밖으로 기울어 뿜는 화염
 ## point = 밑동을 V자로 내리는 정도 (2026-11-25 사용자: 아이소메트릭 시점이면 불꽃 아래가 일자가 아니라 역삼각형이어야 한다):
 ##   바닥의 네모난 자리는 이 시점에서 마름모로 보인다 — 불의 밑동은 그 앞쪽 두 변을 따라 가운데가 가장 낮은 V자다.
-##   1 = 불꽃 폭만 한 마름모의 앞 모서리까지 (가운데가 양옆보다 폭 × HALF_H ÷ HALF_W ÷ 2 낮다), 0 = 수평 (벽의 개구부에서 뿜는 화염),
-##   음수 = 설정값 (data/ui/fire_style.json base_point). 그림의 아래쪽 절반만 휘고 위쪽은 그대로다
+##   1 = 불꽃 폭만 한 둥근 자리(이 시점에서는 타원)의 앞쪽 호까지 (가운데가 양옆보다 폭 × HALF_H ÷ HALF_W ÷ 2 낮다),
+##   0 = 수평 (벽의 개구부에서 뿜는 화염), 음수 = 설정값 (data/ui/fire_style.json base_point). 그림의 아래쪽 절반만 휘고 위쪽은 그대로다
 static func draw_fire(ci: CanvasItem, kind: String, base: Vector2, w: float, h: float, seed: int, modulate := Color.WHITE, lean := Vector2.ZERO,
 		point := -1.0) -> bool:
 	if not load_all() or not fires.has(kind):
@@ -122,20 +122,57 @@ static func draw_fire(ci: CanvasItem, kind: String, base: Vector2, w: float, h: 
 	if drop < 1.0:
 		return draw_flip(ci, fires[kind], key, PackedVector2Array([Vector2(left, bottom - full) + lean, Vector2(right, bottom - full) + lean, Vector2(right, bottom), Vector2(left, bottom)]),
 			Vector2(1.0 if mirror else 0.0, 0.0), Vector2(0.0 if mirror else 1.0, 1.0), modulate, seed)
-	# 3 × 3 격자로 나눠 아래 줄만 V자로 옮긴다: 가운데는 drop 의 절반만큼 내려가고 양옆은 그만큼 올라간다 (평균 자리는 그대로)
-	var ok := false
-	for row in 2:
-		for col in 2:
-			var pts := PackedVector2Array()
-			var uvs := PackedVector2Array()
-			for corner: Vector2i in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1), Vector2i(0, 1)]:
-				var u := (col + corner.x) * 0.5
-				var v := (row + corner.y) * 0.5
-				var shift := ((1.0 - absf(2.0 * u - 1.0)) - 0.5) * drop if v >= 1.0 else 0.0
-				pts.append(Vector2(lerpf(left, right, u), lerpf(bottom - full, bottom, v) + shift) + lean * (1.0 - v))
-				uvs.append(Vector2(1.0 - u if mirror else u, v))
-			ok = draw_flip_poly(ci, fires[kind], key, pts, uvs, modulate, seed) or ok
-	return ok
+	# 둥근 밑동 (2026-11-25 사용자: 뾰족한 V자는 따로 붙인 삼각형처럼 보여 부자연스럽다): 불이 타는 자리는 둥글고, 둥근 자리는
+	# 이 시점에서 타원으로 보인다 — 밑동은 그 타원의 앞쪽 호를 따라 가운데가 부드럽게 낮다. 격자를 촘촘히(가로 8칸) 나눠 꺾이지 않게 하고,
+	# 아래로 갈수록 서서히 휘며(세로 4단), 맨 아래 가장자리는 옅게 해 바닥의 불빛에 녹아들게 한다
+	var cols := 8
+	var rows: Array[float] = [0.0, 0.5, 0.75, 0.9, 1.0]
+	var soft := clampf(float(FireDraw.style().get("base_soft", 0.5)), 0.0, 1.0)
+	var pts := PackedVector2Array()
+	var uvs := PackedVector2Array()
+	var tints := PackedColorArray()
+	for v: float in rows:
+		var bend := smoothstep(0.5, 1.0, v)
+		for c in cols + 1:
+			var u := float(c) / cols
+			var x := 2.0 * u - 1.0
+			# 타원의 호: 가운데 1, 양옆 0. 평균(π/4)을 빼 불꽃의 평균 자리는 그대로 둔다
+			var arc := sqrt(maxf(0.0, 1.0 - x * x)) - PI / 4.0
+			pts.append(Vector2(lerpf(left, right, u), lerpf(bottom - full, bottom, v) + arc * drop * bend) + lean * (1.0 - v))
+			uvs.append(Vector2(1.0 - u if mirror else u, v))
+			tints.append(Color(modulate, modulate.a * (1.0 - soft * smoothstep(0.82, 1.0, v))))
+	var indices := PackedInt32Array()
+	for r in rows.size() - 1:
+		for c in cols:
+			var a := r * (cols + 1) + c
+			var b := a + cols + 1
+			indices.append_array([a, a + 1, b + 1, a, b + 1, b])
+	return draw_flip_mesh(ci, fires[kind], key, pts, uvs, tints, indices, seed)
+
+
+## 플립북을 삼각형 그물에 (휘어 그릴 때): pts·uvs·cols = 꼭짓점마다 자리·한 장 안의 좌표(0~1)·색, indices = 삼각형.
+## 이웃한 두 장을 겹쳐 재생한다 (한 장에 그리기 명령 하나 — 조각마다 따로 그리지 않는다)
+static func draw_flip_mesh(ci: CanvasItem, tex: Texture2D, key: String, pts: PackedVector2Array, uvs: PackedVector2Array, cols: PackedColorArray,
+		indices: PackedInt32Array, seed: int) -> bool:
+	if tex == null or pts.size() < 3:
+		return false
+	var m: Dictionary = meta.get(key, {})
+	var frames := maxi(1, int(m.get("frames", 24)))
+	var f := Time.get_ticks_msec() / 1000.0 * float(m.get("fps", 6.0)) + float(posmod(seed * 7, frames))
+	var f0 := posmod(int(floorf(f)), frames)
+	var w := f - floorf(f)
+	var inset := 0.5 / float(tex.get_height())
+	var span := 1.0 / frames
+	for pair: Array in [[f0, 1.0], [(f0 + 1) % frames, w]]:
+		var base := float(pair[0]) * span
+		var fu := PackedVector2Array()
+		for uv in uvs:
+			fu.append(Vector2(uv.x, clampf(base + uv.y * span, base + inset, base + span - inset)))
+		var fc := PackedColorArray()
+		for c in cols:
+			fc.append(Color(c, c.a * float(pair[1])))
+		RenderingServer.canvas_item_add_triangle_array(ci.get_canvas_item(), indices, pts, fc, fu, PackedInt32Array(), PackedFloat32Array(), tex.get_rid())
+	return true
 
 
 ## 연기 덩어리 하나 (뭉게뭉게한 결이 있는 구름): center·size = 화면 자리·크기(px), seed 로 시작 장·좌우 뒤집기를 다르게.

@@ -449,6 +449,7 @@ func test_fire_art_from_user_images() -> void:
 	assert_true(FxArt.load_all() and FxArt.billow != null, "게임이 연기 덩어리 그림을 불러온다")
 	# 불꽃 색은 롤오버 천장 화염의 색(짙은 주황)에 맞춘다: 빨강은 그대로, 초록·파랑을 줄인다
 	var tint: Array = FireDraw.style().get("flame_tint", [])
-	# 불꽃 밑동은 마름모 앞 모서리를 따라 V자 (아이소메트릭 시점)
-	assert_true(FireDraw.num("base_point") > 0.3 and FireDraw.num("base_point") <= 1.5, "밑동을 V자로 내리는 정도 (%.2f)" % FireDraw.num("base_point"))
+	# 불꽃 밑동은 타원의 앞쪽 호를 따라 가운데가 부드럽게 낮다 (아이소메트릭 시점), 맨 아래 가장자리는 옅게
+	assert_true(FireDraw.num("base_point") > 0.3 and FireDraw.num("base_point") <= 1.0, "밑동을 둥글게 내리는 정도 (%.2f)" % FireDraw.num("base_point"))
+	assert_true(FireDraw.num("base_soft") > 0.0 and FireDraw.num("base_soft") < 1.0, "밑동 가장자리를 옅게 (%.2f)" % FireDraw.num("base_soft"))
 	assert_true(tint.size() == 3 and float(tint[0]) >= float(tint[1]) and float(tint[1]) > float(tint[2]) and float(tint[2]) > 0.2, "불꽃에 곱하는 색 %s" % [tint])

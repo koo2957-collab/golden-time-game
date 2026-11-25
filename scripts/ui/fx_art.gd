@@ -31,6 +31,8 @@ static var roll_sheet: Texture2D
 static var roll_curtain: Texture2D
 ## 전실 화재의 화염 벽 (fire_fx.py wall, 2026-11-25): 잘린 앞면에 바닥에서 천장까지 차는 화염 (가로 타일, 위 = 천장)
 static var fire_wall: Texture2D
+## 개구부(창·문) 밖으로 뿜는 화염을 옆에서 본 그림 (fire_fx.py vent, 2026-11-25): 왼쪽 = 벽, 아래에서 lintel_m = 개구부 윗면
+static var fire_vent: Texture2D
 static var meta: Dictionary = {}
 
 
@@ -59,6 +61,7 @@ static func load_all() -> bool:
 	roll_sheet = _tex(DIR + "/fire_roll.png")
 	roll_curtain = _tex(DIR + "/fire_rollc.png")
 	fire_wall = _tex(DIR + "/fire_wall.png")
+	fire_vent = _tex(DIR + "/fire_vent.png")
 	return flame != null
 
 

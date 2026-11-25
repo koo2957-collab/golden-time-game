@@ -353,3 +353,18 @@ func test_flame_vents_pick_open_openings_of_burning_room() -> void:
 		if o.kind == Opening.Kind.DOOR and o.level == 1 and (o.room_a == living.index or o.room_b == living.index):
 			o.is_open = false
 	assert_eq(FloorLayer.flame_vents(sim, 1).size(), 1, "문을 다 닫으면 깨진 창만 남는다 (%d → 1)" % n)
+
+
+## 구운 분출 화염 그림: 옆에서 본 모습 (왼쪽 = 벽, 아래에서 lintel_m = 개구부 윗면) — 밖으로 뿜어 나와 위로 말려 오른다
+func test_baked_vent_image() -> void:
+	var meta: Variant = JsonData.load_file("res://art/fx/fx.json")
+	var m: Dictionary = meta.get("fire_vent", {}) if meta is Dictionary else {}
+	assert_true(not m.is_empty(), "fire_vent 그림 정보")
+	if m.is_empty():
+		return
+	assert_true(FileAccess.file_exists("res://art/fx/fire_vent.png") or ResourceLoader.exists("res://art/fx/fire_vent.png"), "fire_vent.png")
+	assert_true(int(m.frames) >= 8 and float(m.fps) > 0.0, "장 수·속도")
+	assert_true(float(m.width_m) >= 1.0, "벽에서 밖으로 1m 넘게 뻗는다 (%.2fm)" % float(m.width_m))
+	assert_true(float(m.lintel_m) > 0.3 and float(m.height_m) - float(m.lintel_m) >= 1.5, "개구부 윗면 위로 솟는 높이가 있다")
+	assert_true(FxArt.load_all() and FxArt.fire_vent != null, "게임이 그림을 불러온다")
+	assert_true(FireDraw.num("vent_sheet_gap_m") > 0.2, "개구부 폭에 걸쳐 여러 장")

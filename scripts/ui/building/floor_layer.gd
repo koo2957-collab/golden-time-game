@@ -3923,19 +3923,53 @@ func _draw_vent_flame(v: Array, floor_h: float, fh: float, facade: bool) -> void
 		return
 	# 외관의 창은 창 그림(층 높이의 0.3~0.8)에 맞추고, 문은 층 높이를 넘지 않게
 	var lintel := floor_h + (fh * 0.8 if facade and bool(v[8]) else minf(top, fh * 0.9))
-	var drop := FireDraw.num("vent_drop_m", 0.6) * k
 	var rise := FireDraw.vent_rise_m(k)
 	if interior:
 		rise = minf(rise, maxf(0.2, floor_h + fh - lintel))
-	var height := rise + drop
-	var width := float(v[7]) * (0.8 + FireDraw.num("vent_width_gain", 0.6) * k)
-	var base_at := at + dir * (0.5 + FireDraw.num("vent_out_m", 0.7) * k * 0.5 / cell)
-	var base := proj.to_screen(base_at, lintel - drop)
 	var p := sim.perception
 	var room := sim.fire.comps[src]
 	var now := not p.enabled or p.room_visible(room) or p.is_visible(room.level, floori(at.x), floori(at.y))
 	var a := FireDraw.num("vent_alpha", 0.95) * (1.0 if now else FireDraw.num("remembered_fade", 0.4))
 	var key := int(v[6]) * 7 + 3
+	if FxArt.fire_vent != null:
+		# 옆에서 본 분출 화염 그림(왼쪽 = 벽)을 벽에 수직인 판에 그린다 — 개구부에서 밖으로 뿜어 나와 위로 말려 오른다
+		# (2026-11-25 사용자: 아래에서 위로 솟는 불꽃 그림을 세워 놓으니 밖으로 분출되는 느낌이 아니다). 연기 넘침(_draw_spill)과 같은 방식.
+		# 세기에 따라 그림 전체가 작아지고, 개구부 폭에 걸쳐 여러 장을 나란히 세운다
+		var m: Dictionary = FxArt.meta.get("fire_vent", {})
+		var img_h := float(m.get("height_m", 3.0))
+		var img_l := float(m.get("lintel_m", 1.0))
+		# 인방 위(솟는 부분)와 아래(개구부에서 나오는 부분)를 따로 늘인다 — 방 사이 문은 천장 때문에 위가 낮아도
+		# 개구부에서 쏟아져 나오는 부분은 제 크기로 (통째로 줄이면 납작한 줄로 보인다)
+		var lintel_v := 1.0 - img_l / maxf(0.1, img_h)
+		var lo := maxf(floor_h, lintel - img_l * lerpf(0.5, 1.0, k))
+		var hi := lintel + rise
+		var reach := float(m.get("width_m", 1.65)) * lerpf(0.55, 1.0, k) * (0.8 if interior else 1.0) / cell
+		var span := float(v[7]) * 0.8 / cell
+		var n := clampi(roundi(float(v[7]) / FireDraw.num("vent_sheet_gap_m", 0.55)), 1, 4)
+		var tangent := Vector2(-dir.y, dir.x)
+		var walls: Array[Vector2] = []
+		for i in n:
+			walls.append(at + dir * 0.5 + tangent * ((float(i) + 0.5) / n - 0.5) * span)
+		# 뒤(북서)에서 앞(남동)으로
+		walls.sort_custom(func(m0: Vector2, m1: Vector2) -> bool: return m0.x + m0.y < m1.x + m1.y)
+		var glow_at := proj.to_screen(at + dir * (0.5 + reach * 0.4), lintel + rise * 0.3)
+		var glow_r := maxf(float(v[7]), rise) * IsoProjection.PX_PER_M * (0.7 + 0.5 * k)
+		ShadowDraw.soft_ellipse(self, glow_at, glow_r, glow_r * 0.8, Color(1.0, 0.5, 0.12, 0.28 * k * a))
+		for i in walls.size():
+			var wall := walls[i]
+			var far := wall + dir * reach
+			var col := Color(1, 1, 1, a * (1.0 if n == 1 else 0.85))
+			FxArt.draw_flip(self, FxArt.fire_vent, "fire_vent", PackedVector2Array([proj.to_screen(wall, hi), proj.to_screen(far, hi),
+				proj.to_screen(far, lintel), proj.to_screen(wall, lintel)]), Vector2.ZERO, Vector2(1.0, lintel_v), col, key + i * 5)
+			FxArt.draw_flip(self, FxArt.fire_vent, "fire_vent", PackedVector2Array([proj.to_screen(wall, lintel), proj.to_screen(far, lintel),
+				proj.to_screen(far, lo), proj.to_screen(wall, lo)]), Vector2(0.0, lintel_v), Vector2.ONE, col, key + i * 5)
+		return
+	# 분출 화염 그림이 없으면: 불꽃 그림을 개구부 위에 세운다
+	var drop := FireDraw.num("vent_drop_m", 0.6) * k
+	var height := rise + drop
+	var width := float(v[7]) * (0.8 + FireDraw.num("vent_width_gain", 0.6) * k)
+	var base_at := at + dir * (0.5 + FireDraw.num("vent_out_m", 0.7) * k * 0.5 / cell)
+	var base := proj.to_screen(base_at, lintel - drop)
 	# 외벽·옆 방 천장에 번지는 불빛
 	var glow := maxf(width, height) * IsoProjection.PX_PER_M * (0.7 + 0.5 * k)
 	ShadowDraw.soft_ellipse(self, base + Vector2(0, -height * IsoProjection.PX_PER_M * 0.45), glow, glow * 0.8, Color(1.0, 0.5, 0.12, 0.28 * k * a))

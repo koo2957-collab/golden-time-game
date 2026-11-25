@@ -48,6 +48,17 @@
     "w": 64,
     "width_m": 0.7
   },
+  "fire_vent": {
+    "fps": 11.0,
+    "frames": 16,
+    "h": 320,
+    "height_m": 3.0,
+    "lintel_m": 1.0,
+    "mean_alpha": 0.226,
+    "source": "tools/blender/fire_fx.py — Blender Cycles 빛을 내는 부피 노이즈(정면 정사영), 시간 루프",
+    "w": 176,
+    "width_m": 1.65
+  },
   "fire_wall": {
     "fps": 9.0,
     "frames": 16,

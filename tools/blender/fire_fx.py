@@ -68,6 +68,12 @@ ROLL_KINDS = {
     "wall": {"px": (768, 250), "box": ((0.0, 8.0), (-0.2, 0.2), (0.0, 2.6)), "cam": "front", "scale": 8.0, "center": (4.0, 1.3),
              "tile": "x", "fps": 9.0, "samples": 24, "w_step": 0.045, "flow": (0.012, 0.0, 0.09), "thick": 0.4, "gain": 0.85, "floor": 0.05, "top": (1.0, 0.82, 0.36, 1.0),
              "meta": {"tile_m": 4.0, "height_m": 2.6}},
+    # 개구부(창·문) 밖으로 뿜는 화염을 옆에서 본 모습 (4단계, 2026-11-25 사용자: 아래에서 위로 솟는 불꽃 그림이라 밖으로 분출되는 느낌이
+    # 아니다). 그림 왼쪽 = 벽, 아래에서 lintel_m 높이 = 개구부 윗면(인방). 개구부 윗부분에서 밖으로 뿜어 나와 위로 말려 오른다
+    "vent": {"px": (176, 320), "box": ((0.0, 1.65), (-0.25, 0.25), (0.0, 3.0)), "cam": "front", "scale": 3.0, "center": (0.825, 1.5),
+             "tile": "", "fps": 11.0, "samples": 24, "w_step": 0.05, "flow": (0.035, 0.0, 0.075), "thick": 0.5, "gain": 0.55, "floor": 0.04,
+             "top": (1.0, 0.86, 0.42, 1.0), "lintel_m": 1.0,
+             "meta": {"width_m": 1.65, "height_m": 3.0, "lintel_m": 1.0}},
 }
 # 불꽃 꼭대기는 그림 높이의 이 비율까지 (그 위는 혀가 날름거릴 여유)
 TOP_RATIO = 0.93
@@ -404,6 +410,42 @@ def make_roll_material(obj, kind, cfg):
         lick = g.smooth(fine, 0.36, 0.62)
         core = g.smooth(big, 0.6, 0.74)
         inten = g.mul(g.mul(patch, g.add(g.mul(lick, 1.15), 0.14)), g.add(0.8, g.mul(core, 0.4)))
+    elif kind == "vent":
+        x = sep.outputs["X"]
+        top = cfg["box"][2][1]
+        lin = cfg["lintel_m"]
+        # 화염의 가운데 선: 개구부 안에서는 벽에 붙어 있다가 인방 위로 밖으로 밀려 나오고, 솟으면서 다시 벽 쪽으로 기운다
+        cx = g.sub(g.add(0.12, g.mul(g.smooth(z, 0.3, lin + 0.3), 0.62)), g.mul(g.smooth(z, lin + 0.5, top), 0.3))
+        # 반 폭: 뿜어 나오는 곳에서 넓고 꼭대기로 갈수록 좁다
+        hw = g.mul(g.add(0.1, g.mul(g.smooth(z, 0.2, lin + 0.2), 0.3)), g.sub(1.0, g.mul(g.smooth(z, lin + 0.5, top * 0.97), 0.82)))
+        # 벽 쪽 반 폭: 개구부 안(인방 아래)에서는 벽까지 찬다
+        hwl = g.add(g.mul(g.mul(cx, 3.0), g.smooth(z, lin, lin + 0.45, inv=True)), g.mul(hw, g.smooth(z, lin, lin + 0.45)))
+        tall = g.n.new("ShaderNodeMapping")                 # 위로 길게 뻗는 혀
+        tall.inputs["Scale"].default_value = (2.6, 2.6, 0.9)
+        g.link(flow, tall.inputs["Vector"])
+        big = g.noise("big", tall.outputs["Vector"], 1.0, 2.5, 0.55, 0.7)
+        streak = g.n.new("ShaderNodeMapping")
+        streak.inputs["Scale"].default_value = (1.0, 1.0, 0.5)
+        g.link(flow, streak.inputs["Vector"])
+        fine = g.noise("fine", streak.outputs["Vector"], 5.0, 4.0, 0.55, 0.35)
+        bign = g.remap(big, 0.3, 0.7, -1.0, 1.0)
+        right = g.div(g.sub(x, cx), hw)
+        left = g.div(g.sub(cx, x), g.math("MAXIMUM", hwl, 0.03))
+        d = g.add(g.math("MAXIMUM", right, left), g.mul(bign, g.add(0.18, g.mul(g.div(z, top), 0.5))))
+        body = g.smooth(d, 0.25, 1.0, inv=True)
+        # 꼭대기는 혀마다 높이가 다르다, 개구부 아래쪽에서는 옅게 시작한다 (불꽃은 개구부 윗부분으로 나온다)
+        col = g.n.new("ShaderNodeMapping")
+        col.inputs["Scale"].default_value = (3.0, 3.0, 0.08)
+        g.link(flow, col.inputs["Vector"])
+        coln = g.remap(g.noise("col", col.outputs["Vector"], 1.0, 1.5, 0.5, 0.0), 0.32, 0.68, 0.0, 1.0)
+        reach = g.add(top * 0.62, g.mul(coln, top * 0.36))
+        tip = g.smooth(z, g.mul(reach, 0.55), reach, inv=True)
+        foot = g.smooth(z, 0.05, lin * 0.6)
+        lick = g.smooth(fine, g.add(0.34, g.mul(g.div(z, top), 0.14)), 0.64)
+        hot = g.add(0.8, g.mul(g.smooth(z, lin - 0.6, lin + 0.2), 0.35))
+        inten = g.mul(g.mul(g.mul(g.mul(body, tip), foot), g.add(g.mul(lick, 1.2), 0.14)), hot)
+        # 그림 가장자리(오른쪽·위)에서 잘리지 않게
+        inten = g.mul(inten, g.smooth(x, cfg["box"][0][1] * 0.82, cfg["box"][0][1] * 0.98, inv=True))
     elif kind == "wall":
         top = cfg["box"][2][1]
         zn = g.div(z, top)                                  # 0 바닥 … 1 천장

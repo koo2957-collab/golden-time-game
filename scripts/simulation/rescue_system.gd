@@ -46,6 +46,9 @@ class CarryTask:
 	var dest := Vector2i(-1, -1)
 	## 집결지가 없어 입구에서 다시 물을 틱
 	var next_ask := 0
+	## 분류소·집결지에 닿아 내려놓는 중이면 끝나는 틱 (-1 = 아님, 2026-11-26) · 내려놓는 곳 이름
+	var lower_until := -1
+	var lower_where := ""
 
 
 var fire: FireSim
@@ -72,6 +75,7 @@ var _ask_repeat_ticks := 300
 var _entrance_ratio := 0.3
 var _entrance_weight := 4.0
 var _handover_cells := 3.0
+var _lower_ticks := 60
 
 var _cell_m: float
 var _co_per_soot: float
@@ -113,6 +117,7 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, p_per
 	_entrance_ratio = params.value("entrance_smoke_ratio")
 	_entrance_weight = params.value("entrance_path_weight")
 	_handover_cells = params.value("handover_range_m") / _cell_m
+	_lower_ticks = roundi(params.value("dropoff_lower_s") / SimClock.TICK_DT)
 	_ask_repeat_ticks = roundi(params.value("dropoff_ask_repeat_s") / SimClock.TICK_DT)
 
 
@@ -327,6 +332,12 @@ func _step_carry(t: CarryTask, tick: int) -> void:
 			# 길이 막혔거나 도착이 어긋나면 다시 다가간다
 			_go(c, Vector2i(Vector2(target.x, target.y).floor()), int(target.z))
 		return
+	# 분류소·집결지에서 내려놓는 중 (2026-11-26 사용자: 데려다 놓고 내리는 행동이 없다): 그 자리에 멈춰 낮은 자세로
+	# 바닥에 눕힌 뒤 dropoff_lower_s 가 지나면 인계를 마치고 떠난다
+	if t.lower_until >= 0:
+		if tick >= t.lower_until:
+			_complete(t, c, tick, t.lower_where)
+		return
 	# 업고 가는 중: 업힌 사람이 조장을 따라온다
 	if t.kind == "victim":
 		var v := victims[t.target_id]
@@ -364,7 +375,15 @@ func _step_outdoor(t: CarryTask, c: Crew, tick: int) -> void:
 		return
 	var cell: Vector2i = dest.cell
 	if c.leader.level == 1 and c.leader.pos.distance_to(Vector2(cell) + Vector2(0.5, 0.5)) <= _handover_cells:
-		_complete(t, c, tick, str(dest.kind))
+		# 내려놓기 시작: 멈추고, 요구조자를 조장 앞 바닥에 눕힌다 (그동안은 들고 있지 않다)
+		for ff in c.members():
+			ff.path.clear()
+		var v := victims[t.target_id]
+		v.carried_by = -1
+		v.pos = c.leader.pos + (Vector2(cell) + Vector2(0.5, 0.5) - c.leader.pos).limit_length(0.8)
+		t.lower_until = tick + _lower_ticks
+		t.lower_where = str(dest.kind)
+		events.add(tick, "victim_lowering", {"crew": _crew_name(c), "who": v.label(), "where": t.lower_where})
 	elif t.dest != cell or not c.leader.is_moving():
 		t.dest = cell
 		units.order_move([c.id] as Array[int], Vector3i(cell.x, cell.y, 1), pathfinder)

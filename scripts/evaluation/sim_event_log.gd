@@ -251,6 +251,8 @@ static func describe_text(e: Dictionary) -> String:
 			text = "잔불정리 시작 — %s: %s" % [e.crew, e.room]
 		"overhaul_done":
 			text = "잔불정리 완료 — %s, 불씨 %d곳 제거 — %s" % [e.room, e.embers, e.crew]
+		"victim_lowering":
+			text = "%s 내려놓는 중 (%s) — %s" % [e.who, e.where, e.crew]
 		"rekindle":
 			text = "재발화 — %s" % e.room
 		"search_skipped":

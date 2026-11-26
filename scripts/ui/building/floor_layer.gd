@@ -2068,6 +2068,15 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 		anim = str(al.anims.get(ff.id, "aid_a"))
 		dir = int(al.k)
 		moving = false
+	elif task is RescueSystem.CarryTask and (task as RescueSystem.CarryTask).lower_until >= 0:
+		# 내려놓기 (2026-11-26): 바닥에 눕힌 요구조자 쪽을 보고 낮은 자세로 (구조대원 그림에 무릎 꿇기가 없어 낮은 자세 걷기 첫 장)
+		var lv := sim.rescue.victims[(task as RescueSystem.CarryTask).target_id]
+		if art.frames("crouch_walk") > 0:
+			anim = "crouch_walk"
+			fixed_frame = 0
+		if (lv.pos - ff.pos).length_squared() > 0.0001:
+			dir = SpriteArt.dir8(lv.pos - ff.pos)
+		moving = false
 	elif task is RescueSystem.CarryTask and task.carrying:
 		# 운반 (2026-11-15, 구조 교재 제4편 제2장 구출 및 운반): 선 자세로 갈 수 있으면 2인 운반(사지운반법 — 조장이 앞에서 다리,
 		# 짝이 뒤에서 겨드랑이), 연기층 아래 낮은 자세이거나 혼자면 1인 운반(구조대상자 끌기 — 조장이 옷깃을 잡고 뒷걸음, 짝은 앞에서 길을 살핀다)

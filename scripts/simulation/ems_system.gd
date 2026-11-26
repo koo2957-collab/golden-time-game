@@ -51,6 +51,8 @@ var events: SimEventLog
 var patients: Array[Patient] = []
 ## 처치 완료 뒤 자동 이송 (TacticalSystem 자동화 수준 입문이면 true)
 var auto_transport := true
+## 긴급(빨강) 환자는 처치가 끝나면 지시 없이 이송 (ems_params urgent_auto_transport)
+var _urgent_auto := true
 var hospital := "인근 응급의료기관"
 ## 분류소·환자 집결지 (P10-2 ⓒ): 분류소 근처에서 쉬는 구급대는 분류표 순서대로 알아서 처치한다
 var zones: ZoneSystem
@@ -97,6 +99,7 @@ func _init(p_units: UnitSystem, p_rescue: RescueSystem, p_pathfinder: Pathfinder
 	_urgent_fed = params.value("start_urgent_fed")
 	_delayed_ratio = params.value("start_delayed_fed_ratio")
 	_post_cells = params.value("post_range_m") / cell_m
+	_urgent_auto = params.value("urgent_auto_transport") > 0.5
 
 
 func apply_scenario(data: Dictionary) -> void:
@@ -280,7 +283,8 @@ func _step_treat(p: Patient, v: Victim, dt: float, tick: int) -> void:
 	p.stage = Stage.TREATED
 	p.treated_tick = tick
 	events.add(tick, "ems_treated", {"crew": _crew_name(c), "who": v.label(), "triage": triage_name(p), "auto": p.auto_transport})
-	if p.auto_transport:
+	# 긴급(빨강) 환자는 지시가 없어도 처치가 끝나면 바로 이송한다 (SOP 402 — 긴급환자 우선 이송, 2026-11-26)
+	if p.auto_transport or (_urgent_auto and p.tag == Triage.URGENT):
 		var amb := _ambulance_of(c.squad_id)
 		if amb:
 			_start_carry(p, c, amb, tick)
@@ -368,23 +372,40 @@ func _asker_name(v: Victim) -> String:
 
 
 ## 분류소·집결지 근처에서 쉬는 구급대는 분류표 순서(긴급 → 응급 → 미분류 → 비응급, 지연 제외)로 알아서 처치한다
+## 현장에 내려 할 일 없이 서 있는 구급대는 처치를 기다리는 환자에게 스스로 가서 처치한다 (2026-11-26 사용자: 구급대원이 하는
+## 행동이 없다 — 전에는 환자 집결지 곁에 이미 서 있는 구급대만 처치했다. SOP 400 현장 평가·처치, EMERGENCY 시리즈의 자동 처치).
+## 분류가 급한 환자부터(긴급 → 응급 → 미분류 → 비응급), 같으면 가까운 환자. 지연(사망)은 처치하지 않는다
 func _auto_treat(tick: int) -> void:
-	if zones == null or zones.destination().x < 0:
+	# 구조자 운반 규칙을 쓰지 않는 판(규칙을 끈 시험 판)은 예전처럼 집결지 곁의 구급대만
+	var anywhere := rescue.dropoff_enabled
+	var post := Vector2(zones.destination()) + Vector2(0.5, 0.5) if zones != null and zones.destination().x >= 0 else Vector2(-1, -1)
+	if not anywhere and post.x < 0:
 		return
-	var post := Vector2(zones.destination()) + Vector2(0.5, 0.5)
+	# 분류를 기다리는 환자가 있으면 비응급(걷는 환자)은 뒤로 — 더 급한 사람이 있을 수 있다 (START)
+	var tag_pending := patients.any(func(q: Patient) -> bool: return q.stage == Stage.WAITING and q.asked and q.tag < 0)
 	for c in units.crews:
 		if not is_ems_crew(c.id) or c.leader.aboard or c.leader.incapacitated or c.leader.is_moving():
 			continue
-		if patient_of_crew(c.id) != null or c.leader.pos.distance_to(post) > _post_cells:
+		if patient_of_crew(c.id) != null:
+			continue
+		if not anywhere and c.leader.pos.distance_to(post) > _post_cells:
 			continue
 		var best: Patient = null
+		var best_d := INF
 		for p in patients:
 			if p.stage != Stage.WAITING or not on_scene(p) or p.tag == Triage.DELAYED:
 				continue
-			if rescue.victims[p.victim_id].pos.distance_to(post) > _post_cells:
+			# 분류 카드를 기다리는 환자는 지휘관이 분류한 뒤에 (분류표 순서로 처치한다는 훈련 — START)
+			if p.asked and p.tag < 0:
 				continue
-			if best == null or int(TAG_ORDER[p.tag]) < int(TAG_ORDER[best.tag]):
+			if tag_pending and p.tag == Triage.MINOR:
+				continue
+			if not anywhere and rescue.victims[p.victim_id].pos.distance_to(post) > _post_cells:
+				continue
+			var d := c.leader.pos.distance_to(rescue.victims[p.victim_id].pos)
+			if best == null or int(TAG_ORDER[p.tag]) < int(TAG_ORDER[best.tag]) or (p.tag == best.tag and d < best_d):
 				best = p
+				best_d = d
 		if best:
 			order_treat(c.id, best.victim_id, tick)
 

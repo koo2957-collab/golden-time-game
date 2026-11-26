@@ -205,3 +205,46 @@ func test_deterioration_and_observer() -> void:
 	assert_true(sim.ems.observed(made[0]), "곁에 대원 = 관찰")
 	assert_true(alone.untreated_s > 95.0 and watched.untreated_s < alone.untreated_s * 0.6,
 		"관찰하면 악화가 느리다 (%.0f초 / %.0f초)" % [watched.untreated_s, alone.untreated_s])
+
+
+## 내려놓기 (2026-11-26 사용자: 데려다 놓고 내리는 행동이 없다): 집결지에 닿으면 멈춰 바닥에 눕히고 dropoff_lower_s 뒤 인계
+func test_lowering_at_casualty_point() -> void:
+	var sim := _sim()
+	var point := _zones(sim)
+	var v := _victim_by_door(sim)
+	sim.rescue.order_rescue(0, "victim", v.id, 0)
+	assert_true(_until(sim, func() -> bool: return not sim.events.of_type("victim_lowering").is_empty(), 240.0), "집결지에서 내려놓기 시작")
+	var t0 := sim.clock.tick
+	assert_eq(v.carried_by, -1, "내려놓는 동안 들고 있지 않다 (바닥에 눕힘)")
+	assert_true(v.state != Victim.State.RESCUED, "아직 인계 전")
+	var c := sim.units.get_crew(0)
+	sim.step_ticks(10)
+	assert_true(not c.leader.is_moving(), "내려놓는 동안 멈춰 있다")
+	assert_true(_until(sim, func() -> bool: return v.state == Victim.State.RESCUED, 20.0), "잠시 뒤 인계")
+	var took := (sim.clock.tick - t0) * SimClock.TICK_DT
+	assert_true(took >= 4.0, "내려놓는 시간 (%.1f초)" % took)
+	assert_true(v.pos.distance_to(Vector2(point) + Vector2(0.5, 0.5)) <= 3.5, "집결지 자리")
+
+
+## 구급대 자동 처치 (2026-11-26 사용자: 구급대원이 하는 행동이 없다): 구급차 옆에서 쉬던 구급대가 분류된 환자에게 스스로 가서 처치하고,
+## 긴급(빨강)은 처치가 끝나면 지시 없이 이송한다
+func test_ems_goes_to_patient_and_urgent_transport() -> void:
+	var sim := _sim()
+	var ems := _with_ems(sim)
+	var point := _zones(sim)
+	sim.rescue.add_victims([{"name": "환자", "age": 40, "level": 1, "cell": [point.x, point.y]}], sim.rng)
+	var v: Victim = sim.rescue.victims[-1]
+	v.discovered = true
+	v.fed_toxic = 0.4
+	v.state_at_rescue = Victim.State.UNCONSCIOUS
+	v.state = Victim.State.RESCUED
+	v.rescued_tick = 0
+	v.dropoff = "환자 집결지"
+	sim.step_ticks(2)
+	var p := sim.ems.patient_of(v.id)
+	assert_true(p != null and p.stage == EmsSystem.Stage.WAITING, "처치 대기")
+	assert_true(_answer(sim, "START-01", "tag_urgent"), "긴급으로 분류")
+	var c := sim.units.get_crew(ems)
+	assert_true(c.leader.pos.distance_to(Vector2(point)) > 5.0, "구급대는 집결지에서 떨어져 있다")
+	assert_true(_until(sim, func() -> bool: return p.stage == EmsSystem.Stage.TREATING, 10.0), "스스로 처치하러 간다")
+	assert_true(_until(sim, func() -> bool: return p.stage in [EmsSystem.Stage.CARRYING, EmsSystem.Stage.AWAY], 400.0), "긴급은 처치 뒤 지시 없이 이송 (%d)" % p.stage)

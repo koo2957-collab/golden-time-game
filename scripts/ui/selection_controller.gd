@@ -1182,11 +1182,7 @@ func _draw_guide() -> void:
 				draw_string(font, p + Vector2(-110, 28) / z, tip, HORIZONTAL_ALIGNMENT_CENTER, 220.0 / z, maxi(8, roundi(13.0 / z)), gold.lightened(0.4))
 	# 마우스 아래가 지금 층의 건물 안: 그 층 바닥 테두리 + '우클릭: 임무 지시' (방 단위는 없다)
 	if _g_room >= 0 and _g_room == level:
-		var fp := Rect2(sim.building.footprint(level))
-		var pts := PackedVector2Array()
-		for c: Vector2 in [fp.position, Vector2(fp.end.x, fp.position.y), fp.end, Vector2(fp.position.x, fp.end.y), fp.position]:
-			pts.append(projection.to_screen(c, 0.05))
-		draw_polyline(pts, Color(gold, 0.6 + 0.35 * pulse), 3.0 / z)
+		_draw_floor_box(level, Vector2.ZERO, Color(gold, 0.6 + 0.35 * pulse), 3.0 / z)
 		var mouse := _to_world(get_viewport().get_mouse_position())
 		draw_string(font, mouse + Vector2(16, -10) / z, "%s — 우클릭: 임무 지시" % sim.building.floor_name(level), HORIZONTAL_ALIGNMENT_LEFT, -1, maxi(8, roundi(15.0 / z)), Color(gold.lightened(0.3), 0.95))
 
@@ -1203,12 +1199,30 @@ func _draw_view_hover(z: float, font: Font, pulse: float, gold: Color) -> void:
 	var off := _floor_off(_g_view.x)
 	if off == NOT_SHOWN:
 		return
-	var fp := Rect2(sim.building.footprint(_g_view.x))
-	var pts := PackedVector2Array()
-	for c: Vector2 in [fp.position, Vector2(fp.end.x, fp.position.y), fp.end, Vector2(fp.position.x, fp.end.y), fp.position]:
-		pts.append(projection.to_screen(c, 0.05) + off)
-	draw_polyline(pts, Color(gold, 0.6 + 0.35 * pulse), 3.0 / z)
+	_draw_floor_box(_g_view.x, off, Color(gold, 0.6 + 0.35 * pulse), 3.0 / z)
 	draw_string(font, mouse + Vector2(16, -10) / z, "%s — 클릭: 이 층 보기" % sim.building.floor_name(_g_view.x), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(gold.lightened(0.3), 0.95))
+
+
+## 층을 가리킬 때의 노란 테두리: 바닥 사각형만이 아니라 그 층 바깥 외벽의 상자(바닥선·천장선·세로 모서리) (2026-11-26 사용자 결정 ④ —
+## 바닥선은 벽·가구에 가려 잘 안 보였다). 뒤쪽 세로 모서리(북서)는 건물에 가려지는 쪽이라 그리지 않는다
+func _draw_floor_box(lv: int, off: Vector2, col: Color, width: float) -> void:
+	var fp := Rect2(sim.building.footprint(lv))
+	var corners: Array[Vector2] = [fp.position, Vector2(fp.end.x, fp.position.y), fp.end, Vector2(fp.position.x, fp.end.y)]
+	var h := FloorLayer.CEILING_M
+	var low := PackedVector2Array()
+	var high := PackedVector2Array()
+	for c in corners:
+		low.append(projection.to_screen(c, 0.05) + off)
+		high.append(projection.to_screen(c, h) + off)
+	low.append(low[0])
+	high.append(high[0])
+	draw_polyline(low, col, width)
+	draw_polyline(high, col, width)
+	for i in [1, 2, 3]:
+		draw_line(low[i], high[i], col, width)
+	# 벽 면을 아주 옅게 채워 층의 부피가 읽히게 (남·동 면)
+	for face: Array in [[3, 2], [2, 1]]:
+		draw_colored_polygon(PackedVector2Array([low[face[0]], low[face[1]], high[face[1]], high[face[0]]]), Color(col, 0.08))
 
 
 ## 진입구 앞에서 기다리는 조 이름 (없으면 "")

@@ -342,7 +342,8 @@ func _setup(building: BuildingData, config: FireConfig, comps: Array[Compartment
 					var i := index(level, x, y)
 					if room[i] >= 0 and config.has_material(item.material):
 						_set_material(i, item.material, config)
-						ember_factor[i] = float(item.get("ember", 1.0))
+						if item.has("ember"):
+							ember_factor[i] = float(item.ember)
 	# 문
 	for o in openings:
 		if o.kind != Opening.Kind.DOOR or not config.has_material("문"):
@@ -556,6 +557,8 @@ func _set_material(i: int, material_name: String, config: FireConfig) -> void:
 	state[i] = State.UNBURNED
 	fuel[i] = float(config.materials[material_name].fuel_mj)
 	fuel0[i] = fuel[i]
+	# 불씨가 숨는 정도 (재질 기본값 — 가구 항목에 ember 가 있으면 그 값이 이긴다, 2026-11-26 기획안 5-9)
+	ember_factor[i] = float(config.materials[material_name].get("ember", 1.0))
 
 
 func _link_neighbors(i: int) -> void:

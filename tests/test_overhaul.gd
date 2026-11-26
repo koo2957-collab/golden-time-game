@@ -276,3 +276,22 @@ func test_floor_mission_watch() -> void:
 		if rk.watch_of_crew(c.id) == null:
 			break
 	assert_true(rk.watch_of_crew(c.id) == null, "새 층 임무를 받으면 감시를 그만둔다")
+
+
+## 불씨가 잘 숨는 곳 (2026-11-26, 기획안 5-9 ③): 재질마다 기본 배율 (data/materials ember) — 가구 항목의 ember 가 있으면 그 값
+func test_ember_factor_by_material() -> void:
+	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)
+	var g := sim.fire.grid
+	var seen := {}
+	for i in g.mat.size():
+		var name := g.material_name(i)
+		if name != "" and not seen.has(name):
+			seen[name] = g.ember_factor[i]
+	assert_true(seen.has("내장재"), "내장재 칸이 있다 (%s)" % str(seen))
+	assert_true(float(seen.get("내장재", 1.0)) < 1.0, "바닥·벽 마감재는 불씨가 덜 숨는다 (%.2f)" % float(seen.get("내장재", 1.0)))
+	for soft in ["침대", "소파"]:
+		if seen.has(soft):
+			assert_true(float(seen[soft]) > 1.0, "%s 는 불씨가 잘 숨는다 (%.2f)" % [soft, float(seen[soft])])
+	var cfg := FireConfig.load_files(SimWorld.FIRE_PARAMS_PATH, SimWorld.MATERIALS_PATH)
+	for m: String in cfg.materials:
+		assert_true((cfg.materials[m] as Dictionary).has("ember"), "재질 %s 에 ember" % m)

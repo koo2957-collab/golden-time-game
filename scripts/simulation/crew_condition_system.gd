@@ -65,6 +65,9 @@ var _retreat_goal: Dictionary = {}
 ## 퇴로 차단 (2026-11-25): 열기에 길이 막히기 시작한 틱 {crew id: tick} · 막힌 마지막 틱 · 고립을 보고한 조 {crew id: tick}
 var _blocked_since: Dictionary = {}
 var _blocked_last: Dictionary = {}
+## 열기로 임무를 멈춘 곳 {조 id: Vector3i} — 막힌 다음 칸, 또는 선 칸이 뜨거웠으면 그 칸 (2026-11-26: 층 검색이 그 방 자체가
+## 뜨거워 못 들어간 것인지, 가는 길이 막힌 것인지 가른다 — TacticalSystem.halt_for_heat)
+var heat_stop_at: Dictionary = {}
 var _trapped: Dictionary = {}
 var _trapped_ticks := 300
 ## 물러날 곳 찾기 (2026-11-25): 식은 곳을 못 찾은 틱 {crew id: tick} · 마지막 탐색의 결과 (식은 곳을 찾았는가 · 열기를 뚫는 길인가 · 지나온 칸)
@@ -190,6 +193,7 @@ func before_move(tick: int) -> void:
 			stressed = stressed or ff.heat_stress >= _stress_retreat
 		if hot:
 			# 하던 인명검색·구조를 멈춘다 — 멈추지 않으면 물러난 자리에 닿자마자 다시 불 쪽으로 간다
+			heat_stop_at[c.id] = leader.cell3()
 			_stop_task(c, tick, "retreat")
 			_retreat(c, tick, "heat_retreat", true)
 			continue
@@ -215,6 +219,7 @@ func before_move(tick: int) -> void:
 			_check_trapped(c, tick)
 			# 인명검색·구조 중이었으면 임무를 멈추고, 문턱에 서 있지 않고 방 밖 식은 곳까지 물러나 지시를 기다린다
 			# (문턱 안쪽에 서 있다가 플래시오버에 쓰러졌다). 방수하러 다가가는 조는 그대로 — 그 자리에서 쏜다
+			heat_stop_at[c.id] = wp
 			if _stop_task(c, tick, "blocked"):
 				_retreat(c, tick)
 
@@ -291,12 +296,22 @@ func _guard_members(c: Crew) -> void:
 ## 이동 후: 자세·복사열·열 스트레스·공기호흡기·용기 교체·행동 불능
 func after_move(dt: float, tick: int) -> void:
 	_exits_now = exits.call() if exits.is_valid() else []
+	# 자세: 연기층이 눈높이까지 내려온 방에서는 낮춘다. 분대는 함께 움직인다 — 조장이 낮은 자세면 건물 안의 조원도 낮춘다
+	# (2026-11-26 사용자: 연기 속에서 3번만 서서 갔다 — 뒤따르는 사람이 아직 연기가 덜한 칸에 있었다)
+	for ff in units.firefighters:
+		if not ff.incapacitated:
+			ff.crouched = _crouch_in(_room_for(ff.level, Vector2i(ff.pos.floor())))
+	for c in units.crews:
+		if c.leader.incapacitated or not c.leader.crouched:
+			continue
+		for ff in c.members():
+			if not ff.incapacitated and _room_for(ff.level, Vector2i(ff.pos.floor())) != null:
+				ff.crouched = true
 	for ff in units.firefighters:
 		if ff.incapacitated:
 			continue
 		var cell := Vector2i(ff.pos.floor())
 		var room := _room_for(ff.level, cell)
-		ff.crouched = _crouch_in(room)
 		ff.crouch_factor = _crouch_speed if ff.crouched else 1.0
 		ff.heat_flux = heat_at(ff.level, cell, ff.crouched)
 		if covered.is_valid() and ff.heat_flux > 0.0 and bool(covered.call(ff.level, ff.pos)):

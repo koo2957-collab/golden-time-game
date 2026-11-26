@@ -96,6 +96,17 @@ var unit_estimates: Dictionary = {}
 var knockdown_tick: Callable
 ## 층 검색을 받은 틱 {조 id: tick} — 초진 뒤에 받았으면 2차 검색
 var _search_since: Dictionary = {}
+## 층 검색 중 화염·열기로 들어가지 못한 방 {구획 index: 틱} (2026-11-26 사용자·현직 소방관: 화점실이 화염으로 검색 불가면
+## 문을 닫고 다른 실을 차례로 검색한다). search_heat_skip_s 동안·초진 전까지는 층 검색이 그 방을 건너뛴다
+var heat_skipped: Dictionary = {}
+## 건너뛴 뒤 물러나는 중인 조 {조 id: {floor, action, room, door (개구부 index, -1 없음), closing}} — 멈추면 문을 닫고 다음 방으로
+var _heat_waits: Dictionary = {}
+var _heat_skip_ticks := 0
+var _door_close_wait_ticks := 0
+## 검색 중인 조가 요구조자의 소리를 듣고 바로 구하러 가는 거리 (칸)
+var _victim_hear_cells := 0.0
+## 걸어 들어가도 되는 칸인가 (level, cell) -> bool — SimWorld 가 CrewConditionSystem.safe_to_enter 를 넣는다
+var heat_ok: Callable
 ## 외부 방수 중인 조 {조 id: 목표 Vector3i} — 물줄기가 닿는 곳의 불꽃이 사라진 채 exterior_done_s가 지나면 방수를 멈추고 완료 보고.
 ## 불꽃을 한 번도 못 본 방수(경계관창 — 달궈지는 창 냉각)는 끝내지 않는다 (2026-11-18)
 var _exterior: Dictionary = {}
@@ -130,6 +141,9 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_water: WaterSystem, p_doors: 
 	_exterior_done_ticks = roundi(float(mission_data.get("exterior_done_s", {}).get("value", 10.0)) / SimClock.TICK_DT)
 	_exterior_open_ratio = float(mission_data.get("exterior_open_ratio", {}).get("value", 0.15))
 	_exterior_close_ratio = float(mission_data.get("exterior_close_ratio", {}).get("value", 0.03))
+	_heat_skip_ticks = roundi(float(mission_data.get("search_heat_skip_s", {}).get("value", 180.0)) / SimClock.TICK_DT)
+	_victim_hear_cells = float(mission_data.get("search_victim_divert_m", {}).get("value", 6.0)) / units.cell_size_m
+	_door_close_wait_ticks = roundi(float(mission_data.get("search_door_close_wait_s", {}).get("value", 20.0)) / SimClock.TICK_DT)
 
 
 func set_level(name: String) -> void:
@@ -280,6 +294,7 @@ func step(tick: int) -> void:
 				_step_working(t, c, tick)
 		if t.action == "search" and t.phase != Phase.DONE:
 			_check_fire_found(t, c, tick)
+			_divert_to_victim(t, c, tick)
 	# 층 임무: 방 하나를 마치면 다음 방으로 (멈췄거나 구조대상자를 옮기는 중이면 이어 가지 않는다)
 	var next: Array[Task] = []
 	var unit_next: Array[Task] = []
@@ -296,6 +311,7 @@ func step(tick: int) -> void:
 	for t in unit_next:
 		_next_unit_room(units.get_crew(t.crew_id), t.unit_rooms, t.unit_check, tick)
 	_step_exterior(tick)
+	_step_heat_waits(tick)
 	if tick % 10 == 0:
 		_check_fire_lost(tick)
 
@@ -547,6 +563,30 @@ func _room_burning(room: int) -> bool:
 	return false
 
 
+## 검색하러 가던(검색하던) 조가 요구조자를 직접 보았다 (2026-11-26 사용자: 복도로 들어온 구조대가 화점실인 거실로만 가느라
+## 지나친 방1의 아이를 구하지 않았다): 인명구조가 먼저 — 하던 검색을 멈추고 바로 이송한다. 층 임무는 인계 뒤 이어 간다.
+## 본 것 = 조원이 직접 본 칸(육안)이거나 소리가 들리는 거리. 다른 조가 이미 업으러 가는 사람은 두고 간다
+func _divert_to_victim(t: Task, c: Crew, tick: int) -> void:
+	if not level.auto_rescue or tick % 5 != 0 or rescue.task_of_crew(t.crew_id) is RescueSystem.CarryTask:
+		return
+	var taken := {}
+	for ct in rescue.carries:
+		if ct.kind == "victim":
+			taken[ct.target_id] = true
+	for v in rescue.victims:
+		if not v.discovered or not v.alive() or v.carried_by >= 0 or taken.has(v.id) or v.level != c.leader.level:
+			continue
+		var seen := perception == null or perception.is_crew_visible(v.level, floori(v.pos.x), floori(v.pos.y))
+		if not seen and c.leader.pos.distance_to(v.pos) > _victim_hear_cells:
+			continue
+		if not rescue.order_rescue(t.crew_id, "victim", v.id, tick):
+			continue
+		t.phase = Phase.DONE
+		var room := fire.compartment_at(v.level, floori(v.pos.x), floori(v.pos.y))
+		events.add(tick, "tactical_done", {"crew": _crew_name(c), "text": "%s 발견 (%s) — 이송 시작" % [v.label(), room.display_name() if room else "내부"]})
+		return
+
+
 func _victim_in_room(room: int) -> Victim:
 	for v in rescue.victims:
 		if not v.discovered or not v.alive() or v.carried_by >= 0:
@@ -580,16 +620,126 @@ func allow_door(crew_id: int, opening_index: int) -> void:
 ## 화염·열기로 더 들어가지 못해 하던 인명검색·구조를 멈췄다 (2026-11-24, SimWorld._on_heat_stop): 임무를 '지시 바람'으로 멈추고
 ## 무전으로 알린다. 스스로 다시 들어가지 않는다 — 다시 보낼지는 지휘관이 정한다 (층 임무도 이어 가지 않는다).
 ## place = 들어가지 못한 곳 이름
-func halt_for_heat(crew_id: int, tick: int, place: String) -> void:
+## at = 막힌 곳 (CrewConditionSystem.heat_stop_at, 모르면 x < 0)
+func halt_for_heat(crew_id: int, tick: int, place: String, at := Vector3i(-1, -1, -1)) -> void:
 	var c := units.get_crew(crew_id)
 	if c == null:
 		return
 	var reason := "화염·열기로 %s 진입 불가 — 물러나 대기, 지시 바람" % place
 	var t := task_of_crew(crew_id)
+	# 층 검색 (2026-11-26): 지시를 기다리지 않고 그 방을 건너뛴다 — 물러난 뒤 문을 닫고 다음 방으로 (_step_heat_waits)
+	if t != null and t.action == "search" and t.floor >= 0 and t.floor_action == "search_floor" and t.room >= 0:
+		# 막힌 곳이 검색할 그 방이 아니라 가는 길의 다른 방이면: 그 너머 방들도 갈 수 없다 — 건너뛰지 않고 한 번 알리고 지시를 기다린다
+		var through := _room_through(at, t.room, c)
+		if through != null and through.index != t.room:
+			_halt(t, c, tick, "화염·열기로 %s을(를) 지나갈 수 없어 %s 검색 중단 — 다른 진입구 또는 엄호 방수 필요, 지시 바람" % [
+				through.display_name(), fire.building.floor_name(t.floor)], true, "heat")
+			return
+		_skip_for_heat(t, c, tick, at)
+		return
 	if t != null:
 		_halt(t, c, tick, reason, true, "heat")
 	else:
 		events.add(tick, "tactical_halt", {"crew": _crew_name(c), "reason": reason, "safety": true, "kind": "heat", "crew_id": c.id})
+
+
+## 열기에 막힌 곳(at)이 속한 방. 문 칸이면: 검색할 방(target)과 이어진 문이면 그 방, 아니면 조가 선 쪽 반대편 방 (밖이면 null)
+func _room_through(at: Vector3i, target: int, c: Crew) -> Compartment:
+	if at.x < 0:
+		return null
+	var room := fire.compartment_at(at.z, at.x, at.y)
+	if room != null:
+		return room
+	var o := fire.opening_at(at)
+	if o == null:
+		return null
+	if o.room_a == target or o.room_b == target:
+		return fire.comps[target]
+	var here := fire.compartment_at(c.leader.level, floori(c.leader.pos.x), floori(c.leader.pos.y))
+	for r in [o.room_a, o.room_b]:
+		if r != Opening.OUTSIDE and (here == null or r != here.index):
+			return fire.comps[r]
+	return null
+
+
+## 층 검색이 화염·열기로 들어가지 못한 방을 건너뛴다: 그 방을 기억하고(heat_skipped), 무전으로 알리고,
+## 물러난 뒤(CrewConditionSystem 이 식은 곳으로 데려간다) 그 방의 열린 문을 닫고 다음 방을 검색한다
+func _skip_for_heat(t: Task, c: Crew, tick: int, at := Vector3i(-1, -1, -1)) -> void:
+	t.phase = Phase.DONE
+	t.halted = true
+	heat_skipped[t.room] = tick
+	var room := fire.comps[t.room]
+	# 닫을 문: 막힌 바로 그 문(조가 선 쪽에서 화점실로 들어가는 문)이 먼저 — 없으면 그 방의 다른 열린 문
+	var door := fire.opening_at(at) if at.x >= 0 else null
+	if door == null or door.kind != Opening.Kind.DOOR or not door.is_open or door.forced or not (door.room_a == t.room or door.room_b == t.room):
+		door = _open_door_of(room, c.leader.pos)
+	_heat_waits[c.id] = {"floor": t.floor, "action": t.floor_action, "room": t.room, "door": door.index if door != null else -1, "closing": false}
+	events.add(tick, "search_skipped", {"crew": _crew_name(c), "crew_id": c.id, "room": room.display_name(),
+		"text": "%s 화염·열기로 진입 불가 — %s다음 실 검색" % [room.display_name(), "문 닫고 " if door != null else ""]})
+
+
+## 닫을 문: 그 방의 열린 문 가운데 집 안쪽(다른 실)으로 이어진 문을 먼저 — 불이 나머지 실로 번지는 것을 막는 문이다.
+## 바깥으로 난 문(현관)은 안쪽 문이 없을 때만. 같으면 from 에서 가까운 것. 부순 문은 닫을 수 없어 뺀다. 없으면 null
+func _open_door_of(room: Compartment, from: Vector2) -> Opening:
+	var best: Opening = null
+	var best_key := Vector2(INF, INF)
+	for oi in room.openings:
+		var o: Opening = fire.openings[oi]
+		if o.kind != Opening.Kind.DOOR or not o.is_open or o.forced or o.level != room.level:
+			continue
+		var outside := o.room_a == Opening.OUTSIDE or o.room_b == Opening.OUTSIDE
+		var key := Vector2(1.0 if outside else 0.0, _center(o).distance_to(from))
+		if key.x < best_key.x or (key.x == best_key.x and key.y < best_key.y):
+			best_key = key
+			best = o
+	return best
+
+
+## 건너뛴 조: 물러나기를 마치면(멈추면) 문을 닫는다 — 문 앞이 위험 수준이면 닫지 못했다고 알린다. 그 뒤 다음 방
+func _step_heat_waits(tick: int) -> void:
+	for id: int in _heat_waits.keys():
+		var c := units.get_crew(id)
+		if c == null or c.leader.incapacitated:
+			_heat_waits.erase(id)
+			continue
+		# 다른 임무를 받았으면 잊는다
+		if task_of_crew(id) != null:
+			_heat_waits.erase(id)
+			continue
+		if c.leader.is_moving():
+			continue
+		var w: Dictionary = _heat_waits[id]
+		if bool(w.closing):
+			if doors_sys.task_of_crew(id) != null:
+				# 문까지 가는 길이 열기로 막혀 문 작업이 끝나지 않는다: 잠시 기다린 뒤 거두고 닫지 못했다고 알린다
+				if tick - int(w.since) < _door_close_wait_ticks:
+					continue
+				doors_sys.cancel(id)
+				events.add(tick, "door_left_open", {"crew": _crew_name(c), "crew_id": id, "room": _door_name(fire.openings[int(w.door)])})
+		else:
+			var di := int(w.door)
+			if di >= 0 and fire.openings[di].is_open:
+				var o: Opening = fire.openings[di]
+				var cell: Vector2i = o.cells[0]
+				if not heat_ok.is_valid() or bool(heat_ok.call(o.level, cell)):
+					if doors_sys.request(id, Vector3i(cell.x, cell.y, o.level), false, tick):
+						w.closing = true
+						w.since = tick
+						continue
+				events.add(tick, "door_left_open", {"crew": _crew_name(c), "crew_id": id, "room": _door_name(o)})
+		_heat_waits.erase(id)
+		_order_floor(str(w.action), c, int(w.floor), tick, false)
+
+
+## 층 검색이 지금 건너뛰는 방인가: 화염·열기로 못 들어간 뒤 search_heat_skip_s 안이고 그 뒤 초진 전
+func heat_skipping(room_index: int, tick: int) -> bool:
+	if not heat_skipped.has(room_index):
+		return false
+	var at: int = heat_skipped[room_index]
+	var k := knockdown_tick.call() as int if knockdown_tick.is_valid() else -1
+	if k >= at:
+		return false
+	return tick - at < _heat_skip_ticks
 
 
 func _center(o: Opening) -> Vector2:
@@ -617,13 +767,20 @@ func _order_floor(action: String, c: Crew, lv: int, tick: int, first: bool) -> b
 	var floor_name := fire.building.floor_name(lv)
 	if first and action == "search_floor":
 		_search_since[c.id] = tick
-	var room := _next_floor_room(c, action, lv)
+	var room := _next_floor_room(c, action, lv, tick)
 	if room == null:
 		if action == "attack_floor" and first:
 			events.add(tick, "tactical_halt", {"crew": _crew_name(c), "reason": "%s 화점을 찾지 못함 — 지시 바람" % floor_name,
 				"safety": false, "kind": "no_fire", "crew_id": c.id, "action": action, "target": [0, 0, lv]})
 		else:
 			var e := {"crew": _crew_name(c), "text": "%s %s 완료" % [floor_name, "검색" if action == "search_floor" else "화점 진압"]}
+			if action == "search_floor":
+				var left: PackedStringArray = []
+				for idx: int in heat_skipped:
+					if fire.comps[idx].level == lv and heat_skipping(idx, tick):
+						left.append(fire.comps[idx].display_name())
+				if not left.is_empty():
+					e.text += " — %s 화염으로 미검색" % ", ".join(left)
 			e.merge(_final(c, "search" if action == "search_floor" else "attack", lv))
 			events.add(tick, "tactical_done", e)
 		return not first or action == "search_floor"
@@ -686,7 +843,7 @@ func _next_unit_room(c: Crew, rooms: Array[int], check: Dictionary, tick: int) -
 
 ## 층 검색: 아직 검색하지 않은 방을 교재 순서로 (_search_rank), 같은 순위면 조에게서 가까운 곳부터.
 ## 층 진압: 타는 방 — 가까운 곳부터
-func _next_floor_room(c: Crew, action: String, lv: int) -> Compartment:
+func _next_floor_room(c: Crew, action: String, lv: int, tick := 0) -> Compartment:
 	var search := action == "search_floor"
 	var fire_rooms := _fire_rooms(lv) if search else {}
 	var best: Compartment = null
@@ -698,6 +855,8 @@ func _next_floor_room(c: Crew, action: String, lv: int) -> Compartment:
 		if room.level != lv or room.cells.is_empty() or fire.is_exposure_comp(room) != in_exposure:
 			continue
 		if search and room_searched(room, _search_since.get(c.id, -1)):
+			continue
+		if search and heat_skipping(room.index, tick):
 			continue
 		if action == "attack_floor" and not _room_burning(room.index):
 			continue

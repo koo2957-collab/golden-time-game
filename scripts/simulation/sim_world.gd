@@ -217,6 +217,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.conditions.exits = sim.rescue.exit_cells
 	sim.conditions.covered = sim.water.is_covered
 	sim.conditions.on_heat_stop = sim._on_heat_stop
+	sim.tactical.heat_ok = sim.conditions.safe_to_enter
 	# 열기에 막힌 철수: 길이 열리면 다시 잇는다 (2026-11-25)
 	safety.way_reopened = sim.conditions.way_reopened
 	safety.note_blocked = sim.conditions.note_blocked
@@ -1110,8 +1111,15 @@ func _on_heat_stop(c: Crew, tick: int, _kind: String) -> bool:
 		else:
 			place = "구조대상자 쪽"
 		rescue.cancel(c.id)
-		tactical.halt_for_heat(c.id, tick, place)
+		tactical.halt_for_heat(c.id, tick, place, conditions.heat_stop_at.get(c.id, Vector3i(-1, -1, -1)))
 		stopped = true
+	else:
+		# 검색할 방으로 걸어가던 조 (2026-11-26): 전에는 길만 지워지고 임무가 남아 다음 틱에 또 그 방으로 길을 잡았다
+		var tt := tactical.task_of_crew(c.id)
+		if tt != null and tt.action == "search" and tt.phase != TacticalSystem.Phase.DONE:
+			tactical.halt_for_heat(c.id, tick, fire.comps[tt.room].display_name() if tt.room >= 0 else "내부",
+				conditions.heat_stop_at.get(c.id, Vector3i(-1, -1, -1)))
+			stopped = true
 	match water.leave_for_heat(c.id, tick):
 		"recover":
 			stopped = true

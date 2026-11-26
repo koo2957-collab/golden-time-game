@@ -98,6 +98,8 @@ const REPORT_PRIORITY := {
 	"victim_self_evac": Radio.Priority.KEY_FACTOR,
 	"tactical_done": Radio.Priority.TACTICS,
 	"fire_found": Radio.Priority.KEY_FACTOR,
+	"search_skipped": Radio.Priority.KEY_FACTOR,
+	"door_left_open": Radio.Priority.KEY_FACTOR,
 	"watch_start": Radio.Priority.TACTICS,
 	"rekindle_found": Radio.Priority.KEY_FACTOR,
 	"plan_acquired": Radio.Priority.KEY_FACTOR,

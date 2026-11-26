@@ -187,3 +187,92 @@ func test_unseen_rekindle_forgotten_if_it_goes_out() -> void:
 		_everyone_away(sim)
 	assert_true(not rk.unseen.has(living.index), "꺼지면 잊는다")
 	assert_eq(sim.events.of_type("rekindle_found").size(), 0, "보고 없음")
+
+
+## 거실 말고 1층 다른 방 하나에도 탄 자리를 만든다
+func _burn_other_room(sim: SimWorld, living: Compartment) -> Compartment:
+	var other: Compartment = null
+	for c in sim.fire.comps:
+		if other == null and c.level == 1 and c != living and c.cells.size() >= 4 and not sim.fire.is_exposure_comp(c):
+			other = c
+	var g := sim.fire.grid
+	var oc: Vector2i = other.cells[0]
+	g.state[g.index(1, oc.x, oc.y)] = FuelGrid.State.BURNT
+	return other
+
+
+## 재발화 감시 (2026-11-26, 기획안 5-9): 그 층의 탄 방을 차례로 돌며 머문다
+func test_watch_rotates_burnt_rooms() -> void:
+	var sim := _doused_sim()
+	var rk := sim.rekindle
+	var living := _living(sim)
+	var other := _burn_other_room(sim, living)
+	var rooms := rk.watch_rooms(1)
+	assert_true(living in rooms and other in rooms, "감시할 탄 방 = 거실·%s (%d곳)" % [other.display_name(), rooms.size()])
+	assert_true(rk.order_watch(0, 1, sim.clock.tick), "감시를 맡는다")
+	assert_eq(sim.events.of_type("watch_start").size(), 1, "감시 시작 기록")
+	assert_true(rk.watch_of_crew(0) != null, "감시 중")
+	assert_true(not sim.squad_idle(0), "감시 중인 분대는 대기가 아니다")
+	var w := rk.watch_of_crew(0)
+	var both := func() -> bool: return w.visited.has(living.index) and w.visited.has(other.index)
+	for i in roundi(400.0 / SimClock.TICK_DT):
+		sim.step_ticks(1)
+		if both.call():
+			break
+	assert_true(both.call(), "두 방을 모두 들렀다 (%s)" % str(w.visited))
+	rk.cancel(0)
+	assert_true(rk.watch_of_crew(0) == null, "다른 지시를 받으면 감시를 그만둔다")
+
+
+## 감시 분대가 머무는 방에서 재발화하면 바로 그 분대가 보고한다
+func test_watch_crew_reports_rekindle() -> void:
+	var sim := _doused_sim()
+	var rk := sim.rekindle
+	var living := _living(sim)
+	_everyone_away(sim)
+	var c: Crew = sim.units.crews[0]
+	var mid := Vector2(living.rect.get_center()) + Vector2(0.5, 0.5)
+	for ff in c.members():
+		ff.pos = mid
+		ff.level = 1
+		ff.aboard = false
+	assert_true(rk.order_watch(c.id, 1, sim.clock.tick), "거실 층 감시")
+	for e in rk.embers:
+		e.rekindle_tick = sim.clock.tick + 20
+	for i in roundi(60.0 / SimClock.TICK_DT):
+		sim.step_ticks(1)
+		if not sim.events.of_type("rekindle_found").is_empty():
+			break
+	var found := sim.events.of_type("rekindle_found")
+	assert_eq(found.size(), 1, "재발화를 보고했다")
+	if found.is_empty():
+		return
+	assert_eq(int(found[0].crew_id), c.id, "감시 분대가 보고")
+	assert_true(int(found[0].since_s) <= 2, "곧바로 (%d초 뒤)" % int(found[0].since_s))
+
+
+## 지시 창의 '재발화 감시' (층 임무 watch): 그 층에 닿으면 감시가 시작되고, 새 층 임무를 받으면 그만둔다
+func test_floor_mission_watch() -> void:
+	var sim := _doused_sim()
+	var rk := sim.rekindle
+	var living := _living(sim)
+	var c: Crew = sim.units.crews[0]
+	var mid := Vector2(living.rect.get_center()) + Vector2(0.5, 0.5)
+	for ff in c.members():
+		ff.pos = mid
+		ff.level = 1
+		ff.path.clear()
+		ff.aboard = false
+	sim.issue(CommandOrder.make("floor_mission", [c.id], 1, Vector3i.ZERO, {"kind": "watch", "entry": -1}))
+	# 건물 안 분대에는 무전으로 지시한다 — 무전이 밀려 있으면 닿는 데 시간이 걸린다
+	for i in roundi(60.0 / SimClock.TICK_DT):
+		sim.step_ticks(1)
+		if rk.watch_of_crew(c.id) != null:
+			break
+	assert_true(rk.watch_of_crew(c.id) != null, "층에 닿으면 감시 시작")
+	sim.issue(CommandOrder.make("floor_mission", [c.id], 1, Vector3i.ZERO, {"kind": "search", "entry": -1}))
+	for i in roundi(60.0 / SimClock.TICK_DT):
+		sim.step_ticks(1)
+		if rk.watch_of_crew(c.id) == null:
+			break
+	assert_true(rk.watch_of_crew(c.id) == null, "새 층 임무를 받으면 감시를 그만둔다")

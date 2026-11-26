@@ -98,6 +98,7 @@ const REPORT_PRIORITY := {
 	"victim_self_evac": Radio.Priority.KEY_FACTOR,
 	"tactical_done": Radio.Priority.TACTICS,
 	"fire_found": Radio.Priority.KEY_FACTOR,
+	"watch_start": Radio.Priority.TACTICS,
 	"rekindle_found": Radio.Priority.KEY_FACTOR,
 	"plan_acquired": Radio.Priority.KEY_FACTOR,
 	"exit_air_low": Radio.Priority.SAFETY,
@@ -184,6 +185,8 @@ var _hose_first: Dictionary = {}
 var _stacked_at_entry: Dictionary = {}
 ## 층 임무 화재진압이 닿았을 때 잔불정리로 바꾸는 곳 (crew id, 층, tick) -> 바꿨으면 true (SimWorld가 넣는다)
 var floor_overhaul: Callable
+## 층 임무 재발화 감시가 그 층에 닿았을 때 (crew_id, 층, tick) -> bool — SimWorld 가 RekindleSystem.order_watch 를 넣는다 (2026-11-26)
+var floor_watch: Callable
 ## 계단실 (SimWorld가 만든다)
 var stairs: StairCores
 var exposure: ExposureSystem
@@ -1495,7 +1498,7 @@ func order_floor(crew_ids: Array, level: int, e: EntryPoints.Entry, tick: int) -
 
 ## 지시 창의 층 임무 (2026-11-17): 그 층으로 보내고(order_floor — 진입구·진입 허가·계단 묻기), 닿으면 층 단위 임무를 시작한다
 func order_floor_mission(crew_ids: Array, level: int, e: EntryPoints.Entry, kind: String, tick: int) -> void:
-	if not fire.building.has_level(level) or not kind in ["search", "attack"]:
+	if not fire.building.has_level(level) or not kind in ["search", "attack", "watch"]:
 		return
 	# 화재진압은 호스부터 (2026-11-24 사용자·현직 소방관): 밖에서 대기하던 조는 문으로 가지 않고 자기 펌프차 후면에서 호스를 꺼낸 뒤
 	# 깔면서 진입구로 간다 (docs/motions.md E1 → E4). 전에는 문을 열고 건물에 들어선 뒤에야 차로 돌아가 호스를 꺼냈다.
@@ -1759,6 +1762,11 @@ func _step_floor_goals(tick: int) -> void:
 			if reached:
 				events.add(tick, "floor_reached", {"crew": _crew_name(c), "crew_id": id, "level": goal})
 			if mission == "attack" and floor_overhaul.is_valid() and floor_overhaul.call(id, goal, tick):
+				continue
+			# 재발화 감시: 그 층의 탄 방을 차례로 돈다. 탄 방이 없으면 그 자리에서 할 일 없음 (완료 보고 카드가 다음 지시를 묻는다)
+			if mission == "watch":
+				if floor_watch.is_valid():
+					floor_watch.call(id, goal, tick)
 				continue
 			if mission != "" and tactical:
 				var mid := Vector2i(fire.building.footprint(goal).get_center())

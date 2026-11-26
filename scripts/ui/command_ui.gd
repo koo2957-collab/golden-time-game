@@ -1138,10 +1138,19 @@ func _rebuild_end() -> void:
 	_end_watch.clear()
 	_end_watch.add_item("지정 안 함")
 	_end_watch.add_item("관계자에게 감시 당부")
+	# 재발화 감시를 맡긴 분대가 있으면 그 분대를 미리 고른다 (2026-11-26)
+	var watching := {}
+	for w in sim.rekindle.watches:
+		var wc := sim.units.get_crew(w.crew_id)
+		if wc != null:
+			watching[wc.squad_id] = true
+	var pick := 0
 	for squad in sim.units.squads:
 		if cmd.resources.on_scene(squad.id):
 			_end_watch.add_item("%s 감시조" % squad.name)
-	_end_watch.select(0)
+			if pick == 0 and watching.has(squad.id):
+				pick = _end_watch.item_count - 1
+	_end_watch.select(pick)
 
 
 ## 완진 선언 창: 지휘관이 알 수 있는 것만으로 노출된 곳 확인 목록을 보여 준다 (소방전술 I 8단계 ⑥)

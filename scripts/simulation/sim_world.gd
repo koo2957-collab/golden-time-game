@@ -272,6 +272,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.doors.set_fetch_s(sim._fetch_s)
 	# 층 임무 '화재진압'이 그 층에 닿았을 때 보이는 불이 없으면 잔불정리로 바뀐다
 	sim.command.floor_overhaul = sim._start_floor_overhaul
+	sim.command.floor_watch = sim.rekindle.order_watch
 	sim.tactical.knockdown_tick = func() -> int: return sim.phases.knockdown_tick
 	sim.perception.update(0)
 	return sim
@@ -383,7 +384,8 @@ func squad_idle(crew_id: int) -> bool:
 	var c := units.get_crew(crew_id)
 	if c == null or c.solo or c.leader.incapacitated or c.leader.aboard or c.leader.is_moving():
 		return false
-	if tactical.task_of_crew(crew_id) or rescue.task_of_crew(crew_id) or doors.task_of_crew(crew_id) or rekindle.task_of_crew(crew_id):
+	if tactical.task_of_crew(crew_id) or rescue.task_of_crew(crew_id) or doors.task_of_crew(crew_id) or rekindle.task_of_crew(crew_id) \
+			or rekindle.watch_of_crew(crew_id):
 		return false
 	var h := water.hose_of_crew(crew_id)
 	if h and h.flowing:
@@ -540,6 +542,8 @@ func crew_busy(crew_id: int) -> String:
 		return "질문에 답을 기다리는 중"
 	if rekindle.task_of_crew(crew_id) != null:
 		return "잔불 정리 중"
+	if rekindle.watch_of_crew(crew_id) != null:
+		return "재발화 감시 중"
 	if vent != null and vent.crew_id == crew_id:
 		return "송풍기 배연 중"
 	if gas.workers.has(crew_id):
@@ -1123,7 +1127,8 @@ func _on_heat_stop(c: Crew, tick: int, _kind: String) -> bool:
 ## 그 조가 철수 말고 다른 일을 받았는가 (SafetySystem.other_duty — 막힌 철수를 다시 잇지 않는다):
 ## 전술 임무·검색·구조·문 작업·잔불정리·층 이동·진입구 접근·방수·호스 꺼내기·놓인 관창으로 가기
 func _has_other_duty(crew_id: int) -> bool:
-	if tactical.task_of_crew(crew_id) or rescue.task_of_crew(crew_id) or doors.task_of_crew(crew_id) or rekindle.task_of_crew(crew_id):
+	if tactical.task_of_crew(crew_id) or rescue.task_of_crew(crew_id) or doors.task_of_crew(crew_id) or rekindle.task_of_crew(crew_id) \
+			or rekindle.watch_of_crew(crew_id):
 		return true
 	if command.floor_goals.has(crew_id) or command.approach.has(crew_id):
 		return true

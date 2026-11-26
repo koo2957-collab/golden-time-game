@@ -123,7 +123,10 @@ func execute(sim: SimWorld) -> void:
 			cmd.order_floor(squad_ids, value, e, tick)
 		"floor_mission":
 			# 지시 창 (2026-11-17): 그 층으로 가서(밖의 분대는 고른 진입구 → 진입 허가, 계단이 갈리면 질문 카드) 닿으면 층 단위 임무.
-			# answers: kind = "search"·"attack", entry = 진입구 index (-1 = 가까운 문)
+			# answers: kind = "search"·"attack"·"watch"(재발화 감시 — 완진 선언 뒤), entry = 진입구 index (-1 = 가까운 문)
+			# 새 층 임무: 하던 잔불정리·감시는 그만둔다
+			for id in squad_ids:
+				sim.rekindle.cancel(int(id))
 			var fe: EntryPoints.Entry = null
 			var fei := int(answers.get("entry", -1))
 			if fei >= 0 and fei < sim.entries.list.size():

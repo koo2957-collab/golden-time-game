@@ -408,6 +408,9 @@ func _crew_status(crew: Crew) -> String:
 		parts.append("열화상")
 	if down > 0:
 		parts.append("행동 불능 %d명" % down)
+	var wt := sim.rekindle.watch_of_crew(crew.id)
+	if wt:
+		parts.append("재발화 감시 %s" % (sim.fire.comps[wt.room].display_name() if wt.room >= 0 else ""))
 	var oh := sim.rekindle.task_of_crew(crew.id)
 	if oh:
 		parts.append("잔불정리 %d/%d초" % [int(sim.rekindle.overhaul_seconds() - oh.remain), int(sim.rekindle.overhaul_seconds())])

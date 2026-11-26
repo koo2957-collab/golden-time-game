@@ -28,8 +28,8 @@ var _radial_pos := Vector2.ZERO
 var _menu_buttons: Array[Button] = []
 ## 지시 창 (층 우클릭): 임무·진입구를 고르고 '지시'. 화면 점검이 읽는 값 — 고른 임무, 층, 진입구 목록(가까운 순)과 고른 진입구.
 ## 직하층 확인은 세대 배치가 있는 건물(공동주택)에서만 보인다
-const ORDER_KINDS := {"mixed": "분대별 기본 임무", "search": "인명검색", "attack": "화재진압", "check_below": "직하층 확인"}
-const ORDER_KEYS := {"mixed": "D", "search": "Q", "attack": "W", "check_below": "E"}
+const ORDER_KINDS := {"mixed": "분대별 기본 임무", "search": "인명검색", "attack": "화재진압", "check_below": "직하층 확인", "watch": "재발화 감시"}
+const ORDER_KEYS := {"mixed": "D", "search": "Q", "attack": "W", "check_below": "E", "watch": "R"}
 var order: PanelContainer
 var _order_box: VBoxContainer
 var _order_crews: Array[int] = []
@@ -196,6 +196,9 @@ func order_kinds() -> Array[String]:
 	var layout := sim.tactical.layout
 	if layout != null and not layout.units.is_empty() and sim.building.has_level(order_level - 1):
 		out.append("check_below")
+	# 재발화 감시 (2026-11-26, 기획안 5-9): 완진 선언 뒤, 그 층에 탄 방이 있을 때
+	if not sim.phases.all_clear.is_empty() and not sim.rekindle.watch_rooms(order_level).is_empty():
+		out.append("watch")
 	return out
 
 
@@ -270,6 +273,8 @@ func _issue_order(kind: String, crews: Array[int], lv: int, entry: int) -> void:
 	order_issued.emit(CommandOrder.make("floor_mission", crews, lv, Vector3i.ZERO, {"kind": kind, "entry": entry}))
 	var mid := Vector2i(sim.building.footprint(lv).get_center())
 	var text := sim.command.interior.order_text(TacticalCommand.make(kind + "_floor", crews, Vector3i(mid.x, mid.y, lv)))
+	if kind == "watch":
+		text = "%s 재발화 감시 — 탄 방을 차례로 돌며 확인" % sim.building.floor_name(lv)
 	if _overhaul_now(kind, lv):
 		text = "%s 잔불정리 — 초진 뒤 불이 보이지 않아 탄 방을 차례로 열화상으로 확인·정리" % sim.building.floor_name(lv)
 	notice.emit("%s, %s%s" % [" · ".join(names), "%s로 진입 — " % via_name if via_name != "" else "", text])
@@ -455,7 +460,7 @@ func _input(event: InputEvent) -> void:
 		close_menu()
 
 
-## 지시 창이 떠 있는 동안: Enter 지시 · Esc 취소 · 1~9 진입구 · Q/W 임무. 창 밖을 누르면 닫힌다 (그 클릭은 지도로 넘어간다)
+## 지시 창이 떠 있는 동안: Enter 지시 · Esc 취소 · 1~9 진입구 · Q/W/E/R/D 임무. 창 밖을 누르면 닫힌다 (그 클릭은 지도로 넘어간다)
 func _order_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		var handled := true
@@ -469,6 +474,8 @@ func _order_input(event: InputEvent) -> void:
 			pick_order_kind("attack")
 		elif event.keycode == KEY_E:
 			pick_order_kind("check_below")
+		elif event.keycode == KEY_R:
+			pick_order_kind("watch")
 		elif event.keycode == KEY_D:
 			pick_order_kind("mixed")
 		elif event.keycode >= KEY_1 and event.keycode <= KEY_9:

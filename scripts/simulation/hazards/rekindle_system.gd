@@ -24,6 +24,20 @@ class OverhaulTask:
 	var floor := -1
 
 
+## 재발화 감시 (2026-11-26, 기획안 5-9 '재출화 방지 감시경계', SOP 202-6.5): 완진 선언 뒤 분대 하나가 그 층의 탄 방을
+## 차례로 돌며 머문다 — 열화상이 있으면 불씨를 찾고, 다시 불이 붙으면 그 자리에서 본다(재발화 보고 rekindle_found)
+class WatchTask:
+	extends RefCounted
+	var crew_id := -1
+	var level := -1
+	## 지금 가는(머무는) 방 (-1 = 탄 방이 없어 그 자리에서 대기)
+	var room := -1
+	## 그 방에 머문 시간 (초)
+	var stay := 0.0
+	## 방마다 마지막으로 다녀간 틱 {방 번호: 틱}
+	var visited: Dictionary = {}
+
+
 var fire: FireSim
 var units: UnitSystem
 var pathfinder: Pathfinder
@@ -35,6 +49,8 @@ var perception: Perception
 var unseen: Dictionary = {}
 var embers: Array[Ember] = []
 var tasks: Array[OverhaulTask] = []
+var watches: Array[WatchTask] = []
+var _watch_dwell_s: float
 ## 평가용: 생긴 불씨 수, 재발화 수, 잔불정리로 없앤 불씨 수
 var embers_created := 0
 var rekindles := 0
@@ -67,10 +83,103 @@ func _init(p_fire: FireSim, p_units: UnitSystem, p_pathfinder: Pathfinder, param
 	_overhaul_damage = params.value("overhaul_damage_ratio")
 	_vent_speedup = params.value("rekindle_vent_speedup")
 	_overhaul_s = params.value("overhaul_s")
+	_watch_dwell_s = params.value("watch_dwell_s")
 
 
 func overhaul_seconds() -> float:
 	return _overhaul_s
+
+
+## 조에게 그 층 재발화 감시를 맡긴다: 탄 방(화재 건물)을 차례로 돈다. 탄 방이 없으면 false
+func order_watch(crew_id: int, lv: int, tick: int) -> bool:
+	var c := units.get_crew(crew_id)
+	if c == null:
+		return false
+	cancel(crew_id)
+	var w := WatchTask.new()
+	w.crew_id = crew_id
+	w.level = lv
+	if not _watch_next(w, c):
+		return false
+	watches.append(w)
+	events.add(tick, "watch_start", {"crew": _crew_name(c), "crew_id": crew_id, "level": fire.building.floor_name(lv)})
+	return true
+
+
+func watch_of_crew(crew_id: int) -> WatchTask:
+	for w in watches:
+		if w.crew_id == crew_id:
+			return w
+	return null
+
+
+## 감시할 탄 방들 (그 층, 화재 건물 — 옆 건물은 빼고)
+func watch_rooms(lv: int) -> Array[Compartment]:
+	var out: Array[Compartment] = []
+	var grid := fire.grid
+	for room in fire.comps:
+		if room.level != lv or room.cells.is_empty() or fire.is_exposure_comp(room):
+			continue
+		for i in grid.room_cells[room.index]:
+			if scorched(i):
+				out.append(room)
+				break
+	return out
+
+
+## 다음에 갈 방: 가장 오래 들르지 않은 탄 방 (같으면 가까운 곳). 지금 방은 다른 방이 있으면 건너뛴다
+func _watch_next(w: WatchTask, c: Crew) -> bool:
+	var rooms := watch_rooms(w.level)
+	if rooms.is_empty():
+		return false
+	var best: Compartment = null
+	var best_key := Vector2(INF, INF)
+	for room in rooms:
+		if room.index == w.room and rooms.size() > 1:
+			continue
+		var key := Vector2(float(w.visited.get(room.index, -1)), c.leader.pos.distance_to(Vector2(room.rect.get_center())))
+		if key.x < best_key.x or (key.x == best_key.x and key.y < best_key.y):
+			best_key = key
+			best = room
+	w.room = best.index
+	w.stay = 0.0
+	var stand := _stand_cell(best)
+	if stand.x >= 0:
+		units.order_move([w.crew_id] as Array[int], Vector3i(stand.x, stand.y, w.level), pathfinder)
+	return true
+
+
+## 방 안에서 대원이 설 칸: 걸을 수 있는 칸 중 가운데에 가까운 곳
+func _stand_cell(room: Compartment) -> Vector2i:
+	var center := Vector2(room.rect.get_center())
+	var stand := Vector2i(-1, -1)
+	for cell in room.cells:
+		if fire.building.is_walkable(room.level, cell.x, cell.y) and (stand.x < 0 or Vector2(cell).distance_to(center) < Vector2(stand).distance_to(center)):
+			stand = cell
+	return stand
+
+
+func _step_watches(dt: float, tick: int) -> void:
+	for w in watches.duplicate():
+		var c := units.get_crew(w.crew_id)
+		if c == null or c.leader.incapacitated:
+			watches.erase(w)
+			continue
+		var lead := c.leader
+		if lead.is_moving():
+			continue
+		var room := fire.compartment_at(lead.level, floori(lead.pos.x), floori(lead.pos.y))
+		if room == null or room.index != w.room:
+			# 못 닿았다 (막힘 등): 머문 셈 치고 다음 방으로
+			w.stay += dt
+			if w.stay >= _watch_dwell_s:
+				w.visited[w.room] = tick
+				_watch_next(w, c)
+			continue
+		w.stay += dt
+		if w.stay >= _watch_dwell_s:
+			w.visited[w.room] = tick
+			_watch_next(w, c)
 
 
 ## 조에게 잔불정리를 시킨다 (cell이 속한 방). 방이 아니면 false.
@@ -140,6 +249,7 @@ func next_floor_room(lv: int, from: Vector2) -> Vector3i:
 
 func cancel(crew_id: int) -> void:
 	tasks = tasks.filter(func(t: OverhaulTask) -> bool: return t.crew_id != crew_id)
+	watches = watches.filter(func(w: WatchTask) -> bool: return w.crew_id != crew_id)
 
 
 func task_of_crew(crew_id: int) -> OverhaulTask:
@@ -167,6 +277,7 @@ func step(dt: float, tick: int) -> void:
 	_prev_burning = grid.burning.duplicate()
 	_spot(tick)
 	_step_tasks(dt, tick)
+	_step_watches(dt, tick)
 	for e in embers.duplicate():
 		# 환기(바깥으로 열린 창·문)로 산소가 들어오면 재발화가 빨라진다 (기획안 5-9)
 		if _vent_speedup > 0.0 and e.room >= 0 and _vented(fire.comps[e.room]):

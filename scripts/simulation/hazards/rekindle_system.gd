@@ -405,6 +405,9 @@ func _step_tasks(dt: float, tick: int) -> void:
 				n += 1
 		embers_cleared += n
 		fire.comps[t.room].overhauled_tick = tick
+		# 잔불정리 중 인명검색 병행 (SOP 202-6.3 "화장실, 발코니, 도괴물 아래 등에 대하여 인명검색을 병행", 2026-11-26):
+		# 잔불정리를 마친 방은 검색한 방으로 친다 (초진 뒤면 2차 검색)
+		fire.comps[t.room].searched_tick = tick
 		# 감압 주수 물 → 수손 (과잉주수 지양, 화재1 262쪽)
 		fire.comps[t.room].water_applied_l += _overhaul_water
 		fire.comps[t.room].water_damage_l += _overhaul_water * _overhaul_damage

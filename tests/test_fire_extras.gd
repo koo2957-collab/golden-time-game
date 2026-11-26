@@ -158,3 +158,50 @@ func test_pvc_shaft_raises_toxicity() -> void:
 	sim.shafts.step(0.1, sim.shafts._rise_ticks + 1)
 	var sh: Compartment = sim.shafts.shaft_rooms[lv]
 	assert_true(sh.toxicity >= 1.5, "%d층 샤프트 연기 독성 ×%.1f" % [lv, sh.toxicity])
+
+
+## 방수 밀림 (2026-11-26, SOP 206-2.6 "한쪽 개구부에서 방수하면 다른 쪽으로 화염·연기 분출"): 뜨거운 방에 분무하면
+## 다른 열린 문으로 고온층 연기·열이 넘어가고(옆 방이 더 뜨거워짐), 그 문 너머 칸의 복사열이 커지며, 쏘는 조가 무전한다
+func test_spray_push_through_other_openings() -> void:
+	var results: Array[float] = []
+	for push in [false, true]:
+		var sim := SimWorld.from_scenario("res://data/scenarios/sop214_1_day_living.json", false)
+		if not push:
+			sim.water._push_fog = 0.0
+		for v in sim.units.vehicles:
+			v.away = false
+		sim.step_ticks(roundi(200.0 / SimClock.TICK_DT))
+		var crew: Crew = null
+		for c in sim.units.crews:
+			if crew == null and sim.units.squads[c.squad_id].type == "진압대":
+				crew = c
+		var living: Compartment
+		var hall: Compartment
+		for c in sim.fire.comps:
+			if c.id == "1F_living":
+				living = c
+			if c.id == "1F_hall":
+				hall = c
+		var e: EntryPoints.Entry = null
+		for en: EntryPoints.Entry in sim.entries.list:
+			if en.name.contains("거실"):
+				e = en
+		for ff in crew.members():
+			ff.aboard = false
+			ff.level = 1
+			ff.pos = Vector2(e.outside.x + 0.5, e.outside.y + 0.5)
+			ff.prev_pos = ff.pos
+		sim.water.lay_hose(crew.id, sim.water._nearest_pump(crew.leader.pos), sim.clock.tick)
+		fetch_hose(sim, crew.id)
+		sim.fire.opening_at(Vector3i(e.door.x, e.door.y, 1)).is_open = true
+		sim.doors.sync_blocking()
+		var mid := Vector2i(living.rect.get_center())
+		sim.issue(EquipmentCommand.make("spray", [crew.id] as Array[int], -1, HoseLine.Pattern.FOG, Vector3i(mid.x, mid.y, 1)))
+		var peak := 0.0
+		for i in roundi(90.0 / SimClock.TICK_DT):
+			sim.step_ticks(1)
+			peak = maxf(peak, hall.t_upper)
+		results.append(peak)
+		if push:
+			assert_eq(sim.events.of_type("spray_push").size(), 1, "밀림 무전 한 번")
+	assert_true(results[1] > results[0] + 20.0, "분무로 거실 열기가 복도로 밀린다 (복도 최고 %.0f℃ → %.0f℃)" % [results[0], results[1]])

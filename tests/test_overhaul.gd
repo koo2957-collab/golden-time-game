@@ -295,3 +295,18 @@ func test_ember_factor_by_material() -> void:
 	var cfg := FireConfig.load_files(SimWorld.FIRE_PARAMS_PATH, SimWorld.MATERIALS_PATH)
 	for m: String in cfg.materials:
 		assert_true((cfg.materials[m] as Dictionary).has("ember"), "재질 %s 에 ember" % m)
+
+
+## 잔불정리 중 인명검색 병행 (SOP 202-6.3, 2026-11-26): 잔불정리를 마친 방은 검색한 방이 된다
+func test_overhaul_counts_as_search() -> void:
+	var sim := _doused_sim()
+	var living := _living(sim)
+	var before := living.searched_tick
+	var target := Vector3i(living.cells[0].x, living.cells[0].y, 1)
+	sim.rekindle.order_overhaul(0, target, sim.clock.tick)
+	for i in roundi(200.0 / SimClock.TICK_DT):
+		sim.step_ticks(1)
+		if living.overhauled_tick >= 0:
+			break
+	assert_true(living.overhauled_tick >= 0, "잔불정리 끝")
+	assert_true(living.searched_tick >= 0 and living.searched_tick != before, "잔불정리한 방은 검색한 방")

@@ -77,6 +77,9 @@ var _floor_f: float
 var _door_flame: float
 ## 문 너머 복사: [{o: Opening, src: 구획, cells, w}]
 var _door_rad: Array[Dictionary] = []
+## 방수 밀림 (2026-11-26): 이번 틱에 방수로 고온층이 밀려 나가는 방 {구획 index: {"from": 쏘는 쪽 개구부 index, "k": 배율}}.
+## WaterSystem 이 방수할 때 채우고 매 틱 비운다. 그 방의 다른 열린 문 너머 칸이 받는 복사열이 (1 + k) 배
+var spray_push: Dictionary = {}
 ## 벽·바닥 너머 전도: 열을 내는 구획 -> {cells, f(벽 1, 바닥 floor_heat_factor)}
 var _cond: Dictionary = {}
 ## 구획 벽체 온도 (℃)
@@ -486,6 +489,10 @@ func _external_heat(dt: float, comps: Array[Compartment]) -> void:
 		# 최성기 구획: 화염과 연소가스가 문 밖으로 분출해 문 가까운 가연물을 직접 가열 (화재1 21쪽)
 		if s.flashed and s.stage == Compartment.Stage.FULLY_DEVELOPED:
 			flux_m2 += _door_flame
+		# 방수 밀림: 다른 개구부에서 쏘면 뜨거운 가스·화염이 이 문으로 밀려 나간다 (SOP 206-2.6)
+		var push: Dictionary = spray_push.get(int(e.src), {})
+		if not push.is_empty() and int(push.from) != o.index:
+			flux_m2 *= 1.0 + float(push.k)
 		if flux_m2 <= 0.0:
 			continue
 		var flux := flux_m2 * CELL_AREA_FACTOR

@@ -45,6 +45,13 @@ var _critical_per_m2: float
 ## 현장 작업 시간 (data fire_params task_times)
 var _tt: Dictionary = {}
 var _fog_mix: float
+## 방수 밀림 (fire_params push_*)
+var _push_fog := 0.0
+var _push_straight := 0.0
+var _push_vented_ratio := 0.3
+var _push_min_t := 150.0
+var _push_rate := 0.05
+var _push_warned: Dictionary = {}
 ## 수증기 열 균형 파괴를 알린 구획
 var _steam_warned: Dictionary = {}
 var _short_ticks: int
@@ -100,6 +107,11 @@ func _init(p_building: BuildingData, p_units: UnitSystem, p_pathfinder: Pathfind
 	_critical_per_m2 = config.value("critical_flow_lpm_per_m2")
 	_tt = config.params.get("task_times", {})
 	_fog_mix = config.value("fog_no_vent_mix_per_s")
+	_push_fog = config.value("push_fog")
+	_push_straight = config.value("push_straight")
+	_push_vented_ratio = config.value("push_vented_ratio")
+	_push_min_t = config.value("push_min_t_c")
+	_push_rate = config.value("push_rate_per_s")
 	_short_ticks = roundi(config.value("flow_short_report_s") / SimClock.TICK_DT)
 	_hydrant_range = config.value("hydrant_range_m") / _cell_m
 	_supply_range = config.value("supply_range_m") / _cell_m
@@ -990,6 +1002,63 @@ func _update_flow_ratio(tick: int) -> void:
 
 
 ## 바깥으로 열린(깨진) 창·문이 있는 방인가 (배기구)
+## 방수 밀림 (2026-11-26 사용자: 방수하면 화염이 다른 문·문틈으로 다른 방·복도로 번져야 하는데 그런 경우가 없다 —
+## SOP 206-2.5·2.6 "작은 개구부로 주수 시 화염·연기 분출", "한쪽 개구부에서 방수하면 다른 쪽으로 화염·연기 분출"):
+## 고온층이 뜨거운 방(push_min_t 이상)에 쏘면, 쏘는 쪽 개구부(조장에 가장 가까운 개구부)를 뺀 다른 열린 개구부로
+## 고온층의 연기·열 일부가 옆 방으로 밀려간다. 분무가 직사보다 크다. 바깥으로 열린 배기구가 있으면 대부분 밖으로 빠져
+## 집 안쪽으로는 push_vented_ratio 만큼만. 밀린 쪽 문 너머 칸은 복사열이 (1 + k) 배 (FuelGrid.spray_push) — 착화가 빨라진다.
+## 처음 밀릴 때 쏘는 조가 무전한다
+func _push_gases(h: HoseLine, leader: Firefighter, comp: Compartment, dt: float, tick: int) -> void:
+	if comp.t_upper < _push_min_t:
+		return
+	var k := _push_fog if h.pattern == HoseLine.Pattern.FOG else _push_straight
+	if k <= 0.0:
+		return
+	# 쏘는 쪽 개구부: 조장에 가장 가까운 그 방의 개구부
+	var from: Opening = null
+	for oi in comp.openings:
+		var o: Opening = fire.openings[oi]
+		if from == null or _opening_center(o).distance_to(leader.pos) < _opening_center(from).distance_to(leader.pos):
+			from = o
+	var vented := false
+	for oi in comp.openings:
+		var o: Opening = fire.openings[oi]
+		if o != from and (o.is_open or o.broken) and (o.room_a == Opening.OUTSIDE or o.room_b == Opening.OUTSIDE):
+			vented = true
+	if vented:
+		k *= _push_vented_ratio
+	fire.grid.spray_push[comp.index] = {"from": from.index if from != null else -1, "k": k}
+	var pushed: PackedStringArray = []
+	for oi in comp.openings:
+		var o: Opening = fire.openings[oi]
+		if o == from or not (o.is_open or o.broken):
+			continue
+		var other := o.room_b if o.room_a == comp.index else o.room_a
+		if other < 0:
+			continue
+		var n: Compartment = fire.comps[other]
+		# 고온층의 연기와 열 일부가 넘어간다 (초당 k × push_rate_per_s)
+		var f := minf(0.5, k * _push_rate * dt)
+		var soot := comp.soot * f
+		comp.soot -= soot
+		n.soot += soot
+		n.t_upper += (comp.t_upper - n.t_upper) * f
+		if n.t_upper > comp.t_upper:
+			n.t_upper = comp.t_upper
+		pushed.append(n.display_name())
+	if not pushed.is_empty() and not _push_warned.has(comp.index):
+		_push_warned[comp.index] = true
+		events.add(tick, "spray_push", {"crew": _crew_name(units.get_crew(h.crew_id)), "crew_id": h.crew_id, "room": comp.display_name(),
+			"to": ", ".join(pushed), "vented": vented})
+
+
+func _opening_center(o: Opening) -> Vector2:
+	var s := Vector2.ZERO
+	for c in o.cells:
+		s += Vector2(c) + Vector2(0.5, 0.5)
+	return s / maxf(1.0, o.cells.size())
+
+
 func _vented(c: Compartment) -> bool:
 	for oi in c.openings:
 		var o: Opening = fire.openings[oi]
@@ -1265,6 +1334,7 @@ func _spray_exterior(h: HoseLine, leader: Firefighter, dt: float, tick: int) -> 
 
 func _apply_sprays(dt: float, tick: int) -> void:
 	var grid := fire.grid
+	grid.spray_push.clear()
 	for h in hoses:
 		# spraying = 이번 틱에 실제로 물이 나갔는가 — 아래 관문을 다 지나야 참 (그림·엄호·경계 판정이 본다)
 		h.spraying = false
@@ -1306,6 +1376,7 @@ func _apply_sprays(dt: float, tick: int) -> void:
 			comp.cooling_kw += liters / dt * _water_kj * _gas_eff[h.pattern]
 			comp.water_applied_l += liters
 			comp.applied_lpm += liters / dt * 60.0
+			_push_gases(h, leader, comp, dt, tick)
 			# 배기구 없는 방에 분무: 수증기가 고온층과 섞여 뜨거운 가스가 바닥까지 내려온다 (화재1 34쪽)
 			if h.pattern == HoseLine.Pattern.FOG and comp.t_upper > 200.0 and not _vented(comp):
 				comp.layer_depth += (comp.height * 0.9 - comp.layer_depth) * minf(1.0, _fog_mix * dt)

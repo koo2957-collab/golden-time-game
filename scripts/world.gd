@@ -98,6 +98,8 @@ func _ready() -> void:
 	hud.setup(sim, set_view_level)
 	hud.card_key_pressed.connect(_press_card)
 	hud.card.enabled_fn = _card_item_enabled
+	hud.card.reason_fn = _card_item_reason
+	hud.card.state_fn = _card_item_state
 	hud.board_pressed.connect(_press_board)
 	hud.interior_toggled.connect(_set_interior)
 	hud.span_selected.connect(set_interior_span)
@@ -834,35 +836,94 @@ func _press_card(key: String) -> void:
 
 ## 칸을 쓸 수 있는지: 차량 칸은 차종(need), 방수 중지는 쏘는 조가 있을 때
 func _card_item_enabled(item: Dictionary) -> bool:
+	return _card_item_reason(item) == ""
+
+
+## 명령 칸을 쓸 수 없는 이유 ("" = 쓸 수 있음) — 회색 칸에 마우스를 올리면 툴팁으로 (2026-11-27)
+func _card_item_reason(item: Dictionary) -> String:
 	match str(item.get("need", "")):
 		"pump":
-			return selection.selected_vehicles.any(func(v: int) -> bool: return sim.units.get_vehicle(v).is_pump())
+			return "" if selection.selected_vehicles.any(func(v: int) -> bool: return sim.units.get_vehicle(v).is_pump()) else "펌프차만 할 수 있습니다"
 		"monitor":
-			return selection.selected_vehicles.any(func(v: int) -> bool: return sim.units.get_vehicle(v).is_pump() or sim.units.get_vehicle(v).is_aerial())
+			return "" if selection.selected_vehicles.any(func(v: int) -> bool: return sim.units.get_vehicle(v).is_pump() or sim.units.get_vehicle(v).is_aerial()) \
+				else "펌프차·굴절차만 할 수 있습니다"
 		"aerial":
-			return selection.selected_vehicles.any(func(v: int) -> bool: return sim.units.get_vehicle(v).is_aerial())
+			return "" if selection.selected_vehicles.any(func(v: int) -> bool: return sim.units.get_vehicle(v).is_aerial()) else "굴절차만 할 수 있습니다"
 		"tanker":
-			return selection.selected_vehicles.any(func(v: int) -> bool: return sim.units.get_vehicle(v).transfer_lpm > 0.0)
+			return "" if selection.selected_vehicles.any(func(v: int) -> bool: return sim.units.get_vehicle(v).transfer_lpm > 0.0) else "물탱크차만 할 수 있습니다"
 	match str(item.get("id", "")):
 		"search", "attack":
-			return selection.selected.any(func(id: int) -> bool: return selection.default_kind(id) != "")
+			return "" if selection.selected.any(func(id: int) -> bool: return selection.default_kind(id) != "") else "이 출동대가 맡는 임무가 아닙니다"
 		"check_below":
-			return sim.tactical.layout != null and not sim.tactical.layout.units.is_empty()
+			return "" if sim.tactical.layout != null and not sim.tactical.layout.units.is_empty() else "이 건물은 직하층 배치 정보가 없습니다"
 		"watch":
-			return not sim.phases.all_clear.is_empty()
+			return "" if not sim.phases.all_clear.is_empty() else "완진 선언 뒤에 맡길 수 있습니다"
 		"split", "merge":
-			return _selected_squads().any(func(s: int) -> bool: return sim.regroup_reason(s, str(item.id) == "split") == "")
+			return _first_reason(_selected_squads().map(func(s: int) -> String: return sim.regroup_reason(s, str(item.id) == "split")))
 		"recall":
-			return _selected_squads().any(func(s: int) -> bool: return sim.recall_reason(s) == "")
+			return _first_reason(_selected_squads().map(func(s: int) -> String: return sim.recall_reason(s)))
 		"detach":
-			return _selected_squads().any(func(s: int) -> bool: return mission_ui._detach_reason(s) == "")
+			return _first_reason(_selected_squads().map(func(s: int) -> String: return mission_ui._detach_reason(s)))
 		"stop":
-			return not selection.crews_spraying().is_empty()
+			return "" if not selection.crews_spraying().is_empty() else "방수하고 있는 조가 없습니다"
 		"elevator":
-			return sim.elevator.available()
+			return "" if sim.elevator.available() else "쓸 수 있는 승강기가 없습니다"
 		"support":
-			return selection.selected.size() == 1 and mission_ui.support_crew(selection.selected[0]) >= 0
-	return true
+			return "" if selection.selected.size() == 1 and mission_ui.support_crew(selection.selected[0]) >= 0 else "한 조만 고르고, 도울 다른 조가 있어야 합니다"
+	return ""
+
+
+## 고른 것들 가운데 하나라도 되면 "" — 아니면 첫 이유
+func _first_reason(reasons: Array) -> String:
+	if reasons.is_empty():
+		return "고른 분대가 없습니다"
+	for r in reasons:
+		if str(r) == "":
+			return ""
+	return str(reasons[0])
+
+
+## 명령 칸 상태 (2026-11-27 사용자 결정 — 상용 게임 방식): 대상을 고르는 중이면 깜빡임(STATE_TARGET),
+## 고른 조·차량이 모두 지금 그 명령을 수행 중이면 고정 노란 테두리(STATE_ACTIVE)
+const _MODE_CMD := {
+	SelectionController.Mode.EXTERIOR: "exterior", SelectionController.Mode.PPV: "ppv", SelectionController.Mode.TREAT: "treat",
+	SelectionController.Mode.TRANSPORT: "transport", SelectionController.Mode.WAYPOINT: "waypoint", SelectionController.Mode.MONITOR: "vehicle_monitor",
+	SelectionController.Mode.VEHICLE_CONNECT: "vehicle_connect", SelectionController.Mode.VEHICLE_MOVE: "vehicle_move",
+	SelectionController.Mode.TRIAGE_POST: "triage_post", SelectionController.Mode.BASKET: "vehicle_basket", SelectionController.Mode.OBSERVE: "observe",
+}
+
+
+func _card_item_state(item: Dictionary) -> int:
+	var id := str(item.get("id", ""))
+	var target := str(_MODE_CMD.get(selection.mode, ""))
+	if selection.mode == SelectionController.Mode.FLOOR_MISSION:
+		target = selection.mission_kind
+	if target != "" and (target == id or (id == "standby" and target in ["waypoint", "observe"])):
+		return CmdButton.STATE_TARGET
+	if not selection.selected.is_empty():
+		var want := "hold" if id == "standby" else id
+		for cid in selection.selected:
+			var now := sim.crew_command(cid)
+			if want == "treat":
+				now = "treat" if sim.ems.patient_of_crew(cid) != null else now
+			if now != want:
+				return CmdButton.STATE_NONE
+		return CmdButton.STATE_ACTIVE
+	if not selection.selected_vehicles.is_empty():
+		for vid in selection.selected_vehicles:
+			var v := sim.units.get_vehicle(vid)
+			var on := false
+			match id:
+				"vehicle_connect":
+					on = v.hydrant >= 0 or v.supply_to >= 0
+				"shuttle":
+					on = sim.shuttle.tankers.has(v.id)
+				"vehicle_monitor":
+					on = sim.monitors.stream_of(v.id) != null
+			if not on:
+				return CmdButton.STATE_NONE
+		return CmdButton.STATE_ACTIVE
+	return CmdButton.STATE_NONE
 
 
 ## 지휘관 명령 칸의 단추 누르기 (G3). 조·차량을 고른 채로도 쓴다 — 하던 대상 고르기는 그만둔다

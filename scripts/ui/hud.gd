@@ -64,7 +64,7 @@ var _victim_label: Label
 var card: CommandCard
 var _command_panel: VBoxContainer
 var _card_title: Label
-var _card_buttons: Array[Button] = []
+var _card_buttons: Array[CmdButton] = []
 var _card_back: Button
 var _notice_label: Label
 var _notices: Array[Array] = []  # [문장, 남은 시간(실제 초)]
@@ -283,53 +283,15 @@ func _build_victim_panel() -> void:
 
 
 func _refresh_selection() -> void:
-	var lines: PackedStringArray = []
-	var any_flowing := false
-	for crew_id in _crew_ids:
-		var crew := sim.units.get_crew(crew_id)
-		if crew == null or crew.list.is_empty():
-			continue
-		var squad := sim.units.squads[crew.squad_id]
-		var names: PackedStringArray = []
-		for ff in crew.members():
-			names.append("%s %s" % [ff.name, ff.rank])
-		var line := "[%s] %s — %s (%s)" % [squad.name, sim.units.crew_short(crew), " · ".join(names), sim.building.floor_name(crew.leader.level)]
-		line += _squad_state(squad.id)
-		var role := sim.command.safety.role_of(crew_id)
-		if role != SafetySystem.Role.NONE:
-			line += "  · %s%s" % [SafetySystem.ROLE_NAMES[role], " (투입)" if sim.command.safety.deployed.has(crew_id) else " — 다른 임무 불가, 밖에서 대기"]
-		line += _crew_status(crew)
-		var hose := sim.water.hose_of_crew(crew_id)
-		if hose and not hose.held():
-			# 관창을 놓고 나옴 · 관창으로 가는 중 · 호스 거두는 중 (2026-11-24)
-			line += "  · %s" % ("관창으로 가는 중" if hose.to_nozzle else ("호스 회수 중" if hose.recovering else "관창 놓음"))
-		elif hose:
-			line += "  · 수관 %.0f/%.0fm" % [hose.length_cells() * sim.building.cell_size_m, hose.max_cells * sim.building.cell_size_m]
-			if hose.flowing:
-				any_flowing = true
-				line += " · 방수 중(%s)" % hose.pattern_name()
-				if hose.flow_fraction < 0.99:
-					line += " 수압 부족"
-				if hose.blocked:
-					line += " 막힘"
-			if hose.at_limit:
-				line += " · 수관 길이 한계"
-		lines.append(line)
-	for vid in _vehicle_ids:
-		lines.append(_vehicle_line(sim.units.get_vehicle(vid)))
-	if _commander_selected:
-		var cmd := sim.command
-		var ask := cmd.survey.asking()
-		lines.append("현장지휘관 %s %s (%s) — 지휘 위치: %s%s
-	우클릭: 이동 (건물 안으로는 혼자 들어가지 않음) · 관계인 클릭: 질문" % [
-			cmd.commander.name, cmd.commander.rank, cmd.commander_title, cmd.commander_position_text(),
-			" · 관계인에게 질문 중 (%d개 남음)" % ask.questions.size() if not ask.is_empty() else ""])
-	selection_label.text = "\n".join(lines) if not lines.is_empty() else _squad_summary()
-	# 오른쪽 정보 창은 무언가를 골랐을 때만 (그림은 출동대 종류별)
+	# 오른쪽 정보 창은 무언가를 골랐을 때만 (2026-11-27: 글 대신 아이콘·막대 — SelectionModel·SelectionInfo)
 	if side_panel:
-		side_panel.visible = not lines.is_empty()
+		if _side_model == null:
+			_side_model = SelectionModel.new(sim)
+		var any := not _crew_ids.is_empty() or not _vehicle_ids.is_empty() or _commander_selected
+		var m := _side_model.build(_crew_ids, _vehicle_ids, _commander_selected, _portrait_texture(_selected_kind()) if any else null)
+		side_panel.visible = not m.is_empty()
 		if side_panel.visible:
-			_side_portrait.texture = _portrait_texture(_selected_kind())
+			side_info.set_model(m)
 	# 선택 대상에 따라 명령 카드 세트가 바뀐다. 아무것도 안 고르면 카드는 숨는다 (지휘관 명령은 아래 바에 늘 있다)
 	card.set_target(card_set())
 	_command_panel.visible = card.set_name != ""
@@ -347,7 +309,7 @@ func card_set() -> String:
 	return ""
 
 
-## 명령 카드 6칸을 지금 상태로 다시 쓴다 (칸 이름·쓸 수 있는지·하위 칸)
+## 명령 카드 칸을 지금 상태로 다시 쓴다 (아이콘·이름·쓸 수 있는지·안 되는 이유·수행 중/대상 고르는 중)
 func _refresh_card() -> void:
 	if _card_title == null:
 		return
@@ -356,132 +318,34 @@ func _refresh_card() -> void:
 	for i in _card_buttons.size():
 		var b := _card_buttons[i]
 		var it: Dictionary = slots[i]
+		# 빈 칸은 그리지 않고, 줄 전체가 비면 그 줄을 접는다 (차량·구급 명령은 칸이 적다)
+		var row := i / 4
+		var row_empty := true
+		for k in range(row * 4, row * 4 + 4):
+			if not slots[k].is_empty():
+				row_empty = false
+		b.visible = not row_empty
+		b.self_modulate.a = 0.0 if it.is_empty() else 1.0
+		b.mouse_filter = Control.MOUSE_FILTER_IGNORE if it.is_empty() else Control.MOUSE_FILTER_STOP
 		if it.is_empty():
-			b.text = ""
+			b.set_item("", "", "", false, false)
 			b.tooltip_text = ""
 			b.disabled = true
-			b.modulate.a = 0.35
+			b.state = CmdButton.STATE_NONE
 			continue
-		var more := "…" if it.get("act", true) == false else ""
-		b.text = "%s  %s%s" % [CommandCard.KEYS[i], str(it.label), more]
-		b.tooltip_text = str(it.get("hint", "")) + ("
-(다음 작업에서 쓸 수 있습니다)" if str(it.get("need", "")) == "later" else "")
+		b.set_item(str(it.id), str(it.label), CommandCard.KEYS[i], it.get("danger", false), it.get("act", true) == false)
 		b.disabled = not card.is_enabled(it)
-		b.modulate.a = 1.0
-		b.add_theme_color_override("font_color", Color("fca5a5") if it.get("danger", false) else Color("f1f5f9"))
+		var tip := "%s  [%s]" % [str(it.label), CommandCard.KEYS[i]]
+		if str(it.get("hint", "")) != "":
+			tip += "\n" + str(it.hint)
+		if b.disabled:
+			var why := card.reason(it)
+			tip += "\n\n지금은 쓸 수 없음" + (": " + why if why != "" else "")
+		b.tooltip_text = tip
+		b.state = card.state(it)
 	_card_back.visible = card.parent != ""
 
 
-## 조 상태 요약: 공기 잔량(낮은 쪽), 복사열, 열 스트레스, 자세, 행동 불능, 열화상카메라, 문 작업
-func _crew_status(crew: Crew) -> String:
-	var air := 1.0
-	var stress := 0.0
-	var flux := 0.0
-	var down := 0
-	for ff in crew.members():
-		air = minf(air, ff.air_ratio())
-		stress = maxf(stress, ff.heat_stress)
-		flux = maxf(flux, ff.heat_flux)
-		if ff.incapacitated:
-			down += 1
-	var need := 0.0
-	for ff in crew.members():
-		need = maxf(need, ff.exit_air_l / maxf(1.0, ff.air_capacity))
-	var parts: PackedStringArray = ["잔압 %dbar (%d%%)" % [roundi(air * 300.0), roundi(air * 100.0)]]
-	if need > 0.0:
-		parts.append("출구까지 필요 %dbar · 호흡 %dℓ/분" % [maxi(1, roundi(need * 300.0)), roundi(sim.conditions.air_rate(crew.leader))])
-	var traits: PackedStringArray = []
-	for ff in crew.members():
-		if ff.grade != "":
-			traits.append("%s %s" % [ff.name, ff.grade])
-		for t in ff.traits:
-			traits.append("%s %s" % [ff.name, t])
-	if not traits.is_empty():
-		parts.append("개성: " + ", ".join(traits))
-	if flux >= 0.5:
-		parts.append("복사열 %.1fkW/㎡" % flux)
-	if stress >= 0.05:
-		parts.append("열 스트레스 %d%%" % roundi(stress * 100.0))
-	if crew.leader.crouched:
-		parts.append("낮은 자세")
-	if crew.thermal_camera:
-		parts.append("열화상")
-	if down > 0:
-		parts.append("행동 불능 %d명" % down)
-	var wt := sim.rekindle.watch_of_crew(crew.id)
-	if wt:
-		parts.append("재발화 감시 %s" % (sim.fire.comps[wt.room].display_name() if wt.room >= 0 else ""))
-	var oh := sim.rekindle.task_of_crew(crew.id)
-	if oh:
-		parts.append("잔불정리 %d/%d초" % [int(sim.rekindle.overhaul_seconds() - oh.remain), int(sim.rekindle.overhaul_seconds())])
-	var task := sim.doors.task_of_crew(crew.id)
-	if task and task.stacked(crew.id):
-		# 다른 분대가 이 문을 여는 동안 문 옆 대기 (2026-11-24)
-		var wc := sim.units.get_crew(task.worker())
-		parts.append("문 옆 대기 (%s 개방 중)" % (sim.units.crew_name(wc) if wc != null else "다른 분대"))
-	elif task:
-		var what := "문 파괴" if task.opening.locked else ("문 개방" if task.open else "문 폐쇄")
-		parts.append("%s %d/%d초%s" % [what, int(task.progress), int(task.required), " (인원 부족)" if task.waiting_people else ""])
-	# 현장 작업 (P4-1): 장비 가지러 감, 차량 타고 오는 중, 휴대 장비
-	var fp := sim.doors.fetch_progress(crew.id, sim.clock.tick)
-	if fp >= 0.0:
-		parts.append("장비 꺼내는 중 %d%%" % roundi(fp * 100.0))
-	elif sim.doors.fetches.any(func(f: Dictionary) -> bool: return int(f.crew) == crew.id):
-		parts.append("장비 가지러 차량으로")
-	if crew.leader.aboard and sim.command.resources.arriving_now():
-		parts.append("차량 타고 오는 중")
-	if crew.has_item("fire_door_breaker"):
-		parts.append("휴대: 방화문 파괴기")
-	return "\n    " + " · ".join(parts)
-
-
-## 출동대 상태: 접근 중 / 대기1단계 / 단위대 소속
-func _squad_state(squad_id: int) -> String:
-	var cmd := sim.command
-	var parts: PackedStringArray = []
-	if cmd.resources.is_en_route(squad_id):
-		parts.append("현장 접근 중")
-	elif cmd.resources.is_staged(squad_id):
-		parts.append("투입 무전 송신 중" if cmd.commit_pending(squad_id) else "대기1단계 — 명령하면 투입 무전 후 실행")
-	var d := cmd.org.division_of(squad_id)
-	if d:
-		parts.append("%s 단위대%s" % [d.name, " 지휘" if d.supervisor == squad_id else ""])
-	return "  · " + " · ".join(parts) if not parts.is_empty() else ""
-
-
-func _vehicle_line(v: Vehicle) -> String:
-	var squad := sim.units.squads[v.squad_id]
-	var water := " — 물 %s / %sL" % [_thousands(v.tank_l), _thousands(v.tank_capacity)] if v.tank_capacity > 0.0 else ""
-	var line := "[%s] %s (운전원 %s)%s%s" % [squad.name, v.type, v.driver_label(), water, _squad_state(v.squad_id)]
-	if v.away:
-		line += " · 환자 이송 중 (현장 없음)"
-	if v.hydrant >= 0:
-		line += " · 소화전 연결"
-	if v.supply_to >= 0:
-		line += " · 급수 중"
-	if v.is_pump():
-		line += " · 수관 %d" % sim.water.hoses_of_vehicle(v.id).size()
-		if sim.water.fdc_vehicle == v.id:
-			line += " · 송수구 연결"
-		line += "\n    소화전 우클릭: 점령%s" % (" · 송수구 우클릭: 연결송수관 가압" if sim.building.has_standpipe() else "")
-	elif v.transfer_lpm > 0.0:
-		var sh: Dictionary = sim.shuttle.tankers.get(v.id, {})
-		if not sh.is_empty():
-			line += " · 순환보수 %d회" % int(sh.trips)
-		line += "\n    펌프차 우클릭: 급수 · 소화전 우클릭: 점령%s" % ("" if not sim.shuttle.available() else (" · E: 순환보수 해제" if not sh.is_empty() else " · E: 순환보수 지정"))
-	return line
-
-
-static func _thousands(value: float) -> String:
-	var s := str(int(value))
-	var out := ""
-	while s.length() > 3:
-		out = "," + s.substr(s.length() - 3) + out
-		s = s.substr(0, s.length() - 3)
-	return s + out
-
-
-## 알림 한 줄을 띄운다 (사건이 아닌 안내)
 func show_notice(text: String) -> void:
 	_notices.append([text, NOTICE_SECONDS * 2.0])
 
@@ -529,26 +393,25 @@ func _build_command_panel() -> void:
 	_command_panel.alignment = BoxContainer.ALIGNMENT_END
 	var head := HBoxContainer.new()
 	_card_title = Label.new()
-	_card_title.add_theme_color_override("font_color", Color("fde68a"))
-	_card_title.add_theme_font_size_override("font_size", 15)
+	_card_title.add_theme_color_override("font_color", SidePanelStyle.DIM)
+	_card_title.add_theme_font_size_override("font_size", 12)
 	_card_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(_card_title)
 	_card_back = Button.new()
 	_card_back.text = "◀ 뒤로 (Esc)"
+	_card_back.flat = true
+	_card_back.add_theme_font_size_override("font_size", 12)
 	_card_back.focus_mode = Control.FOCUS_NONE
 	_card_back.pressed.connect(func() -> void: card_key_pressed.emit("BACK"))
 	head.add_child(_card_back)
 	_command_panel.add_child(head)
 	var grid := GridContainer.new()
 	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 5)
+	grid.add_theme_constant_override("v_separation", 5)
 	_command_panel.add_child(grid)
 	for i in CommandCard.KEYS.size():
-		var b := Button.new()
-		b.focus_mode = Control.FOCUS_NONE
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.custom_minimum_size = Vector2(98, 40)
-		b.add_theme_font_size_override("font_size", 14)
-		b.clip_text = true
+		var b := CmdButton.new()
 		var key := CommandCard.KEYS[i]
 		b.pressed.connect(func() -> void: card_key_pressed.emit(key))
 		grid.add_child(b)
@@ -874,7 +737,6 @@ func _refresh_speed_box() -> void:
 
 const BAR_H := 80.0
 const BAR_BUTTON := Vector2(66, 64)
-const SIDE_W := 430.0
 var console: PanelContainer
 ## 없앤 미니맵 자리 — 늘 null (World가 본다)
 var minimap: MinimapView
@@ -884,7 +746,9 @@ var radio_button: Button
 var radio_open := false
 var _radio_urgent_seen := 0
 var side_panel: PanelContainer
-var _side_portrait: TextureRect
+## 오른쪽 창 위쪽 (초상·칩·막대·대원 줄 — 2026-11-27)
+var side_info: SelectionInfo
+var _side_model: SelectionModel
 
 
 func _build_console() -> void:
@@ -989,30 +853,21 @@ func _portrait_texture(kind: String) -> Texture2D:
 func _build_side_panel() -> void:
 	side_panel = PanelContainer.new()
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.04, 0.07, 0.12, 0.86)
+	style.bg_color = SidePanelStyle.BG
+	style.border_color = SidePanelStyle.LINE
+	style.set_border_width_all(1)
 	style.set_corner_radius_all(8)
 	style.set_content_margin_all(10)
 	side_panel.add_theme_stylebox_override("panel", style)
-	side_panel.custom_minimum_size = Vector2(SIDE_W, 0)
+	side_panel.custom_minimum_size = Vector2(SidePanelStyle.get_default().panel_w, 0)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
 	side_panel.add_child(box)
-	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 10)
-	_side_portrait = TextureRect.new()
-	_side_portrait.custom_minimum_size = Vector2(104, 104)
-	_side_portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_side_portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_side_portrait.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	_side_portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	head.add_child(_side_portrait)
-	selection_label.get_parent().remove_child(selection_label)
-	selection_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	selection_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	selection_label.custom_minimum_size = Vector2(SIDE_W - 20.0 - 114.0, 0)
-	selection_label.add_theme_font_size_override("font_size", 16)
-	head.add_child(selection_label)
-	box.add_child(head)
+	side_info = SelectionInfo.new()
+	box.add_child(side_info)
+	var sep := HSeparator.new()
+	sep.add_theme_color_override("separator", SidePanelStyle.LINE)
+	box.add_child(sep)
 	$SelectionPanel.visible = false
 	# 고른 조·차량의 명령 카드
 	_command_panel.get_parent().remove_child(_command_panel)
@@ -1230,7 +1085,7 @@ func _input(event: InputEvent) -> void:
 ## 지도 오른쪽에서 정보 창·무전 기록 자리로 비워 두는 폭 (px). 창이 뜨고 사라져도 평면도가 가려지거나 움직이지 않게 늘 같은 값.
 ## World가 내부 화면을 맞출 때 이만큼 뺀다
 func right_reserved_px() -> float:
-	return 16.0 + SIDE_W + 8.0
+	return 16.0 + SidePanelStyle.get_default().panel_w + 8.0
 
 
 func _make_board_button(item: Dictionary) -> Button:
@@ -1259,22 +1114,6 @@ func _refresh_board() -> void:
 		b.disabled = sim.view_only or (board_done_fn.is_valid() and board_done_fn.call(id))
 
 
-## 아무것도 고르지 않았을 때: 출동대 전체 요약 (기획안 9-2)
-func _squad_summary() -> String:
-	var lines: PackedStringArray = ["선택 없음 — 출동대 요약 (대원을 클릭하거나 끌어서 고르세요)"]
-	var res := sim.command.resources
-	for squad in sim.units.squads:
-		var state := "현장 접근 중" if res.is_en_route(squad.id) else ("대기1단계" if res.is_staged(squad.id) else "현장")
-		var inside := 0
-		var low := 1.0
-		for c in squad.crews:
-			if not sim.building.cell(c.leader.level, floori(c.leader.pos.x), floori(c.leader.pos.y)) in BuildingData.OUTDOOR:
-				inside += 1
-				low = minf(low, c.leader.air_ratio())
-		lines.append("%s (%s) %s%s" % [squad.name, squad.type, state, " · 내부 %d조, 최저 공기 %d%%" % [inside, roundi(low * 100.0)] if inside > 0 else ""])
-	return "\n".join(lines)
-
-
 ## 왼쪽 열(층 막대)이 올라갈 수 있는 맨 위 (시계는 위 가운데로 옮겨 왼쪽 위는 비어 있다)
 const LEFT_TOP := 24.0
 
@@ -1293,7 +1132,7 @@ func _layout_console() -> void:
 		speed_box.size = speed_box.get_combined_minimum_size()
 		speed_box.position = Vector2(badge.position.x + badge.size.x + 8.0, badge.position.y + 2.0)
 	# 오른쪽 자리: 고른 것의 정보 창, 그 아래 (무전 단추를 켰으면) 무전 기록. 튜토리얼 안내판이 떠 있으면 그 아래부터
-	var rx := size.x - SIDE_W - 8.0
+	var rx := size.x - SidePanelStyle.get_default().panel_w - 8.0
 	var ry := 16.0
 	if tutorial_ui and tutorial_ui.visible and not tutorial_ui.finished:
 		ry = tutorial_ui._panel.position.y + tutorial_ui._panel.size.y + 8.0

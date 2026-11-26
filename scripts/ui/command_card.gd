@@ -21,6 +21,10 @@ var set_name := ""
 var parent := ""
 ## 항목을 쓸 수 있는지 (항목 Dictionary -> bool). 기본은 need가 later가 아니면 쓸 수 있다
 var enabled_fn: Callable
+## 쓸 수 없는 이유 (항목 Dictionary -> String, "" = 쓸 수 있음) — 회색 칸 툴팁 (2026-11-27)
+var reason_fn: Callable
+## 칸 상태 (항목 Dictionary -> int: CmdButton.STATE_NONE·STATE_TARGET 대상 고르는 중·STATE_ACTIVE 수행 중) — 2026-11-27
+var state_fn: Callable
 
 
 func _init() -> void:
@@ -119,6 +123,21 @@ func is_enabled(item: Dictionary) -> bool:
 	if item.is_empty() or str(item.get("need", "")) == "later":
 		return false
 	return enabled_fn.call(item) if enabled_fn.is_valid() else true
+
+
+## 쓸 수 없는 이유 ("" = 쓸 수 있거나 이유를 모름)
+func reason(item: Dictionary) -> String:
+	if item.is_empty():
+		return ""
+	if str(item.get("need", "")) == "later":
+		return "다음 작업에서 쓸 수 있습니다"
+	return str(reason_fn.call(item)) if reason_fn.is_valid() else ""
+
+
+func state(item: Dictionary) -> int:
+	if item.is_empty() or not state_fn.is_valid():
+		return 0
+	return int(state_fn.call(item))
 
 
 ## 단축키 → 항목

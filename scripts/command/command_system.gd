@@ -1833,6 +1833,8 @@ func clear_floor_goal(id: int) -> void:
 	floor_missions.erase(id)
 	_hose_first.erase(id)
 	stair_asks.erase(id)
+	if tactical:
+		tactical.holding.erase(id)
 	_floor_routed.erase(id)
 
 

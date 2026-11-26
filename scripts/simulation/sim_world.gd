@@ -554,6 +554,45 @@ func crew_busy(crew_id: int) -> String:
 	return ""
 
 
+## 조가 지금 수행 중인 명령판 명령 id ("" = 없음) — 오른쪽 창에서 그 명령 칸에 노란 테두리 (2026-11-27 사용자 결정).
+## search·attack·check_below·watch·exterior·ppv·hold·withdraw (명령판 data/commands.json 의 id). 잔불정리는 화재진압에서 이어진 일이라 attack
+func crew_command(crew_id: int) -> String:
+	var c := units.get_crew(crew_id)
+	if c == null or c.list.is_empty():
+		return ""
+	if command.safety.withdrawing.has(crew_id):
+		return "withdraw"
+	var fm := str(command.floor_missions.get(crew_id, ""))
+	if fm != "":
+		return fm
+	if rekindle.watch_of_crew(crew_id) != null:
+		return "watch"
+	var t := tactical.task_of_crew(crew_id)
+	if t != null:
+		var a := t.floor_action if t.floor_action != "" else t.action
+		match a:
+			"search", "search_floor":
+				return "search"
+			"attack", "attack_floor":
+				return "attack"
+			"check_below", "exterior", "withdraw":
+				return a
+	if tactical.exterior_of(crew_id):
+		return "exterior"
+	var hose := water.held_hose(crew_id)
+	if hose != null:
+		return "exterior" if hose.exterior else "attack"
+	if rescue.task_of_crew(crew_id) != null:
+		return "search"
+	if rekindle.task_of_crew(crew_id) != null:
+		return "attack"
+	if vent != null and vent.crew_id == crew_id:
+		return "ppv"
+	if tactical.holding.has(crew_id):
+		return "hold"
+	return ""
+
+
 ## 편성 지시를 할 수 없는 이유 ("" = 할 수 있다). split: true 나누기 / false 합치기
 func regroup_reason(squad_id: int, split: bool) -> String:
 	if squad_id < 0 or squad_id >= units.squads.size():

@@ -137,7 +137,7 @@ func _run() -> void:
 	for i in 5:
 		await process_frame
 	_check("2층의 조를 누름 → 그 조 선택, 층은 그대로", [sel.selected, world.view_level], [[1] as Array[int], low])
-	_check("조를 고르면 오른쪽 정보 창이 뜬다 (그림 + 명령 카드)", [hud.side_panel.visible, hud._side_portrait.texture != null, hud._command_panel.is_visible_in_tree()], [true, true, true])
+	_check("조를 고르면 오른쪽 정보 창이 뜬다 (그림 + 명령 카드)", [hud.side_panel.visible, hud.side_info.model.get("portrait") != null, hud._command_panel.is_visible_in_tree()], [true, true, true])
 	_check("정보 창은 화면 안, 아래 바 위", [hud.get_rect().encloses(hud.side_panel.get_rect()), hud.side_panel.get_rect().end.y <= hud.console.position.y], [true, true])
 	# 2층의 빈 곳(방)을 누르면 2층이 고른 층 — 화면은 제자리, 선택은 그대로
 	var room: Compartment = null

@@ -110,6 +110,8 @@ var heat_ok: Callable
 ## 외부 방수 중인 조 {조 id: 목표 Vector3i} — 물줄기가 닿는 곳의 불꽃이 사라진 채 exterior_done_s가 지나면 방수를 멈추고 완료 보고.
 ## 불꽃을 한 번도 못 본 방수(경계관창 — 달궈지는 창 냉각)는 끝내지 않는다 (2026-11-18)
 var _exterior: Dictionary = {}
+## 대기(이 자리 대기) 지시를 받고 서 있는 조 {조 id: true} — 오른쪽 창의 현재 명령 표시용 (2026-11-27). 다른 지시를 받으면 지운다
+var holding: Dictionary = {}
 var _exterior_done_ticks := 100
 ## 경계 관창 (2026-11-24 사용자 결정 — 2026-11-18 '경계관창은 스스로 끝내지 않는다'를 바꿈): 관창을 배치해 두고(잠근 채 겨눔)
 ## 겨눈 곳이 달궈지거나 불꽃이 나오면 열고, 식으면 잠그고 보고한 뒤 계속 지킨다 (기획안 '경계·연소확대 방지: 관창 배치 → 불이 다가오면 방수').
@@ -153,6 +155,11 @@ func set_level(name: String) -> void:
 		ems.auto_transport = level_name == "입문"
 
 
+## 외부 방수(경계)를 하고 있는가
+func exterior_of(crew_id: int) -> bool:
+	return _exterior.has(crew_id)
+
+
 func task_of_crew(crew_id: int) -> Task:
 	for t in tasks:
 		if t.crew_id == crew_id:
@@ -163,6 +170,7 @@ func task_of_crew(crew_id: int) -> Task:
 func cancel(crew_id: int) -> void:
 	tasks = tasks.filter(func(t: Task) -> bool: return t.crew_id != crew_id)
 	_exterior.erase(crew_id)
+	holding.erase(crew_id)
 
 
 ## 고수준 명령 시작
@@ -215,6 +223,7 @@ func _order(action: String, crew_id: int, target: Vector3i, tick: int) -> bool:
 		return true
 	if action == "hold":
 		water.stop_spray(crew_id, tick)
+		holding[crew_id] = true
 		units.order_move([crew_id] as Array[int], Vector3i(floori(c.leader.pos.x), floori(c.leader.pos.y), c.leader.level), safety.pathfinder)
 		events.add(tick, "crew_hold", {"crew": _crew_name(c)})
 		return true

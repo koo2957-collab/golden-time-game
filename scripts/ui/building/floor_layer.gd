@@ -4803,23 +4803,30 @@ func _draw_route_lines(alpha: float) -> void:
 			_draw_path(sim.command.commander, alpha)
 	_draw_hoses(alpha)
 	if level == _first_level:
+		# 연결이 끝난 급수 호스 = 물이 찬 부푼 관
 		for line in UnitsView.supply_lines(sim):
-			_draw_supply_hose(line)
-		# 운전원이 연결하는 중인 호스: 첫 결합한 곳에서 운전원(또는 연장이 끝났으면 다음 결합 자리)까지
+			_draw_supply_hose(line, true)
+		# 운전원이 연결하는 중인 호스 = 굴려 편 납작한 띠: 첫 결합한 곳에서 운전원(또는 연장이 끝났으면 다음 결합 자리)까지
 		for v in sim.units.vehicles:
 			var dl := _driver_layout(v)
 			if not dl.is_empty() and dl.has("hose"):
-				_draw_supply_hose(dl.hose)
+				_draw_supply_hose(dl.hose, false)
 
 
-## 급수 호스 (소화전·물탱크차 → 차): 셀 좌표 점들을 이은 선
-func _draw_supply_hose(line: PackedVector2Array) -> void:
+## 급수 호스 (소화전·물탱크차 → 차): 진압대 호스와 같은 그림 (2026-11-26 사용자: 파란 선 대신 호스로).
+## charged = 연결이 끝나 물이 찼다 (부푼 관), 아니면 운전원이 굴려 펴는 중 (납작한 띠). 열화상에서는 예전처럼 한 줄
+func _draw_supply_hose(line: PackedVector2Array, charged := true) -> void:
 	if line.size() < 2:
 		return
-	var px := PackedVector2Array()
-	for p in line:
-		px.append(proj.to_screen(p, 0.05))
-	draw_polyline(px, PlanStyle.SUPPLY_LINE, 4.0)
+	if thermal:
+		var px := PackedVector2Array()
+		for p in line:
+			px.append(proj.to_screen(p, 0.05))
+		draw_polyline(px, PlanStyle.SUPPLY_LINE, 4.0)
+		return
+	var to_screen := func(p: Vector2) -> Vector2: return proj.to_screen(p, 0.03)
+	var up := proj.to_screen(Vector2.ZERO, 1.0) - proj.to_screen(Vector2.ZERO, 0.0)
+	HoseDraw.draw_path(self, line, to_screen, IsoProjection.PX_PER_M, charged, up, float(HoseDraw.style().get("supply_width_scale", 1.4)))
 
 
 ## 색 겹 (ghost_mode 4, 2026-11-12 사용자 결정 — 정적인 것은 무채색, 움직이는 것만 색):

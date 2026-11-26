@@ -915,3 +915,32 @@ static func _screen(pts: PackedVector2Array, to_screen: Callable) -> PackedVecto
 	for p in pts:
 		out.append(to_screen.call(p))
 	return out
+
+
+## 길 하나를 호스로 그린다 (급수 호스 — 소화전·물탱크차 → 펌프차, 2026-11-26 사용자: 파란 선이 아니라 진압대 호스처럼).
+## cells: 칸 좌표의 길, charged: 물이 찼으면 부푼 관, 아니면 납작한 띠 (운전원이 굴려 펴는 중). width_scale: 굵기 배율
+## (급수 호스 65mm 는 진압 호스 40mm 보다 굵다 — supply_width_scale). 부푼 관은 up 만큼 반지름을 띄우고 그림자를 바닥에 둔다
+static func draw_path(ci: CanvasItem, cells: PackedVector2Array, to_screen: Callable, px_per_m: float, charged: bool, up := Vector2.ZERO, width_scale := 1.0) -> void:
+	if cells.size() < 2:
+		return
+	var st := style()
+	var light := _vec(st.get("light_dir", [-0.5, -0.85])).normalized()
+	var shadow := Color(Color(str(st.get("shadow_color", "#000000"))), float(st.get("shadow_alpha", 0.35)))
+	var ground := _screen(cells, to_screen)
+	if not charged:
+		var w := float(st.get("flat_width_m", 0.2)) * px_per_m * width_scale
+		ci.draw_polyline(_shift(ground, -light * w * 0.15), Color(shadow, shadow.a * 0.6), w)
+		ci.draw_polyline(ground, Color(str(st.get("flat_edge_color", "#7d7455"))), w + 1.5)
+		ci.draw_polyline(ground, Color(str(st.get("flat_color", "#cfc5a8"))), w)
+		ci.draw_polyline(_lit(ground, light, w * 0.34), Color(str(st.get("flat_light_color", "#e9e0c6"))), maxf(1.0, w * 0.2))
+		ci.draw_polyline(ground, Color(Color(str(st.get("flat_crease_color", "#8f8669"))), 0.7), maxf(1.0, w * 0.1))
+		return
+	var rw := float(st.get("round_width_m", 0.13)) * px_per_m * width_scale
+	var cast := -light * rw * float(st.get("shadow_offset_ratio", 0.45))
+	var wet := _shift(ground, up * float(st.get("round_width_m", 0.13)) * width_scale * 0.5)
+	ci.draw_polyline(_shift(ground, cast), shadow, rw)
+	ci.draw_polyline(wet, Color(str(st.get("round_shade_color", "#3d3622"))), rw + 2.0)
+	ci.draw_polyline(wet, Color(str(st.get("round_color", "#dccd9c"))), rw)
+	ci.draw_polyline(_lit(wet, light, -rw * 0.3), Color(str(st.get("round_dark_color", "#9c8c5e"))), maxf(1.0, rw * 0.36))
+	ci.draw_polyline(_lit(wet, light, rw * 0.16), Color(str(st.get("round_light_color", "#f6edcf"))), maxf(1.0, rw * 0.44))
+	ci.draw_polyline(_lit(wet, light, rw * 0.28), Color(Color(str(st.get("round_highlight_color", "#ffffff"))), 0.85), maxf(1.0, rw * 0.14))

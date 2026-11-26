@@ -241,6 +241,10 @@ func ask(witness: int, questions: Array, tick: int) -> bool:
 		return false
 	commander.path.clear()
 	_ask = {"witness": witness, "questions": qs, "remain": _ask_s}
+	# 바로 답한다 (2026-11-26 사용자: 답을 기다리는 시간이 게임과 맞지 않는다 — ask_s 0)
+	if _ask_s <= SimClock.EPSILON:
+		while not _ask.is_empty():
+			_answer_next(tick)
 	return true
 
 
@@ -292,6 +296,11 @@ func _step_ask(dt: float, tick: int) -> void:
 	_ask.remain -= dt
 	if _ask.remain > SimClock.EPSILON:
 		return
+	_answer_next(tick)
+
+
+## 남은 질문 하나에 답한다 (진술 기록·상황판). 다 답하면 질문을 끝낸다
+func _answer_next(tick: int) -> void:
 	var w := witnesses[_ask.witness]
 	var q: String = _ask.questions.pop_front()
 	var st: Dictionary = w.statements[q]

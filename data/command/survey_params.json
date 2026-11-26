@@ -4,7 +4,7 @@
   "face_view_m": {"value": 10, "source": "추정", "note": "지휘관이 이 거리 안에서 건물 면 앞에 서면 그 면을 확인한 것으로 본다"},
   "face_min_angle_deg": {"value": 30, "source": "추정", "note": "면을 이 각도 이상으로 비스듬히 볼 수 있어야 그 면을 확인한 것으로 본다 (모서리에서는 두 면)"},
   "ask_range_m": {"value": 3, "source": "추정", "note": "관계인에게 질문할 수 있는 거리"},
-  "ask_s": {"value": 8, "source": "추정", "note": "질문 하나에 지휘관이 묶이는 시간"},
+  "ask_s": {"value": 0, "source": "게임 설정값", "note": "질문 하나에 지휘관이 묶이는 시간 (2026-11-26 사용자: 0 — 바로 답한다. 예전 8초는 게임 흐름에 맞지 않았다)"},
   "clue_range_m": {"value": 2, "source": "추정", "note": "현관 신발 등 물증을 확인하는 거리 (문이 열려 있어야 함)"},
   "post_stationary_s": {"value": 30, "source": "추정", "note": "지휘관이 이 시간 이상 머문 곳을 현장지휘소로 보고 판정한다"},
   "floor_height_m": {"value": 3.0, "source": "추정", "note": "층 높이 (건물 높이·발화층 높이 계산)"},

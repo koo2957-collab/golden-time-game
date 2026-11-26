@@ -3820,6 +3820,10 @@ func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density
 	var rows := clampi(ceili(thick / row_m - 0.001), 1, sp.smoke_max_rows)
 	var nx := maxi(1, ceili(r.size.x / step))
 	var ny := maxi(1, ceili(r.size.y / step))
+	# 뭉게구름 방식 (2026-11-26): 흐린 판 + 매달린 덩어리 — 상자처럼 보이지 않게
+	if sp.smoke_style == "billow" and FxArt.billow != null:
+		_draw_smoke_billows(c, h, thick, density, fires, reach, op)
+		return true
 	# 커튼 방식: 앞면은 Blender로 구운 커튼이 맡고, 덩어리는 방 안쪽 아랫면 한 줄만
 	var curtain := sp.smoke_style == "curtain" and FxArt.curtain != null
 	# 윗면 그림이 있으면 방 안쪽 덩어리 대신 연기 판 하나
@@ -3878,6 +3882,73 @@ func _draw_smoke_cloud(c: Compartment, h: float, thick: float, a: float, density
 	if reach.z >= 0.0:
 		_draw_smoke_front_edge(r, h, reach, Color(col, op), c.index)
 	return true
+
+
+## 뭉게구름 연기층 (2026-11-26 사용자: 천장 연기가 상자처럼 네모반듯해 연기인지 구분이 안 간다 — RimWorld·Frostpunk 의 덩어리 연기):
+##   ① 천장 판은 가장자리를 smoke_sheet_feather_m 에 걸쳐 흐리게 (직사각형 모서리 없음)
+##   ② 잘린 앞 가장자리(남·동)에는 세로 커튼 대신 smoke_billow_edge_m 마다 천장에서 연기층 아래까지 늘어진 덩어리 —
+##      아래 끝이 덩어리마다 다르고 천천히 일렁인다
+##   ③ 방 안쪽 연기층 아랫면에 smoke_billow_under_m 마다 매달린 덩어리 — 아랫면이 울퉁불퉁
+## 덩어리는 연기 기둥과 같은 그림(art/fx/smoke_billow.png)에 연기 읽기 색을 곱한다. 선두 원 밖(아직 연기가 없는 곳)은 그리지 않는다
+func _draw_smoke_billows(c: Compartment, h: float, thick: float, density: float, fires: Array[Vector2], reach: Vector3, op: float) -> void:
+	var sp := stack.params
+	var r := c.rect
+	var cell := sim.building.cell_size_m
+	var t := Time.get_ticks_msec() / 1000.0
+	var col: Color = _smoke_look(c).get("color", Color(0.36, 0.36, 0.38) if density >= sp.smoke_dark_density else Color(0.8, 0.81, 0.84))
+	if op < 0.0:
+		op = sp.smoke_max_opacity
+	if FxArt.sheet != null:
+		_draw_smoke_sheet(r, CEILING_M, Color(col, op), c.index, _spread_dir(r, fires), reach, sp.smoke_sheet_feather_m / cell)
+	var spread := _spread_dir(r, fires)
+	var drift := spread * fposmod(t * sp.smoke_sheet_flow_mps / cell, 1.0)
+	# 덩어리 (깊이 순서: 뒤(북서) → 앞(남동))
+	var items: Array = []
+	var under := maxf(1.0, sp.smoke_billow_under_m / cell)
+	var y := float(r.position.y) + under * 0.5
+	while y < r.end.y - 0.2:
+		var x := float(r.position.x) + under * 0.5
+		while x < r.end.x - 0.2:
+			items.append([Vector2(x, y), false])
+			x += under
+		y += under
+	var edge := maxf(1.0, sp.smoke_billow_edge_m / cell)
+	var e := float(r.position.x) + edge * 0.5
+	while e < r.end.x:
+		items.append([Vector2(e, r.end.y - 0.35), true])
+		e += edge
+	e = float(r.position.y) + edge * 0.5
+	while e < r.end.y:
+		items.append([Vector2(r.end.x - 0.35, e), true])
+		e += edge
+	items.sort_custom(func(a: Array, b: Array) -> bool: return (a[0] as Vector2).x + (a[0] as Vector2).y < (b[0] as Vector2).x + (b[0] as Vector2).y)
+	var n := 0
+	for it: Array in items:
+		if n >= sp.smoke_max_puffs:
+			break
+		var p: Vector2 = it[0]
+		var front: bool = it[1]
+		if not _in_front(reach, p):
+			continue
+		var seed := c.index * 131 + int(p.x * 7.0) * 17 + int(p.y * 7.0) * 29
+		var jit := Vector2(_rand01(seed) - 0.5, _rand01(seed + 3) - 0.5) * (0.25 if front else under * 0.35)
+		var at := (p + jit + (drift if not front else Vector2.ZERO)).clamp(Vector2(r.position) + Vector2(0.2, 0.2), Vector2(r.end) - Vector2(0.2, 0.2))
+		var sway := sin(t * 0.6 + seed * 0.37)
+		var size: float
+		var mid: float
+		var alpha: float
+		if front:
+			# 천장에서 연기층 아래까지 — 아래 끝은 덩어리마다 조금씩 다르다
+			var low := maxf(0.0, h - (0.12 + 0.18 * _rand01(seed + 5)) + 0.05 * sway)
+			mid = (CEILING_M + low) * 0.5
+			size = maxf((CEILING_M - low) * 2.2, sp.smoke_billow_edge_m * 2.6) * IsoProjection.PX_PER_M
+			alpha = op * (0.6 + 0.12 * sway)
+		else:
+			mid = h + 0.12 + 0.06 * sway
+			size = sp.smoke_billow_under_m * (2.0 + 0.5 * _rand01(seed + 7)) * IsoProjection.PX_PER_M
+			alpha = op * 0.22 * clampf(thick / 0.6, 0.3, 1.0)
+		FxArt.draw_billow(self, proj.to_screen(at, mid), size, seed, Color(col, alpha))
+		n += 1
 
 
 ## 연기 선두 원(출발점 x·y, 반지름 z — 셀) 안인가. z < 0 = 다 덮임
@@ -3948,7 +4019,7 @@ func _draw_curtain_faces(r: Rect2i, h: float, col: Color, seed: int, front := Ve
 ## 연기 상자 윗면 (Blender 플립북, 가로·세로 타일): 방 바닥 모양 그대로 높이 h(천장)에 깐다.
 ## 진하기 = 시선이 연기층 두께를 지나는 만큼 — 쌓일수록 진해진다. 틈으로 바닥·대원이 비친다.
 ## spread: 무늬가 흘러가는 방향 (불난 방에서 멀어지는 쪽 — 연기가 퍼지는 모습). 불난 방은 제자리에서 끓는다
-func _draw_smoke_sheet(r: Rect2i, h: float, col: Color, seed: int, spread: Vector2, front := Vector3(0, 0, -1)) -> void:
+func _draw_smoke_sheet(r: Rect2i, h: float, col: Color, seed: int, spread: Vector2, front := Vector3(0, 0, -1), feather := 0.0) -> void:
 	var m: Dictionary = FxArt.meta.get("smoke_sheet", {})
 	var cell := sim.building.cell_size_m
 	var tile := maxf(1.0, float(m.get("tile_m", 2.0)) / cell)
@@ -3960,7 +4031,7 @@ func _draw_smoke_sheet(r: Rect2i, h: float, col: Color, seed: int, spread: Vecto
 	var mean := FxArt.mean_alpha("smoke_sheet", 0.42)
 	var base := Color(col, maxf(0.0, 1.0 - (1.0 - col.a) / (1.0 - mean)) if col.a > mean else 0.0)
 	col = Color(col, minf(1.0, col.a / mean))
-	_draw_sheet_tiles(FxArt.sheet, "smoke_sheet", r, h, col, base, seed, tile, off, front)
+	_draw_sheet_tiles(FxArt.sheet, "smoke_sheet", r, h, col, base, seed, tile, off, front, feather)
 
 
 ## 가로·세로로 이어지는 플립북을 방 바닥 모양 그대로 높이 h 에 깐다 (연기 윗면·롤오버 천장 화염이 같이 쓴다).
@@ -4000,6 +4071,11 @@ func _draw_sheet_tiles(tex: Texture2D, key: String, r: Rect2i, h: float, col: Co
 							fuvs.append(Vector2(u0 + (q.x - x) / tile, v0 + (q.y - y) / tile))
 							var edge := minf(minf(q.x - r.position.x, r.end.x - q.x), minf(q.y - r.position.y, r.end.y - q.y))
 							fcols.append(Color(col, col.a * clampf(edge / feather, 0.0, 1.0)))
+						if base.a > 0.0:
+							var bcols := PackedColorArray()
+							for fc in fcols:
+								bcols.append(Color(base, base.a * fc.a / maxf(0.001, col.a)))
+							draw_polygon(fpts, bcols)
 						FxArt.draw_flip_poly(self, tex, key, fpts, fuvs, col, seed, fcols)
 						sy = ey
 					sx = ex

@@ -64,6 +64,10 @@ var smoke_row_m := 0.4
 var smoke_max_rows := 6
 var smoke_sink_s := 6.0
 var smoke_style := "curtain"
+## billow 방식 (2026-11-26 사용자: 천장 연기가 상자처럼 보인다): 판 가장자리 흐림(m) · 앞 가장자리 덩어리 간격(m) · 아랫면 덩어리 간격(m)
+var smoke_sheet_feather_m := 0.8
+var smoke_billow_edge_m := 1.0
+var smoke_billow_under_m := 1.6
 var smoke_max_opacity := 0.75
 var smoke_opacity_k := 1.2
 var smoke_curtain_low := 0.15
@@ -180,6 +184,9 @@ func apply(data: Dictionary) -> void:
 	smoke_max_rows = int(_value(data, "smoke_max_rows", smoke_max_rows))
 	smoke_sink_s = float(_value(data, "smoke_sink_s", smoke_sink_s))
 	smoke_style = str(_value(data, "smoke_style", smoke_style))
+	smoke_sheet_feather_m = float(_value(data, "smoke_sheet_feather_m", smoke_sheet_feather_m))
+	smoke_billow_edge_m = float(_value(data, "smoke_billow_edge_m", smoke_billow_edge_m))
+	smoke_billow_under_m = float(_value(data, "smoke_billow_under_m", smoke_billow_under_m))
 	smoke_max_opacity = float(_value(data, "smoke_max_opacity", smoke_max_opacity))
 	smoke_opacity_k = float(_value(data, "smoke_opacity_k", smoke_opacity_k))
 	smoke_curtain_low = float(_value(data, "smoke_curtain_low", smoke_curtain_low))

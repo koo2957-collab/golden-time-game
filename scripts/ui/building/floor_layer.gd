@@ -170,6 +170,9 @@ var _ghost_other_mat: ShaderMaterial
 var _ghost_smoke_mat: ShaderMaterial
 var _badge_layer: Node2D
 var _badge_items: Dictionary = {}
+## 고른 대원 외곽선 겹 · 차량에 가려진 대원 겹 (2026-11-26)
+var _mark_select: Node2D
+var _mark_occluded: Node2D
 var _ghost_style_applied := "outline"
 ## 이번 그림에서 사람을 덮을 만큼 연기가 짙고 낮게 깔린 방 (Compartment.index → true)
 var _smoky := {}
@@ -366,6 +369,29 @@ func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProject
 	_badge_layer.z_index = 101
 	_badge_layer.draw.connect(_draw_badges)
 	add_child(_badge_layer)
+	# 고른 대원의 몸 외곽선 (2026-11-26 사용자 결정 ①): 맨 위에 노란 외곽선만 — 연기·차 뒤에서도 보인다
+	var sel_mat := ShaderMaterial.new()
+	sel_mat.shader = outline_shader
+	sel_mat.set_shader_parameter("fill", 0.0)
+	sel_mat.set_shader_parameter("thickness", stack.params.select_outline_px)
+	_mark_select = Node2D.new()
+	_mark_select.material = sel_mat
+	_mark_select.z_as_relative = false
+	_mark_select.z_index = 99
+	_mark_select.draw.connect(_draw_select_marks)
+	add_child(_mark_select)
+	# 차량 그림에 가려진 대원 (2026-11-26 사용자 결정 ⑤): 출동대 색 외곽선 + 옅은 몸
+	var occ_mat := ShaderMaterial.new()
+	occ_mat.shader = outline_shader
+	occ_mat.set_shader_parameter("fill", stack.params.occluded_fill)
+	occ_mat.set_shader_parameter("thickness", stack.params.occluded_outline_px)
+	occ_mat.set_shader_parameter("flat_tint", 0.6)
+	_mark_occluded = Node2D.new()
+	_mark_occluded.material = occ_mat
+	_mark_occluded.z_as_relative = false
+	_mark_occluded.z_index = 98
+	_mark_occluded.draw.connect(_draw_occluded_marks)
+	add_child(_mark_occluded)
 
 
 # --- 외부 보기: 건물 외관 (R16) ---
@@ -1018,6 +1044,9 @@ func refresh() -> void:
 func _draw() -> void:
 	if sim == null:
 		return
+	if _mark_select:
+		_mark_select.queue_redraw()
+		_mark_occluded.queue_redraw()
 	if not _smoky.is_empty() or not _smoke_hulls.is_empty():
 		_smoky.clear()
 		_smoke_hulls.clear()
@@ -1936,10 +1965,11 @@ func _draw_unit(ff: Firefighter, alpha: float) -> void:
 	if not carried.is_empty():
 		feet = proj.to_screen(p, float(carried.victim_h))
 	if crew.id in selection.selected:
-		draw_polyline(_ellipse(feet, 13, 6.5, true), PlanStyle.SELECTION, 2.0)
+		# 발밑에는 작은 원만 — 고른 표시는 몸 외곽선(_draw_select_marks)이 맡는다 (2026-11-26 사용자: 원이 어긋나 보이고 어색하다)
+		draw_polyline(_ellipse(feet, 9, 4.5, true), PlanStyle.SELECTION, 1.5)
 		# 팀장은 이중 고리 — 다시 누르면 분대 편성 둥근 버튼이 뜨는 사람 (2026-11-17)
 		if ff.officer:
-			draw_polyline(_ellipse(feet, 18, 9, true), PlanStyle.SELECTION, 1.5)
+			draw_polyline(_ellipse(feet, 13, 6.5, true), PlanStyle.SELECTION, 1.2)
 	# 열 스트레스가 쌓이면 붉게
 	var body_color := squad.color.lerp(Color(1.0, 0.25, 0.1), clampf(ff.heat_stress, 0.0, 1.0) * 0.7)
 	if ff.incapacitated:
@@ -5637,6 +5667,70 @@ func _draw_outlines(target: CanvasItem, rooms: Dictionary, hulls: Array[PackedVe
 		var vpose := _victim_pose(v, art) if art else []
 		if art == null or not art.draw(target, vpose[0], vpose[1], vpose[2], feet, GHOST_VICTIM):
 			target.draw_arc(feet + Vector2(0, -6), 9.0, 0.0, TAU, 16, GHOST_VICTIM, 2.0)
+
+
+## 이 층에 서 있는(차에 탄 사람 빼고) 대원과 그 그림 자리·자세를 그 겹(ci)에 tint 로 그린다
+func _draw_person_mark(ci: CanvasItem, ff: Firefighter, c: Crew, tint: Color, alpha: float) -> void:
+	var art := SpriteArt.crew_set(sim.units.squads[c.squad_id].type)
+	var feet := proj.to_screen(_shown_pos(ff, alpha), 0.0)
+	var pose := _unit_pose(ff, c, art) if art else []
+	if art == null or not art.draw(ci, pose[0], pose[1], pose[2], feet, tint):
+		ci.draw_arc(feet + Vector2(0, -18), 9.0, 0.0, TAU, 16, tint, 2.0)
+
+
+## 고른 대원의 몸 외곽선 (노랑): 같은 층에 보이는(내린) 사람만. 열화상에서는 그리지 않는다
+func _draw_select_marks() -> void:
+	if sim == null or thermal or ghost or skip_live or selection.selected.is_empty():
+		return
+	var alpha := sim.clock.alpha()
+	var tint := Color(stack.params.select_color, 0.97)
+	for id in selection.selected:
+		var c := sim.units.get_crew(id)
+		if c == null:
+			continue
+		for ff in c.members():
+			if ff.level == level and not ff.aboard:
+				_draw_person_mark(_mark_select, ff, c, tint, alpha)
+
+
+## 차량에 가려진 대원: 차 그림이 덮는 화면 영역(차 바닥 ~ 지붕 상자) 안에 몸이 들고, 차가 그 사람보다 앞(화면 아래쪽 깊이)에 있으면
+## 출동대 색 외곽선과 옅은 몸으로 덧그린다 — 스타크래프트2·CoH 의 가린 유닛 실루엣. 고른 대원은 노란 외곽선이 이미 있어 뺀다
+func _draw_occluded_marks() -> void:
+	if sim == null or thermal or ghost or skip_live:
+		return
+	var alpha := sim.clock.alpha()
+	var hulls: Array = []
+	for v in sim.units.vehicles:
+		if v.away or v.level != level:
+			continue
+		var center := v.prev_pos.lerp(v.pos, alpha)
+		var fp := v.footprint(center)
+		var pts := PackedVector2Array()
+		for q in fp:
+			pts.append(proj.to_screen(q, 0.0))
+			pts.append(proj.to_screen(q, v.height_m))
+		var hull := Geometry2D.convex_hull(pts)
+		var depth := -INF
+		for q in fp:
+			depth = maxf(depth, q.x + q.y)
+		hulls.append([hull, depth])
+	if hulls.is_empty():
+		return
+	for c in sim.units.crews:
+		if c.id in selection.selected:
+			continue
+		var sq := sim.units.squads[c.squad_id]
+		var tint := Color(sq.color.lightened(0.3), 0.9)
+		for ff in c.members():
+			if ff.level != level or ff.aboard or ff.incapacitated:
+				continue
+			var p := _shown_pos(ff, alpha)
+			var body := proj.to_screen(p, 0.9)
+			for h: Array in hulls:
+				# 차 바닥의 가장 앞(x + y 가 큰) 모서리보다 사람이 뒤에 있고, 몸 가운데가 차 그림 안
+				if p.x + p.y < float(h[1]) and Geometry2D.is_point_in_polygon(body, h[0]):
+					_draw_person_mark(_mark_occluded, ff, c, tint, alpha)
+					break
 
 
 ## 가려진 대원의 머리 위 표식 (ghost_style badge·mix): 조장 머리 위에 출동대 색 원 + 하는 일 그림 + 공기 잔량,

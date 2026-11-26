@@ -82,6 +82,11 @@ var ghost_ledge_round_m := 1.5
 var ghost_slab_m := 0.3
 var ghost_dash_px := 6.0
 var ghost_body_alpha := 0.25
+## 고른 대원 외곽선 (2026-11-26): 두께 px · 색 / 차량에 가려진 대원: 안쪽 진하기 · 외곽선 두께 px
+var select_outline_px := 2.2
+var select_color := Color("fde047")
+var occluded_fill := 0.35
+var occluded_outline_px := 1.5
 ## 가려진(연기 속·다른 층) 대원 표시 방식: "outline" 노란 테두리(지금) · "silhouette" 출동대 색 반투명 실루엣 ·
 ## "badge" 머리 위 표식만 · "mix" 실루엣 + 표식 (2026-11-24 사용자: 노란 테두리가 캐릭터와 맞지 않고 촌스럽다 — 견본 비교용)
 var ghost_style := "outline"
@@ -193,6 +198,10 @@ func apply(data: Dictionary) -> void:
 	ghost_slab_m = float(_value(data, "ghost_slab_m", ghost_slab_m))
 	ghost_dash_px = float(_value(data, "ghost_dash_px", ghost_dash_px))
 	ghost_body_alpha = float(_value(data, "ghost_body_alpha", ghost_body_alpha))
+	select_outline_px = float(_value(data, "select_outline_px", select_outline_px))
+	select_color = Color(str(_value(data, "select_color", select_color.to_html(false))))
+	occluded_fill = float(_value(data, "occluded_fill", occluded_fill))
+	occluded_outline_px = float(_value(data, "occluded_outline_px", occluded_outline_px))
 	ghost_style = str(_value(data, "ghost_style", ghost_style))
 	ghost_outline_px = float(_value(data, "ghost_outline_px", ghost_outline_px))
 	ghost_other_fill = float(_value(data, "ghost_other_fill", ghost_other_fill))

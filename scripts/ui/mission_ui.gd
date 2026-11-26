@@ -99,6 +99,48 @@ func open_squad_menu(squad_id: int, screen_pos: Vector2) -> void:
 	radial.open(screen_pos, "%s · 분대 편성" % squad.name, items)
 
 
+## 명령판 편성 (2026-11-26): 나누기·합치기·복귀를 고른 출동대마다. 못 하는 출동대는 이유를 알린다
+func squad_command(id: String, squad_ids: Array[int]) -> void:
+	for sid in squad_ids:
+		var squad := sim.units.squads[sid]
+		var why := ""
+		match id:
+			"split", "merge":
+				why = sim.regroup_reason(sid, id == "split")
+			"recall":
+				why = sim.recall_reason(sid)
+		if why != "":
+			notice.emit("%s: %s" % [squad.name, why])
+			continue
+		_radial_squad = sid
+		_on_squad_pick(id)
+
+
+## 명령판 임무를 누르고 층을 골랐다 (2026-11-26): 그 임무를 고른 분대 모두에게. 밖의 분대는 가는 중인 진입구, 없으면 가까운 진입구
+func issue_floor_mission(kind: String, crew_ids: Array[int], lv: int) -> void:
+	if crew_ids.is_empty() or not sim.building.has_level(lv):
+		return
+	close_all()
+	_issue_order(kind, crew_ids, lv, _default_entry(crew_ids))
+
+
+## 우클릭 층 (2026-11-26 — 지시 창 대신): 분대 기본 임무(종류가 다르면 분대마다 제 기본 임무)를 기본 진입구로 바로
+func quick_order(crew_ids: Array[int], lv: int, screen_pos: Vector2) -> void:
+	open_order(crew_ids, lv, screen_pos)
+	confirm_order()
+
+
+## 밖에 있는 첫 분대가 쓸 진입구 index (가는 중인 문, 없으면 가까운 문). 모두 건물 안이면 -1
+func _default_entry(crew_ids: Array[int]) -> int:
+	if sim.entries == null:
+		return -1
+	for id in crew_ids:
+		if not sim.command.interior.crew_inside(id):
+			var e: EntryPoints.Entry = selection.entry_for(id)
+			return e.index if e else -1
+	return -1
+
+
 ## 한 명 보내기를 할 수 없는 이유: 맡길 수 있는 임무가 하나라도 있으면 "" (임무별 이유는 목록에서 보인다)
 func _detach_reason(squad_id: int) -> String:
 	var first := ""

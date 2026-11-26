@@ -10,8 +10,9 @@ extends RefCounted
 signal changed
 
 const PATH := "res://data/commands.json"
-## 칸 순서 = 키보드 배치 (윗줄 Q W E R, 아랫줄 A S)
-const KEYS: Array[String] = ["Q", "W", "E", "R", "A", "S"]
+## 칸 순서 = 키보드 배치 (2026-11-26 사용자 결정 — 분대 명령은 이 한 판에): 윗줄 Q W E R = 임무, 가운데 A S D F = 행동,
+## 아랫줄 Z X C V = 편성. 하위 칸(대기 등)은 앞 여섯 칸만 쓴다
+const KEYS: Array[String] = ["Q", "W", "E", "R", "A", "S", "D", "F", "Z", "X", "C", "V"]
 const SET_TITLES := {"team": "팀 명령", "ems": "구급대 명령", "vehicle": "차량 명령"}
 
 var sets: Dictionary = {}

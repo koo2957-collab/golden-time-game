@@ -51,5 +51,14 @@ func test_no_commander_card_set() -> void:
 	assert_eq(card.slots().filter(func(s: Dictionary) -> bool: return not s.is_empty()).size(), 0, "빈 6칸")
 	assert_eq(card.press("Q"), "", "세트 없이 Q → 실행할 것 없음")
 	card.set_target("team")
-	# 2026-11-17: 인명검색·화재진압은 층 우클릭 지시 창 — 팀 칸은 경계·배연·대기·철수 4칸
-	assert_eq(card.slots().filter(func(s: Dictionary) -> bool: return not s.is_empty()).size(), 4, "팀 4칸")
+	# 2026-11-26 사용자 결정: 분대 명령은 한 판 — 임무 Q W E R · 행동 A S D F · 편성 Z X C V (12칸)
+	assert_eq(card.slots().filter(func(s: Dictionary) -> bool: return not s.is_empty()).size(), 12, "팀 12칸")
+	var ids: Array[String] = []
+	for s: Dictionary in card.slots():
+		ids.append(str(s.id))
+	assert_eq(ids, ["search", "attack", "check_below", "watch", "exterior", "ppv", "standby", "withdraw", "split", "merge", "detach", "recall"] as Array[String], "칸 순서")
+	assert_eq(card.press("Q"), "search", "Q = 인명검색")
+	assert_eq(card.press("D"), "", "D = 대기 — 실행 없이 하위 칸만 연다")
+	assert_eq(card.parent, "standby", "대기 하위 칸이 열린다")
+	card.back()
+	assert_eq(card.press("Z"), "split", "Z = 나누기")

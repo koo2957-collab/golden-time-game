@@ -123,7 +123,7 @@ func _run() -> void:
 	sel._click_select(room_pos, false, Vector2(600, 300))
 	_check("방 좌클릭 → 지시 없음 (선택 해제)", [sim.issued.size() - n0, sel.selected], [0, []])
 
-	# 4) 층 우클릭 (내부 화면의 그 층 아무 곳) → 지시 창: 임무(구조대 = 인명검색) + 진입구(가까운 문) → Enter로 지시
+	# 4) 층 우클릭 (내부 화면의 그 층 아무 곳) → 지시 창 없이 분대 기본 임무를 바로 (구조대 = 인명검색, 가까운 진입구) — 2026-11-26 사용자 결정
 	var mui = world.mission_ui
 	sel._set_selection([crew.id] as Array[int], [] as Array[int])
 	sel._update_guide(room_pos, -1)
@@ -131,18 +131,12 @@ func _run() -> void:
 	n0 = sim.issued.size()
 	sel._right_click_at(room_pos, Vector2(600, 300))
 	await process_frame
-	_check("층 우클릭 → 지시 창 (아직 지시 없음)", [mui.order.visible, mui.order_level, sim.issued.size() - n0], [true, up, 0])
-	_check("구조대는 인명검색이 골라져 있다", mui.order_kind, "search")
 	var nearest: EntryPoints.Entry = sel.entry_for(crew.id)
-	_check("진입구 목록 전부 · 가까운 문이 골라져 있다", [mui.order_entries.size(), mui.order_entry, mui.order_entries[0]], [sim.entries.list.size(), nearest.index, nearest.index])
-	root.get_texture().get_image().save_png("user://shot_order.png")
-	_key(KEY_ENTER)
-	# 지시 = floor_mission: 고른 진입구로 그 층에 가서(진입 허가·계단 카드) 닿으면 층 단위 임무 (2026-11-17)
 	var tac := _issued_since(sim, n0).filter(func(c): return c is CommandOrder and c.action == "floor_mission")
-	_check("Enter → 그 층 인명검색 (고른 진입구로), 창 닫힘", [tac.size(), str(tac[0].answers.kind) if not tac.is_empty() else "",
-		int(tac[0].answers.entry) if not tac.is_empty() else -2, tac[0].value if not tac.is_empty() else -1, mui.order.visible], [1, "search", nearest.index, up, false])
+	_check("층 우클릭 → 지시 창 없이 바로 그 층 인명검색 (가까운 진입구)", [mui.order.visible, tac.size(), str(tac[0].answers.kind) if not tac.is_empty() else "",
+		int(tac[0].answers.entry) if not tac.is_empty() else -2, tac[0].value if not tac.is_empty() else -1], [false, 1, "search", nearest.index, up])
 
-	# 5) 진압대는 화재진압이 골라져 있다. 진입구·임무를 바꿔 지시할 수 있다 (숫자키 = 진입구, Q·W = 임무)
+	# 5) 진압대는 우클릭이 화재진압. 다른 임무는 명령판: Q(인명검색)를 누르고 층을 좌클릭. Esc는 고르기 취소
 	var attack_crew: Crew = sim.units.squads[0].crews[0]
 	for k in attack_crew.list.size():
 		var c := sim.pathfinder.nearest_walkable(ground, Vector2i(e.outside.x + k, e.outside.y + 5))
@@ -152,22 +146,20 @@ func _run() -> void:
 	n0 = sim.issued.size()
 	sel._right_click_at(room_pos, Vector2(600, 300))
 	await process_frame
-	_check("진압대는 화재진압이 골라져 있다", [mui.order.visible, mui.order_kind], [true, "attack"])
-	if mui.order_entries.size() >= 2:
-		_key(KEY_2)
-		_check("숫자 2 → 둘째 진입구", mui.order_entry, mui.order_entries[1])
-	_key(KEY_Q)
-	_check("Q → 인명검색으로 바꿈", mui.order_kind, "search")
-	_key(KEY_W)
-	var picked_entry: EntryPoints.Entry = sim.entries.list[mui.order_entry]
-	mui.confirm_order()
 	tac = _issued_since(sim, n0).filter(func(c): return c is CommandOrder and c.action == "floor_mission")
-	_check("지시 → 화재진압, 바꾼 진입구로", [str(tac[0].answers.kind) if not tac.is_empty() else "", int(tac[0].answers.entry) if not tac.is_empty() else -2], ["attack", picked_entry.index])
+	_check("진압대 우클릭 → 화재진압", str(tac[0].answers.kind) if not tac.is_empty() else "", "attack")
+	n0 = sim.issued.size()
+	world._press_card("Q")
+	_check("Q → 층 고르기 (인명검색)", [sel.mode != 0, sel.mission_kind], [true, "search"])
+	sel._complete_mode(room_pos)
+	sel.cancel_mode()
+	tac = _issued_since(sim, n0).filter(func(c): return c is CommandOrder and c.action == "floor_mission")
+	_check("층 좌클릭 → 그 층 인명검색", [tac.size(), str(tac[0].answers.kind) if not tac.is_empty() else "", tac[0].value if not tac.is_empty() else -1], [1, "search", up])
 	# Esc로 취소하면 지시 없음
 	n0 = sim.issued.size()
-	sel._right_click_at(room_pos, Vector2(600, 300))
+	world._press_card("W")
 	_key(KEY_ESCAPE)
-	_check("Esc → 창 닫힘, 지시 없음", [mui.order.visible, sim.issued.size() - n0], [false, 0])
+	_check("W 뒤 Esc → 고르기 취소, 지시 없음", [sel.mode, sim.issued.size() - n0], [0, 0])
 
 	# 6) 2층 화면에서 아래 바깥 땅을 우클릭 → 분대 이동 (화면 그대로)
 	sel._set_selection([crew.id] as Array[int], [] as Array[int])
@@ -185,23 +177,22 @@ func _run() -> void:
 	_check("바깥 땅 좌클릭 → 외부 보기, 선택 그대로", [world.view_level, world.exterior_view, sel.selected], [ground, true, [crew.id]])
 	await process_frame
 
-	# 8) 외부 보기: 외벽 3층 우클릭 → 3층 지시 창 → 지시. 층 막대 우클릭도 같다
+	# 8) 외부 보기: 외벽 3층 우클릭 → 3층 기본 임무 바로. 층 막대 우클릭도 같다
 	band_pos = _band_center(world, up + 1)
 	n0 = sim.issued.size()
 	sel._right_click_at(band_pos, Vector2(600, 300))
-	_check("외벽 3층 우클릭 → 3층 지시 창", [mui.order.visible, mui.order_level], [true, up + 1])
-	mui.confirm_order()
-	tac = _issued_since(sim, n0).filter(func(c): return c is CommandOrder and c.action == "floor_mission")
-	_check("지시 → 3층 층 단위 인명검색", [tac.size(), str(tac[0].answers.kind) if not tac.is_empty() else "", tac[0].value if not tac.is_empty() else -1], [1, "search", up + 1])
+	var tac8 := _issued_since(sim, n0).filter(func(c): return c is CommandOrder and c.action == "floor_mission")
+	_check("외벽 3층 우클릭 → 3층 층 단위 인명검색 (지시 창 없음)", [mui.order.visible, tac8.size(), str(tac8[0].answers.kind) if not tac8.is_empty() else "", tac8[0].value if not tac8.is_empty() else -1], [false, 1, "search", up + 1])
 	var bar = world.hud.floor_bar
 	var bar_row: Dictionary = bar._rows.filter(func(it): return it.kind == "floor" and it.level == up)[0]
 	var rc := InputEventMouseButton.new()
 	rc.button_index = MOUSE_BUTTON_RIGHT
 	rc.pressed = true
 	rc.position = (bar_row.rect as Rect2).get_center()
+	n0 = sim.issued.size()
 	bar._gui_input(rc)
-	_check("층 막대 2층 우클릭 → 2층 지시 창", [mui.order.visible, mui.order_level], [true, up])
-	mui.close_order()
+	var tacb := _issued_since(sim, n0).filter(func(c): return c is CommandOrder and c.action == "floor_mission")
+	_check("층 막대 2층 우클릭 → 2층 기본 임무 바로", [mui.order.visible, tacb.size(), tacb[0].value if not tacb.is_empty() else -1], [false, 1, up])
 
 	# 9) 진입구 우클릭 → 그 문으로 (진입 허가는 문 앞에서)
 	for k in crew.list.size():
@@ -230,7 +221,7 @@ func _run() -> void:
 	sel._right_click_at(proj.to_screen(Vector2(-40, -40)), Vector2(600, 300))
 	_check("분대 고른 채 지도 밖 우클릭 → 지시 없음 (지휘관도 그대로)", sim.issued.size() - n0, 0)
 
-	# 10-1) 진압대 + 구조대를 함께 골라 층 우클릭 → '분대별 기본 임무'가 골라져 있고, 지시하면 분대마다 제 임무
+	# 10-1) 진압대 + 구조대를 함께 골라 층 우클릭 → 분대마다 제 기본 임무를 바로 (2026-11-26 — 지시 창 없음)
 	for k in crew.list.size():
 		crew.list[k].path.clear()
 	sim.tactical.tasks.clear()
@@ -239,8 +230,7 @@ func _run() -> void:
 	n0 = sim.issued.size()
 	sel.order_floor(up, Vector2(600, 300))
 	await process_frame
-	_check("진압대 + 구조대 → 분대별 기본 임무가 골라져 있다", [mui.order.visible, mui.order_kind], [true, "mixed"])
-	mui.confirm_order()
+	_check("진압대 + 구조대 → 지시 창 없이 분대별 기본 임무 바로", [mui.order.visible, mui.order_kind], [false, "mixed"])
 	var fm := _issued_since(sim, n0).filter(func(c): return c is CommandOrder and c.action == "floor_mission")
 	var kinds := {}
 	for c in fm:

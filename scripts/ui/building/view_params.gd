@@ -83,7 +83,7 @@ var ghost_slab_m := 0.3
 var ghost_dash_px := 6.0
 var ghost_body_alpha := 0.25
 ## 고른 대원 외곽선 (2026-11-26): 두께 px · 색 / 차량에 가려진 대원: 안쪽 진하기 · 외곽선 두께 px
-var select_outline_px := 2.2
+var select_outline_px := 0.9
 var select_color := Color("fde047")
 var occluded_fill := 0.35
 var occluded_outline_px := 1.5

@@ -336,17 +336,14 @@ func _run() -> void:
 	# 목표 칸이 하단 콘솔·카드 뒤에 가리지 않게 화면 가운데로
 	world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(Vector2(13.5, 15.5)))
 	await process_frame
-	# 층 우클릭 → 지시 창 (임무 + 진입구) → Enter로 지시. 진압대는 화재진압이 골라져 있다 (2026-11-16)
+	# 층 우클릭 → 지시 창 없이 분대 기본 임무를 바로 (진압대 = 화재진압, 2026-11-26 사용자 결정)
 	var n_iss := sim.issued.size()
 	var mui0 = world.mission_ui
 	_click(Vector2(13.5, 15.5), MOUSE_BUTTON_RIGHT)
 	await process_frame
-	_check("조를 고른 채 층 우클릭 → 지시 창 (화재진압이 골라져 있다)", [mui0.order.visible, mui0.order_kind, mui0.order_level], [true, "attack", 1])
-	_key(KEY_ENTER)
-	await process_frame
 	var tac = sim.issued.slice(n_iss).filter(func(x): return x.command is CommandOrder and x.command.action == "floor_mission")
-	_check("Enter → 1층 화재진압 지시 (그 층으로 가서 임무), 창 닫힘", [str(tac[0].command.answers.kind) if not tac.is_empty() else "",
-		tac[0].command.squad_ids if not tac.is_empty() else [], mui0.order.visible], ["attack", [0, 1], false])
+	_check("조를 고른 채 층 우클릭 → 지시 창 없이 1층 화재진압", [str(tac[0].command.answers.kind) if not tac.is_empty() else "",
+		tac[0].command.squad_ids if not tac.is_empty() else [], tac[0].command.value if not tac.is_empty() else -1, mui0.order.visible], ["attack", [0, 1], 1, false])
 	# 이 아래 점검은 예전처럼 인명검색으로 움직인 상태를 쓴다
 	if not tac.is_empty():
 		for id in [0, 1]:
@@ -374,9 +371,12 @@ func _run() -> void:
 	await process_frame
 	_click(u.get_crew(0).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
 	_check("조 클릭 → 고르기만 (원형 메뉴 없음, P4-5)", [sel.selected, world.mission_ui.menu.visible], [[0], false])
-	# 팀 칸은 경계·배연·대기·철수뿐 — 인명검색·화재진압은 층 우클릭 지시 창으로 (2026-11-17)
+	# 명령판 (2026-11-26): 임무 Q W E R · 행동 A S D F · 편성 Z X C V — W 화재진압은 층 고르기, S 배연은 출입문 고르기
 	_key(KEY_W)
-	_check("W → 배연 (출입문 고르기, 인명검색·화재진압 칸은 없다)", [world.hud.card.parent, sel.mode], ["", sel.Mode.PPV])
+	_check("W → 화재진압 (층 고르기)", [world.hud.card.parent, sel.mode, sel.mission_kind], ["", sel.Mode.FLOOR_MISSION, "attack"])
+	sel.cancel_mode()
+	_key(KEY_S)
+	_check("S → 배연 (출입문 고르기)", [world.hud.card.parent, sel.mode], ["", sel.Mode.PPV])
 	sel.cancel_mode()
 	_click(sim.units.vehicles[0].pos, MOUSE_BUTTON_RIGHT)
 	# 수관 준비·연장에는 현장 작업 시간이 걸린다 (P4-1)
@@ -385,10 +385,10 @@ func _run() -> void:
 	sim.issue(EquipmentCommand.make("spray", [0] as Array[int], -1, HoseLine.Pattern.FOG, Vector3i(12, 16, 1)))
 	_until(func() -> bool: return sim.water.hose_of_crew(0).flowing, 300)
 	_check("방수 중", sim.water.hose_of_crew(0).flowing, true)
-	_key(KEY_A)
+	_key(KEY_D)
 	_key(KEY_S)
 	sim.step_ticks(1)
-	_check("A 대기 → S 방수 중지", sim.water.hose_of_crew(0).flowing, false)
+	_check("D 대기 → S 방수 중지", sim.water.hose_of_crew(0).flowing, false)
 	sim.issue(EquipmentCommand.make("spray", [0] as Array[int], -1, HoseLine.Pattern.FOG, Vector3i(12, 16, 1)))
 	_until(func() -> bool: return sim.water.hose_of_crew(0).flowing, 300)
 	var n_log2 := sim.command_log.entries.size()
@@ -413,10 +413,10 @@ func _run() -> void:
 	await process_frame
 	_click(u.get_crew(1).leader.pos, MOUSE_BUTTON_LEFT, false, false, true)
 	await _mission(KEY_Q, Vector2(24.5, 17.5))
-	_check("층 우클릭 → 지시 창 Q(인명검색) → Enter", [sel.mode, world.mission_ui.order.visible], [sel.Mode.NONE, false])
+	_check("명령판 Q(인명검색) → 층 클릭", [sel.mode, world.mission_ui.order.visible], [sel.Mode.NONE, false])
 	sim.step_ticks(1)
 	var searches := sim.command_log.entries.filter(func(c): return c is CommandOrder and c.action == "floor_mission" and str(c.answers.kind) == "search")
-	_check("지시 창 → 인명검색 임무", searches.size() >= 1, true)
+	_check("층 클릭 → 인명검색 임무", searches.size() >= 1, true)
 
 	# 지휘관 명령 칸 지원 ▸ 단위대 지정 → 단위대 창. 조를 고른 채로 눌러도 된다 (칸은 늘 보인다)
 	sel._set_selection([1] as Array[int], [] as Array[int])
@@ -500,7 +500,7 @@ func _run() -> void:
 	await _mission(KEY_Q, Vector2(24.5, 17.5))
 	sim.step_ticks(1)
 	var tacts := sim.command_log.entries.filter(func(c): return c is CommandOrder and c.action == "floor_mission")
-	_check("진압대 → 층 진압, 구조대 → 층 검색 (지시 창)", tacts.slice(-2).map(func(c): return str(c.answers.kind)), ["attack", "search"])
+	_check("진압대 W → 층 진압, 구조대 Q → 층 검색 (명령판)", tacts.slice(-2).map(func(c): return str(c.answers.kind)), ["attack", "search"])
 	_check("RECEO 상태판", cui._receo_label.text.contains("R 구조"), true)
 	# 지휘관 명령 칸 안전 ▸ RIT 지정 → 조 누르기, 안전 ▸ 인원 점검
 	hud_board["rit"].pressed.emit()
@@ -581,7 +581,7 @@ func _run() -> void:
 			await _mission(KEY_W, rc, 2)
 			sim.step_ticks(1)
 			var lt = sim.command_log.entries.filter(func(c): return c is CommandOrder and c.action == "floor_mission")
-			_check("2층 우클릭 → 지시 창 W → 2층 화재진압", [str(lt[-1].answers.kind) if not lt.is_empty() else "", lt[-1].value if not lt.is_empty() else -1], ["attack", 2])
+			_check("명령판 W → 2층 클릭 → 2층 화재진압", [str(lt[-1].answers.kind) if not lt.is_empty() else "", lt[-1].value if not lt.is_empty() else -1], ["attack", 2])
 			world.set_view_level(1)
 	# 건물 안 조 (P4-5): 좌클릭은 고르기만, 명령은 명령 카드 단축키 — A 대기 → W 보고 요청·Q 대기
 	var mui = world.mission_ui
@@ -594,13 +594,13 @@ func _run() -> void:
 		_click(here2, MOUSE_BUTTON_LEFT, false, false, true)
 		await process_frame
 		_check("건물 안 조 좌클릭 → 고르기만", [sel.selected, mui.menu.visible], [[inside_id], false])
-		_key(KEY_A)
-		_check("A 대기 → 하위 칸", str(world.hud.card.parent), "standby")
+		_key(KEY_D)
+		_check("D 대기 → 하위 칸", str(world.hud.card.parent), "standby")
 		_key(KEY_W)
 		sim.step_ticks(1)
 		var asked := sim.command.radio.queue.any(func(m): return m.body.contains("상황 보고하라")) or (sim.command.radio.current != null and sim.command.radio.current.body.contains("상황 보고하라")) or sim.command.radio.history.any(func(m): return m.body.contains("상황 보고하라"))
 		_check("보고 요청 무전", asked, true)
-		_key(KEY_A)
+		_key(KEY_D)
 		_key(KEY_Q)
 		var held := sim.issued.filter(func(x): return x.command is TacticalCommand and x.command.action == "hold")
 		_check("대기 지시", held.size(), 1)
@@ -817,13 +817,10 @@ func _mission(key: Key, target: Vector2, lv := 1) -> void:
 		_world.set_view_level(lv, false)
 	_world.camera.retarget(_world.projection().bounds(_world.sim.building), _world.projection().to_screen(target))
 	await process_frame
-	_click(target, MOUSE_BUTTON_RIGHT)
-	await process_frame
+	# 명령판 임무 키 → 층 좌클릭 (2026-11-26 — 지시 창 대신)
 	_key(key)
-	var k := InputEventKey.new()
-	k.keycode = KEY_ENTER
-	k.pressed = true
-	root.push_input(k, true)
+	await process_frame
+	_click(target, MOUSE_BUTTON_LEFT)
 	await process_frame
 
 

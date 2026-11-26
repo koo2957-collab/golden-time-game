@@ -18,13 +18,15 @@ extends Node2D
 ## 좌표 변환은 projection(상황판/입체)을 따른다.
 
 ## 대상 지정 명령 (명령 카드를 누른 뒤 목표를 좌클릭). 인명검색·화재진압은 여기 없다 — 층 우클릭 지시 창 (2026-11-17)
-enum Mode { NONE, EXTERIOR, TREAT, TRANSPORT, WAYPOINT, MONITOR, PPV, VEHICLE_CONNECT, VEHICLE_MOVE, ZONE_SAFE, ZONE_CASUALTY, ZONE_LINE, TRIAGE_POST, OBSERVE, BASKET, POST, FORWARD }
+enum Mode { NONE, EXTERIOR, TREAT, TRANSPORT, WAYPOINT, MONITOR, PPV, VEHICLE_CONNECT, VEHICLE_MOVE, ZONE_SAFE, ZONE_CASUALTY, ZONE_LINE, TRIAGE_POST, OBSERVE, BASKET, POST, FORWARD, FLOOR_MISSION }
 
 ## 관계인을 클릭했을 때 (world가 진술 창을 연다)
 signal witness_clicked(index: int)
 ## 화면 알림 요청 (HUD가 띄운다)
 signal notice(text: String)
-## 분대를 고른 채 층을 우클릭 (외벽 층·내부 화면의 그 층 아무 곳·층 막대) → 지시 창 (임무 + 진입구)
+## 명령판 임무(인명검색·화재진압·직하층 확인·재발화 감시)를 누르고 층을 클릭 (2026-11-26): 임무 종류·분대·층
+signal floor_mission(kind: String, crew_ids: Array[int], level: int)
+## 분대를 고른 채 층을 우클릭 (외벽 층·내부 화면의 그 층 아무 곳·층 막대) → 기본 임무를 바로 (2026-11-26 — 지시 창 대신)
 signal floor_order(crew_ids: Array[int], level: int, screen_pos: Vector2)
 ## 빈 곳 좌클릭으로 보기를 바꾼다 (외벽 층 → 그 층 내부, 바깥 땅 → 외부 보기)
 signal guide_view(level: int, exterior: bool)
@@ -62,6 +64,7 @@ const MODE_HINTS := {
 	Mode.TRIAGE_POST: "분류소 설치: 안전구역 안을 클릭 — 구급대가 가서 차린다 (환자 집결지를 대신)",
 	Mode.VEHICLE_CONNECT: "급수 연결: 소화전·송수구(펌프차) 또는 펌프차(물탱크차)를 클릭",
 	Mode.VEHICLE_MOVE: "자리 옮기기: 차를 옮길 곳을 클릭",
+	Mode.FLOOR_MISSION: "임무: 층을 클릭 — 외벽 띠·내부 화면의 층·층 막대 (Esc·우클릭 = 취소)",
 }
 ## 창가 구조대상자 아래 이 거리(칸) 안의 땅을 우클릭하면 인명구조매트
 const MAT_PICK_CELLS := 6.0
@@ -129,6 +132,15 @@ var _marker_start_ms := -1.0
 
 func setup(p_sim: SimWorld) -> void:
 	sim = p_sim
+
+
+## 명령판 임무를 눌렀다: 층을 클릭할 때까지 그 임무를 들고 있는다
+var mission_kind := ""
+
+
+func begin_floor_mission(kind: String) -> void:
+	mission_kind = kind
+	begin_mode(Mode.FLOOR_MISSION)
 
 
 func begin_mode(p_mode: Mode) -> void:
@@ -322,10 +334,7 @@ func _handle_group_key(event: InputEventKey) -> void:
 
 func _click_select(world_pos: Vector2, add: bool, screen_pos := Vector2(-1, -1)) -> void:
 	if not add and _commander_at(world_pos):
-		# 이미 고른 지휘관을 다시 누르면 자기 분대(선착 분대 — 팀장이 곧 선착대장)의 편성 둥근 버튼
-		if commander_selected and screen_pos.x >= 0.0 and not sim.units.squads.is_empty() and not sim.units.squads[0].crews.is_empty():
-			squad_menu.emit(0, screen_pos)
-			return
+		# (2026-11-26 사용자 결정: 두 번 클릭하는 편성 둥근 버튼은 없앴다 — 편성은 명령판 Z X C V)
 		_set_selection([], [], true)
 		return
 	var witness := _witness_at(world_pos)
@@ -333,10 +342,6 @@ func _click_select(world_pos: Vector2, add: bool, screen_pos := Vector2(-1, -1))
 		witness_clicked.emit(witness)
 		return
 	var crew_id := _crew_at(world_pos)
-	# 이미 고른 분대의 팀장을 다시 누르면 편성 둥근 버튼 (첫 클릭은 늘 선택만 — 2026-11-11 결정)
-	if not add and crew_id >= 0 and selected.size() == 1 and selected[0] == crew_id and screen_pos.x >= 0.0 and officer_under(crew_id, world_pos):
-		squad_menu.emit(sim.units.get_crew(crew_id).squad_id, screen_pos)
-		return
 	var vehicle_id := -1 if crew_id >= 0 else _vehicle_at(world_pos)
 	if crew_id < 0 and vehicle_id < 0:
 		# 빈 곳: 볼 곳(외벽 층·바깥 땅·다른 층)이면 보기만 바꾼다 — 선택은 그대로 (2026-11-16)
@@ -487,9 +492,27 @@ func _issue_crew_right_click(world_pos: Vector2, screen_pos := Vector2(-1, -1)) 
 	return false
 
 
-## 고른 분대에게 그 층 임무를 준다 → 지시 창 (임무 + 진입구 + 지시). 층 막대 우클릭도 이리로 온다.
-## 건물 안 임무가 없는 대원(구급대)만 골랐으면 알림만. 처리했으면 true
+## 명령판 임무의 층을 골랐다: 고른 분대 중 건물 안 임무가 있는 분대에게 (차에 탄 분대는 빼고)
+func _issue_floor_mission(lv: int) -> void:
+	var ids: Array[int] = []
+	for id in selected:
+		var c := sim.units.get_crew(id)
+		if c and not c.leader.aboard and default_kind(id) != "":
+			ids.append(id)
+	if ids.is_empty():
+		notice.emit("임무를 줄 수 있는 분대가 없습니다 (차에 타고 있거나 구급대)")
+		return
+	floor_mission.emit(mission_kind, ids, lv)
+	mission_kind = ""
+
+
+## 고른 분대에게 그 층의 기본 임무를 바로 준다 (진압대 = 화재진압, 구조대 = 인명검색 — 다른 임무는 명령판에서).
+## 층 막대 우클릭도 이리로 온다. 명령판 임무를 들고 있으면 그 임무로. 건물 안 임무가 없는 대원(구급대)만 골랐으면 알림만. 처리했으면 true
 func order_floor(lv: int, screen_pos := Vector2(-1, -1)) -> bool:
+	if sim != null and mode == Mode.FLOOR_MISSION and not selected.is_empty():
+		_issue_floor_mission(lv)
+		cancel_mode()
+		return true
 	if sim == null or mode != Mode.NONE or commander_selected or selected.is_empty() or sim.view_only:
 		return false
 	var ids: Array[int] = []
@@ -640,6 +663,14 @@ func _zone_click(event: InputEventMouseButton, world_pos: Vector2) -> bool:
 
 func _complete_mode(world_pos: Vector2) -> void:
 	match mode:
+		Mode.FLOOR_MISSION:
+			var lv := int(shell_picker.call(world_pos)) if shell_picker.is_valid() else -99
+			if lv == -99 and sim.command.interior.indoor(level, projection.to_cell(world_pos)):
+				lv = level
+			if lv == -99:
+				notice.emit("층을 클릭하세요 — 외벽 띠·내부 화면의 층·층 막대")
+				return
+			_issue_floor_mission(lv)
 		Mode.ZONE_CASUALTY:
 			var c := Vector2i(projection.to_cell(world_pos).floor())
 			sim.issue(CommandOrder.make("zone", [], 0, Vector3i.ZERO, {"kind": "casualty", "cell": [c.x, c.y]}))
@@ -1047,19 +1078,14 @@ func _draw_hover() -> void:
 		return
 	var z := get_canvas_transform().get_scale().x
 	var vp := _view_params()
-	var color: Color = sim.units.squads[c.squad_id].color
 	var name_at := Vector2.ZERO
 	var offs := _floor_offsets()
 	for ff in c.members():
 		if not offs.has(ff.level) or ff.aboard:
 			continue
+		# 몸을 감싸는 타원은 그리지 않는다 (2026-11-26 사용자: 필요 없고 자리도 맞지 않는다 — 계산상 위치에 그려 배치 자리와 어긋났다).
+		# 잡힐 조는 이름만 머리 위에
 		var p := projection.to_screen(ff.pos, projection.pick_height_m) + (offs[ff.level] as Vector2) - Vector2(0, vp.pick_h_px * 0.4 / z)
-		var pts := PackedVector2Array()
-		for k in 25:
-			var a := TAU * k / 24.0
-			pts.append(p + Vector2(cos(a) * vp.pick_w_px * 0.5, sin(a) * vp.pick_h_px * 0.5) / z)
-		draw_polyline(pts, Color(color, 0.95), 2.5 / z)
-		draw_polyline(pts, Color(1, 1, 1, 0.5), 1.0 / z)
 		name_at = p - Vector2(0, vp.pick_h_px * 0.55 / z)
 	var label := sim.units.crew_name(c)
 	draw_string(PlanStyle.font(), name_at + Vector2(-60.0 / z, 0), label, HORIZONTAL_ALIGNMENT_CENTER, 120.0 / z, maxi(8, roundi(14.0 / z)), Color(1, 1, 1, 0.95))
@@ -1214,15 +1240,18 @@ func _draw_floor_box(lv: int, off: Vector2, col: Color, width: float) -> void:
 	for c in corners:
 		low.append(projection.to_screen(c, 0.05) + off)
 		high.append(projection.to_screen(c, h) + off)
-	low.append(low[0])
-	high.append(high[0])
-	draw_polyline(low, col, width)
-	draw_polyline(high, col, width)
+	# 얇은 노란 점선 (2026-11-26 사용자: 굵은 실선 대신 얇은 점선이 더 세련됨)
+	var thin := width * 0.45
+	var dash := width * 2.6
+	for i in 4:
+		var j := (i + 1) % 4
+		draw_dashed_line(low[i], low[j], col, thin, dash)
+		draw_dashed_line(high[i], high[j], col, thin, dash)
 	for i in [1, 2, 3]:
-		draw_line(low[i], high[i], col, width)
+		draw_dashed_line(low[i], high[i], col, thin, dash)
 	# 벽 면을 아주 옅게 채워 층의 부피가 읽히게 (남·동 면)
 	for face: Array in [[3, 2], [2, 1]]:
-		draw_colored_polygon(PackedVector2Array([low[face[0]], low[face[1]], high[face[1]], high[face[0]]]), Color(col, 0.08))
+		draw_colored_polygon(PackedVector2Array([low[face[0]], low[face[1]], high[face[1]], high[face[0]]]), Color(col, 0.06))
 
 
 ## 진입구 앞에서 기다리는 조 이름 (없으면 "")

@@ -3550,20 +3550,21 @@ func _draw_sprays(alpha: float) -> void:
 		# 외부 보기: 건물 안에서 쏘는 물은 외관에 가려진다
 		if _outside() and not sim.building.cell(level, floori(leader.pos.x), floori(leader.pos.y)) in BuildingData.OUTDOOR:
 			continue
-		var from := proj.to_screen(UnitsView.display_pos(leader, alpha), NOZZLE_M)
-		# 물줄기는 관창수 그림의 관창 끝에서 시작한다 (2026-11-12 사용자 지적: 몸에서 물이 나갔음) — 구울 때 기록한 위치
-		var crew_art := SpriteArt.get_set(str(SpriteArt.config().get("crew", ""))) if not thermal else null
+		# 관창수를 실제로 그린 자리·자세·방향·장 (2026-11-26 사용자: 물줄기가 아무 데서나 나온다 — 전에는 계산상 위치와
+		# 연기 기준으로 짐작한 자세를 써서, 배치 자리에 선 사람·건물 안 무릎 방수와 어긋났다)
+		var crew := sim.units.get_crew(h.crew_id)
+		var lp := _shown_pos(leader, alpha)
+		var from := proj.to_screen(lp, NOZZLE_M)
+		var crew_art := SpriteArt.crew_set(sim.units.squads[crew.squad_id].type) if not thermal else null
+		var k_nozzle := _spray_k(h.crew_id, leader.pos, h.aim)
 		if crew_art != null and not h.approaching:
-			var feet := proj.to_screen(UnitsView.display_pos(leader, alpha), 0.0)
-			var nanim := "spray_n" if crew_art.frames("spray_n") > 0 else "spray"
-			if leader.crouched and crew_art.frames("spray_ln") > 0:
-				nanim = "spray_ln"
-			var fr := SpriteArt.frame_at(nanim, crew_art.frames(nanim), leader.id * 0.37)
-			from = feet + crew_art.nozzle_offset(nanim, _spray_k(h.crew_id, leader.pos, h.aim), fr, from - feet)
+			var feet := proj.to_screen(lp, 0.0)
+			var pose := _unit_pose(leader, crew, crew_art)
+			k_nozzle = int(pose[1])
+			from = feet + crew_art.nozzle_offset(str(pose[0]), k_nozzle, int(pose[2]), from - feet)
 		var to := proj.to_screen(_smooth_impact(h), IMPACT_M)
 		# 관창이 향한 쪽 (화면): 물줄기가 이 방향으로 나가서 맞는 곳으로 휜다 — 그림은 8방향이라 겨눈 곳과 최대 30°쯤 어긋난다
-		var lp := UnitsView.display_pos(leader, alpha)
-		var k_dir := Vector2.RIGHT.rotated(_spray_k(h.crew_id, leader.pos, h.aim) * PI / 4.0)
+		var k_dir := Vector2.RIGHT.rotated(k_nozzle * PI / 4.0)
 		var nozzle_dir := (proj.to_screen(lp + k_dir, 0.0) - proj.to_screen(lp, 0.0)).normalized()
 		# 경계 관창이 창·외벽으로 올려 쏜다 (2026-11-24): 끝은 그 층 창 높이의 벽면, 줄기는 위로 휘어 오른다
 		var arc_px := 0.0

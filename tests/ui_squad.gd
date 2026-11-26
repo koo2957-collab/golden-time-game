@@ -1,6 +1,6 @@
 extends SceneTree
-## 분대 편성 둥근 버튼 점검 (창이 열린다, 2026-11-16 결정 — docs/decisions.md '분대'):
-## 첫 클릭은 선택만 → 이미 고른 분대의 팀장을 다시 누르면 둥근 버튼 → 나누기 → 2조의 팀장이 아닌 대원은 메뉴 없음 → 합치기.
+## 분대 편성 점검 (창이 열린다, 2026-11-16 결정 — docs/decisions.md '분대'. 2026-11-26 사용자 결정: 두 번 클릭하는 둥근 버튼 대신
+## 명령판 편성 줄 Z 나누기 · X 합치기 · C 한 명 보내기 · V 복귀): 클릭은 늘 선택만 → Z 나누기 → X 합치기 → C 한 명 보내기 → V 복귀.
 ## 선착 분대는 고른 지휘관을 다시 누른다.
 ## 사용: godot --path . -s res://tests/ui_squad.gd
 
@@ -100,14 +100,14 @@ func _run() -> void:
 	# 이미 고른 분대의 대원(팀장이 아님)을 다시 눌러도 메뉴는 없다
 	sel._click_select(inv * m_screen, false, m_screen)
 	_check("팀장이 아닌 대원을 다시 눌러도 둥근 버튼 없음", ui.radial.visible, false)
-	# 팀장을 다시 누르면 둥근 버튼
+	# 팀장을 다시 눌러도 둥근 버튼은 없다 — 편성은 명령판
 	sel._click_select(inv * o_screen, false, o_screen)
-	_check("고른 분대의 팀장을 다시 누르면 둥근 버튼", ui.radial.visible, true)
-	_check("항목: 나누기 · 한 명 보내기 · 복귀", ui.radial_ids.duplicate(), ["split", "detach", "recall"])
-	_check("한 명 보내기는 켜짐, 복귀는 회색(나간 대원 없음)", ui.radial.items.size() == 3 and ui.radial.items[1].enabled and not ui.radial.items[2].enabled, true)
+	_check("고른 분대의 팀장을 다시 눌러도 둥근 버튼 없음", ui.radial.visible, false)
+	_check("명령판 편성: 나누기 켜짐 · 합치기 회색 · 한 명 보내기 켜짐 · 복귀 회색(나간 대원 없음)",
+		[_en(world, "split"), _en(world, "merge"), _en(world, "detach"), _en(world, "recall")], [true, false, true, false])
 	await process_frame
-	root.get_texture().get_image().save_png("user://shot_squad_wheel.png")
-	_check("나누기 고르기", ui.radial.pick("split"), true)
+	root.get_texture().get_image().save_png("user://shot_squad_card.png")
+	world._press_card("Z")
 	for i in 600:
 		if squad.crews.size() == 2:
 			break
@@ -129,9 +129,8 @@ func _run() -> void:
 	o_screen = xf * proj.to_screen(officer.pos, proj.pick_height_m)
 	sel._set_selection([crew.id] as Array[int], [] as Array[int])
 	await process_frame
-	sel._click_select(inv * o_screen, false, o_screen)
-	_check("나뉜 뒤 항목: 합치기 · 한 명 보내기 · 복귀", ui.radial_ids.duplicate(), ["merge", "detach", "recall"])
-	_check("합치기 고르기", ui.radial.pick("merge"), true)
+	_check("나뉜 뒤: 합치기 켜짐 · 나누기 회색", [_en(world, "merge"), _en(world, "split")], [true, false])
+	world._press_card("X")
 	for i in 600:
 		if squad.crews.size() == 1:
 			break
@@ -148,9 +147,10 @@ func _run() -> void:
 	sel._click_select(c_world, false, c_screen)
 	_check("지휘관 첫 클릭 → 선택만", [sel.commander_selected, ui.radial.visible], [true, false])
 	sel._click_select(c_world, false, c_screen)
-	_check("고른 지휘관을 다시 누르면 선착 분대 둥근 버튼", [ui.radial.visible, ui.radial.title.begins_with(sim.units.squads[0].name)], [true, true])
-	_check("3명 분대는 나누기 회색", not ui.radial.items.is_empty() and not ui.radial.items[0].enabled, true)
-	ui.radial.close()
+	_check("고른 지휘관을 다시 눌러도 둥근 버튼 없음", ui.radial.visible, false)
+	sel._set_selection([sim.units.squads[0].crews[0].id] as Array[int], [] as Array[int])
+	await process_frame
+	_check("3명 분대(선착)는 나누기 회색", _en(world, "split"), false)
 	# 한 명 보내기: 둥근 버튼 → 임무 목록 → 급수 지원 → 한 명이 떨어져 나간다 → 복귀
 	all.clear()
 	all.append_array(squad.crews[0].list)
@@ -165,8 +165,8 @@ func _run() -> void:
 	o_screen = xf * proj.to_screen(officer.pos, proj.pick_height_m)
 	sel._set_selection([crew.id] as Array[int], [] as Array[int])
 	await process_frame
-	sel._click_select(inv * o_screen, false, o_screen)
-	_check("한 명 보내기 고르면 임무 목록", [ui.radial.pick("detach"), ui.menu.visible, ui.menu_ids.duplicate()], [true, true, ["water_help", "office", "fetch"]])
+	world._press_card("C")
+	_check("C 한 명 보내기 → 임무 목록", [ui.menu.visible, ui.menu_ids.duplicate()], [true, ["water_help", "office", "fetch"]])
 	ui.pick("water_help")
 	for i in 600:
 		if sim.units.solo_of(squad) != null:
@@ -184,9 +184,8 @@ func _run() -> void:
 		o_screen = xf * proj.to_screen(officer.pos, proj.pick_height_m)
 		sel._set_selection([crew.id] as Array[int], [] as Array[int])
 		await process_frame
-		sel._click_select(inv * o_screen, false, o_screen)
-		_check("나가 있으면 복귀가 켜지고 한 명 보내기는 회색", ui.radial.items.size() == 3 and not ui.radial.items[1].enabled and ui.radial.items[2].enabled, true)
-		_check("복귀 고르기", ui.radial.pick("recall"), true)
+		_check("나가 있으면 복귀가 켜지고 한 명 보내기는 회색", [_en(world, "recall"), _en(world, "detach")], [true, false])
+		world._press_card("V")
 		for i in 3000:
 			if sim.units.solo_of(squad) == null:
 				break
@@ -194,6 +193,11 @@ func _run() -> void:
 		_check("분대로 돌아온다 (4명)", [sim.units.solo_of(squad) == null, squad.crews[0].list.size()], [true, 4])
 	print("결과: %s (실패 %d)" % ["통과" if _failed == 0 else "실패", _failed])
 	quit(1 if _failed > 0 else 0)
+
+
+## 명령판 칸을 지금 쓸 수 있는가 (world._card_item_enabled)
+func _en(world, id: String) -> bool:
+	return bool(world._card_item_enabled({"id": id}))
 
 
 func _check(label: String, actual: Variant, expected: Variant) -> void:

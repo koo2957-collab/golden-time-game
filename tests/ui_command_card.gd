@@ -162,13 +162,14 @@ func _run() -> void:
 	_check("팀 선택 → 팀 세트 · 카드 보임(오른쪽 정보 창) · 지휘관 명령 묶음도 그대로", [card.set_name, hud._command_panel.is_visible_in_tree(), hud.side_panel.visible, hud.board_groups["report"].is_visible_in_tree()], ["team", true, true, true])
 	_check("정보 창과 아래 바가 함께 화면 안에", [hud.get_rect().encloses(hud.console.get_rect()), hud.get_rect().encloses(hud.side_panel.get_rect())], [true, true])
 	root.get_texture().get_image().save_png("user://ui_board_team.png")
-	_check("팀 4칸 — 임무(인명검색·화재진압)는 층 우클릭 지시 창으로 (2026-11-17)", _labels(card), ["Q 경계", "W 배연", "A 대기", "S 철수"])
+	# 2026-11-26 사용자 결정: 분대 명령은 한 판 — 임무 Q W E R · 행동 A S D F · 편성 Z X C V
+	_check("팀 12칸 (임무·행동·편성)", _labels(card), ["Q 인명검색", "W 화재진압", "E 직하층 확인", "R 재발화 감시", "A 경계", "S 배연", "D 대기", "F 철수", "Z 나누기", "X 합치기", "C 한 명 보내기", "V 복귀"])
 	_check("조를 골라도 메뉴가 뜨지 않는다", world.mission_ui.menu.visible, false)
-	# A 대기(하위 칸만) → 명령 카드가 하위 칸으로
-	world._press_card("A")
+	# D 대기(하위 칸만) → 명령 카드가 하위 칸으로
+	world._press_card("D")
 	await process_frame
-	_check("A 대기 → 하위 칸", [card.parent, _labels(card)[0]], ["standby", "Q 그 자리 대기"])
-	_check("A 대기 → S 방수 중지 칸", _labels(card).has("S 방수 중지"), true)
+	_check("D 대기 → 하위 칸", [card.parent, _labels(card)[0]], ["standby", "Q 그 자리 대기"])
+	_check("D 대기 → S 방수 중지 칸", _labels(card).has("S 방수 중지"), true)
 	world._press_card("BACK")
 	_check("고르기를 끝내면 첫 칸", card.parent, "")
 	# 층 우클릭 → 지시 창: 진압대는 화재진압, 가까운 진입구 → 지시하면 그 문을 거쳐 층 단위 화재진압
@@ -178,14 +179,21 @@ func _run() -> void:
 	var ent = sim.entries.list[0]
 	var mui = world.mission_ui
 	var n_issued := sim.issued.size()
+	# 층 우클릭 = 기본 임무를 바로 (2026-11-26 — 지시 창 없음)
 	sel.order_floor(ent.level, Vector2(600, 300))
 	await process_frame
-	_check("층 우클릭 → 지시 창 (화재진압·가까운 진입구)", [mui.order.visible, mui.order_kind, mui.order_entry >= 0], [true, "attack", true])
-	var chosen: EntryPoints.Entry = sim.entries.list[mui.order_entry]
-	mui.confirm_order()
 	var fm := sim.issued.slice(n_issued).filter(func(x): return x.command is CommandOrder and x.command.action == "floor_mission")
 	var tcmd = fm.back().command if not fm.is_empty() else null
-	_check("지시 → 고른 진입구로 가는 층 단위 화재진압", [str(tcmd.answers.kind) if tcmd else "", int(tcmd.answers.entry) if tcmd else -2], ["attack", chosen.index])
+	_check("층 우클릭 → 지시 창 없이 바로 화재진압 (가까운 진입구)", [mui.order.visible, str(tcmd.answers.kind) if tcmd else "", int(tcmd.answers.entry) >= 0 if tcmd else false], [false, "attack", true])
+	# 명령판 임무 → 층 클릭 (2026-11-26): W(화재진압)를 누른 뒤 층을 고른다 — 여기서는 인명검색(Q)으로
+	var n_q := sim.issued.size()
+	world._press_card("Q")
+	_check("Q 인명검색 → 층 고르기 모드", [sel.mode != 0, sel.mission_kind], [true, "search"])
+	sel.order_floor(ent.level, Vector2(600, 300))
+	await process_frame
+	var fq := sim.issued.slice(n_q).filter(func(x): return x.command is CommandOrder and x.command.action == "floor_mission")
+	_check("층을 고르면 그 임무 (인명검색)", str(fq.back().command.answers.kind) if not fq.is_empty() else "", "search")
+	_check("고른 뒤 모드 끝", sel.mode, 0)
 	# 건물 안 조: 시킬 일이 없는 곳을 우클릭하면 아무 지시도 없다 (지휘관도 그대로). 문 앞 목록은 없앴다 (2026-11-17)
 	var inner: Opening = null
 	for o in sim.fire.openings:
@@ -204,9 +212,11 @@ func _run() -> void:
 	var after: Array = sim.issued.slice(n2)
 	_check("건물 안 조 고른 채 시킬 일 없는 곳 우클릭 → 지시 없음 (지휘관 이동도 없음)", after.size(), 0)
 	_check("건물 안 조 = 건물 안", sim.command.interior.crew_inside(crew_id), true)
+	var n3 := sim.issued.size()
 	sel._right_click_at(sel.projection.to_screen(Vector2(inner.cells[0]) + Vector2(0.5, 0.5), 1.0), Vector2(700, 400))
 	await process_frame
-	_check("곁의 문 우클릭 → 문 목록 대신 그 층 지시 창 (건물 안이라 진입구 줄 없음)", [mui.menu.visible, mui.order.visible, mui.order_entries.is_empty()], [false, true, true])
+	var fin := sim.issued.slice(n3).filter(func(x): return x.command is CommandOrder and x.command.action == "floor_mission")
+	_check("곁의 문 우클릭 → 문 목록·지시 창 없이 그 층 기본 임무", [mui.menu.visible, mui.order.visible, fin.size()], [false, false, 1])
 	mui.close_order()
 	sel.cancel_mode()
 	await process_frame

@@ -57,6 +57,7 @@ var projections := {ViewMode.ISO: IsoProjection.new(), ViewMode.PLAN: PlanProjec
 func _ready() -> void:
 	add_to_group("world")
 	InstructorSettings.active = true
+	_ensure_card_keys()
 	# 창 모드에서도 가장자리 스크롤이 되도록 게임 중에는 마우스를 창 안에 가둔다 (Esc로 풂, 기획안 9-3)
 	confine_mouse(true)
 	var path := GameManager.scenario_path if GameManager.scenario_path != "" else SCENARIO_PATH
@@ -117,7 +118,9 @@ func _ready() -> void:
 	mission_ui.card = hud.card
 	selection.squad_menu.connect(mission_ui.open_squad_menu)
 	# 좌클릭 = 보기·고르기, 우클릭 = 지시 (2026-11-16 사용자 결정): 층 우클릭 → 지시 창 (임무 + 진입구 + 지시)
-	selection.floor_order.connect(mission_ui.open_order)
+	# 우클릭 층 = 분대 기본 임무를 바로 (2026-11-26 — 지시 창 대신), 명령판 임무 → 층 클릭
+	selection.floor_order.connect(mission_ui.quick_order)
+	selection.floor_mission.connect(mission_ui.issue_floor_mission)
 	hud.floor_bar.floor_ordered.connect(func(lv: int, pos: Vector2) -> void: selection.order_floor(lv, pos))
 	selection.guide_view.connect(func(lv: int, ext: bool) -> void: set_view_level(lv, ext))
 	selection.shell_picker = func(world_pos: Vector2) -> int:
@@ -790,7 +793,19 @@ func _jump_to_crew(crew_id: int) -> void:
 	camera.retarget(_view_bounds(), projection().to_screen(c.leader.pos))
 
 
-## 명령 카드 단축키 (Q W E R A S). 입력 칸에 글을 쓰는 중이거나 창이 떠 있으면 쓰지 않는다
+## 명령판 12칸의 단축키 입력 동작 (cmd_q … cmd_v). 프로젝트 설정에 없는 키(D F Z X C V — 2026-11-26 명령판 세 줄)는 여기서 더한다
+func _ensure_card_keys() -> void:
+	for k in CommandCard.KEYS:
+		var action := "cmd_" + k.to_lower()
+		if InputMap.has_action(action):
+			continue
+		InputMap.add_action(action)
+		var ev := InputEventKey.new()
+		ev.physical_keycode = OS.find_keycode_from_string(k)
+		InputMap.action_add_event(action, ev)
+
+
+## 명령 카드 단축키 (Q W E R · A S D F · Z X C V). 입력 칸에 글을 쓰는 중이거나 창이 떠 있으면 쓰지 않는다
 func _card_key(event: InputEvent) -> String:
 	if not (event is InputEventKey) or not event.pressed or event.echo or sim.view_only:
 		return ""
@@ -829,6 +844,18 @@ func _card_item_enabled(item: Dictionary) -> bool:
 		"tanker":
 			return selection.selected_vehicles.any(func(v: int) -> bool: return sim.units.get_vehicle(v).transfer_lpm > 0.0)
 	match str(item.get("id", "")):
+		"search", "attack":
+			return selection.selected.any(func(id: int) -> bool: return selection.default_kind(id) != "")
+		"check_below":
+			return sim.tactical.layout != null and not sim.tactical.layout.units.is_empty()
+		"watch":
+			return not sim.phases.all_clear.is_empty()
+		"split", "merge":
+			return _selected_squads().any(func(s: int) -> bool: return sim.regroup_reason(s, str(item.id) == "split") == "")
+		"recall":
+			return _selected_squads().any(func(s: int) -> bool: return sim.recall_reason(s) == "")
+		"detach":
+			return _selected_squads().any(func(s: int) -> bool: return mission_ui._detach_reason(s) == "")
 		"stop":
 			return not selection.crews_spraying().is_empty()
 		"elevator":
@@ -904,6 +931,26 @@ func _on_command(id: String) -> void:
 			selection.begin_mode(SelectionController.Mode.EXTERIOR)
 		"withdraw":
 			sim.issue(TacticalCommand.make("withdraw", selection.selected))
+		# 명령판 임무 (2026-11-26): 누른 뒤 층을 클릭
+		"search", "attack", "check_below", "watch":
+			selection.begin_floor_mission(id)
+		# 명령판 편성 (2026-11-26 — 팀장 두 번 클릭 둥근 버튼 대신)
+		"split", "merge", "recall":
+			mission_ui.squad_command(id, _selected_squads())
+		"detach":
+			var sqs := _selected_squads()
+			if not sqs.is_empty():
+				mission_ui.open_solo_menu(sqs[0], get_viewport().get_mouse_position())
+
+
+## 고른 조들의 출동대 (겹치지 않게, 고른 순서)
+func _selected_squads() -> Array[int]:
+	var out: Array[int] = []
+	for id in selection.selected:
+		var c := sim.units.get_crew(id)
+		if c != null and not c.squad_id in out:
+			out.append(c.squad_id)
+	return out
 
 
 ## 지휘관 명령 (지휘관 명령 칸 — data/commands.json commander_board·commander_tools). 처리했으면 true.

@@ -2470,6 +2470,8 @@ func _door_opener(crew: Crew, art: SpriteArt.SpriteSet) -> int:
 ## driver = 이 차 운전원, helper = 둘이서 할 때 차 옆 조의 조장(차 쪽 결합), other = 급수받는 펌프차 운전원.
 ## hose = 굴려 펴는 중·편 뒤의 호스가 놓인 길 (셀 좌표 점들). 작업이 없으면 빈 것
 func _driver_layout(v: Vehicle) -> Dictionary:
+	if v != null and v.work.is_empty() and not v.away and not thermal:
+		return _pump_operator(v)
 	if v == null or v.work.is_empty() or v.away or thermal:
 		return {}
 	var dart := SpriteArt.get_set(str(SpriteArt.config().get("driver", "")))
@@ -2525,6 +2527,35 @@ func _driver_layout(v: Vehicle) -> Dictionary:
 		var f := clampf((prog - float(roll[0])) / maxf(0.001, float(roll[1]) - float(roll[0])), 0.0, 1.0)
 		out.hose = HoseDraw.cut(route, f)
 	return out
+
+
+## 펌프 조작 (2026-11-26, SOP 206-1.1 "운전원은 화재 현장을 볼 수 있는 방향에서 펌프를 조작"): 펌프차가 물을 보내는 동안
+## (그 차의 호스가 충수·방수 중이거나, 소화전·물탱크차 급수가 이어져 있을 때) 운전원이 차 후면 조작반 곁에 서서 건물 쪽을 본다.
+## 전에는 급수 연결 작업이 끝나면 운전원이 보이지 않았다. → {"driver": {anim, k, frame, pos, depth}} 또는 빈 것
+func _pump_operator(v: Vehicle) -> Dictionary:
+	if not v.is_pump() or sim.units.squads[v.squad_id].type == "구급대":
+		return {}
+	var pumping := v.hydrant >= 0
+	if not pumping:
+		for h in sim.water.hoses:
+			if h.vehicle_id == v.id and (h.charged or h.flowing):
+				pumping = true
+				break
+	if not pumping:
+		for o in sim.units.vehicles:
+			if o.supply_to == v.id:
+				pumping = true
+				break
+	if not pumping:
+		return {}
+	var dart := SpriteArt.get_set(str(SpriteArt.config().get("driver", "")))
+	if dart == null:
+		return {}
+	var pos := v.rear_point(float(HoseDraw.style().get("pump_operator_behind_m", 0.7)) / sim.building.cell_size_m)
+	var site := Vector2(sim.building.footprint(_first_level).get_center())
+	var k := SpriteArt.dir8(site - pos) if (site - pos).length_squared() > 0.01 else 0
+	var frame := SpriteArt.frame_at("idle", dart.frames("idle"), v.id * 0.37)
+	return {"driver": {"anim": "idle", "k": k, "frame": frame, "pos": pos, "depth": pos.x + pos.y}}
 
 
 ## 한 사람의 지금 구간: 동작·방향·자리. 동작이 ""이면 빈 것 (안 보임)

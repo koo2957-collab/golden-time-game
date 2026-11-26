@@ -32,6 +32,7 @@
   "join_length_m": {"value": 0.8, "source": "화면 설정", "note": "바닥 호스를 대원 그림 속 호스의 끝(바닥에 닿은 곳)으로 굽혀 잇는 길이 — 그 끝에서 이만큼 앞서 바닥 호스를 끊고 거기서부터 곡선으로 잇는다 (직각으로 꺾여 보이지 않게, 2026-11-24). 끝 자리는 data/ui/hose_ends.json"},
   "sprite_hose_width_m": {"value": 0.064, "source": "구운 그림의 모양 — tools/blender/scenes/spray_*.blend 호스 곡선의 굵기 (bevel 0.032m × 2)", "note": "대원 그림 속 물이 찬 호스의 굵기. 바닥 호스(round_width_m)가 이은 곡선에서 이 굵기로 가늘어져 닿는다"},
   "sprite_flat_width_m": {"value": 0.13, "source": "구운 그림의 모양 — tools/blender/build_hose_carry.py BAND_W", "note": "대원 그림 속 납작한 호스(끼고 걷는 묶음에서 늘어진 띠)의 폭. 바닥 호스(flat_width_m)가 이은 곡선에서 이 폭으로 좁아져 닿는다"},
+  "pump_operator_behind_m": {"value": 0.7, "source": "화면 설정", "note": "펌프차가 물을 보내는 동안 운전원이 서는 자리 — 차 후면(조작반)에서 이만큼 뒤 (SOP 206-1.1 현장을 보며 펌프 조작, 2026-11-26)"},
   "supply_width_scale": {"value": 1.4, "source": "화면 설정 — 급수 호스 65mm ÷ 진압 호스 40mm 쯤", "note": "급수 호스(소화전·물탱크차 → 펌프차) 굵기 배율. 2026-11-26 사용자: 파란 선이 아니라 진압대 호스처럼 — 굴려 펴는 동안 납작한 띠, 연결이 끝나면 부푼 관"},
   "carry_dir_m": {"value": 1.5, "source": "화면 설정", "note": "호스 끼고 걷기에서 대원이 보는 방향 = 방금 깐 호스의 이 길이(m) 구간 방향 (2026-11-26 사용자: 방향을 바꾸면 이랬다저랬다 순간이동 — 한 걸음 방향은 대각선 길에서 칸마다 바뀐다). 여유각은 spray_turn_hysteresis_deg"},
   "spray_min_gap_m": {"value": 0.45, "source": "화면 설정", "note": "방수 줄이 벽을 넘으면 뒤 사람을 앞사람 쪽으로 당겨 세우는 가장 가까운 간격 (m) — 꺾어 세우거나 마주 보지 않고 늘 관창수 뒤에 한 줄로 (2026-11-26 사용자)"},

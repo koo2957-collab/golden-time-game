@@ -107,3 +107,30 @@ func test_hose_carry_direction_steady_on_zigzag() -> void:
 			changes += 1
 	assert_true(changes <= 1, "대각선 길에서 방향이 칸마다 바뀌지 않는다 (%s)" % str(ks))
 	_free(nodes)
+
+
+## 펌프 조작 (2026-11-26, SOP 206-1.1): 펌프차 호스가 충수되면 운전원이 차 후면 조작반 곁에 서서 건물 쪽을 본다. 물을 안 보내면 없다
+func test_pump_operator_stands_at_rear_while_pumping() -> void:
+	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)
+	var nodes := _layer(sim)
+	var layer: FloorLayer = nodes[0]
+	var pump: Vehicle = null
+	for v in sim.units.vehicles:
+		if pump == null and v.is_pump():
+			pump = v
+	pump.away = false
+	assert_true(layer._driver_layout(pump).is_empty(), "물을 보내지 않으면 운전원은 차 안")
+	var hose := HoseLine.new()
+	hose.id = 903
+	hose.vehicle_id = pump.id
+	hose.crew_id = 0
+	hose.charged = true
+	hose.points = [Vector3i(1, 1, 1), Vector3i(2, 1, 1)] as Array[Vector3i]
+	sim.water.hoses.append(hose)
+	var dl := layer._driver_layout(pump)
+	assert_true(dl.has("driver"), "충수된 호스가 있으면 운전원이 내려 있다")
+	if dl.has("driver"):
+		var at: Vector2 = dl.driver.pos
+		assert_true(at.distance_to(pump.rear_point()) < 2.0, "차 후면 곁 (%s, 후면 %s)" % [at, pump.rear_point()])
+		assert_true(not pump.contains(at), "차 몸통 밖")
+	_free(nodes)

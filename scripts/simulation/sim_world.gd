@@ -185,6 +185,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.evac = EvacSystem.new(sim.fire, sim.rescue, sim.pathfinder, hazard_params, sim.units.walk_speed_cells, sim.events)
 	sim.falls = FallSystem.new(sim.fire, sim.exposure, sim.units, sim.rescue, sim.pathfinder, hazard_params, sim.events)
 	sim.collapse.perception = sim.perception
+	sim.rekindle.perception = sim.perception
 	sim.ems = EmsSystem.new(sim.units, sim.rescue, sim.pathfinder, ParamTable.from_dict(ems_data), sim.events)
 	sim.command = CommandSystem.new(sim.fire, sim.units, sim.pathfinder, sim.rescue, sim.water, sim.doors, sim.perception, sim.clock, ParamTable.from_dict(radio_data), sim.events)
 	sim.zones = ZoneSystem.new(building, sim.units, sim.falls, ParamTable.from_dict(ems_data).value("triage_setup_s"),
@@ -362,7 +363,7 @@ func _cleared_levels() -> Dictionary:
 				var t: Array = e.get("target", [])
 				if str(e.get("kind", "")) == "no_fire" and t.size() >= 3:
 					out[int(t[2])] = int(e.tick)
-			"fire_found", "rekindle":
+			"fire_found", "rekindle_found":
 				var room := _comp_named(str(e.get("room", "")))
 				if room and out.has(room.level) and int(e.tick) > int(out[room.level]):
 					out.erase(room.level)

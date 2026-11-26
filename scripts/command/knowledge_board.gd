@@ -45,7 +45,7 @@ func on_message(m: Radio.Message, tick: int) -> void:
 func apply(e: Dictionary, tick: int) -> void:
 	var t := str(e.get("type", ""))
 	match t:
-		"fire_found":
+		"fire_found", "rekindle_found":
 			var room := _room_of(e)
 			if room:
 				fires[room.index] = tick

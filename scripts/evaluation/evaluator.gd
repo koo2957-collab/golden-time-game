@@ -22,7 +22,7 @@ const TIMELINE_TYPES: Array[String] = [
 	"face_seen", "site_info_found", "clue_found", "statement", "report_updated", "victim_found", "victim_rescued",
 	"victim_state", "victim_recovered", "ff_down", "ff_rescued", "air_alarm", "withdraw", "squad_staged",
 	"squad_committed", "support_requested", "division_set", "span_warning", "command_post", "ember_spotted",
-	"overhaul_done", "rekindle", "mayday", "emergency_cleared", "evacuation_ordered", "par_done", "role_assigned",
+	"overhaul_done", "rekindle", "rekindle_found", "mayday", "emergency_cleared", "evacuation_ordered", "par_done", "role_assigned",
 	"rit_deployed", "entry_factors", "activity_ended",
 ]
 

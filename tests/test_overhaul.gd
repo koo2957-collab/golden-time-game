@@ -109,3 +109,81 @@ func test_thermal_spot_and_overhaul() -> void:
 	for rule: Dictionary in r.rules:
 		if rule.id == "fire.overhaul":
 			assert_eq(rule.score, 1.0, "잔불정리 판정 (%s)" % rule.detail)
+
+
+## 거실이 아무에게도 보이지 않게: 대원은 모두 차에 태우고, 지휘관은 창 관찰 거리(Perception.WINDOW_VIEW_CELLS) 밖으로
+func _everyone_away(sim: SimWorld) -> void:
+	for ff in sim.units.firefighters:
+		ff.pos = Vector2(1.5, 1.5)
+		ff.level = 1
+		ff.path.clear()
+		ff.aboard = true
+	sim.command.commander.pos = Vector2(-Perception.WINDOW_VIEW_CELLS, -Perception.WINDOW_VIEW_CELLS)
+	# 창 너머 시야는 몇 번에 한 번만 다시 계산한다 — 옛 시야가 남지 않게 여러 번
+	for i in 12:
+		sim.perception.update(sim.clock.tick)
+
+
+## 재발화 보고 (2026-11-26, 기획안 5-9 '화점 재발생 보고', 원칙 7):
+## 아무도 보지 못한 재발화는 알려지지 않고, 누군가 그 방의 불을 보면 그 조가 무전으로 보고한다 → 상황판 화점
+func test_rekindle_reported_only_when_seen() -> void:
+	var sim := _doused_sim()
+	var rk := sim.rekindle
+	var living := _living(sim)
+	assert_true(rk.embers.size() > 0, "불씨가 숨었다")
+	_everyone_away(sim)
+	assert_true(not sim.perception.room_visible(living), "거실을 보는 사람이 없다")
+	for e in rk.embers:
+		e.rekindle_tick = sim.clock.tick + 1
+	for i in 10:
+		sim.step_ticks(1)
+		_everyone_away(sim)
+	assert_true(sim.events.of_type("rekindle").size() >= 1, "재발화가 났다")
+	assert_eq(sim.events.of_type("rekindle_found").size(), 0, "아무도 못 봤으면 보고 없음")
+	assert_true(not sim.knowledge.fires.has(living.index), "상황판에도 없다")
+	assert_true(rk.unseen.has(living.index), "보지 못한 재발화로 기억한다")
+	# 진압1 이 거실로 들어온다
+	var c: Crew = sim.units.crews[0]
+	var mid := Vector2(living.rect.get_center()) + Vector2(0.5, 0.5)
+	for ff in c.members():
+		ff.pos = mid
+		ff.level = living.level
+		ff.aboard = false
+	for i in 120:
+		sim.step_ticks(1)
+		if not sim.events.of_type("rekindle_found").is_empty():
+			break
+	var found := sim.events.of_type("rekindle_found")
+	assert_eq(found.size(), 1, "들어가서 보면 한 번 보고")
+	if found.is_empty():
+		return
+	assert_eq(int(found[0].crew_id), c.id, "본 조가 보고한다")
+	assert_eq(str(found[0].room), living.display_name(), "그 방")
+	assert_true(not rk.unseen.has(living.index), "보고한 재발화는 잊는다")
+	# 무전이 전달되면 상황판에 화점으로
+	for i in roundi(30.0 / SimClock.TICK_DT):
+		sim.step_ticks(1)
+		if sim.knowledge.fires.has(living.index):
+			break
+	assert_true(sim.knowledge.fires.has(living.index), "무전이 닿으면 상황판에 그 방 화점")
+
+
+## 보고 전에 불이 저절로 꺼진 재발화는 잊는다 (보고하지 않는다)
+func test_unseen_rekindle_forgotten_if_it_goes_out() -> void:
+	var sim := _doused_sim()
+	var rk := sim.rekindle
+	var living := _living(sim)
+	_everyone_away(sim)
+	for e in rk.embers:
+		e.rekindle_tick = sim.clock.tick + 1
+	for i in 10:
+		sim.step_ticks(1)
+		_everyone_away(sim)
+	assert_true(rk.unseen.has(living.index), "보지 못한 재발화")
+	for i in sim.fire.grid.burning.duplicate():
+		sim.fire.grid.apply_water(i, 1000.0, 1.0)
+	for i in 10:
+		sim.step_ticks(1)
+		_everyone_away(sim)
+	assert_true(not rk.unseen.has(living.index), "꺼지면 잊는다")
+	assert_eq(sim.events.of_type("rekindle_found").size(), 0, "보고 없음")

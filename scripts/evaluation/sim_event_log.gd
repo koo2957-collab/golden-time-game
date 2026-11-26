@@ -253,6 +253,8 @@ static func describe_text(e: Dictionary) -> String:
 			text = "잔불정리 완료 — %s, 불씨 %d곳 제거 — %s" % [e.room, e.embers, e.crew]
 		"rekindle":
 			text = "재발화 — %s" % e.room
+		"rekindle_found":
+			text = "%s 재발화 (화점 재발생) — %s" % [e.room, e.crew]
 		"mayday":
 			text = "긴급탈출 선언 — %s %s, %s%s" % [e.crew, e.who, e.where, " (무전 응답 없음)" if e.silent else ""]
 		"emergency_cleared":

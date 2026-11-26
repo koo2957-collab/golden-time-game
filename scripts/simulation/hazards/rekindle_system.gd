@@ -28,6 +28,11 @@ var fire: FireSim
 var units: UnitSystem
 var pathfinder: Pathfinder
 var events: SimEventLog
+## 누가 재발화를 보았는가 (SimWorld 가 넣는다). 없으면 재발화하는 즉시 보고된 것으로 친다
+var perception: Perception
+## 다시 불이 붙었지만 아직 아무도 보지 못한 방 {방 번호: 재발화 틱} (2026-11-26 — 기획안 5-9 '화점 재발생 보고'):
+## 재발화 사실(rekindle)은 평가용으로만 남고, 지휘관은 누군가 그 불을 보고 무전(rekindle_found)해야 안다 (원칙 7)
+var unseen: Dictionary = {}
 var embers: Array[Ember] = []
 var tasks: Array[OverhaulTask] = []
 ## 평가용: 생긴 불씨 수, 재발화 수, 잔불정리로 없앤 불씨 수
@@ -175,6 +180,64 @@ func step(dt: float, tick: int) -> void:
 		if grid.ignite(e.cell):
 			rekindles += 1
 			events.add(tick, "rekindle", {"room": fire.comps[e.room].display_name() if e.room >= 0 else ""})
+			if e.room >= 0 and not unseen.has(e.room):
+				unseen[e.room] = tick
+	_find_rekindled(tick)
+
+
+## 재발화한 방의 불을 누가 보았는가: 그 방을 직접 보는 조(유리 너머 포함 — 화염은 보인다)가 무전으로,
+## 지휘관이 밖에서 열린 창으로 보았으면 상황판에 바로. 보고 전에 불이 꺼졌으면 잊는다
+func _find_rekindled(tick: int) -> void:
+	if unseen.is_empty() or tick % 5 != 0:
+		return
+	var grid := fire.grid
+	for r: int in unseen.keys():
+		var room: Compartment = fire.comps[r]
+		var burning := Vector3i(-1, -1, -1)
+		var seen := Vector3i(-1, -1, -1)
+		for i in grid.room_cells[r]:
+			if grid.state[i] != FuelGrid.State.BURNING:
+				continue
+			var p := grid.cell_of(i)
+			burning = p
+			if perception == null or perception.is_visible(p.z, p.x, p.y):
+				seen = p
+				break
+		if burning.x < 0:
+			unseen.erase(r)
+			continue
+		if seen.x < 0:
+			continue
+		var since := tick - int(unseen[r])
+		unseen.erase(r)
+		var seer := _seer_of(room, seen)
+		# since = 재발화부터 발견까지 걸린 초 (디브리핑·감시경계 평가용)
+		var data := {"room": room.display_name(), "room_cell": [seen.x, seen.y, seen.z], "since_s": roundi(since * SimClock.TICK_DT)}
+		if seer == null:
+			data.merge({"crew": "현장지휘관", "seen_by_commander": true})
+		else:
+			data.merge({"crew": _crew_name(seer), "crew_id": seer.id})
+		events.add(tick, "rekindle_found", data)
+
+
+## 그 방의 불을 본 조: 방 안을 직접 보는 조 → 없으면 같은 층에서 가장 가까운 조장. 지휘관이 보았으면 null
+func _seer_of(room: Compartment, at: Vector3i) -> Crew:
+	if perception != null:
+		var who := perception.clear_seer(room)
+		if who == Perception.COMMANDER_SEER:
+			return null
+		if who >= 0 and units.get_crew(who) != null:
+			return units.get_crew(who)
+	var best: Crew = null
+	var best_d := INF
+	for c in units.crews:
+		if c.leader.incapacitated or c.leader.aboard or c.leader.level != at.z:
+			continue
+		var d := c.leader.pos.distance_to(Vector2(at.x + 0.5, at.y + 0.5))
+		if d < best_d:
+			best_d = d
+			best = c
+	return best
 
 
 func _add_ember(i: int, tick: int) -> void:

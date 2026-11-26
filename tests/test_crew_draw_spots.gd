@@ -63,7 +63,14 @@ func test_door_forcers_drawn_at_door_with_hose() -> void:
 	var nodes := _layer(sim)
 	var layer: FloorLayer = nodes[0]
 	var art := SpriteArt.crew_set(sim.units.squads[crew.squad_id].type)
-	assert_true(not layer._hose_carry_layout(crew, art).is_empty(), "호스 끼고 걷기 배치가 살아 있는 상태 (이것보다 문 작업이 먼저여야 한다)")
+	var carry := layer._hose_carry_layout(crew, art)
+	assert_true(not carry.is_empty(), "호스 끼고 걷기 배치가 살아 있는 상태 (이것보다 문 작업이 먼저여야 한다)")
+	# 셋이 호스를 끼고 간다 (2026-11-26 사용자 — 3명 그림: 2번 hose_carry3_b, 3번 hose_carry3_c, 3번 뒤에서 바닥으로)
+	var ws := crew.workers()
+	if carry.get("anims", {}).has(ws[1].id):
+		assert_eq(str(carry.anims[ws[1].id]), "hose_carry3_b", "3명일 때 2번 그림")
+	if carry.get("anims", {}).has(ws[2].id):
+		assert_eq(str(carry.anims[ws[2].id]), "hose_carry3_c", "3명일 때 3번 그림 (호스 정리 아님)")
 	var center := FloorLayer.door_center(door)
 	var lay := layer._force_layout(dt, crew, art)
 	var forcers := 0

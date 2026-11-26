@@ -518,3 +518,16 @@ func test_tail_curve_is_smooth() -> void:
 	assert_eq(pieces.size(), 3, "제 굵기 한 줄 + 이은 구간 둘")
 	assert_true(float(pieces[0][2]) == 8.0 and float(pieces[1][2]) < 8.0 and float(pieces[2][2]) < float(pieces[1][2]) and float(pieces[2][2]) > 4.0 - 0.001, "끝으로 갈수록 가늘다")
 	assert_eq(HoseDraw._pieces(line, line, 0, 8.0, 4.0).size(), 1, "잇지 않으면 한 줄")
+
+
+## 셋이 호스를 끼고 걷기 그림 (2026-11-26 사용자가 블렌더에서 확인 — tools/blender/build_hose_carry3.py)
+func test_hose_carry3_art_baked() -> void:
+	var art := SpriteArt.get_set(str(SpriteArt.config().get("crew", "")))
+	assert_true(art != null, "대원 그림 묶음")
+	if art == null:
+		return
+	assert_eq(art.frames("hose_carry3_b"), 8, "3명일 때 2번: 걷기 한 주기 8장")
+	assert_eq(art.frames("hose_carry3_c"), 8, "3명일 때 3번: 8장")
+	var b := float(art.stand("hose_carry3_b").get("fwd_m", 0.0))
+	var c := float(art.stand("hose_carry3_c").get("fwd_m", 0.0))
+	assert_true(b < -0.5 and c < b - 0.5, "2번은 1번 뒤, 3번은 2번 뒤 (%.2f, %.2f)" % [b, c])

@@ -162,7 +162,54 @@ func crews_spraying() -> Array[int]:
 	return out
 
 
+## 관계인에게 걸어가는 중 (관계인 번호, -1 = 아님), 지시를 낸 틱, 그때 잡힌 길의 끝 — 길이 바뀌면(다른 이동 지시) 그만둔다.
+## 지시는 다음 틱에 처리되므로 길 끝은 틱이 지난 뒤에 적는다
+var _ask_walk := -1
+var _ask_walk_tick := -1
+var _ask_walk_end := Vector3i(-1, -1, -1)
+
+
+## 관계인에게 걸어가서 묻는다: 이미 질문 거리 안이면 바로 질문 창
+func walk_to_ask(witness: int) -> void:
+	var survey := sim.command.survey
+	if survey.in_ask_range(witness):
+		_ask_walk = -1
+		witness_clicked.emit(witness)
+		return
+	var w = survey.witnesses[witness]
+	sim.issue(CommandOrder.make("commander_move", [], 0, Vector3i(floori(w.pos.x), floori(w.pos.y), sim.command.commander.level)))
+	_ask_walk = witness
+	_ask_walk_tick = sim.clock.tick
+	_ask_walk_end = Vector3i(-1, -1, -1)
+	notice.emit("%s에게 가서 묻습니다" % w.label())
+
+
+## 걸어가는 동안: 질문 거리에 들어서면 멈춰 질문 창. 다른 곳으로 가라고 했거나 멈췄는데 닿지 못했으면 그만둔다
+func _step_ask_walk() -> void:
+	if _ask_walk < 0 or sim == null:
+		return
+	var survey := sim.command.survey
+	var cmdr := sim.command.commander
+	if survey.in_ask_range(_ask_walk):
+		var w := _ask_walk
+		_ask_walk = -1
+		cmdr.path.clear()
+		witness_clicked.emit(w)
+		return
+	if sim.clock.tick <= _ask_walk_tick:
+		return  # 지시가 아직 처리되지 않았다
+	if _ask_walk_end.x < 0:
+		if cmdr.path.is_empty():
+			notice.emit("%s에게 갈 수 없습니다" % survey.witnesses[_ask_walk].label())
+			_ask_walk = -1
+			return
+		_ask_walk_end = cmdr.path.back()
+	if cmdr.path.is_empty() or cmdr.path.back() != _ask_walk_end:
+		_ask_walk = -1
+
+
 func _process(_delta: float) -> void:
+	_step_ask_walk()
 	if _marker_start_ms >= 0.0:
 		queue_redraw()
 	# 합쳐져 없어진 조는 선택에서 뺀다 (분대 합치기)
@@ -374,7 +421,13 @@ func _issue_right_click(world_pos: Vector2, screen_pos := Vector2(-1, -1)) -> vo
 	if not commander_selected:
 		notice.emit("고른 대상이 없습니다 — 지휘관을 옮기려면 지휘관(파란 헬멧)이나 아래 바의 지휘관 그림을 먼저 고르세요")
 		return
+	# 지휘관을 고른 채 관계인 우클릭 = 걸어가서 묻기 (2026-11-26 사용자 결정): 질문 거리 안에 들어서면 멈춰 질문 창을 연다
+	var witness := _witness_at(world_pos)
+	if witness >= 0:
+		walk_to_ask(witness)
+		return
 	# 지휘관을 고른 채 땅 우클릭 = 현장지휘관 이동
+	_ask_walk = -1
 	sim.issue(CommandOrder.make("commander_move", [], 0, Vector3i(cell.x, cell.y, level)))
 	_marker_world = projection.to_screen(marker_cell)
 	_marker_start_ms = Time.get_ticks_msec()

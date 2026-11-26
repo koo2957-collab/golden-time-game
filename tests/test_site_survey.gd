@@ -143,3 +143,29 @@ func test_update_report() -> void:
 	assert_eq([u[0].correct, u[0].scored], [2, 2], "새로 확인한 위험 요소까지 맞게 보고")
 	var last := sim.command.radio.history.filter(func(m: Radio.Message) -> bool: return m.body.begins_with("상황 보완"))
 	assert_true(not last.is_empty() and last[0].body.contains("위험물(가스 등)"), "무전 본문")
+
+
+## 지휘관을 고른 채 관계인 우클릭 (2026-11-26 사용자 결정): 걸어가서 질문 거리에 들어서면 멈추고 질문 창을 연다
+func test_right_click_witness_walks_then_asks() -> void:
+	var sim := _sim()
+	_put_commander(sim, Vector2(12.5, 26.5))
+	var sel := SelectionController.new()
+	sel.sim = sim
+	var opened: Array[int] = []
+	sel.witness_clicked.connect(func(i: int) -> void: opened.append(i))
+	assert_true(not sim.command.survey.in_ask_range(NEIGHBOR), "처음에는 멀다")
+	sel.walk_to_ask(NEIGHBOR)
+	sim.step_ticks(1)
+	assert_true(not sim.command.commander.path.is_empty(), "관계인 쪽으로 걷기 시작")
+	for i in roundi(30.0 / SimClock.TICK_DT):
+		sim.step_ticks(1)
+		sel._step_ask_walk()
+		if not opened.is_empty():
+			break
+	assert_eq(opened, [NEIGHBOR] as Array[int], "닿으면 질문 창")
+	assert_true(sim.command.survey.in_ask_range(NEIGHBOR), "질문 거리 안에서 멈췄다")
+	assert_true(sim.command.commander.path.is_empty(), "더 걷지 않는다")
+	# 가까이 있으면 바로 연다
+	sel.walk_to_ask(NEIGHBOR)
+	assert_eq(opened.size(), 2, "질문 거리 안이면 바로 질문 창")
+	sel.free()

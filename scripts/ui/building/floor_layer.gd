@@ -2739,27 +2739,25 @@ func _hose_carry_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> D
 	var out := {"k": k, "ks": {lead.id: k}, "anims": {lead.id: "hose_carry_a"}, "spots": {}, "moving": moving}
 	var st := HoseDraw.style()
 	# 2·3번 모두 호스를 끼고 앞사람 바로 뒤(1번이 보는 방향 기준)를 따라 걷는다 (2026-11-26 사용자: 3번이 호스를 정리하는 것을 빼고
-	# 두 명일 때처럼 셋이 호스를 들고 연장). 1번 묶음에서 이어지는 호스가 그림에서 곧게 뒤로 나가므로 모두 1번 방향으로 선다.
-	# 바닥 호스는 맨 뒤 사람 뒤에서 닿는다
+	# 셋이 호스를 들고 연장 — 2명일 때와 3명일 때 호스 모양이 다르다). 1번 묶음에서 이어지는 호스가 그림에서 곧게 뒤로 나가므로
+	# 모두 1번 방향으로 선다. 바닥 호스는 맨 뒤 사람 뒤에서 닿는다
 	var facing := Vector2.RIGHT.rotated(k * PI / 4.0)
 	var drop := float(st.get("carry_drop_m", 0.8)) / cell_m
 	var lead_pt: Vector2 = trail.pts[trail.pts.size() - 1]
-	var step_v := Vector2.ZERO
-	var anim := "hose_carry_b"
-	for i in range(1, mini(members.size(), 3)):
+	# 2명 = 1번 → 2번(2본, 2번 뒤에서 바닥으로) / 3명 = 1번 → 2번 → 3번(1본씩, 3번 뒤에서 바닥으로) — 블렌더 장면 hose_carry·hose_carry3
+	var names: Array = ["hose_carry_b"]
+	if members.size() >= 3 and art.frames("hose_carry3_b") > 0 and art.frames("hose_carry3_c") > 0:
+		names = ["hose_carry3_b", "hose_carry3_c"]
+	for i in range(1, mini(members.size(), names.size() + 1)):
 		var ff := members[i]
+		var anim: String = names[i - 1]
 		if ff.level != lead.level or art.frames(anim) <= 0:
 			break
-		# 구울 때 적은 자리: 앞사람 뒤로 몇 m (fwd_m이 음수) — 3번은 그만큼 한 번 더
-		var d := end + float(art.stand(anim).get("fwd_m", 0.0)) * i / cell_m
+		# 구울 때 적은 자리: 1번 뒤로 몇 m (fwd_m이 음수)
+		var d := end + float(art.stand(anim).get("fwd_m", 0.0)) / cell_m
 		if d < first + 0.5:
 			break  # 호스가 아직 거기까지 깔리지 않았다 — 이 사람(과 뒤 사람)은 그냥 걷는다
-		var spot: Vector2
-		if i == 1:
-			spot = stand_spot(lead_pt, facing, art.stand(anim), cell_m)
-			step_v = spot - lead_pt
-		else:
-			spot = (out.spots[members[i - 1].id] as Vector2) + step_v
+		var spot := stand_spot(lead_pt, facing, art.stand(anim), cell_m)
 		out.anims[ff.id] = anim
 		out.spots[ff.id] = spot
 		out.ks[ff.id] = k

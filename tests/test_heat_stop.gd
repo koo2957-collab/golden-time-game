@@ -62,6 +62,10 @@ func test_search_into_burning_room_stops_and_reports() -> void:
 	var crew: Crew = made[1]
 	var living := sim.fire.compartment_at(1, 12, 16)
 	assert_true(sim.conditions.heat_at(1, Vector2i(LIVING.x, LIVING.y), true) >= 10.0, "거실은 들어갈 수 없을 만큼 뜨겁다")
+	# 가는 길에 요구조자를 보면 먼저 구하러 간다 (2026-11-26) — 이 점검은 열기 막힘만 보므로 요구조자를 멀리 둔다
+	for v in sim.rescue.victims:
+		v.pos = Vector2(1.5, 1.5)
+		v.level = 1
 	sim.issue(TacticalCommand.make("search", [crew.id] as Array[int], LIVING))
 	var flips := _flips(sim, crew, 90.0)
 	assert_true(flips.max() <= 2, "제자리에서 왔다 갔다 하지 않는다 (방향 뒤집힘 %s — 전에는 1인당 30번 넘게)" % [flips])

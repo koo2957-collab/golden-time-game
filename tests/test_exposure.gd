@@ -124,12 +124,13 @@ func test_collapse_sign_and_collapse() -> void:
 func test_late_squad_card_and_rules() -> void:
 	# 출동대별 명령칸은 명령 카드 하나로 합쳤다 (P10-2): 포위 진압·경계관창·교차 탐색·방수포·승강기는 팀 카드 안에 있다
 	# 방수포는 차량 카드, 비상용승강기는 승강장 앞 우클릭 (P10-2 결정 ②)
-	# 2026-11-17: 인명검색·화재진압은 층 우클릭 지시 창으로 옮겨 팀 카드에 없다
+	# 2026-11-26: 분대 명령은 명령판 한 판 — 화재진압(attack)·인명검색(search)도 명령판 임무 칸에 있다. 옛 자동 검색(search_auto)은 없다
 	var card := CommandCard.new()
 	for id in ["exterior", "ppv", "standby", "withdraw"]:
 		assert_true(id in card.all_ids("team"), "팀 명령 카드에 %s" % id)
-	for id in ["attack", "search_auto"]:
-		assert_true(not id in card.all_ids("team"), "팀 명령 카드에 %s 없음 (지시 창)" % id)
+	for id in ["attack", "search"]:
+		assert_true(id in card.all_ids("team"), "명령판 임무에 %s" % id)
+	assert_true(not "search_auto" in card.all_ids("team"), "옛 자동 검색 칸은 없다")
 	assert_true("vehicle_monitor" in card.all_ids("vehicle"), "차량 카드에 방수포")
 	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH)
 	assert_eq(sim.units.squads[0].arrival, "선착", "처음부터 현장 = 선착")

@@ -260,19 +260,30 @@ func share_facing(store: Dictionary) -> void:
 ## 미끄러지는 자리 SPRAY_GLIDE_KEY − 대원 id ([자리, 밀리초])
 const SPRAY_K_KEY := -100000
 const SPRAY_GLIDE_KEY := -200000
+## 호스 끼고 걷기 방향 (대원마다): CARRY_K_KEY − 대원 id
+const CARRY_K_KEY := -300000
 
 
 ## 방수 방향 (8방향): 겨눈 곳이 지금 방향의 칸(±22.5°)을 spray_turn_hysteresis_deg 넘게 벗어나야 바꾼다 — 경계에서 깜빡이지 않게
 func _spray_k(crew_id: int, from: Vector2, aim: Vector2) -> int:
-	var raw := SpriteArt.dir8(aim - from)
-	var key := SPRAY_K_KEY - crew_id
-	if not _facing.has(key) or (aim - from).length_squared() < 0.0001:
+	return _hyst_k(SPRAY_K_KEY - crew_id, aim - from, -1)
+
+
+## 여유각을 둔 8방향: v 가 지금 방향(key 에 기억)의 칸을 spray_turn_hysteresis_deg 넘게 벗어나야 바꾼다.
+## v 가 거의 0이면 기억한 방향(없으면 fallback, 그것도 없으면 0)
+func _hyst_k(key: int, v: Vector2, fallback: int) -> int:
+	if v.length_squared() < 0.0001:
+		if _facing.has(key):
+			return int(_facing[key])
+		return maxi(0, fallback)
+	var raw := SpriteArt.dir8(v)
+	if not _facing.has(key):
 		_facing[key] = raw
 		return raw
 	var prev := int(_facing[key])
 	if raw == prev:
 		return prev
-	var diff := absf(wrapf((aim - from).angle() - prev * PI / 4.0, -PI, PI))
+	var diff := absf(wrapf(v.angle() - prev * PI / 4.0, -PI, PI))
 	if diff <= PI / 8.0 + deg_to_rad(float(HoseDraw.style().get("spray_turn_hysteresis_deg", 10.0))):
 		return prev
 	_facing[key] = raw
@@ -2765,15 +2776,17 @@ func _hose_carry_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> D
 		return {}
 	var first: float = trail.dist[0]
 	var end: float = trail.dist[trail.dist.size() - 1]
-	var k := int(_facing.get(lead.id, 1))
-	var out := {"k": k, "ks": {lead.id: k}, "anims": {lead.id: "hose_carry_a"}, "spots": {}, "moving": moving}
 	var st := HoseDraw.style()
-	# 2·3번 모두 호스를 끼고 앞사람 바로 뒤(1번이 보는 방향 기준)를 따라 걷는다 (2026-11-26 사용자: 3번이 호스를 정리하는 것을 빼고
-	# 셋이 호스를 들고 연장 — 2명일 때와 3명일 때 호스 모양이 다르다). 1번 묶음에서 이어지는 호스가 그림에서 곧게 뒤로 나가므로
-	# 모두 1번 방향으로 선다. 바닥 호스는 맨 뒤 사람 뒤에서 닿는다
-	var facing := Vector2.RIGHT.rotated(k * PI / 4.0)
-	var drop := float(st.get("carry_drop_m", 0.8)) / cell_m
+	# 방향 (2026-11-26 사용자: 호스를 깔고 가다 방향을 바꾸면 대원과 호스가 이랬다저랬다 순간이동한다):
+	# 한 걸음 방향(8방향 — 대각선 길에서는 칸마다 번갈아 바뀐다)이 아니라 방금 깐 호스 carry_dir_m 구간의 방향 + 여유각
+	var look := float(st.get("carry_dir_m", 1.5)) / cell_m
 	var lead_pt: Vector2 = trail.pts[trail.pts.size() - 1]
+	var k := _hyst_k(CARRY_K_KEY - lead.id, lead_pt - HoseDraw.point_at(trail, maxf(first, end - look)), int(_facing.get(lead.id, 1)))
+	var out := {"k": k, "ks": {lead.id: k}, "anims": {lead.id: "hose_carry_a"}, "spots": {}, "moving": moving}
+	# 2·3번 모두 호스를 끼고 앞사람 뒤를 따라 걷는다 (2026-11-26 사용자: 3번이 호스를 정리하는 것을 빼고 셋이 호스를 들고 연장 —
+	# 2명일 때와 3명일 때 호스 모양이 다르다). 1번 뒤 구울 때의 거리만큼 떨어진 **깔린 호스 길 위**에 서서 그 자리의 호스 방향을 본다 —
+	# 모퉁이에서는 기차처럼 차례로 돈다. 바닥 호스는 맨 뒤 사람 뒤에서 닿는다
+	var drop := float(st.get("carry_drop_m", 0.8)) / cell_m
 	# 2명 = 1번 → 2번(2본, 2번 뒤에서 바닥으로) / 3명 = 1번 → 2번 → 3번(1본씩, 3번 뒤에서 바닥으로) — 블렌더 장면 hose_carry·hose_carry3
 	var names: Array = ["hose_carry_b"]
 	if members.size() >= 3 and art.frames("hose_carry3_b") > 0 and art.frames("hose_carry3_c") > 0:
@@ -2787,10 +2800,12 @@ func _hose_carry_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> D
 		var d := end + float(art.stand(anim).get("fwd_m", 0.0)) / cell_m
 		if d < first + 0.5:
 			break  # 호스가 아직 거기까지 깔리지 않았다 — 이 사람(과 뒤 사람)은 그냥 걷는다
-		var spot := stand_spot(lead_pt, facing, art.stand(anim), cell_m)
+		var spot := HoseDraw.point_at(trail, d)
+		var kk := _hyst_k(CARRY_K_KEY - ff.id, spot - HoseDraw.point_at(trail, maxf(first, d - look)), k)
+		var facing := Vector2.RIGHT.rotated(kk * PI / 4.0)
 		out.anims[ff.id] = anim
 		out.spots[ff.id] = spot
-		out.ks[ff.id] = k
+		out.ks[ff.id] = kk
 		# 바닥 호스의 끝을 그림 속 호스가 바닥에 닿은 자리(맨 뒤 사람 뒤)로 잇는다 — 길이 굽어 있어도 끊겨 보이지 않게.
 		# 바닥 호스는 깔린 길에서 그 자리와 가장 가까운 곳까지만 그린다 (지나쳤다 되돌아오지 않게)
 		var tail := spot - facing * drop
@@ -2806,6 +2821,8 @@ func _hose_carry_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> D
 		out.ground_end = best_d
 		out.ground_tail = tail
 		out.tail_dir = facing
+	# 방향이 바뀌어 자리가 바뀌면 걸어서 옮겨 간다 (순간이동 없음)
+	_glide_spots(out)
 	return out
 
 

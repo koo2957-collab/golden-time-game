@@ -57,3 +57,53 @@ func test_helper_spots_glide() -> void:
 	layer._glide_spots(jump)
 	assert_eq(jump.spots[5], far, "멀리 떨어진 새 자리(다른 곳 방수)는 바로 선다")
 	_free(nodes)
+
+
+## 호스 끼고 걷기 (2026-11-26 사용자: 깔고 가다 방향을 바꾸면 이랬다저랬다 순간이동): 대각선 계단 모양 길(칸마다 동·남 번갈아)을
+## 따라 걸어도 1번 방향이 칸마다 바뀌지 않고, 2번은 깔린 호스 길 위에 선다
+func test_hose_carry_direction_steady_on_zigzag() -> void:
+	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH, false)
+	var nodes := _layer(sim)
+	var layer: FloorLayer = nodes[0]
+	var art := SpriteArt.get_set(str(SpriteArt.config().get("crew", "")))
+	var crew := sim.units.get_crew(0)
+	var ws := crew.workers()
+	assert_true(art != null and ws.size() >= 2, "그림 묶음 · 일하는 조원 2명 이상")
+	var hose := HoseLine.new()
+	hose.id = 902
+	hose.vehicle_id = sim.units.vehicles[0].id
+	hose.crew_id = crew.id
+	sim.water.hoses.append(hose)
+	var pts: Array[Vector3i] = []
+	var at := Vector2i(30, 30)
+	for i in 20:
+		pts.append(Vector3i(at.x, at.y, 1))
+		at += Vector2i(1, 0) if i % 2 == 0 else Vector2i(0, 1)
+	for ff in crew.members():
+		ff.aboard = false
+		ff.level = 1
+		ff.prev_level = 1
+		ff.crouched = false
+	var ks: Array[int] = []
+	for n in range(8, pts.size()):
+		hose.points = pts.slice(0, n + 1)
+		var p := Vector2(pts[n].x + 0.5, pts[n].y + 0.5)
+		crew.leader.prev_pos = Vector2(pts[n - 1].x + 0.5, pts[n - 1].y + 0.5)
+		crew.leader.pos = p
+		var lay := layer._hose_carry_layout(crew, art)
+		assert_true(not lay.is_empty(), "호스 끼고 걷기 배치 (%d칸째)" % n)
+		if lay.is_empty():
+			break
+		ks.append(int(lay.k))
+		if lay.spots.has(ws[1].id):
+			var s2: Vector2 = lay.spots[ws[1].id]
+			var near := INF
+			for q in hose.points:
+				near = minf(near, s2.distance_to(Vector2(q.x + 0.5, q.y + 0.5)))
+			assert_true(near < 0.75, "2번은 깔린 호스 길 위 (%.2f칸 떨어짐)" % near)
+	var changes := 0
+	for i in range(1, ks.size()):
+		if ks[i] != ks[i - 1]:
+			changes += 1
+	assert_true(changes <= 1, "대각선 길에서 방향이 칸마다 바뀌지 않는다 (%s)" % str(ks))
+	_free(nodes)

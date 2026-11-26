@@ -252,6 +252,54 @@ func share_facing(store: Dictionary) -> void:
 	_facing = store
 
 
+## 방수의 부드러운 보기 (2026-11-26 사용자: 방수 중 방향을 바꾸면 대원들이 순간이동하듯 자리가 바뀌고 물줄기가 이상하다).
+## 같은 _facing 사전에 겹치지 않는 음수 키로 적는다 (모든 겹이 같이 쓴다): 방수 방향 SPRAY_K_KEY − 조 id,
+## 미끄러지는 자리 SPRAY_GLIDE_KEY − 대원 id ([자리, 밀리초])
+const SPRAY_K_KEY := -100000
+const SPRAY_GLIDE_KEY := -200000
+
+
+## 방수 방향 (8방향): 겨눈 곳이 지금 방향의 칸(±22.5°)을 spray_turn_hysteresis_deg 넘게 벗어나야 바꾼다 — 경계에서 깜빡이지 않게
+func _spray_k(crew_id: int, from: Vector2, aim: Vector2) -> int:
+	var raw := SpriteArt.dir8(aim - from)
+	var key := SPRAY_K_KEY - crew_id
+	if not _facing.has(key) or (aim - from).length_squared() < 0.0001:
+		_facing[key] = raw
+		return raw
+	var prev := int(_facing[key])
+	if raw == prev:
+		return prev
+	var diff := absf(wrapf((aim - from).angle() - prev * PI / 4.0, -PI, PI))
+	if diff <= PI / 8.0 + deg_to_rad(float(HoseDraw.style().get("spray_turn_hysteresis_deg", 10.0))):
+		return prev
+	_facing[key] = raw
+	return raw
+
+
+## 방수 배치의 자리를 화면 시간으로 미끄러지게: 방향이 바뀌어 자리가 바뀌면 spray_regroup_mps 빠르기로 새 자리로 옮겨 간다.
+## 잠깐(0.5초) 넘게 그리지 않았거나 멀리(spray_regroup_snap_m) 떨어졌으면 바로 그 자리
+func _glide_spots(out: Dictionary) -> void:
+	var now := Time.get_ticks_msec()
+	var cell_m := sim.units.cell_size_m
+	var speed := float(HoseDraw.style().get("spray_regroup_mps", 1.2)) / cell_m
+	var snap := float(HoseDraw.style().get("spray_regroup_snap_m", 3.0)) / cell_m
+	var spots: Dictionary = out.get("spots", {})
+	# 호스를 정리하며 오가는 사람(_spray_tidy)은 제 움직임이 있다 — 빼고
+	var walkers: Dictionary = out.get("walk", {})
+	for id: int in spots.keys():
+		if walkers.has(id):
+			continue
+		var target: Vector2 = spots[id]
+		var key := SPRAY_GLIDE_KEY - id
+		var g: Variant = _facing.get(key)
+		if not g is Array or now - int(g[1]) > 500 or (g[0] as Vector2).distance_to(target) > snap:
+			_facing[key] = [target, now]
+			continue
+		var cur: Vector2 = (g[0] as Vector2).move_toward(target, speed * (now - int(g[1])) / 1000.0)
+		_facing[key] = [cur, now]
+		spots[id] = cur
+
+
 func setup(p_sim: SimWorld, p_selection: SelectionController, p_proj: IsoProjection, p_stack: FloorStack = null) -> void:
 	sim = p_sim
 	selection = p_selection
@@ -2060,7 +2108,7 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 	elif hose and hose.flowing and not hose.approaching and not moving and ff == crew.leader:
 		# 관창은 조장(관창수) 한 사람만 든다 — 짝은 뒤에서 서 있는다 (2026-11-12)
 		anim = "spray"
-		_facing[ff.id] = SpriteArt.dir8(hose.aim - ff.pos)
+		_facing[ff.id] = _spray_k(crew.id, ff.pos, hose.aim)
 	elif hose and hose.flowing and not hose.approaching and not moving:
 		_facing[ff.id] = SpriteArt.dir8(hose.aim - ff.pos)
 	elif task is RescueSystem.SearchTask and _search_layout(crew, art).get("anims", {}).has(ff.id):
@@ -2690,61 +2738,46 @@ func _hose_carry_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> D
 	var k := int(_facing.get(lead.id, 1))
 	var out := {"k": k, "ks": {lead.id: k}, "anims": {lead.id: "hose_carry_a"}, "spots": {}, "moving": moving}
 	var st := HoseDraw.style()
-	var names: Array = ["hose_carry_b", "hose_tidy"]
-	for i in range(1, mini(members.size(), names.size() + 1)):
+	# 2·3번 모두 호스를 끼고 앞사람 바로 뒤(1번이 보는 방향 기준)를 따라 걷는다 (2026-11-26 사용자: 3번이 호스를 정리하는 것을 빼고
+	# 두 명일 때처럼 셋이 호스를 들고 연장). 1번 묶음에서 이어지는 호스가 그림에서 곧게 뒤로 나가므로 모두 1번 방향으로 선다.
+	# 바닥 호스는 맨 뒤 사람 뒤에서 닿는다
+	var facing := Vector2.RIGHT.rotated(k * PI / 4.0)
+	var drop := float(st.get("carry_drop_m", 0.8)) / cell_m
+	var lead_pt: Vector2 = trail.pts[trail.pts.size() - 1]
+	var step_v := Vector2.ZERO
+	var anim := "hose_carry_b"
+	for i in range(1, mini(members.size(), 3)):
 		var ff := members[i]
-		var anim: String = names[i - 1]
 		if ff.level != lead.level or art.frames(anim) <= 0:
-			continue
-		# 구울 때 적은 자리: 1번 뒤로 몇 m (fwd_m이 음수)
-		var d := end + float(art.stand(anim).get("fwd_m", 0.0)) / cell_m
+			break
+		# 구울 때 적은 자리: 앞사람 뒤로 몇 m (fwd_m이 음수) — 3번은 그만큼 한 번 더
+		var d := end + float(art.stand(anim).get("fwd_m", 0.0)) * i / cell_m
 		if d < first + 0.5:
-			continue  # 호스가 아직 거기까지 깔리지 않았다 — 이 사람은 그냥 걷는다
-		if anim == "hose_carry_b":
-			# 2번은 1번 바로 뒤(1번이 보는 방향 기준)에 선다 — 1번 묶음에서 이어지는 호스가 그림에서 곧게 뒤로 나가므로.
-			# 모퉁이에서는 끌려오는 수레처럼 안쪽으로 돈다. 바닥 호스는 2번 뒤에서 닿는다
-			var facing := Vector2.RIGHT.rotated(k * PI / 4.0)
-			var drop := float(st.get("carry_drop_m", 0.8)) / cell_m
-			out.anims[ff.id] = anim
-			out.spots[ff.id] = stand_spot(trail.pts[trail.pts.size() - 1], facing, art.stand(anim), cell_m)
-			out.ks[ff.id] = k
-			# 바닥 호스의 끝을 그림 속 호스가 바닥에 닿은 자리(2번 뒤)로 잇는다 — 길이 굽어 있어도 끊겨 보이지 않게.
-			# 바닥 호스는 깔린 길에서 그 자리와 가장 가까운 곳까지만 그린다 (지나쳤다 되돌아오지 않게)
-			var tail := (out.spots[ff.id] as Vector2) - facing * drop
-			var best_d := d - drop
-			var best := INF
-			var s := maxf(first, d - drop - 3.0)
-			while s <= end:
-				var q := HoseDraw.point_at(trail, s).distance_squared_to(tail)
-				if q < best:
-					best = q
-					best_d = s
-				s += 0.1
-			out.ground_end = best_d
-			out.ground_tail = tail
-			out.tail_dir = facing
-			continue
-		# 3번은 깔린 호스 길 위에 선다. 들어 올린 호스 그림은 곧으므로, 그 구간에서 길이 굽으면 호스를 들지 않고 낮은 자세로만 걷는다
-		# (굽은 곳에서 그림과 바닥 호스가 어긋나 끊겨 보이지 않게)
-		var front := float(st.get("tidy_gap_front_m", 0.94)) / cell_m
-		var back := float(st.get("tidy_gap_back_m", 0.86)) / cell_m
-		var here := HoseDraw.point_at(trail, d)
-		# 구간 양 끝에서 길이 가는 방향을 견준다 (끝 쪽에서만 꺾여도 알아채게)
-		var ahead := HoseDraw.point_at(trail, minf(end, d + front)) - HoseDraw.point_at(trail, minf(end, d + front) - 0.5)
-		var behind := HoseDraw.point_at(trail, maxf(first, d - back) + 0.5) - HoseDraw.point_at(trail, maxf(first, d - back))
-		var along := HoseDraw.point_at(trail, minf(end, d + 0.6)) - HoseDraw.point_at(trail, maxf(first, d - 0.6))
-		var bent := ahead.length_squared() < 0.0001 or behind.length_squared() < 0.0001 or along.length_squared() < 0.0001 \
-			or absf(ahead.angle_to(behind)) > 0.2 or absf(ahead.angle_to(along)) > 0.2
-		var ground: float = out.get("ground_end", end)
-		if bent or d + front > ground:
-			if art.frames("crouch_walk") > 0:
-				out.anims[ff.id] = "crouch_walk"
+			break  # 호스가 아직 거기까지 깔리지 않았다 — 이 사람(과 뒤 사람)은 그냥 걷는다
+		var spot: Vector2
+		if i == 1:
+			spot = stand_spot(lead_pt, facing, art.stand(anim), cell_m)
+			step_v = spot - lead_pt
 		else:
-			out.anims[ff.id] = anim
-			out.gap = [d - back, d + front]
-		if out.anims.has(ff.id):
-			out.spots[ff.id] = here
-			out.ks[ff.id] = SpriteArt.dir8(along) if along.length_squared() > 0.0001 else k
+			spot = (out.spots[members[i - 1].id] as Vector2) + step_v
+		out.anims[ff.id] = anim
+		out.spots[ff.id] = spot
+		out.ks[ff.id] = k
+		# 바닥 호스의 끝을 그림 속 호스가 바닥에 닿은 자리(맨 뒤 사람 뒤)로 잇는다 — 길이 굽어 있어도 끊겨 보이지 않게.
+		# 바닥 호스는 깔린 길에서 그 자리와 가장 가까운 곳까지만 그린다 (지나쳤다 되돌아오지 않게)
+		var tail := spot - facing * drop
+		var best_d := d - drop
+		var best := INF
+		var s := maxf(first, d - drop - 3.0)
+		while s <= end:
+			var q := HoseDraw.point_at(trail, s).distance_squared_to(tail)
+			if q < best:
+				best = q
+				best_d = s
+			s += 0.1
+		out.ground_end = best_d
+		out.ground_tail = tail
+		out.tail_dir = facing
 	return out
 
 
@@ -2762,13 +2795,15 @@ func _spray_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dictio
 	var lead := crew.leader
 	if hose == null or not hose.flowing or hose.approaching or lead.incapacitated or lead.is_moving():
 		return {}
-	var k := SpriteArt.dir8(hose.aim - lead.pos)
+	var k := _spray_k(crew.id, lead.pos, hose.aim)
 	var facing := Vector2.RIGHT.rotated(k * PI / 4.0)
 	# 방수는 일하는 조원만 — 진압 분대의 팀장은 호스를 잡지 않고 옆에서 통솔한다 (2026-11-16 결정)
 	var members: Array[Firefighter] = crew.workers()
 	var names: Array = ["spray_n", "spray_h"] if members.size() <= 2 else ["spray_n", "spray_h1", "spray_h2"]
-	# 낮은 자세 (A5, 2026-11-15 사용자가 블렌더에서 확인): 관창수가 낮은 자세면 모두 무릎을 꿇고 호스를 겨드랑이에 낀다
-	if lead.crouched and art.frames("spray_ln") > 0:
+	# 낮은 자세 (A5, 2026-11-15 사용자가 블렌더에서 확인): 관창수가 낮은 자세면 모두 무릎을 꿇고 호스를 겨드랑이에 낀다.
+	# 건물 안 방수는 늘 낮은 자세 (2026-11-26 사용자: 농연 속 내부 방수를 서서 했다 — 내부 공격은 연기층 아래에서 무릎 꿇고)
+	var indoor := not sim.building.cell(lead.level, floori(lead.pos.x), floori(lead.pos.y)) in BuildingData.OUTDOOR
+	if (lead.crouched or indoor) and art.frames("spray_ln") > 0:
 		names = ["spray_ln", "spray_lh"] if members.size() <= 2 else ["spray_ln", "spray_lh1", "spray_lh2"]
 	var lp := UnitsView.display_pos(lead, alpha)
 	var out := {"k": k, "ks": {}, "anims": {}, "spots": {}}
@@ -2791,9 +2826,11 @@ func _spray_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dictio
 		for i in line.size():
 			out.anims[line[i].id] = line_names[i]
 			out.spots[line[i].id] = stand_spot(lp, facing, art.stand(line_names[i]), sim.units.cell_size_m)
+		_glide_spots(out)
 		return out
-	# 뒤 사람은 앞사람 바로 뒤에 서되, 벽에 막히거나 호스 길이 꺾인 곳에서는 호스가 온 쪽으로 틀어 선다 (2026-11-24 사용자 —
-	# 꺾이는 곳에서도 세 명이 일렬로 서던 것). 그림 속 호스의 끝끼리 맞추므로 호스가 이어져 보인다 (HoseDraw.chain_spots)
+	# 뒤 사람은 늘 앞사람 바로 뒤, 관창수와 같은 쪽을 보고 선다 (2026-11-26 사용자: 좁은 곳에서 1·2번이 마주 보고 쏘거나
+	# 3번이 호스를 정리하며 오가지 말고, 셋 다 방수하는 곳 뒤에 한 줄로). 벽이 가까우면 간격만 좁힌다 (_pull_in_line).
+	# 그림 속 호스의 끝끼리 맞추므로 호스가 이어져 보인다 (HoseDraw.chain_spots — 꺾어 세우기는 쓰지 않는다)
 	var cell_m := sim.units.cell_size_m
 	var stands := {}
 	for anim_name: String in line_names:
@@ -2801,10 +2838,10 @@ func _spray_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dictio
 		if HoseDraw.DROP_ANIM.has(anim_name):
 			stands[HoseDraw.DROP_ANIM[anim_name]] = art.stand(str(HoseDraw.DROP_ANIM[anim_name]))
 	var at_level := lead.level
-	var clear := func(from: Vector2, to: Vector2) -> bool: return _floor_clear(at_level, from, to)
+	var always := func(_from: Vector2, _to: Vector2) -> bool: return true
 	var trail := HoseDraw.trail(hose, at_level, lp)
-	var chain := HoseDraw.chain_spots(lp, k, line_names, stands, cell_m, trail, clear,
-		float(HoseDraw.style().get("chain_near_m", 0.6)) / cell_m)
+	var chain := HoseDraw.chain_spots(lp, k, line_names, stands, cell_m, {}, always, 0.0)
+	_pull_in_line(chain, at_level, cell_m)
 	# 줄에 선 사람만 (꺾인 곳에서는 줄이 2번에서 끊긴다 — 2번은 호스가 바닥으로 떨어지는 그림으로 바뀌어 있다)
 	var chained: int = (chain.spots as Array).size()
 	for i in chained:
@@ -2822,7 +2859,39 @@ func _spray_layout(crew: Crew, art: SpriteArt.SpriteSet, alpha := 0.0) -> Dictio
 	# 줄에서 빠진 사람(꺾인 곳의 3번)은 호스를 정리하며 호스를 따라 앞뒤로 움직인다
 	if chained < line.size() and not trail.is_empty():
 		_spray_tidy(out, line.slice(chained), art, trail, chain.spots, float(out.get("ground_end", trail.dist[trail.dist.size() - 1])), cell_m, alpha)
+	# 관창수 뒤 사람들은 방향이 바뀌면 걸어서 새 자리로 (관창수는 그 자리에서 돈다)
+	var lead_spot: Variant = out.spots.get(lead.id)
+	_glide_spots(out)
+	if lead_spot != null:
+		out.spots[lead.id] = lead_spot
 	return out
+
+
+## 방수 줄이 벽을 넘으면 간격을 좁힌다: 뒤 사람이 앞사람과 벽 사이에 들어오도록 앞사람 쪽으로 당긴다 (spray_min_gap_m 까지).
+## 맨 뒤 사람의 호스 끝(tail)도 같이 옮긴다
+func _pull_in_line(chain: Dictionary, at_level: int, cell_m: float) -> void:
+	var spots: Array = chain.spots
+	var min_gap := float(HoseDraw.style().get("spray_min_gap_m", 0.45)) / cell_m
+	for i in range(1, spots.size()):
+		var prev: Vector2 = spots[i - 1]
+		var want: Vector2 = spots[i]
+		if _floor_clear(at_level, prev, want):
+			continue
+		var dir := want - prev
+		var full := dir.length()
+		var placed := prev + dir.normalized() * minf(full, min_gap)
+		for f: float in [0.8, 0.65, 0.5]:
+			var p := prev + dir * f
+			if full * f >= min_gap and _floor_clear(at_level, prev, p):
+				placed = p
+				break
+		var moved := placed - want
+		spots[i] = placed
+		# 뒤 사람들도 같이 당긴다
+		for j in range(i + 1, spots.size()):
+			spots[j] = (spots[j] as Vector2) + moved
+		if chain.has("tail"):
+			chain.tail.pos = (chain.tail.pos as Vector2) + moved
 
 
 ## 방수 중 호스 정리 (2026-11-24 사용자: 꺾인 곳에서는 3번이 호스 전개 때처럼 호스를 정리하며 호스 앞뒤로 움직인다).
@@ -3445,8 +3514,12 @@ func _draw_sprays(alpha: float) -> void:
 			if leader.crouched and crew_art.frames("spray_ln") > 0:
 				nanim = "spray_ln"
 			var fr := SpriteArt.frame_at(nanim, crew_art.frames(nanim), leader.id * 0.37)
-			from = feet + crew_art.nozzle_offset(nanim, SpriteArt.dir8(h.aim - leader.pos), fr, from - feet)
-		var to := proj.to_screen(h.impact, IMPACT_M)
+			from = feet + crew_art.nozzle_offset(nanim, _spray_k(h.crew_id, leader.pos, h.aim), fr, from - feet)
+		var to := proj.to_screen(_smooth_impact(h), IMPACT_M)
+		# 관창이 향한 쪽 (화면): 물줄기가 이 방향으로 나가서 맞는 곳으로 휜다 — 그림은 8방향이라 겨눈 곳과 최대 30°쯤 어긋난다
+		var lp := UnitsView.display_pos(leader, alpha)
+		var k_dir := Vector2.RIGHT.rotated(_spray_k(h.crew_id, leader.pos, h.aim) * PI / 4.0)
+		var nozzle_dir := (proj.to_screen(lp + k_dir, 0.0) - proj.to_screen(lp, 0.0)).normalized()
 		# 경계 관창이 창·외벽으로 올려 쏜다 (2026-11-24): 끝은 그 층 창 높이의 벽면, 줄기는 위로 휘어 오른다
 		var arc_px := 0.0
 		var on_wall := false
@@ -3457,7 +3530,8 @@ func _draw_sprays(alpha: float) -> void:
 		# 물줄기 그림 (사용자 참고 그림, 2026-11-12): 직사는 가는 줄기와 튀는 물, 그 밖(분무 등)은 원뿔 물안개. 없으면 아래 도형
 		var straight := h.pattern == HoseLine.Pattern.STRAIGHT
 		var spread := 0.0 if straight else sim.water.radius_cells(h.pattern) * IsoProjection.HALF_W
-		if not thermal and FxArt.draw_water(self, from, to, straight, spread, Color(0.88, 0.95, 1.0, 0.95), h.crew_id, arc_px, on_wall):
+		if not thermal and FxArt.draw_water(self, from, to, straight, spread, Color(0.88, 0.95, 1.0, 0.95), h.crew_id, arc_px, on_wall,
+				nozzle_dir if not h.exterior else Vector2.ZERO):
 			continue
 		if h.pattern == HoseLine.Pattern.STRAIGHT:
 			# 포물선을 그리며 날아가는 물방울
@@ -3477,6 +3551,23 @@ func _draw_sprays(alpha: float) -> void:
 			if from.distance_to(to) > 1.0:
 				draw_colored_polygon(PackedVector2Array([from, to + side, to - side]), PlanStyle.FOG_COLOR)
 			_fill(_ellipse(to, r, r * 0.5), Color(PlanStyle.FOG_COLOR, 0.25))
+
+
+## 물이 맞는 곳을 화면 시간으로 따라간다 (spray_impact_follow_s) — 물줄기가 벽에 걸렸다 풀렸다 할 때 길이가 한 번에 바뀌지 않게.
+## 화면에만 쓴다 (물이 닿는 계산은 그대로). 0.5초 넘게 그리지 않았으면 바로 그 자리
+var _impact_disp: Dictionary = {}
+
+
+func _smooth_impact(h: HoseLine) -> Vector2:
+	var now := Time.get_ticks_msec()
+	var g: Variant = _impact_disp.get(h.crew_id)
+	if not g is Array or now - int(g[1]) > 500:
+		_impact_disp[h.crew_id] = [h.impact, now]
+		return h.impact
+	var tau := maxf(0.01, float(HoseDraw.style().get("spray_impact_follow_s", 0.25)))
+	var cur: Vector2 = (g[0] as Vector2).lerp(h.impact, 1.0 - exp(-(now - int(g[1])) / 1000.0 / tau))
+	_impact_disp[h.crew_id] = [cur, now]
+	return cur
 
 
 ## 경계 관창의 물이 맞는 곳 (화면 좌표): 겨눈 창·외벽의 벽면, 그 층 창 높이.

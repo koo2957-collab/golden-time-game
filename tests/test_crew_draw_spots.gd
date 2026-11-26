@@ -145,10 +145,9 @@ func test_smoke_outline_at_drawn_position() -> void:
 	_free(nodes)
 
 
-## 방수 중 호스 정리 (2026-11-24 사용자: "3명일 때 직선이면 3명이 그대로 방수하고, 곡각지에서는 호스 전개할 때처럼 3번이 호스를
-## 정리하면서 호스 앞뒤로 움직인다"). 호스가 옆에서 와 관창수 자리에서 꺾이면 줄은 2번에서 끊기고(2번 = 호스가 바닥으로 떨어지는 그림),
-## 3번은 깔린 호스 길 위에서 앞사람들과 떨어져 낮은 자세로 오간다. 곧게 오면 셋이 그대로 방수한다.
-func test_third_member_tidies_hose_at_bend() -> void:
+## 방수 줄 (2026-11-26 사용자 결정 — 2026-11-24 의 '꺾인 곳에서 3번이 호스 정리'를 대신함): 호스가 어느 쪽에서 오든
+## 셋 다 관창수 뒤에 한 줄로, 관창수와 같은 쪽을 보고 선다. 3번도 오가지 않고 방수 자세로 있다 (마주 보지 않는다)
+func test_spray_line_always_behind_nozzle() -> void:
 	var sim := SimWorld.from_scenario(SCENARIO, false)
 	var crew := sim.units.get_crew(0)
 	var nodes := _layer(sim)
@@ -199,42 +198,59 @@ func test_third_member_tidies_hose_at_bend() -> void:
 		ff.prev_pos = ff.pos
 		ff.path.clear()
 	var cell_m := sim.units.cell_size_m
-	var sep := float(HoseDraw.style().chain_min_sep_m) / cell_m
-	# ① 호스가 남쪽에서 온다 — 꺾인 곳
-	for y in range(at.y + 14, at.y - 1, -1):
-		hose.points.append(Vector3i(at.x, y, 1))
-	var lo := INF
-	var hi := -INF
-	var walked := false
-	for step in 60:
+	var facing := Vector2.RIGHT.rotated(0.0)
+	for came_from: String in ["south", "west"]:
+		hose.points.clear()
+		if came_from == "south":
+			for y in range(at.y + 14, at.y - 1, -1):
+				hose.points.append(Vector3i(at.x, y, 1))
+		else:
+			for x in range(at.x - 14, at.x + 1):
+				hose.points.append(Vector3i(x, at.y, 1))
+		layer._spray_cache.clear()
+		layer._facing.clear()
 		var sl := layer._spray_layout(crew, art, 0.0)
-		assert_eq(str(sl.anims.get(workers[1].id, "")), "spray_h", "2번은 호스가 바닥으로 떨어지는 그림")
-		assert_eq(str(sl.anims.get(workers[2].id, "")), "crouch_walk", "3번은 낮은 자세로 호스를 정리한다")
-		if not sl.spots.has(workers[2].id):
-			break
-		var p3: Vector2 = sl.spots[workers[2].id]
-		assert_true(absf(p3.x - (at.x + 0.5)) < 0.3 and p3.y > at.y + 0.5, "3번은 깔린 호스 길 위에 있다 (%s)" % p3)
-		assert_true(p3.distance_to(sl.spots[workers[0].id]) >= sep - 0.01 and p3.distance_to(sl.spots[workers[1].id]) >= sep - 0.01, "3번은 앞사람들과 떨어져 있다 (%s)" % p3)
-		lo = minf(lo, p3.y)
-		hi = maxf(hi, p3.y)
-		walked = walked or bool(sl.walk.get(workers[2].id, false))
-		var pose: Array = layer._unit_pose(workers[2], crew, art)
-		assert_eq(str(pose[0]), "crouch_walk", "3번 자세")
-		assert_true(layer._shown_pos(workers[2], 0.0).distance_to(p3) < 0.001, "3번을 그리는 자리 = 정리하는 자리")
-		sim.clock.tick += 5
-	assert_true(hi - lo > 1.0 / cell_m and walked, "3번은 호스를 따라 앞뒤로 오간다 (%.1f칸)" % (hi - lo))
-	# 일시정지하면 걷는 그림도 멈춘다
-	sim.clock.paused = true
-	layer._spray_cache.clear()
-	assert_true(not bool(layer._spray_layout(crew, art, 0.0).walk.get(workers[2].id, false)), "일시정지 중에는 걷지 않는다")
-	sim.clock.paused = false
-	# ② 호스가 뒤(서쪽)에서 곧게 온다 — 셋이 그대로 방수
-	hose.points.clear()
-	for x in range(at.x - 14, at.x + 1):
-		hose.points.append(Vector3i(x, at.y, 1))
-	layer._spray_cache.clear()
-	var straight := layer._spray_layout(crew, art, 0.0)
-	assert_eq(str(straight.anims.get(workers[1].id, "")), "spray_h1", "곧은 곳: 2번")
-	assert_eq(str(straight.anims.get(workers[2].id, "")), "spray_h2", "곧은 곳: 3번도 방수")
-	assert_true(not straight.has("walk"), "곧은 곳: 아무도 오가지 않는다")
+		assert_eq(int(sl.k), 0, "%s: 관창수는 겨눈 동쪽" % came_from)
+		assert_eq(str(sl.anims.get(workers[1].id, "")), "spray_h1", "%s: 2번 방수 자세" % came_from)
+		assert_eq(str(sl.anims.get(workers[2].id, "")), "spray_h2", "%s: 3번도 방수 자세 (호스 정리로 오가지 않는다)" % came_from)
+		assert_true(not sl.has("walk"), "%s: 아무도 오가지 않는다" % came_from)
+		var p0: Vector2 = sl.spots[workers[0].id]
+		for i in [1, 2]:
+			var p: Vector2 = sl.spots[workers[i].id]
+			assert_eq(int(sl.ks.get(workers[i].id, -1)), 0, "%s: %d번은 관창수와 같은 쪽을 본다" % [came_from, i + 1])
+			assert_true((p - p0).dot(facing) < -0.3 / cell_m, "%s: %d번은 관창수 뒤에 있다 (%s)" % [came_from, i + 1, p - p0])
+	_free(nodes)
+
+
+## 건물 안 방수는 낮은 자세 (2026-11-26 사용자: 농연 속 내부 방수를 서서 했다)
+func test_indoor_spray_kneels() -> void:
+	var sim := SimWorld.from_scenario(SCENARIO, false)
+	var crew := sim.units.get_crew(0)
+	var nodes := _layer(sim)
+	var layer: FloorLayer = nodes[0]
+	var art := SpriteArt.get_set(str(SpriteArt.config().get("crew", "")))
+	var room: Compartment = null
+	for c in sim.fire.comps:
+		if room == null and c.level == 1 and c.cells.size() >= 12 and not sim.fire.is_exposure_comp(c):
+			room = c
+	var cell: Vector2i = room.cells[room.cells.size() / 2]
+	var hose := HoseLine.new()
+	hose.id = 901
+	hose.vehicle_id = sim.units.vehicles[0].id
+	hose.crew_id = crew.id
+	hose.flowing = true
+	hose.spraying = true
+	hose.charged = true
+	hose.aim = Vector2(cell) + Vector2(3.5, 0.5)
+	hose.points = [Vector3i(cell.x - 4, cell.y, 1), Vector3i(cell.x, cell.y, 1)] as Array[Vector3i]
+	sim.water.hoses.append(hose)
+	for ff in crew.members():
+		ff.aboard = false
+		ff.level = 1
+		ff.pos = Vector2(cell) + Vector2(0.5, 0.5)
+		ff.prev_pos = ff.pos
+		ff.path.clear()
+		ff.crouched = false
+	var sl := layer._spray_layout(crew, art, 0.0)
+	assert_eq(str(sl.anims.get(crew.leader.id, "")), "spray_ln", "관창수는 무릎 꿇고 방수 (연기가 낮지 않아도 건물 안)")
 	_free(nodes)

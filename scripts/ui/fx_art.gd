@@ -269,8 +269,9 @@ static func draw_flip_poly(ci: CanvasItem, tex: Texture2D, key: String, pts: Pac
 ## 흐르는 것처럼 보이게 한다 (화면 시간). seed 로 조마다 박자를 다르게. 그림이 없으면 false (도형으로)
 ## arc_px > 0 이면 직사 줄기가 가운데에서 그만큼 위로 휘어 오른다 (위층 창·외벽으로 올려 쏘는 경계 관창, 2026-11-24).
 ## on_wall = 맞은 곳이 벽면이다 — 튀는 물을 바닥처럼 납작하게 누르지 않는다
+## nozzle_dir = 관창이 향한 쪽 (화면, 단위 벡터) — 주면 직사 줄기가 그 방향으로 나가 맞는 곳으로 휜다 (2026-11-26)
 static func draw_water(ci: CanvasItem, from: Vector2, to: Vector2, straight: bool, spread_px: float, modulate: Color, seed: int,
-		arc_px := 0.0, on_wall := false) -> bool:
+		arc_px := 0.0, on_wall := false, nozzle_dir := Vector2.ZERO) -> bool:
 	if not load_all():
 		return false
 	var body := water_jet if straight else water_fog
@@ -285,7 +286,12 @@ static func draw_water(ci: CanvasItem, from: Vector2, to: Vector2, straight: boo
 	var beat := int(floorf(t * 10.0))
 	var ang := d.angle()
 	if straight:
-		_draw_jet(ci, from, d, body, modulate, t, beat, arc_px)
+		# 휨: 가운데 선 c(f) = from + d·f + bend·4f(1−f). 시작 방향 = d + 4·bend 가 관창 방향 쪽으로 jet_bend_follow 만큼 가게
+		var bend := Vector2(0.0, -arc_px)
+		if nozzle_dir != Vector2.ZERO:
+			var follow := float(SpriteArt.config().get("water_jet", {}).get("bend_follow", 0.8))
+			bend += (nozzle_dir * length - d) * 0.25 * follow
+		_draw_jet(ci, from, d, body, modulate, t, beat, bend)
 	var aspect := float(body.get_height()) / float(body.get_width())
 	# 줄기: 두 겹 — 한 겹은 위아래를 번갈아 뒤집고, 한 겹은 길이가 출렁인다
 	for layer in (0 if straight else 2):
@@ -307,7 +313,7 @@ static func draw_water(ci: CanvasItem, from: Vector2, to: Vector2, straight: boo
 ## 직사 물줄기 (2026-11-15 사용자 지적: 관창 입보다 물줄기가 굵게 나왔다 — 그림을 길이에 비례해 통째로 늘렸기 때문).
 ## 관창 입 지름(mouth_m)에서 시작해 맞는 곳(end_m)까지 조금씩 퍼지는 띠로 그린다. 굵기는 길이와 무관하다.
 ## 물줄기 그림도 왼쪽(관창)은 가늘고 오른쪽은 굵어, 그 굵기 띠(v 범위)만 잘라 띠에 입힌다. 수치는 data/art.json water_jet
-static func _draw_jet(ci: CanvasItem, from: Vector2, d: Vector2, tex: Texture2D, modulate: Color, t: float, beat: int, arc_px := 0.0) -> void:
+static func _draw_jet(ci: CanvasItem, from: Vector2, d: Vector2, tex: Texture2D, modulate: Color, t: float, beat: int, bend := Vector2.ZERO) -> void:
 	var cfg: Dictionary = SpriteArt.config().get("water_jet", {})
 	var mouth := float(cfg.get("mouth_m", 0.09)) * IsoProjection.PX_PER_M * 0.5
 	var tail := float(cfg.get("end_m", 0.45)) * IsoProjection.PX_PER_M * 0.5
@@ -315,13 +321,14 @@ static func _draw_jet(ci: CanvasItem, from: Vector2, d: Vector2, tex: Texture2D,
 	var v_mouth := float(cfg.get("tex_mouth_half_v", 0.075))
 	var v_tail := float(cfg.get("tex_end_half_v", 0.46))
 	# 휘는 줄기는 마디를 늘려 매끈하게 (그리는 도형 수는 그대로 겹당 하나)
-	var steps := 6 if arc_px <= 0.0 else 12
+	var curved := bend.length_squared() > 1.0
+	var steps := 12 if curved else 6
 	var along := d.normalized()
-	var lift := Vector2(0.0, -arc_px)
+	var lift := bend
 	for layer in 2:
 		var flip := -1.0 if (beat + layer) % 2 == 0 else 1.0
 		# 휘는 줄기는 끝이 겨눈 곳에 꼭 닿게 길이를 흔들지 않는다
-		var reach := d.length() * ((1.04 + (0.05 * sin(t * 9.0 + 1.7) if layer == 1 else 0.0)) if arc_px <= 0.0 else 1.0)
+		var reach := d.length() * ((1.04 + (0.05 * sin(t * 9.0 + 1.7) if layer == 1 else 0.0)) if not curved else 1.0)
 		var top := PackedVector2Array()
 		var bottom := PackedVector2Array()
 		var uv_top := PackedVector2Array()
@@ -330,7 +337,7 @@ static func _draw_jet(ci: CanvasItem, from: Vector2, d: Vector2, tex: Texture2D,
 			var f := float(i) / steps
 			var half := lerpf(mouth, tail, pow(f, 0.85))
 			var hv := lerpf(v_mouth, v_tail, f)
-			# 가운데 선: 곧은 줄 + 가운데에서 arc_px 만큼 솟는 포물선 (양 끝은 그대로)
+			# 가운데 선: 곧은 줄 + 가운데에서 bend 만큼 휘는 포물선 (양 끝은 그대로 — 올려 쏘기·관창 방향)
 			var c := from + along * reach * f + lift * 4.0 * f * (1.0 - f)
 			var side := (along * reach + lift * 4.0 * (1.0 - 2.0 * f)).normalized().orthogonal()
 			top.append(c - side * half)

@@ -44,6 +44,19 @@ var _last_pick := -1
 var _last_pick_world := Vector2(-99999, -99999)
 var _vp: ViewParams
 const MARKER_DURATION_MS := 500.0
+const PING_MS := 650.0
+const PING_TEXT_MS := 1400.0
+const PING_FLOOR_MS := 550.0
+## 지시 → 클릭 표시에 떠오르는 짧은 글 (EquipmentCommand·CommandOrder·TacticalCommand 의 action)
+const PING_TEXT := {
+	"door_open": "문 개방", "hydrant": "소화전 점령", "fdc": "송수구 연결", "supply": "급수 연결", "vehicle_move": "차량 이동",
+	"hose": "수관 연장", "hose_outlet": "방수구 연결", "rescue": "구조", "rescue_ff": "대원 구조", "ems_treat": "처치", "ems_transport": "이송",
+	"gas_off": "가스 차단", "air_mat": "인명구조매트", "ppv": "송풍기 배연", "monitor": "방수포", "basket": "바스켓 구조",
+	"triage_post": "분류소 설치", "elevator": "승강기로 이동", "exterior": "경계 방수", "approach": "진입구로", "commander_move": "지휘관 이동",
+	"zone": "구역 지정", "declare": "지휘소 지정", "check_below": "직하층 확인", "floor": "층으로 이동",
+}
+const PING_MISSION := {"search": "인명검색", "attack": "화재진압", "watch": "재발화 감시"}
+const PING_MOVE: Array[String] = ["vehicle_move", "commander_move", "approach", "floor"]
 ## 입체 화면에서 차체를 클릭했는지 볼 때 함께 확인하는 높이 (m)
 const VEHICLE_PICK_HEIGHT_M := 1.0
 const HYDRANT_PICK_HEIGHT_M := 0.6
@@ -128,10 +141,25 @@ const ENTRY_PICK_CELLS := 3.0
 var _zone_to := Vector2(-1, -1)
 var _marker_world := Vector2.ZERO
 var _marker_start_ms := -1.0
+## 클릭 표시 (2026-11-27 사용자: 클릭한 곳이 표시가 나지 않아 실행됐는지 알 수 없다 — 스타크래프트·CoH 의 명령 고리):
+## 지시가 나간 자리에 조여 드는 고리 + 떠오르는 짧은 글, 안 되는 곳은 빨간 X. {pos, t0, kind: order·move·bad, text, lv}
+var _pings: Array[Dictionary] = []
+var _noticed := false
+var _in_click := false
+## 마우스 아래의 우클릭 대상 (문·창·소화전·송수구·펌프차): {kind: door·window·spot·vehicle, cells/pos/vid, text, off, lv} — 옅은 노란 면 + 테두리
+var _g_obj: Dictionary = {}
+var _cursor_shape := Input.CURSOR_ARROW
 
 
 func setup(p_sim: SimWorld) -> void:
 	sim = p_sim
+	if not notice.is_connected(_on_own_notice):
+		notice.connect(_on_own_notice)
+
+
+## 클릭 처리 중에 알림(안 되는 이유)을 띄웠다 → 클릭 표시는 빨간 X
+func _on_own_notice(_text: String) -> void:
+	_noticed = true
 
 
 ## 명령판 임무를 눌렀다: 층을 클릭할 때까지 그 임무를 들고 있는다
@@ -222,8 +250,9 @@ func _step_ask_walk() -> void:
 
 func _process(_delta: float) -> void:
 	_step_ask_walk()
-	if _marker_start_ms >= 0.0:
+	if not _pings.is_empty() or not _g_obj.is_empty():
 		queue_redraw()
+	_update_cursor()
 	# 합쳐져 없어진 조는 선택에서 뺀다 (분대 합치기)
 	if sim != null and selected.any(func(id: int) -> bool: return not sim.units.crew_active(id)):
 		var alive: Array[int] = []
@@ -285,7 +314,9 @@ func _handle_button(event: InputEventMouseButton) -> void:
 		return
 	if mode != Mode.NONE and (event.is_action_pressed("select") or event.is_action_pressed("command")):
 		if event.is_action_pressed("select"):
+			var mark := _click_begin()
 			_complete_mode(world_pos)
+			_click_end(mark, world_pos, true)
 		cancel_mode()
 		get_viewport().set_input_as_handled()
 		return
@@ -317,8 +348,235 @@ func _handle_button(event: InputEventMouseButton) -> void:
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("command"):
 		# 우클릭 = 지시 (2026-11-16)
+		var mark := _click_begin()
 		_right_click_at(world_pos, event.position)
+		_click_end(mark, world_pos, false)
 		get_viewport().set_input_as_handled()
+
+
+# --- 클릭 표시 ---
+
+## 클릭 처리 앞: 지금까지 나간 지시 수·옛 표시 시각을 적어 둔다
+func _click_begin() -> Dictionary:
+	_noticed = false
+	_in_click = true
+	return {"issued": sim.issued.size(), "marker": _marker_start_ms}
+
+
+## 클릭 처리 뒤: 지시가 나갔으면 그 자리에 고리 + 짧은 글, 안 나갔으면(대상 고르는 중이었거나 알림이 떴으면) 빨간 X
+func _click_end(mark: Dictionary, world_pos: Vector2, expect: bool) -> void:
+	_in_click = false
+	var at := _marker_world if _marker_start_ms != float(mark.marker) else world_pos
+	_marker_start_ms = -1.0
+	if sim.issued.size() > int(mark.issued):
+		var cmd: RefCounted = sim.issued[-1].command
+		var d := _describe(cmd)
+		ping(at, str(d.text), str(d.kind), int(d.lv))
+	elif expect or _noticed:
+		ping(world_pos, "", "bad")
+
+
+## 지시 → {text 짧은 글, kind order·move, lv 층 테두리를 번쩍일 층(-99 = 없음)}
+func _describe(cmd: RefCounted) -> Dictionary:
+	var action := ""
+	var text := ""
+	var lv := -99
+	if cmd is MoveCommand:
+		return {"text": "", "kind": "move", "lv": -99}
+	if cmd is CommandOrder:
+		action = cmd.action
+		if action == "floor_mission":
+			text = "%s → %s" % [str(PING_MISSION.get(str(cmd.answers.get("kind", "")), "임무")), sim.building.floor_name(cmd.value)]
+			lv = cmd.value
+		elif action == "floor":
+			text = "%s(으)로" % sim.building.floor_name(cmd.value)
+			lv = cmd.value
+	elif cmd is TacticalCommand or cmd is EquipmentCommand:
+		action = cmd.action
+	if text == "":
+		text = str(PING_TEXT.get(action, ""))
+	return {"text": text, "kind": "move" if action in PING_MOVE else "order", "lv": lv}
+
+
+## 클릭 표시를 더한다 (world = 지도 좌표). kind: order 노랑 · move 흰색 · bad 빨간 X
+func ping(world: Vector2, text := "", kind := "order", lv := -99) -> void:
+	_pings.append({"pos": world, "t0": Time.get_ticks_msec(), "kind": kind, "text": text, "lv": lv})
+	queue_redraw()
+
+
+func _draw_pings() -> void:
+	if _pings.is_empty():
+		return
+	var z := get_canvas_transform().get_scale().x
+	var now := Time.get_ticks_msec()
+	var font := PlanStyle.font()
+	var accent := SidePanelStyle.get_default().accent
+	# 입체 화면에서는 고리를 바닥에 누운 타원으로
+	var flat := Vector2(1.0, 0.5) if projection is IsoProjection else Vector2.ONE
+	var keep: Array[Dictionary] = []
+	for p in _pings:
+		var age := float(now - int(p.t0))
+		if age > PING_TEXT_MS:
+			continue
+		keep.append(p)
+		var pos: Vector2 = p.pos
+		var t := clampf(age / PING_MS, 0.0, 1.0)
+		var kind := str(p.kind)
+		if kind == "bad":
+			if t < 1.0:
+				var s := 10.0 / z
+				var col := Color(SidePanelStyle.DANGER, 1.0 - t * t)
+				draw_line(pos + Vector2(-s, -s), pos + Vector2(s, s), col, 3.0 / z, true)
+				draw_line(pos + Vector2(-s, s), pos + Vector2(s, -s), col, 3.0 / z, true)
+				draw_arc(pos, 16.0 / z, 0.0, TAU, 24, Color(col, col.a * 0.6), 1.5 / z, true)
+			continue
+		var col := accent if kind == "order" else Color("e2e8f0")
+		if t < 1.0:
+			var e := 1.0 - pow(1.0 - t, 3.0)
+			var r := lerpf(34.0, 9.0, e) / z
+			var a := 1.0 - t * t
+			draw_set_transform(pos, 0.0, flat)
+			draw_arc(Vector2.ZERO, r, 0.0, TAU, 36, Color(col, a), 2.6 / z, true)
+			draw_arc(Vector2.ZERO, r * 1.35, 0.0, TAU, 36, Color(col, a * 0.3), 1.2 / z, true)
+			draw_circle(Vector2.ZERO, 4.0 / z, Color(col, a))
+			# 네 방향에서 안으로 조여 드는 꺾쇠
+			for k in 4:
+				var d := Vector2.RIGHT.rotated(k * PI * 0.5 + PI * 0.25)
+				var n := Vector2(-d.y, d.x)
+				var tip := d * (r + 5.0 / z)
+				draw_polyline(PackedVector2Array([tip + d * 7.0 / z + n * 5.0 / z, tip, tip + d * 7.0 / z - n * 5.0 / z]), Color(col, a), 2.2 / z, true)
+			draw_set_transform(Vector2.ZERO)
+		# 층 임무: 그 층 외벽선을 잠깐 번쩍 (내부 화면에서 보이는 층만)
+		var lv := int(p.lv)
+		if lv != -99 and age < PING_FLOOR_MS and (not shell_picker.is_valid() or int(shell_picker.call(pos)) == -99):
+			var off := _floor_off(lv)
+			if off != NOT_SHOWN:
+				_draw_floor_box(lv, off, Color(col, 1.0 - age / PING_FLOOR_MS), 5.0 / z)
+		# 짧은 글이 위로 떠오르며 사라진다
+		var text := str(p.text)
+		if text != "":
+			var tt := age / PING_TEXT_MS
+			var fs := maxi(8, roundi(18.0 / z))
+			var w := 300.0 / z
+			var tp := pos + Vector2(-w * 0.5, -(30.0 + 22.0 * tt) / z)
+			var ta := 1.0 - tt * tt * tt
+			draw_string_outline(font, tp, text, HORIZONTAL_ALIGNMENT_CENTER, w, fs, maxi(1, roundi(3.0 / z)), Color(0.02, 0.04, 0.08, ta * 0.9))
+			draw_string(font, tp, text, HORIZONTAL_ALIGNMENT_CENTER, w, fs, Color(col, ta))
+	_pings = keep
+
+
+# --- 마우스 올림: 우클릭 대상 강조·커서 ---
+
+## 마우스 아래의 우클릭 대상 (2026-11-27 사용자: 누를 수 있는 문·창문은 가져다 대면 알 수 있게 — CoH·Door Kickers 의 대상 강조).
+## 분대를 골랐으면 닫힌 문·깨지 않은 창·(수관 없는 조면) 펌프차, 차량을 골랐으면 소화전·송수구·급수할 펌프차. 우클릭 처리(_issue_target_click·
+## _issue_vehicle_click)와 같은 순서. 면 전체를 진하게 칠하지 않는다 — 창의 불꽃·연기 색을 읽어야 하므로 옅은 면 + 테두리
+func _hover_obj(world_pos: Vector2) -> Dictionary:
+	if sim == null or sim.view_only or mode != Mode.NONE or commander_selected or (selected.is_empty() and selected_vehicles.is_empty()):
+		return {}
+	if get_viewport().gui_get_hovered_control() != null:
+		return {}
+	var picked := level
+	if level_picker.is_valid() and not click_override.is_valid():
+		picked = level_picker.call(world_pos)
+	var off := _floor_off(picked)
+	if off == NOT_SHOWN:
+		picked = level
+		off = Vector2.ZERO
+	var keep := level
+	level = picked
+	var out := _hover_obj_at(world_pos - off)
+	level = keep
+	if not out.is_empty():
+		out["off"] = off
+		out["lv"] = picked
+	return out
+
+
+func _hover_obj_at(world_pos: Vector2) -> Dictionary:
+	var cell_f := projection.to_cell(world_pos)
+	if not selected.is_empty():
+		# 문·창·펌프차 우클릭은 고른 분대가 모두 건물 밖일 때만 (건물 안 조는 임무·무전으로 — _issue_crew_right_click)
+		if _outside_crews().size() != selected.size():
+			return {}
+		var any := _door_at(world_pos, true)
+		if any and any.kind == Opening.Kind.WINDOW:
+			if not any.broken and not any.is_open:
+				return {"kind": "window", "cells": any.cells, "text": "우클릭: 창 깨서 열기 (배연·진입구)"}
+			return {}
+		var door := _door_at(world_pos)
+		if door and not door.is_open:
+			return {"kind": "door", "cells": door.cells, "opening": door, "text": "우클릭: 문 개방"}
+		var pump := _vehicle_at(world_pos)
+		if pump >= 0 and sim.units.get_vehicle(pump).is_pump() and selected.any(func(id: int) -> bool: return sim.water.held_hose(id) == null):
+			return {"kind": "vehicle", "vid": pump, "text": "우클릭: 이 펌프차에서 수관 연장"}
+		return {}
+	var hydrant := sim.water.hydrant_near(cell_f, 1.5)
+	if hydrant < 0:
+		hydrant = sim.water.hydrant_near(projection.to_cell_at(world_pos, HYDRANT_PICK_HEIGHT_M), 1.5)
+	var pumps := selected_vehicles.any(func(v: int) -> bool: return sim.units.get_vehicle(v).is_pump())
+	if sim.building.has_standpipe() and pumps and cell_f.distance_to(Vector2(sim.building.fdc) + Vector2(0.5, 0.5)) <= 1.5:
+		return {"kind": "spot", "pos": Vector2(sim.building.fdc) + Vector2(0.5, 0.5), "text": "우클릭: 송수구 연결 (연결송수관 가압)"}
+	if hydrant >= 0:
+		return {"kind": "spot", "pos": Vector2(sim.building.hydrants[hydrant]) + Vector2(0.5, 0.5), "text": "우클릭: 소화전 점령"}
+	var tv := _vehicle_at(world_pos)
+	if tv >= 0 and selected_vehicles.any(func(v: int) -> bool: return v != tv and sim.units.get_vehicle(v).transfer_lpm > 0.0):
+		return {"kind": "vehicle", "vid": tv, "text": "우클릭: 이 차에 급수"}
+	return {}
+
+
+func _draw_hover_obj(z: float, font: Font, gold: Color) -> void:
+	if _g_obj.is_empty():
+		return
+	var off: Vector2 = _g_obj.get("off", Vector2.ZERO)
+	var pts := PackedVector2Array()
+	var fill := 0.35
+	match str(_g_obj.kind):
+		"door", "window":
+			var lo := 0.0 if _g_obj.kind == "door" else FloorLayer.WINDOW_SILL_M
+			for c: Vector2i in _g_obj.cells:
+				for corner: Vector2 in [Vector2(c), Vector2(c.x + 1, c.y), Vector2(c.x + 1, c.y + 1), Vector2(c.x, c.y + 1)]:
+					pts.append(projection.to_screen(corner, lo) + off)
+					pts.append(projection.to_screen(corner, FloorLayer.WINDOW_TOP_M) + off)
+		"vehicle":
+			var v := sim.units.get_vehicle(int(_g_obj.vid))
+			fill = 0.18
+			for corner: Vector2 in v.footprint():
+				pts.append(projection.to_screen(corner, 0.0) + off)
+				pts.append(projection.to_screen(corner, v.height_m) + off)
+		"spot":
+			var c: Vector2 = _g_obj.pos
+			for k in 12:
+				var d := Vector2.RIGHT.rotated(k * TAU / 12.0) * 0.9
+				pts.append(projection.to_screen(c + d, 0.0) + off)
+				pts.append(projection.to_screen(c + d, 1.0) + off)
+	if pts.size() < 3:
+		return
+	var hull := Geometry2D.convex_hull(pts)
+	if hull.size() < 4:
+		return
+	var pulse := 0.75 + 0.25 * sin(Time.get_ticks_msec() / 1000.0 * 4.0)
+	draw_colored_polygon(hull.slice(0, hull.size() - 1), Color(gold, fill * pulse))
+	draw_polyline(hull, Color(gold, 0.95), 1.6 / z, true)
+	var mouse := _to_world(get_viewport().get_mouse_position())
+	var fs := maxi(8, roundi(17.0 / z))
+	var tp := mouse + Vector2(18, -14) / z
+	var tw := font.get_string_size(str(_g_obj.text), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	# 글 뒤에 어두운 판 (벽·불꽃 위에서도 읽히게)
+	draw_rect(Rect2(tp + Vector2(-6.0 / z, -fs * 1.05), Vector2(tw + 12.0 / z, fs * 1.45)), Color(0.02, 0.04, 0.08, 0.78))
+	draw_string(font, tp, str(_g_obj.text), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(gold.lightened(0.35), 1.0))
+
+
+## 커서 모양 (스타크래프트·CoH): 대상을 고르는 중 = 십자, 누를 수 있는 것 위 = 손, 그 밖 = 화살표
+func _update_cursor() -> void:
+	var shape := Input.CURSOR_ARROW
+	if sim != null and get_viewport().gui_get_hovered_control() == null:
+		if mode != Mode.NONE or click_override.is_valid():
+			shape = Input.CURSOR_CROSS
+		elif hover_crew >= 0 or not _g_obj.is_empty() or _g_entry != null or _g_floor != -99 or _g_view.x != -99 or _g_room >= 0:
+			shape = Input.CURSOR_POINTING_HAND
+	if shape != _cursor_shape:
+		_cursor_shape = shape
+		Input.set_default_cursor_shape(shape)
 
 
 ## 숫자키 1~9: 팀 초상 줄 순서의 조를 고른다 (P10-1). 질문 카드가 떠 있으면 1~4는 카드가 먼저 받는다
@@ -509,6 +767,12 @@ func _issue_floor_mission(lv: int) -> void:
 ## 고른 분대에게 그 층의 기본 임무를 바로 준다 (진압대 = 화재진압, 구조대 = 인명검색 — 다른 임무는 명령판에서).
 ## 층 막대 우클릭도 이리로 온다. 명령판 임무를 들고 있으면 그 임무로. 건물 안 임무가 없는 대원(구급대)만 골랐으면 알림만. 처리했으면 true
 func order_floor(lv: int, screen_pos := Vector2(-1, -1)) -> bool:
+	# 층 막대·외벽 띠에서 부른 경우(지도 클릭 처리 밖)에도 클릭 표시
+	if not _in_click and sim != null:
+		var mark := _click_begin()
+		var done := order_floor(lv, screen_pos)
+		_click_end(mark, _to_world(get_viewport().get_mouse_position()), false)
+		return done
 	if sim != null and mode == Mode.FLOOR_MISSION and not selected.is_empty():
 		_issue_floor_mission(lv)
 		cancel_mode()
@@ -1061,12 +1325,7 @@ func _draw() -> void:
 	if _dragging:
 		draw_rect(_drag_rect, Color(PlanStyle.SELECTION, 0.12))
 		draw_rect(_drag_rect, PlanStyle.SELECTION, false, 1.5)
-	if _marker_start_ms >= 0.0:
-		var t := (Time.get_ticks_msec() - _marker_start_ms) / MARKER_DURATION_MS
-		if t >= 1.0:
-			_marker_start_ms = -1.0
-		else:
-			draw_arc(_marker_world, 6.0 + t * 14.0, 0.0, TAU, 24, Color(PlanStyle.SELECTION, 1.0 - t), 2.0)
+	_draw_pings()
 
 
 ## 마우스를 올린 조: 두 대원 둘레에 팀 색 윤곽 + 이름. 가려진 대원도 윤곽선으로 비쳐 보인다 (화면 크기 고정)
@@ -1116,9 +1375,22 @@ func _update_guide(mouse_world: Vector2, crew_under: int) -> void:
 	var room := -1
 	var over_map := crew_under < 0 and mode == Mode.NONE
 	var cell := projection.to_cell(mouse_world)
-	if over_map and _guiding() and _outside_crews().size() == selected.size() and sim.entries:
+	# 우클릭 대상(문·창·소화전·송수구·펌프차): 진입구로 쓰는 문이면 진입구 안내가 맡는다
+	var obj := _hover_obj(mouse_world) if crew_under < 0 else {}
+	var entry_door := false
+	if not obj.is_empty() and str(obj.kind) == "door" and sim.entries and _guiding() and _outside_crews().size() == selected.size():
+		for en: EntryPoints.Entry in sim.entries.list:
+			if en.opening == obj.get("opening"):
+				entry = en
+				entry_door = true
+		if entry_door:
+			obj = {}
+	if obj.hash() != _g_obj.hash():
+		_g_obj = obj
+		queue_redraw()
+	if over_map and _guiding() and obj.is_empty() and not entry_door and _outside_crews().size() == selected.size() and sim.entries:
 		entry = sim.entries.nearest(cell, level, ENTRY_PICK_CELLS)
-	if over_map and entry == null:
+	if over_map and entry == null and obj.is_empty():
 		if shell_picker.is_valid():
 			floor_lv = int(shell_picker.call(mouse_world))
 		if floor_lv == -99 and view_picker.is_valid():
@@ -1186,6 +1458,7 @@ func _draw_guide() -> void:
 	var pulse := 0.6 + 0.4 * sin(t * 5.0)
 	var gold := PlanStyle.ENTRY_POINT
 	_draw_view_hover(z, font, pulse, gold)
+	_draw_hover_obj(z, font, gold)
 	if not _guiding():
 		return
 	# 진입구 (밖의 조가 있을 때)

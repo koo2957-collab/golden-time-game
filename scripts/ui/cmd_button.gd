@@ -22,6 +22,20 @@ var state := STATE_NONE:
 		state = v
 		set_process(state == STATE_TARGET)
 		queue_redraw()
+## 이미 한 명령 (지휘관 명령 — 선언·완진 등): 오른쪽 위에 초록 ✓ (2026-11-27)
+var done := false:
+	set(v):
+		if v != done:
+			done = v
+			queue_redraw()
+## 오른쪽 위 빨간 숫자 (접어 둔 동안 들어온 긴급 무전 수 등). 0 이면 없음
+var badge := 0:
+	set(v):
+		if v != badge:
+			badge = v
+			queue_redraw()
+## 아이콘 크기(px). 0 이면 설정값
+var icon_px := 0.0
 var style: SidePanelStyle
 
 
@@ -72,11 +86,30 @@ func _process(_delta: float) -> void:
 func _draw() -> void:
 	var font := get_theme_default_font()
 	var on := not disabled and cmd_id != ""
+	if done and disabled:
+		on = true  # 이미 한 명령은 흐리지 않고 ✓ 로 보인다 (누를 수는 없다)
 	var fg := Color("fca5a5") if danger else SidePanelStyle.TEXT
 	if not on:
 		fg = Color(SidePanelStyle.MUTED, 0.55)
-	if state == STATE_ACTIVE:
+	elif done:
+		fg = SidePanelStyle.DIM
+	if state == STATE_ACTIVE or (toggle_mode and button_pressed):
 		fg = style.accent
+	# 켜 둔 단추(펼친 묶음·무전 기록): 고정 노란 테두리 (점 없음)
+	if toggle_mode and button_pressed and state == STATE_NONE:
+		var tb := StyleBoxFlat.new()
+		tb.bg_color = Color(style.accent, 0.1)
+		tb.border_color = style.accent
+		tb.set_border_width_all(2)
+		tb.set_corner_radius_all(6)
+		draw_style_box(tb, Rect2(Vector2(1, 1), size - Vector2(2, 2)))
+	elif danger and on and state == STATE_NONE:
+		var db := StyleBoxFlat.new()
+		db.draw_center = false
+		db.border_color = Color(SidePanelStyle.DANGER, 0.45)
+		db.set_border_width_all(1)
+		db.set_corner_radius_all(6)
+		draw_style_box(db, Rect2(Vector2.ZERO, size))
 	# 테두리: 수행 중 = 고정, 고르는 중 = 깜빡임
 	if state != STATE_NONE:
 		var a := 1.0
@@ -99,7 +132,16 @@ func _draw() -> void:
 		draw_string(font, Vector2(7, 15), key_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(SidePanelStyle.DIM, 0.9 if on else 0.4))
 	# 아이콘
 	var ic := Vector2(size.x * 0.5, size.y * 0.42)
-	CmdIcon.draw(self, cmd_id, ic, style.icon_px, fg)
+	CmdIcon.draw(self, cmd_id, ic, icon_px if icon_px > 0.0 else style.icon_px, fg)
+	# 완료 ✓ (초록) · 숫자 (빨강)
+	if done:
+		var c := Vector2(size.x - 11.0, 11.0)
+		draw_circle(c, 7.0, Color(SidePanelStyle.OK, 0.9))
+		draw_polyline(PackedVector2Array([c + Vector2(-3.5, 0), c + Vector2(-1, 2.8), c + Vector2(3.8, -2.6)]), Color(0.04, 0.1, 0.06), 1.8, true)
+	if badge > 0:
+		var c := Vector2(size.x - 12.0, 12.0)
+		draw_circle(c, 8.5, SidePanelStyle.DANGER)
+		draw_string(font, c + Vector2(-8.5, 4.5), str(mini(badge, 99)), HORIZONTAL_ALIGNMENT_CENTER, 17.0, 12, Color.WHITE)
 	# 이름 (아래 가운데). 하위 칸이 있으면 …
 	var t := label_text + ("…" if more else "")
 	var fs := 13

@@ -166,9 +166,14 @@ func _run() -> void:
 	var ground_spot := _outdoor_spot(world, sim, ground, up)
 	_check("2층 화면에서 누를 수 있는 바깥 땅을 찾음", ground_spot.x < INF, true)
 	n0 = sim.issued.size()
+	sel._pings.clear()
+	var mk: Dictionary = sel._click_begin()
 	sel._right_click_at(ground_spot, Vector2(600, 300))
+	sel._click_end(mk, ground_spot, false)
 	var moves := _issued_since(sim, n0).filter(func(c): return c is MoveCommand)
 	_check("바깥 땅 우클릭 → 분대 이동, 화면 그대로", [moves.size(), world.view_level, world.exterior_view], [1, up, false])
+	# 클릭 표시 (2026-11-27): 이동 → 흰 고리
+	_check("바깥 땅 우클릭 → 이동 표시 (흰 고리)", [sel._pings.size(), str(sel._pings.back().kind) if not sel._pings.is_empty() else ""], [1, "move"])
 
 	# 7) 바깥 땅 좌클릭 → 외부 보기 (올리면 '외부 보기' 안내), 선택은 그대로
 	sel._update_guide(ground_spot, -1)
@@ -237,6 +242,19 @@ func _run() -> void:
 		for id in c.squad_ids:
 			kinds[id] = str(c.answers.kind)
 	_check("구조대는 인명검색, 진압대는 화재진압", [kinds.get(crew.id, ""), kinds.get(attack_crew.id, "")], ["search", "attack"])
+
+	# 10-2) 클릭 표시 (2026-11-27): 층 임무 → 노란 고리 + 짧은 글, 이동 → 흰 고리, 안 되는 곳 → 빨간 X
+	var last_ping: Dictionary = sel._pings.back() if not sel._pings.is_empty() else {}
+	_check("층 우클릭 → 클릭 표시 (노란 고리 + 임무 → 층)", [str(last_ping.get("kind", "")), str(last_ping.get("text", "")).contains("→")], ["order", true])
+	sel._pings.clear()
+	sel._set_selection([crew.id] as Array[int], [] as Array[int])
+	mk = sel._click_begin()
+	sel._right_click_at(proj.to_screen(Vector2(-40, -40)), Vector2(600, 300))
+	sel._click_end(mk, proj.to_screen(Vector2(-40, -40)), false)
+	_check("시킬 일이 없는 곳 우클릭 → 빨간 X", [sel._pings.size(), str(sel._pings.back().kind) if not sel._pings.is_empty() else ""], [1, "bad"])
+	var desc: Dictionary = sel._describe(EquipmentCommand.make("door_open", [crew.id] as Array[int]))
+	_check("지시 글: 문 개방", [str(desc.text), str(desc.kind)], ["문 개방", "order"])
+	sel._pings.clear()
 
 	# 11) 층 막대에 올리면 노란 테두리
 	var fb = world.hud.floor_bar

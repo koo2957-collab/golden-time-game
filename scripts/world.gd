@@ -107,6 +107,7 @@ func _ready() -> void:
 	hud.set_span_state(interior_span, _max_span())
 	hud.split_gap_step.connect(_step_split_gap)
 	hud.board_done_fn = _board_done
+	hud.board_state_fn = _board_item_state
 	hud.command_ui.order_issued.connect(sim.issue)
 	hud.command_ui.dialog_changed.connect(_on_dialog_changed)
 	selection.witness_clicked.connect(hud.command_ui.open_witness)
@@ -935,6 +936,17 @@ func _press_board(id: String) -> void:
 	selection.cancel_mode()
 	hud.card.back()
 	_commander_command(id)
+
+
+## 지휘관 명령 칸 상태: 그 명령의 대상(구역·지휘소 자리)을 고르는 중이면 깜빡임
+const _MODE_BOARD := {
+	SelectionController.Mode.ZONE_SAFE: "zone_safe", SelectionController.Mode.ZONE_CASUALTY: "zone_casualty", SelectionController.Mode.ZONE_LINE: "zone_line",
+	SelectionController.Mode.POST: "zone_post", SelectionController.Mode.FORWARD: "zone_forward",
+}
+
+
+func _board_item_state(id: String) -> int:
+	return CmdButton.STATE_TARGET if str(_MODE_BOARD.get(selection.mode, "")) == id else CmdButton.STATE_NONE
 
 
 ## 지휘관 명령 칸에서 이미 한 일 (단추를 흐리게): 한 번 하면 끝나는 선언·요청만

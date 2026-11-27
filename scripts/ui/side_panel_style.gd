@@ -22,6 +22,10 @@ var bar_full_bar := 300.0
 var officer_label := "팀장"
 var roles: Dictionary = {}
 var driver_label := "운전원"
+## 옆 패널 창 (지휘권 선언 등 — 2026-11-27 사용자 결정: 가운데 창이 건물을 가려 보며 체크할 수 없다): 폭·위 여백·아래 여백(px)
+var dialog_w := 470.0
+var dialog_top := 76.0
+var dialog_bottom_gap := 10.0
 
 ## 판·글자 색 (한 곳에서 정해 창 전체가 같은 색을 쓴다)
 const BG := Color(0.035, 0.06, 0.1, 0.9)
@@ -67,6 +71,9 @@ func _load(path: String) -> void:
 	officer_label = str(_value(data, "officer_label", officer_label))
 	roles = _value(data, "roles", roles)
 	driver_label = str(_value(data, "driver_label", driver_label))
+	dialog_w = float(_value(data, "dialog_w", dialog_w))
+	dialog_top = float(_value(data, "dialog_top", dialog_top))
+	dialog_bottom_gap = float(_value(data, "dialog_bottom_gap", dialog_bottom_gap))
 
 
 ## 출동대 종류별 임무 이름 {lead, other}

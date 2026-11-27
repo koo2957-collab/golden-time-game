@@ -49,6 +49,8 @@ var sim: SimWorld
 var mode_text := ""
 var floor_bar: FloorBarView
 var _floor_bar_fit_h := 0.0
+## 층 막대 상자의 원래 x (옆 패널 창이 닫히면 돌아간다)
+var _floor_tabs_x0 := -1.0
 var _legend: Control
 var _victim_panel: PanelContainer
 var _debug_panel: PanelContainer
@@ -1189,6 +1191,11 @@ func _layout_console() -> void:
 	var bar_h := floor_bar.size.y if floor_bar else floor_tabs.size.y
 	var y0 := clampf((LEFT_TOP + bottom - bar_h) * 0.5, LEFT_TOP, maxf(LEFT_TOP, bottom - floor_tabs.size.y - below))
 	floor_tabs.position.y = y0
+	# 왼쪽 옆 패널 창(지휘권 선언 등)이 열려 있으면 층 막대를 그 오른쪽으로 비킨다 — 보며 내부·층을 바꿀 수 있게 (2026-11-27)
+	if _floor_tabs_x0 < 0.0:
+		_floor_tabs_x0 = floor_tabs.position.x
+	var side_right := command_ui.side_panel_right()
+	floor_tabs.position.x = side_right + 10.0 if side_right > 0.0 else _floor_tabs_x0
 	var y := y0 + floor_tabs.size.y + 8.0
 	if _victim_panel:
 		_victim_panel.position = Vector2(16.0, y)

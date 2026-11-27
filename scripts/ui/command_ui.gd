@@ -49,10 +49,15 @@ var _confirm: PanelContainer
 var _confirm_squads: Array[int] = []
 var _report_submit: Button
 ## 지휘 위치 고르기 (P4-4): 0 지금 선 자리 / 1 지도에서 고르기
-var _post_choice: OptionButton
-var _options: Dictionary = {}  # 항목 -> OptionButton
-var _checks: Dictionary = {}  # 항목 -> Array[CheckBox]
+var _post_choice: ChipGroup
+## 상황보고 양식 (2026-11-27 사용자 결정: 왼쪽 옆 패널 + 칩 — 바깥을 보며 체크). 하나 고르는 항목 / 여럿 고르는 항목
+var _options: Dictionary = {}  # 항목 -> ChipGroup (하나)
+var _checks: Dictionary = {}  # 항목 -> ChipGroup (여럿)
 var _auto_labels: Dictionary = {}  # 항목 -> Label
+var _report_bar: ProgressBar
+var _report_count: Label
+## 옆 패널로 여는 창 (가운데가 아니라 왼쪽, 아래 명령 바 위까지)
+var _side_panels: Array[PanelContainer] = []
 var _strategy_buttons: Array[Button] = []
 var _span_label: Label
 var _receo_label: RichTextLabel
@@ -390,24 +395,16 @@ func close_dispatch() -> void:
 func report_answers() -> Dictionary:
 	var a := {}
 	for key: String in _options:
-		var ob: OptionButton = _options[key]
-		a[key] = ob.get_item_text(ob.selected) if ob.selected > 0 else ""
+		a[key] = (_options[key] as ChipGroup).selected_text()
 	for key: String in _checks:
-		var picked: Array[String] = []
-		for cb: CheckBox in _checks[key]:
-			if cb.button_pressed:
-				picked.append(cb.text)
-		a[key] = picked
+		a[key] = (_checks[key] as ChipGroup).picked()
 	a["strategy"] = CommandSystem.STRATEGY_NAMES.find(a["strategy"]) if a["strategy"] != "" else 0
 	return a
 
 
 ## 양식 항목을 보기 글자로 고른다 (조작 점검용)
 func set_report_choice(key: String, text: String) -> void:
-	var ob: OptionButton = _options[key]
-	for i in ob.item_count:
-		if ob.get_item_text(i) == text:
-			ob.select(i)
+	(_options[key] as ChipGroup).select_text(text)
 	_update_submit()
 
 
@@ -416,7 +413,7 @@ func submit_report() -> void:
 	if not _report_complete():
 		return
 	_close(_report)
-	if _post_choice and _post_choice.selected == 1:
+	if _post_choice and _post_choice.selected_index() == 1:
 		post_pick_requested.emit(a)
 		return
 	order_issued.emit(CommandOrder.make("declare", [], 0, Vector3i.ZERO, a))
@@ -426,9 +423,29 @@ func submit_report() -> void:
 
 func _open(panel: PanelContainer) -> void:
 	panel.visible = true
-	panel.reset_size()
-	panel.position = ((size - panel.get_combined_minimum_size()) / 2.0).floor()
+	if panel in _side_panels:
+		_place_side(panel)
+	else:
+		panel.reset_size()
+		panel.position = ((size - panel.get_combined_minimum_size()) / 2.0).floor()
 	dialog_changed.emit(true)
+
+
+## 옆 패널: 왼쪽, 출동 지령 창과 같은 높이에서 아래 명령 바 위까지 (내용이 길면 안에서 굴린다)
+func _place_side(panel: PanelContainer) -> void:
+	var st := SidePanelStyle.get_default()
+	var bottom := (board_bottom if board_bottom > 0.0 else size.y) - st.dialog_bottom_gap
+	panel.custom_minimum_size = Vector2(st.dialog_w, maxf(240.0, bottom - st.dialog_top))
+	panel.reset_size()
+	panel.position = Vector2(12.0, st.dialog_top)
+
+
+## 열려 있는 옆 패널의 오른쪽 끝 화면 x (없으면 0) — HUD가 왼쪽 층 막대를 그 옆으로 비킨다
+func side_panel_right() -> float:
+	for p in _side_panels:
+		if p.visible:
+			return p.position.x + p.size.x
+	return 0.0
 
 
 func _close(panel: PanelContainer) -> void:
@@ -440,15 +457,27 @@ func _close(panel: PanelContainer) -> void:
 
 
 func _report_complete() -> bool:
+	return _report_left() == 0
+
+
+## 아직 고르지 않은 (하나 고르는) 항목 수
+func _report_left() -> int:
+	var n := 0
 	for key: String in _options:
-		if _options[key].selected <= 0:
-			return false
-	return true
+		if not (_options[key] as ChipGroup).has_choice():
+			n += 1
+	return n
 
 
 func _update_submit() -> void:
 	if _report_submit:
-		_report_submit.disabled = not _report_complete()
+		var left := _report_left()
+		_report_submit.disabled = left > 0
+		_report_submit.text = "무전 송신" if left == 0 else "무전 송신 (%d개 남음)" % left
+		if _report_bar:
+			_report_bar.max_value = _options.size()
+			_report_bar.value = _options.size() - left
+			_report_count.text = "%d / %d" % [_options.size() - left, _options.size()]
 
 
 func _refresh_radio() -> void:
@@ -634,43 +663,51 @@ func _arrive() -> void:
 
 
 func _build_report() -> void:
-	_report = _dialog()
-	var box: VBoxContainer = _report.get_child(0)
-	box.add_child(_label("지휘권 선언 · 최초 상황보고 (SOP 101-2.1)", 22, Color("fde68a")))
-	box.add_child(_label("현장에서 확인한 사실만 보고합니다. 아직 모르는 것은 '확인 중'으로.", 15, DIM_COLOR))
-	var grid := GridContainer.new()
-	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 16)
-	grid.add_theme_constant_override("v_separation", 6)
-	box.add_child(grid)
+	# 옆 패널 (2026-11-27 사용자 결정: 가운데 창이 건물을 가려 바깥을 보며 체크할 수 없다 → 출동 지령 창과 같은 왼쪽 자리, 칩으로 한 번에 고르기)
+	_report = _side_dialog("지휘권 선언 · 최초 상황보고", "SOP 101-2.1 · 지도를 움직이며 확인할 수 있습니다. 모르는 것은 '확인 중'으로")
+	var head: VBoxContainer = _side_head(_report)
+	var prog := HBoxContainer.new()
+	prog.add_theme_constant_override("separation", 10)
+	_report_bar = _progress_bar()
+	_report_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	prog.add_child(_report_bar)
+	_report_count = _label("", 13, SidePanelStyle.DIM)
+	prog.add_child(_report_count)
+	head.add_child(prog)
+	var body := _side_body(_report)
 	var opts := CommandSystem.REPORT_OPTIONS
-	_row_auto(grid, "① 도착 출동대", "arrived")
-	_row_option(grid, "② 연소 상황", "fire", sim.command.fire_options())
-	_row_option(grid, "② 구조대상자", "victims", opts.victims)
-	_row_option(grid, "③ 건물 용도", "use", opts.use)
-	_row_option(grid, "③ 층수", "floors", opts.floors)
-	_row_option(grid, "③ 건축 구조", "structure", opts.structure)
-	_row_checks(grid, "④ 위험 요소 (없으면 비움)", "hazards", opts.hazards)
-	_row_auto(grid, "⑤ 지휘권 선언", "commander")
+	_row_auto(body, "① 도착 출동대", "arrived")
+	_row_option(body, "② 연소 상황", "fire", sim.command.fire_options())
+	_row_option(body, "② 구조대상자", "victims", opts.victims)
+	_row_option(body, "③ 건물 용도", "use", opts.use)
+	_row_option(body, "③ 층수", "floors", opts.floors)
+	_row_option(body, "③ 건축 구조", "structure", opts.structure)
+	_row_checks(body, "④ 위험 요소 (여럿 · 없으면 비움)", "hazards", opts.hazards)
+	_row_auto(body, "⑤ 지휘권 선언", "commander")
 	# 지휘 위치 = 현장지휘소 (SOP 101-2.1⑤, 104). 선언하면 고정지휘 (P4-4)
-	grid.add_child(_label("⑤ 지휘 위치 (지휘소)", 17, DIM_COLOR))
-	_post_choice = OptionButton.new()
-	_post_choice.focus_mode = Control.FOCUS_NONE
-	_post_choice.add_item("지금 선 자리")
-	_post_choice.add_item("지도에서 고르기 (송신 뒤 클릭)")
-	_post_choice.select(0)
-	_post_choice.custom_minimum_size = Vector2(320, 34)
-	grid.add_child(_post_choice)
-	_row_checks(grid, "⑥ 소방 활동", "activities", opts.activities)
-	_row_option(grid, "⑦ 전략", "strategy", ["공격", "방어", "병행"])
-	_row_option(grid, "⑧ 지원 요청", "support", opts.support)
-	_row_option(grid, "⑨ 차량 진입·회차 (참고, 채점 안 함)", "access", opts.access)
+	body.add_child(_row_title("⑤ 지휘 위치 (지휘소)"))
+	_post_choice = ChipGroup.new().setup(["지금 선 자리", "지도에서 고르기 (송신 뒤 클릭)"])
+	_post_choice.select_index(0)
+	# 지휘 위치는 늘 하나 — 고른 칩을 다시 눌러 풀면 '지금 선 자리'로
+	_post_choice.changed.connect(func() -> void:
+		if not _post_choice.has_choice():
+			_post_choice.select_index(0))
+	body.add_child(_post_choice)
+	_row_checks(body, "⑥ 소방 활동 (여럿)", "activities", opts.activities)
+	_row_option(body, "⑦ 전략", "strategy", ["공격", "방어", "병행"])
+	_row_option(body, "⑧ 지원 요청", "support", opts.support)
+	_row_option(body, "⑨ 차량 진입·회차 (참고, 채점 안 함)", "access", opts.access)
 	var buttons := HBoxContainer.new()
-	buttons.alignment = BoxContainer.ALIGNMENT_END
+	buttons.add_theme_constant_override("separation", 10)
+	var cancel := _button("취소  Esc", func() -> void: _close(_report))
+	cancel.custom_minimum_size = Vector2(130, 42)
+	buttons.add_child(cancel)
 	_report_submit = _button("무전 송신", submit_report)
-	buttons.add_child(_button("취소", func() -> void: _close(_report)))
+	_report_submit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_accent_button(_report_submit)
 	buttons.add_child(_report_submit)
-	box.add_child(buttons)
+	_side_outer(_report).add_child(buttons)
+	_update_submit()
 
 
 func _build_strategy() -> void:
@@ -1261,40 +1298,123 @@ static func _time(tick: int) -> String:
 	return "%02d:%02d" % [floori(t / 60.0), t % 60]
 
 
-func _row_auto(grid: GridContainer, title: String, key: String) -> void:
-	grid.add_child(_label(title, 17, DIM_COLOR))
-	var l := _label("", 17, TEXT_COLOR)
-	grid.add_child(l)
+func _row_title(title: String) -> Label:
+	var l := _label(title, 15, SidePanelStyle.DIM)
+	l.custom_minimum_size = Vector2(0, 28)
+	l.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	return l
+
+
+func _row_auto(body: VBoxContainer, title: String, key: String) -> void:
+	body.add_child(_row_title(title))
+	var l := _label("", 16, SidePanelStyle.TEXT)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.add_child(l)
 	_auto_labels[key] = l
 
 
-func _row_option(grid: GridContainer, title: String, key: String, items: Array) -> void:
-	grid.add_child(_label(title, 17, DIM_COLOR))
-	var ob := OptionButton.new()
-	ob.focus_mode = Control.FOCUS_NONE
-	ob.add_item(PLACEHOLDER)
-	for it in items:
-		ob.add_item(str(it))
-	ob.select(0)
-	ob.custom_minimum_size = Vector2(320, 34)
-	ob.item_selected.connect(func(_i: int) -> void: _update_submit())
-	grid.add_child(ob)
-	_options[key] = ob
+func _row_option(body: VBoxContainer, title: String, key: String, items: Array) -> void:
+	body.add_child(_row_title(title))
+	var g := ChipGroup.new().setup(items)
+	g.changed.connect(_update_submit)
+	body.add_child(g)
+	_options[key] = g
 
 
-func _row_checks(grid: GridContainer, title: String, key: String, items: Array) -> void:
-	grid.add_child(_label(title, 17, DIM_COLOR))
-	var flow := HFlowContainer.new()
-	flow.custom_minimum_size = Vector2(520, 0)
-	var boxes: Array[CheckBox] = []
-	for it in items:
-		var cb := CheckBox.new()
-		cb.text = str(it)
-		cb.focus_mode = Control.FOCUS_NONE
-		flow.add_child(cb)
-		boxes.append(cb)
-	grid.add_child(flow)
-	_checks[key] = boxes
+func _row_checks(body: VBoxContainer, title: String, key: String, items: Array) -> void:
+	body.add_child(_row_title(title))
+	var g := ChipGroup.new().setup(items, true)
+	body.add_child(g)
+	_checks[key] = g
+
+
+## 옆 패널 창 (2026-11-27): 패널 > 바깥 상자 [머리(제목·설명) · 굴리는 본문 · (만든 쪽이 아래 단추 줄을 붙인다)] + 왼쪽 노란 강조 줄.
+## 오른쪽 정보 창(SidePanelStyle)과 같은 색
+func _side_dialog(title: String, sub: String) -> PanelContainer:
+	var st := SidePanelStyle.get_default()
+	var panel := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(SidePanelStyle.BG, 0.94)
+	style.border_color = SidePanelStyle.LINE
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(16)
+	style.content_margin_left = 22
+	panel.add_theme_stylebox_override("panel", style)
+	var outer := VBoxContainer.new()
+	outer.add_theme_constant_override("separation", 12)
+	panel.add_child(outer)
+	var head := VBoxContainer.new()
+	head.add_theme_constant_override("separation", 6)
+	head.add_child(_label(title, 21, st.accent.lightened(0.35)))
+	var s := _label(sub, 13, SidePanelStyle.DIM)
+	s.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	s.custom_minimum_size = Vector2(st.dialog_w - 50.0, 0)
+	head.add_child(s)
+	outer.add_child(head)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 6)
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.custom_minimum_size = Vector2(st.dialog_w - 60.0, 0)
+	scroll.add_child(body)
+	outer.add_child(scroll)
+	add_child(panel)
+	# 왼쪽 강조 줄: 패널 바탕 위에 직접 그린다 (자식 노드로 두면 컨테이너가 패널 크기로 늘린다)
+	panel.draw.connect(func() -> void:
+		panel.draw_rect(Rect2(1.0, 8.0, 4.0, panel.size.y - 16.0), st.accent))
+	panel.visible = false
+	_side_panels.append(panel)
+	return panel
+
+
+func _side_outer(panel: PanelContainer) -> VBoxContainer:
+	return panel.get_child(0)
+
+
+func _side_head(panel: PanelContainer) -> VBoxContainer:
+	return _side_outer(panel).get_child(0)
+
+
+## 옆 패널 창의 굴리는 본문
+func _side_body(panel: PanelContainer) -> VBoxContainer:
+	var scroll: ScrollContainer = _side_outer(panel).get_child(1)
+	return scroll.get_child(0)
+
+
+## 진행 막대 (고른 항목 수)
+func _progress_bar() -> ProgressBar:
+	var bar := ProgressBar.new()
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(0, 6)
+	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = SidePanelStyle.TRACK
+	bg.set_corner_radius_all(3)
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = SidePanelStyle.get_default().accent
+	fill.set_corner_radius_all(3)
+	bar.add_theme_stylebox_override("background", bg)
+	bar.add_theme_stylebox_override("fill", fill)
+	return bar
+
+
+## 주 단추 (송신 등): 노란 테두리, 못 누를 때는 흐리게
+func _accent_button(b: Button) -> void:
+	var accent := SidePanelStyle.get_default().accent
+	for k: String in ["normal", "hover", "pressed", "disabled"]:
+		var s := StyleBoxFlat.new()
+		s.set_corner_radius_all(8)
+		s.set_border_width_all(1 if k == "disabled" else 2)
+		s.bg_color = Color(SidePanelStyle.CHIP_BG, 0.6) if k == "disabled" else Color(accent, {"normal": 0.14, "hover": 0.22, "pressed": 0.3}[k])
+		s.border_color = SidePanelStyle.LINE if k == "disabled" else accent
+		b.add_theme_stylebox_override(k, s)
+	b.add_theme_color_override("font_color", accent.lightened(0.45))
+	b.add_theme_color_override("font_hover_color", Color.WHITE)
+	b.add_theme_color_override("font_disabled_color", SidePanelStyle.DIM)
+	b.add_theme_font_size_override("font_size", 16)
 
 
 func _dialog() -> PanelContainer:

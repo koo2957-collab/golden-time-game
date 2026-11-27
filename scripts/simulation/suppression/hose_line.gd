@@ -30,6 +30,10 @@ var standby := false
 var approaching := false
 ## 보이는 화점이 없을 때 다음으로 전진 위치를 찾을 틱
 var next_advance_tick := 0
+## 지난 전진 시도를 시작한 칸과 잇따른 헛걸음 수 (2026-11-27): 전진을 지시했는데 제자리면(열기에 막힘·갈 길 없음) 다음 시도를 늦춘다 —
+## 5초마다 방수 대형이 풀렸다 다시 서는 것을 막는다
+var advance_from := Vector3i(-1, -1, -1)
+var advance_fails := 0
 var pattern := Pattern.STRAIGHT
 var target := Vector3i.ZERO
 ## 이번 틱에 실제로 공급된 물의 비율 (0~1, 탱크가 비면 줄어듦)

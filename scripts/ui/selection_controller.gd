@@ -18,7 +18,7 @@ extends Node2D
 ## 좌표 변환은 projection(상황판/입체)을 따른다.
 
 ## 대상 지정 명령 (명령 카드를 누른 뒤 목표를 좌클릭). 인명검색·화재진압은 여기 없다 — 층 우클릭 지시 창 (2026-11-17)
-enum Mode { NONE, EXTERIOR, TREAT, TRANSPORT, WAYPOINT, MONITOR, PPV, VEHICLE_CONNECT, VEHICLE_MOVE, ZONE_SAFE, ZONE_CASUALTY, ZONE_LINE, TRIAGE_POST, OBSERVE, BASKET, POST, FORWARD, FLOOR_MISSION }
+enum Mode { NONE, EXTERIOR, TREAT, TRANSPORT, WAYPOINT, MONITOR, PPV, VEHICLE_CONNECT, VEHICLE_MOVE, ZONE_SAFE, ZONE_CASUALTY, ZONE_LINE, TRIAGE_POST, OBSERVE, BASKET, POST, FORWARD, FLOOR_MISSION, TARGET }
 
 ## 관계인을 클릭했을 때 (world가 진술 창을 연다)
 signal witness_clicked(index: int)
@@ -40,6 +40,8 @@ const DRAG_THRESHOLD_PX := 6.0
 var casualty_after_safe := false
 ## 마우스를 올린 조 (기획안 9-3: 잡힐 조의 윤곽이 빛나고 이름이 뜬다). 없으면 -1
 var hover_crew := -1
+## 마우스가 지휘관 위에 있는가 (대원처럼 머리 위에 이름 — 2026-11-27)
+var hover_commander := false
 var _last_pick := -1
 var _last_pick_world := Vector2(-99999, -99999)
 var _vp: ViewParams
@@ -64,7 +66,7 @@ const MODE_HINTS := {
 	Mode.EXTERIOR: "경계: 창·개구부·인접 건물 쪽을 클릭 (관창 배치, 불이 다가오면 방수)",
 	Mode.TREAT: "처치: 구조된 환자를 클릭 (구급대가 가서 응급처치)",
 	Mode.TRANSPORT: "이송: 처치한 환자를 클릭 (들것으로 구급차에 태워 병원으로)",
-	Mode.WAYPOINT: "경유지: 본 적 있는 곳을 클릭 (건물 안 조에게는 무전으로 전달)",
+	Mode.WAYPOINT: "이동: 갈 곳을 클릭 (건물 안 조에게는 무전으로 전달)",
 	Mode.MONITOR: "방수포: 바깥 창·문을 클릭 — 진입대원이 있는 방에는 쓰지 않는다 (SOP 207-1.1)",
 	Mode.POST: "현장지휘소: 건물 밖을 클릭 — 현장이 보이고, 낙하물 위험반경(발화층 높이 1/2) 밖이며, 차량 동선을 막지 않는 곳 (SOP 104-1.3)",
 	Mode.FORWARD: "직전대기 장소: 진입구 가까운 건물 밖을 클릭 — 후착대가 여기 모인다 (SOP 103-2.1.3)",
@@ -78,6 +80,7 @@ const MODE_HINTS := {
 	Mode.VEHICLE_CONNECT: "급수 연결: 소화전·송수구(펌프차) 또는 펌프차(물탱크차)를 클릭",
 	Mode.VEHICLE_MOVE: "자리 옮기기: 차를 옮길 곳을 클릭",
 	Mode.FLOOR_MISSION: "임무: 층을 클릭 — 외벽 띠·내부 화면의 층·층 막대 (Esc·우클릭 = 취소)",
+	Mode.TARGET: "대상 지시: 노랗게 표시된 문·창·펌프차·요구조자·진입구를 클릭 (Esc·우클릭 = 취소)",
 }
 ## 창가 구조대상자 아래 이 거리(칸) 안의 땅을 우클릭하면 인명구조매트
 const MAT_PICK_CELLS := 6.0
@@ -250,7 +253,7 @@ func _step_ask_walk() -> void:
 
 func _process(_delta: float) -> void:
 	_step_ask_walk()
-	if not _pings.is_empty() or not _g_obj.is_empty():
+	if not _pings.is_empty() or not _g_obj.is_empty() or mode == Mode.TARGET:
 		queue_redraw()
 	_update_cursor()
 	# 합쳐져 없어진 조는 선택에서 뺀다 (분대 합치기)
@@ -271,6 +274,10 @@ func _process(_delta: float) -> void:
 			hover_crew = h
 			queue_redraw()
 		elif h >= 0:
+			queue_redraw()
+		var hc := h < 0 and sim.command.commander != null and _commander_at(mouse_world)
+		if hc != hover_commander:
+			hover_commander = hc
 			queue_redraw()
 		_update_guide(mouse_world, h)
 		_watch_guide_events()
@@ -471,7 +478,7 @@ func _draw_pings() -> void:
 ## 분대를 골랐으면 닫힌 문·깨지 않은 창·(수관 없는 조면) 펌프차, 차량을 골랐으면 소화전·송수구·급수할 펌프차. 우클릭 처리(_issue_target_click·
 ## _issue_vehicle_click)와 같은 순서. 면 전체를 진하게 칠하지 않는다 — 창의 불꽃·연기 색을 읽어야 하므로 옅은 면 + 테두리
 func _hover_obj(world_pos: Vector2) -> Dictionary:
-	if sim == null or sim.view_only or mode != Mode.NONE or commander_selected or (selected.is_empty() and selected_vehicles.is_empty()):
+	if sim == null or sim.view_only or not mode in [Mode.NONE, Mode.TARGET] or commander_selected or (selected.is_empty() and selected_vehicles.is_empty()):
 		return {}
 	if get_viewport().gui_get_hovered_control() != null:
 		return {}
@@ -524,6 +531,56 @@ func _hover_obj_at(world_pos: Vector2) -> Dictionary:
 	return {}
 
 
+## 대상 지시(Mode.TARGET) 중: 지금 층에서 누를 수 있는 것을 모두 옅은 노랑으로 — 닫힌 문·깨지 않은 창·(수관 없는 조면) 펌프차·
+## 발견된 요구조자·쓰러진 대원. 마우스를 올린 것은 _draw_hover_obj 가 더 진하게
+func _draw_targets(z: float, gold: Color) -> void:
+	if mode != Mode.TARGET or sim == null or selected.is_empty():
+		return
+	var off := _floor_off(level)
+	if off == NOT_SHOWN:
+		return
+	var col := Color(gold, 0.9)
+	for o: Opening in sim.fire.openings:
+		if o.level != level or o.kind == Opening.Kind.STAIR:
+			continue
+		var is_window := o.kind == Opening.Kind.WINDOW
+		if (is_window and (o.broken or o.is_open)) or (not is_window and o.is_open):
+			continue
+		var pts := PackedVector2Array()
+		var lo := FloorLayer.WINDOW_SILL_M if is_window else 0.0
+		for c: Vector2i in o.cells:
+			for corner: Vector2 in [Vector2(c), Vector2(c.x + 1, c.y), Vector2(c.x + 1, c.y + 1), Vector2(c.x, c.y + 1)]:
+				pts.append(projection.to_screen(corner, lo) + off)
+				pts.append(projection.to_screen(corner, FloorLayer.WINDOW_TOP_M) + off)
+		_draw_hull(pts, Color(gold, 0.16), col, 1.2 / z)
+	if selected.any(func(id: int) -> bool: return sim.water.held_hose(id) == null):
+		var goff := _floor_off(sim.building.levels()[0])
+		for v in sim.units.vehicles:
+			if v.away or not v.is_pump() or goff == NOT_SHOWN:
+				continue
+			var pts := PackedVector2Array()
+			for corner: Vector2 in v.footprint():
+				pts.append(projection.to_screen(corner, 0.0) + goff)
+				pts.append(projection.to_screen(corner, v.height_m) + goff)
+			_draw_hull(pts, Color(gold, 0.1), col, 1.2 / z)
+	for v in sim.rescue.victims:
+		if v.discovered and v.level == level and v.alive() and v.carried_by < 0:
+			draw_arc(projection.to_screen(v.pos, 0.2) + off, 13.0 / z, 0.0, TAU, 20, col, 1.6 / z, true)
+	for ff in sim.units.firefighters:
+		if ff.incapacitated and ff.level == level:
+			draw_arc(projection.to_screen(ff.pos, 0.2) + off, 13.0 / z, 0.0, TAU, 20, col, 1.6 / z, true)
+
+
+func _draw_hull(pts: PackedVector2Array, fill: Color, line: Color, width: float) -> void:
+	if pts.size() < 3:
+		return
+	var hull := Geometry2D.convex_hull(pts)
+	if hull.size() < 4:
+		return
+	draw_colored_polygon(hull.slice(0, hull.size() - 1), fill)
+	draw_polyline(hull, line, width, true)
+
+
 func _draw_hover_obj(z: float, font: Font, gold: Color) -> void:
 	if _g_obj.is_empty():
 		return
@@ -560,10 +617,12 @@ func _draw_hover_obj(z: float, font: Font, gold: Color) -> void:
 	var mouse := _to_world(get_viewport().get_mouse_position())
 	var fs := maxi(8, roundi(17.0 / z))
 	var tp := mouse + Vector2(18, -14) / z
-	var tw := font.get_string_size(str(_g_obj.text), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	# 대상 지시 중에는 좌클릭이 지시다
+	var tip := str(_g_obj.text).replace("우클릭", "클릭") if mode == Mode.TARGET else str(_g_obj.text)
+	var tw := font.get_string_size(tip, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 	# 글 뒤에 어두운 판 (벽·불꽃 위에서도 읽히게)
 	draw_rect(Rect2(tp + Vector2(-6.0 / z, -fs * 1.05), Vector2(tw + 12.0 / z, fs * 1.45)), Color(0.02, 0.04, 0.08, 0.78))
-	draw_string(font, tp, str(_g_obj.text), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(gold.lightened(0.35), 1.0))
+	draw_string(font, tp, tip, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(gold.lightened(0.35), 1.0))
 
 
 ## 커서 모양 (스타크래프트·CoH): 대상을 고르는 중 = 십자, 누를 수 있는 것 위 = 손, 그 밖 = 화살표
@@ -572,7 +631,7 @@ func _update_cursor() -> void:
 	if sim != null and get_viewport().gui_get_hovered_control() == null:
 		if mode != Mode.NONE or click_override.is_valid():
 			shape = Input.CURSOR_CROSS
-		elif hover_crew >= 0 or not _g_obj.is_empty() or _g_entry != null or _g_floor != -99 or _g_view.x != -99 or _g_room >= 0:
+		elif hover_crew >= 0 or hover_commander or not _g_obj.is_empty() or _g_entry != null or _g_floor != -99 or _g_view.x != -99 or _g_room >= 0:
 			shape = Input.CURSOR_POINTING_HAND
 	if shape != _cursor_shape:
 		_cursor_shape = shape
@@ -995,6 +1054,16 @@ func _complete_mode(world_pos: Vector2) -> void:
 			var who := _casualty_at(world_pos)
 			if who.x == 0 and basket_vehicle >= 0:
 				sim.issue(EquipmentCommand.make("basket", [], basket_vehicle, who.y))
+		Mode.TARGET:
+			# 대상 지시 (2026-11-27 사용자: 우클릭만이 아니라 명령을 고르고 대상을 좌클릭해도 지시 — 스타크래프트의 명령 → 대상).
+			# 우클릭 대상 지시(_issue_target_click)와 같은 일을 한다
+			if selected.is_empty():
+				return
+			if _outside_crews().size() != selected.size():
+				notice.emit("건물 안에 있는 조는 대상 지시를 받지 않습니다 — 임무(Q·W)나 철수로 지시하세요")
+				return
+			if not _issue_target_click(world_pos):
+				notice.emit("누를 수 있는 대상이 아닙니다 — 노랗게 표시된 문·창·펌프차·요구조자·진입구를 누르세요")
 		Mode.PPV:
 			var door := _door_at(world_pos)
 			if door and not selected.is_empty():
@@ -1330,6 +1399,16 @@ func _draw() -> void:
 
 ## 마우스를 올린 조: 두 대원 둘레에 팀 색 윤곽 + 이름. 가려진 대원도 윤곽선으로 비쳐 보인다 (화면 크기 고정)
 func _draw_hover() -> void:
+	if sim != null and hover_commander and hover_crew < 0:
+		# 지휘관: 대원처럼 머리 위에 이름
+		var cm := sim.command.commander
+		var coff := _floor_off(cm.level)
+		if coff != NOT_SHOWN and not cm.aboard:
+			var cz := get_canvas_transform().get_scale().x
+			var cvp := _view_params()
+			var cp := projection.to_screen(cm.pos, projection.pick_height_m) + coff - Vector2(0, cvp.pick_h_px * 0.95 / cz)
+			draw_string(PlanStyle.font(), cp + Vector2(-80.0 / cz, 0), "현장지휘관 (%s)" % sim.command.commander_title, HORIZONTAL_ALIGNMENT_CENTER, 160.0 / cz,
+				maxi(8, roundi(14.0 / cz)), Color(1, 1, 1, 0.95))
 	if hover_crew < 0 or sim == null:
 		return
 	var c := sim.units.get_crew(hover_crew)
@@ -1458,6 +1537,7 @@ func _draw_guide() -> void:
 	var pulse := 0.6 + 0.4 * sin(t * 5.0)
 	var gold := PlanStyle.ENTRY_POINT
 	_draw_view_hover(z, font, pulse, gold)
+	_draw_targets(z, gold)
 	_draw_hover_obj(z, font, gold)
 	if not _guiding():
 		return

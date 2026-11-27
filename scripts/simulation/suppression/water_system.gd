@@ -52,6 +52,9 @@ var _push_vented_ratio := 0.3
 var _push_min_t := 150.0
 var _push_rate := 0.05
 var _push_warned: Dictionary = {}
+## 방수 중 전진 (fire_params advance_*)
+var _advance_min_m := 1.0
+var _advance_backoff_ticks := 400
 ## 수증기 열 균형 파괴를 알린 구획
 var _steam_warned: Dictionary = {}
 var _short_ticks: int
@@ -112,6 +115,8 @@ func _init(p_building: BuildingData, p_units: UnitSystem, p_pathfinder: Pathfind
 	_push_vented_ratio = config.value("push_vented_ratio")
 	_push_min_t = config.value("push_min_t_c")
 	_push_rate = config.value("push_rate_per_s")
+	_advance_min_m = config.value("advance_min_move_m")
+	_advance_backoff_ticks = roundi(float(config.value("advance_backoff_max_s")) / SimClock.TICK_DT)
 	_short_ticks = roundi(config.value("flow_short_report_s") / SimClock.TICK_DT)
 	_hydrant_range = config.value("hydrant_range_m") / _cell_m
 	_supply_range = config.value("supply_range_m") / _cell_m
@@ -934,7 +939,12 @@ func _approach_cell(c: Crew, target: Vector2, level: int, pattern: HoseLine.Patt
 func _advance(h: HoseLine, c: Crew, tick: int) -> void:
 	if tick < h.next_advance_tick:
 		return
-	h.next_advance_tick = tick + ADVANCE_EVERY_TICKS
+	# 지난번 전진이 헛걸음이었나 (지시한 그 칸에 그대로 서 있다 — 열기에 막혔거나 갈 길이 없었다): 다음 시도를 점점 늦춘다.
+	# 2026-11-27 사용자: 방수 중 대원들이 왔다갔다 한다 — 5초마다 전진을 지시했다가 한 틱 만에 풀려 방수 대형이 무너졌다
+	if h.advance_from.x >= 0:
+		h.advance_fails = h.advance_fails + 1 if c.leader.cell3() == h.advance_from else 0
+		h.advance_from = Vector3i(-1, -1, -1)
+	h.next_advance_tick = tick + mini(ADVANCE_EVERY_TICKS * (1 + h.advance_fails * 2), _advance_backoff_ticks)
 	var room := fire.compartment_at(h.target.z, h.target.x, h.target.y)
 	if room == null:
 		return
@@ -953,7 +963,14 @@ func _advance(h: HoseLine, c: Crew, tick: int) -> void:
 	var spot := _approach_cell(c, nearest, h.target.z, h.pattern)
 	if spot == Pathfinder.NO_CELL or Vector3i(spot.x, spot.y, h.target.z) == c.leader.cell3():
 		return
+	# 한두 걸음 옮겨도 달라질 것이 없으면 그 자리에서 계속 쏜다 (대형을 풀지 않는다)
+	if (Vector2(spot) + Vector2(0.5, 0.5)).distance_to(from) * fire.building.cell_size_m < _advance_min_m:
+		return
+	h.advance_from = c.leader.cell3()
 	units.order_move([c.id] as Array[int], Vector3i(spot.x, spot.y, h.target.z), pathfinder)
+	# 갈 길이 없으면 접근 상태로 바꾸지 않는다 (한 틱 풀렸다 돌아오는 깜빡임을 막는다)
+	if c.leader.path.is_empty():
+		return
 	h.approaching = true
 
 

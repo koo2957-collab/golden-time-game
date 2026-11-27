@@ -262,6 +262,16 @@ const SPRAY_K_KEY := -100000
 const SPRAY_GLIDE_KEY := -200000
 ## 호스 끼고 걷기 방향 (대원마다): CARRY_K_KEY − 대원 id
 const CARRY_K_KEY := -300000
+## 자연스러운 움직임 (2026-11-27 사용자: 방수·이동할 때 대원들이 왔다갔다 하는 게 어색하다 — tests/_probe_motion.gd 로 잰 세 원인 가운데 화면 쪽 둘):
+##   자리 옮겨 서기 SETTLE_KEY − 대원 id ([그린 자리, 밀리초, 지난 목표 자리, 층]) — 대형이 바뀌어 설 자리가 뛰면 순간이동하지 않고 걸어서 간다
+##   걷는 방향 WALK_K_KEY − 대원 id (여유각), 옮겨 서는 방향 SETTLE_DIR_KEY − 대원 id
+##   동작 유지 ANIM_HOLD_KEY − 대원 id ([보이는 동작, 바꾸려는 동작, 그때 밀리초]) — 한순간 바뀌었다 돌아오는 깜빡임을 걸러낸다
+const SETTLE_KEY := -400000
+const WALK_K_KEY := -500000
+const SETTLE_DIR_KEY := -600000
+const ANIM_HOLD_KEY := -700000
+## 화면 시간으로 움직이는 보정(옮겨 서기·동작 유지)을 쓰는가. 창이 없는 테스트(headless)에서는 화면 시간이 흐르지 않아 끈다 — 테스트가 직접 켠다
+var smooth := DisplayServer.get_name() != "headless"
 
 
 ## 방수 방향 (8방향): 겨눈 곳이 지금 방향의 칸(±22.5°)을 spray_turn_hysteresis_deg 넘게 벗어나야 바꾼다 — 경계에서 깜빡이지 않게
@@ -2037,7 +2047,8 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 	var hose := sim.water.held_hose(crew.id)
 	var door_task := sim.doors.task_of_crew(crew.id)
 	if moving:
-		_facing[ff.id] = SpriteArt.dir8(delta)
+		# 걷는 방향도 여유각을 둔다 — 칸 경계에서 방향이 왔다갔다 하지 않게 (2026-11-27)
+		_facing[ff.id] = _hyst_k(WALK_K_KEY - ff.id, delta * 100.0, int(_facing.get(ff.id, 1)))
 	# 방향을 따로 정하는 동작 (운반): 0 이상이면 _facing 대신 쓴다
 	var dir := -1
 	# 진행 정도로 장을 고르는 동작 (문 개방): 0 이상이면 그 장
@@ -2190,6 +2201,19 @@ func _unit_pose(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> Array:
 	# 구급가방 (2026-11-15 사용자): 구급대 조의 짝(두 번째 대원)이 오른손에 들고 다닌다
 	if ff == crew.partner and anim in ["idle", "walk"] and art.frames(anim + "_bag") > 0:
 		anim += "_bag"
+	if smooth:
+		# 새 자리로 옮겨 서는 중: 서 있는 자세 대신 걷는 그림으로, 가는 쪽을 보고 (2026-11-27)
+		var gap := _settle_gap(ff)
+		if not moving and not anim in NO_SETTLE_ANIMS and gap.length() * sim.units.cell_size_m > float(HoseDraw.style().get("settle_pose_m", 0.2)):
+			anim = "crouch_walk" if ff.crouched or anim.begins_with("spray_l") else "walk"
+			dir = _hyst_k(SETTLE_DIR_KEY - ff.id, gap, int(_facing.get(ff.id, 1)))
+			moving = true
+			fixed_frame = -1
+		# 한순간 바뀌었다 돌아오는 동작은 걸러낸다 (걷기 시작은 바로)
+		var held := _hold_anim(ff.id, anim, moving)
+		if held != anim:
+			anim = held
+			fixed_frame = -1
 	var frame := 0
 	# 여럿이 한 장면으로 구운 동작(문 개방·2인 운반)은 조장 기준 같은 박자로 — 구울 때 맞춘 엇갈림이 그대로 보이게
 	var phase := (crew.leader.id if anim in PAIRED_ANIMS else ff.id) * 0.37
@@ -3222,8 +3246,66 @@ func _door_work_spot(ff: Firefighter, crew: Crew, art: SpriteArt.SpriteSet) -> V
 	return null
 
 
-## 대원을 그리는 자리: 보통은 실제 자리, 운반 중인 짝·옮겨지는 대원·문을 부수는 대원은 배치 자리
+## 옮겨 서기를 하지 않는 동작: 쓰러짐·들려 감·들것·응급처치처럼 자리가 다른 사람·환자에 묶인 것
+const NO_SETTLE_ANIMS: Array[String] = ["down", "lift_f", "lift_b", "drag", "carry", "cot_a", "cot_b", "stretcher_a", "stretcher_b", "aid_a", "aid_b"]
+
+
+## 대원을 그리는 자리. 배치 자리(_shown_pos_raw)가 한순간에 뛰면 그리로 걸어서 옮겨 간다 (2026-11-27 — 스타크래프트·CoH 처럼 순간이동 없이):
+##   - 목표 자리가 이어서 움직이면(걷기·미끄러짐) 그대로 따라간다
+##   - 목표 자리가 뛰면(대형이 바뀜: 호스 꺼내기 → 끼고 걷기 → 문 앞 → 방수 줄) settle_mps 빠르기로 좁혀 간다
+##   - 층이 바뀌었거나, 0.5초 넘게 그리지 않았거나, settle_snap_m 보다 멀면 바로 그 자리
 func _shown_pos(ff: Firefighter, alpha: float) -> Vector2:
+	var raw := _shown_pos_raw(ff, alpha)
+	if not smooth or ff.incapacitated or ff.aboard:
+		return raw
+	var rt := sim.rescue.task_of_crew(ff.crew_id)
+	if rt is RescueSystem.CarryTask and (rt as RescueSystem.CarryTask).carrying:
+		return raw
+	var key := SETTLE_KEY - ff.id
+	var now := Time.get_ticks_msec()
+	var cell_m := sim.units.cell_size_m
+	var st: Variant = _facing.get(key)
+	var style := HoseDraw.style()
+	if not st is Array or now - int(st[1]) > 500 or int(st[3]) != ff.level \
+			or (st[0] as Vector2).distance_to(raw) * cell_m > float(style.get("settle_snap_m", 6.0)):
+		_facing[key] = [raw, now, raw, ff.level]
+		return raw
+	var pos: Vector2 = st[0]
+	var d_raw: Vector2 = raw - (st[2] as Vector2)
+	if d_raw.length() * cell_m <= float(style.get("settle_jump_m", 0.4)):
+		pos += d_raw
+	var dt := 0.0 if sim.clock.paused else (now - int(st[1])) / 1000.0 * maxf(1.0, sim.clock.speed)
+	pos = pos.move_toward(raw, float(style.get("settle_mps", 2.2)) / cell_m * dt)
+	_facing[key] = [pos, now, raw, ff.level]
+	return pos
+
+
+## 옮겨 서는 중이면 남은 거리(목표 − 그린 자리, 셀). 아니면 ZERO
+func _settle_gap(ff: Firefighter) -> Vector2:
+	var st: Variant = _facing.get(SETTLE_KEY - ff.id)
+	if not st is Array or int(st[3]) != ff.level or Time.get_ticks_msec() - int(st[1]) > 500:
+		return Vector2.ZERO
+	return (st[2] as Vector2) - (st[0] as Vector2)
+
+
+## 동작 유지: 서 있는 동작끼리 바뀔 때는 새 동작이 anim_hold_ms 동안 이어져야 바꾼다 — 한 틱 바뀌었다 돌아오는 깜빡임을 거른다.
+## 걷기 시작(moving)과 쓰러짐은 바로 바꾼다
+func _hold_anim(id: int, anim: String, moving: bool) -> String:
+	var key := ANIM_HOLD_KEY - id
+	var now := Time.get_ticks_msec()
+	var st: Variant = _facing.get(key)
+	if not st is Array or moving or anim == "down" or anim == str(st[0]) or now - int(st[3]) > 500:
+		_facing[key] = [anim, anim, now, now]
+		return anim
+	var since := int(st[2]) if str(st[1]) == anim else now
+	if now - since >= int(HoseDraw.style().get("anim_hold_ms", 200)):
+		_facing[key] = [anim, anim, now, now]
+		return anim
+	_facing[key] = [st[0], anim, since, now]
+	return str(st[0])
+
+
+func _shown_pos_raw(ff: Firefighter, alpha: float) -> Vector2:
 	var p := UnitsView.display_pos(ff, alpha)
 	if not ff.incapacitated and not sim.water.hoses.is_empty():
 		# 호스 꺼내기 (E1): 1번·2번은 차 후면 앞 정해진 자리에
@@ -3371,7 +3453,8 @@ func _draw_commander(alpha: float) -> void:
 	var feet := proj.to_screen(p, 0.0)
 	_contact_shadow(feet, 10, 5, 0.3)
 	if selection.commander_selected:
-		draw_polyline(_ellipse(feet, 13, 6.5, true), PlanStyle.SELECTION, 2.0)
+		# 대원과 같은 표시 (2026-11-27 사용자: 지휘관은 클릭해도 선택된 느낌이 없다): 발밑 작은 원 + 몸 노란 외곽선(_draw_select_marks)
+		draw_polyline(_ellipse(feet, 9, 4.5, true), PlanStyle.SELECTION, 1.5)
 	var art := SpriteArt.get_set(str(SpriteArt.config().get("commander", ""))) if not thermal else null
 	var delta := c.pos - c.prev_pos
 	var moving := c.level == c.prev_level and delta.length_squared() > 0.000001
@@ -5821,10 +5904,19 @@ func _draw_person_mark(ci: CanvasItem, ff: Firefighter, c: Crew, tint: Color, al
 
 ## 고른 대원의 몸 외곽선 (노랑): 같은 층에 보이는(내린) 사람만. 열화상에서는 그리지 않는다
 func _draw_select_marks() -> void:
-	if sim == null or thermal or ghost or skip_live or selection.selected.is_empty():
+	if sim == null or thermal or ghost or skip_live or (selection.selected.is_empty() and not selection.commander_selected):
 		return
 	var alpha := sim.clock.alpha()
 	var tint := Color(stack.params.select_color, 0.97)
+	# 고른 지휘관도 대원과 같은 노란 몸 외곽선
+	var cmdr := sim.command.commander
+	if selection.commander_selected and cmdr != null and cmdr.level == level and not cmdr.aboard:
+		var cart := SpriteArt.get_set(str(SpriteArt.config().get("commander", "")))
+		var cfeet := proj.to_screen(UnitsView.display_pos(cmdr, alpha), 0.0)
+		var cmoving := cmdr.level == cmdr.prev_level and (cmdr.pos - cmdr.prev_pos).length_squared() > 0.000001
+		var canim := "walk" if cmoving else "idle"
+		if cart == null or not cart.draw(_mark_select, canim, int(_facing.get(-1, 1)), SpriteArt.frame_at(canim, cart.frames(canim)), cfeet, tint):
+			_mark_select.draw_arc(cfeet + Vector2(0, -18), 9.0, 0.0, TAU, 16, tint, 2.0)
 	for id in selection.selected:
 		var c := sim.units.get_crew(id)
 		if c == null:

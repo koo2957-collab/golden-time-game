@@ -130,7 +130,8 @@ func _run() -> void:
 	sel._set_selection([crew.id] as Array[int], [] as Array[int])
 	await process_frame
 	_check("나뉜 뒤: 합치기 켜짐 · 나누기 회색", [_en(world, "merge"), _en(world, "split")], [true, false])
-	world._press_card("X")
+	_check("나뉜 뒤: Z 칸이 합치기로 바뀐다", str(world.hud.card.item_for_key("Z").get("id", "")), "merge")
+	world._press_card("Z")
 	for i in 600:
 		if squad.crews.size() == 1:
 			break
@@ -185,7 +186,8 @@ func _run() -> void:
 		sel._set_selection([crew.id] as Array[int], [] as Array[int])
 		await process_frame
 		_check("나가 있으면 복귀가 켜지고 한 명 보내기는 회색", [_en(world, "recall"), _en(world, "detach")], [true, false])
-		world._press_card("V")
+		_check("나가 있으면 C 칸이 복귀로 바뀐다", str(world.hud.card.item_for_key("C").get("id", "")), "recall")
+		world._press_card("C")
 		for i in 3000:
 			if sim.units.solo_of(squad) == null:
 				break

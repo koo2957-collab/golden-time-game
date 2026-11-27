@@ -56,7 +56,12 @@ func test_no_commander_card_set() -> void:
 	var ids: Array[String] = []
 	for s: Dictionary in card.slots():
 		ids.append(str(s.id))
-	assert_eq(ids, ["search", "attack", "check_below", "watch", "exterior", "ppv", "standby", "withdraw", "split", "merge", "detach", "recall"] as Array[String], "칸 순서")
+	# 2026-11-27: 나누기·합치기(Z), 한 명 보내기·복귀(C)는 한 칸을 같이 쓰고(지금 쓸 수 있는 쪽), X = 이동 · V = 대상 지시
+	assert_eq(ids, ["search", "attack", "check_below", "watch", "exterior", "ppv", "standby", "withdraw", "split", "move", "detach", "target"] as Array[String], "칸 순서")
+	card.enabled_fn = func(it: Dictionary) -> bool: return str(it.id) != "split" and str(it.id) != "detach"
+	assert_eq([str(card.slots()[8].id), str(card.slots()[10].id)], ["merge", "recall"], "나누기·보내기를 못 쓰면 같은 칸에 합치기·복귀")
+	assert_eq(card.press("Z"), "merge", "Z = 합치기 (나뉜 뒤)")
+	card.enabled_fn = Callable()
 	assert_eq(card.press("Q"), "search", "Q = 인명검색")
 	assert_eq(card.press("D"), "", "D = 대기 — 실행 없이 하위 칸만 연다")
 	assert_eq(card.parent, "standby", "대기 하위 칸이 열린다")

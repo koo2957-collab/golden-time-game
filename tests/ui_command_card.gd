@@ -163,7 +163,7 @@ func _run() -> void:
 	_check("정보 창과 아래 바가 함께 화면 안에", [hud.get_rect().encloses(hud.console.get_rect()), hud.get_rect().encloses(hud.side_panel.get_rect())], [true, true])
 	root.get_texture().get_image().save_png("user://ui_board_team.png")
 	# 2026-11-26 사용자 결정: 분대 명령은 한 판 — 임무 Q W E R · 행동 A S D F · 편성 Z X C V
-	_check("팀 12칸 (임무·행동·편성)", _labels(card), ["Q 인명검색", "W 화재진압", "E 직하층 확인", "R 재발화 감시", "A 경계", "S 배연", "D 대기", "F 철수", "Z 나누기", "X 합치기", "C 한 명 보내기", "V 복귀"])
+	_check("팀 12칸 (임무·행동·편성)", _labels(card), ["Q 인명검색", "W 화재진압", "E 직하층 확인", "R 재발화 감시", "A 경계", "S 배연", "D 대기", "F 철수", "Z 나누기", "X 이동", "C 한 명 보내기", "V 대상 지시"])
 	_check("조를 골라도 메뉴가 뜨지 않는다", world.mission_ui.menu.visible, false)
 	# D 대기(하위 칸만) → 명령 카드가 하위 칸으로
 	world._press_card("D")

@@ -256,6 +256,20 @@ func _run() -> void:
 	_check("지시 글: 문 개방", [str(desc.text), str(desc.kind)], ["문 개방", "order"])
 	sel._pings.clear()
 
+	# 10-3) 명령판 이동(X)·대상 지시(V) (2026-11-27): 누르면 대상 고르기 — 칸이 깜빡이고, Esc 로 취소
+	sel._set_selection([crew.id] as Array[int], [] as Array[int])
+	await process_frame
+	world._press_card("X")
+	_check("X 이동 → 갈 곳 고르기 · 이동 칸 깜빡임", [sel.mode, world._card_item_state({"id": "move"}), world._card_item_state({"id": "standby"})], [4, 1, 0])
+	_key(KEY_ESCAPE)
+	var outside_all: bool = sel._outside_crews().size() == sel.selected.size()
+	_check("대상 지시는 고른 분대가 모두 밖일 때만 켜진다", world._card_item_reason({"id": "target"}) == "", outside_all)
+	if outside_all:
+		world._press_card("V")
+		_check("V 대상 지시 → 대상 고르기 · 칸 깜빡임", [sel.mode, world._card_item_state({"id": "target"})], [18, 1])
+		_key(KEY_ESCAPE)
+		_check("Esc → 대상 고르기 취소", sel.mode, 0)
+
 	# 11) 층 막대에 올리면 노란 테두리
 	var fb = world.hud.floor_bar
 	var row: Dictionary = fb._rows.filter(func(it): return it.kind == "floor" and it.level == up)[0]

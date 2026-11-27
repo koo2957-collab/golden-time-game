@@ -86,9 +86,11 @@ func _run() -> void:
 				if s.is_empty():
 					s = {"name": "%s-%d" % [sim.units.squads[c.squad_id].name, c.list.find(ff) + 1], "pos": shown, "dir": int(pose[1]), "anim": str(pose[0]),
 						"jumps": [], "dir_changes": 0, "dir_flips": 0, "anim_changes": 0, "anim_flips": [], "dir_hist": [], "anim_hist": [], "samples": 0,
-						"flip_ctx": {}, "level": ff.level}
+						"flip_ctx": {}, "level": ff.level, "spray": 0}
 					st[ff.id] = s
 				s.samples += 1
+				if str(pose[0]).begins_with("spray"):
+					s.spray += 1
 				var dist := (shown - (s.pos as Vector2)).length() * cell
 				if dist > JUMP_M and int(s.level) == ff.level:
 					(s.jumps as Array).append([snappedf(sim.clock.tick * SimClock.TICK_DT, 0.1), snappedf(dist, 0.01), "%s→%s" % [s.anim, pose[0]]])
@@ -121,7 +123,7 @@ func _run() -> void:
 		var flips := {}
 		for f: String in s.anim_flips:
 			flips[f] = int(flips.get(f, 0)) + 1
-		print("%s  순간이동 %d회 · 방향 바뀜 %d회 (왔다갔다 %d회 %s) · 동작 바뀜 %d회 (왔다갔다 %d회 %s)" % [s.name, (s.jumps as Array).size(),
+		print("%s  방수 자세 %d%% · 순간이동 %d회 · 방향 바뀜 %d회 (왔다갔다 %d회 %s) · 동작 바뀜 %d회 (왔다갔다 %d회 %s)" % [s.name, roundi(100.0 * s.spray / maxi(1, s.samples)), (s.jumps as Array).size(),
 			s.dir_changes, s.dir_flips, s.flip_ctx, s.anim_changes, (s.anim_flips as Array).size(), flips])
 		var js: Array = s.jumps
 		for k in mini(js.size(), 12):

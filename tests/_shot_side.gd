@@ -75,6 +75,22 @@ func _run() -> void:
 		await process_frame
 	print("hover obj ", sel._g_obj.get("kind", "없음"), " ", sel._g_obj.get("text", ""))
 	root.get_texture().get_image().save_png(out + "ping.png")
+	# 대상 지시(V): 누를 수 있는 문·창이 모두 노랗게
+	world._press_card("V")
+	for i in 6:
+		await process_frame
+	print("대상 지시 모드 ", sel.mode)
+	root.get_texture().get_image().save_png(out + "target.png")
+	sel.cancel_mode()
+	# 지휘관 선택: 대원과 같은 노란 몸 외곽선
+	var cmdr = sim.command.commander
+	cmdr.aboard = false
+	cmdr.pos = crews[0].leader.pos + Vector2(-3.0, 3.0)
+	cmdr.prev_pos = cmdr.pos
+	world.selection._set_selection([] as Array[int], [] as Array[int], true)
+	for i in 6:
+		await process_frame
+	root.get_texture().get_image().save_png(out + "commander.png")
 	# 아래 바: 묶음을 펼친 모습 (보고 · 안전 · 구역)
 	world.selection._set_selection([] as Array[int], [] as Array[int], true)
 	for gid in ["report", "safety", "zone"]:

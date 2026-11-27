@@ -103,12 +103,22 @@ func slots() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	var list := items()
 	for k in KEYS:
-		var found: Dictionary = {}
-		for it in list:
-			if str(it.get("key", "")) == k:
-				found = it
-		out.append(found)
+		out.append(_pick(list, k))
 	return out
+
+
+## 같은 단축키를 쓰는 항목들 (2026-11-27 — 나누기·합치기, 한 명 보내기·복귀는 한 번에 하나만 쓸 수 있어 한 칸을 같이 쓴다):
+## 지금 쓸 수 있는 첫 항목, 없으면 첫 항목
+func _pick(list: Array[Dictionary], key: String) -> Dictionary:
+	var first: Dictionary = {}
+	for it in list:
+		if str(it.get("key", "")) != key:
+			continue
+		if first.is_empty():
+			first = it
+		if is_enabled(it):
+			return it
+	return first
 
 
 func title() -> String:
@@ -142,10 +152,7 @@ func state(item: Dictionary) -> int:
 
 ## 단축키 → 항목
 func item_for_key(key: String) -> Dictionary:
-	for it in items():
-		if str(it.get("key", "")) == key:
-			return it
-	return {}
+	return _pick(items(), key)
 
 
 ## 칸을 누른다 (단축키·버튼 공통). 실행할 명령 id를 돌려준다 ("" = 하위 칸만 펼침·못 씀)

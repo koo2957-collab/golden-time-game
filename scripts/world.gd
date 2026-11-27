@@ -865,6 +865,11 @@ func _card_item_reason(item: Dictionary) -> String:
 			return _first_reason(_selected_squads().map(func(s: int) -> String: return sim.recall_reason(s)))
 		"detach":
 			return _first_reason(_selected_squads().map(func(s: int) -> String: return mission_ui._detach_reason(s)))
+		"move":
+			return "" if selection.selected.any(func(id: int) -> bool: return not sim.units.get_crew(id).leader.aboard) else "아직 차에 타고 있습니다"
+		"target":
+			return "" if not selection.selected.is_empty() and selection._outside_crews().size() == selection.selected.size() \
+				else "건물 안에 있는 조는 대상 지시를 받지 않습니다 — 임무·철수로 지시하세요"
 		"stop":
 			return "" if not selection.crews_spraying().is_empty() else "방수하고 있는 조가 없습니다"
 		"elevator":
@@ -894,11 +899,19 @@ const _MODE_CMD := {
 }
 
 
+## 이동 모드(WAYPOINT)를 명령판 '이동' 칸으로 켰는가 (아니면 대기 ▸ 이동 지점)
+var _waypoint_from_move := false
+
+
 func _card_item_state(item: Dictionary) -> int:
 	var id := str(item.get("id", ""))
 	var target := str(_MODE_CMD.get(selection.mode, ""))
 	if selection.mode == SelectionController.Mode.FLOOR_MISSION:
 		target = selection.mission_kind
+	elif selection.mode == SelectionController.Mode.TARGET:
+		target = "target"
+	elif selection.mode == SelectionController.Mode.WAYPOINT and _waypoint_from_move:
+		target = "move"
 	if target != "" and (target == id or (id == "standby" and target in ["waypoint", "observe"])):
 		return CmdButton.STATE_TARGET
 	if not selection.selected.is_empty():
@@ -986,7 +999,14 @@ func _on_command(id: String) -> void:
 		"report":
 			sim.issue(CommandOrder.make("report_request", [], 0, Vector3i.ZERO, {"crews": selection.selected.duplicate()}))
 		"waypoint":
+			_waypoint_from_move = false
 			selection.begin_mode(SelectionController.Mode.WAYPOINT)
+		# 명령판 이동·대상 지시 (2026-11-27): 누른 뒤 지도에서 좌클릭
+		"move":
+			_waypoint_from_move = true
+			selection.begin_mode(SelectionController.Mode.WAYPOINT)
+		"target":
+			selection.begin_mode(SelectionController.Mode.TARGET)
 		"observe":
 			selection.begin_mode(SelectionController.Mode.OBSERVE)
 		"support":

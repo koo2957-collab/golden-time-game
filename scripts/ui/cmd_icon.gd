@@ -122,6 +122,17 @@ static func draw(ci: CanvasItem, kind: String, c: Vector2, size: float, col: Col
 			ci.draw_polyline(PackedVector2Array([p.call(0.45, -0.65), p.call(0.82, -0.35), p.call(0.45, -0.05)]), col, w, true)
 			ci.draw_line(p.call(0.8, 0.35), p.call(-0.8, 0.35), col, w, true)
 			ci.draw_polyline(PackedVector2Array([p.call(-0.45, 0.05), p.call(-0.82, 0.35), p.call(-0.45, 0.65)]), col, w, true)
+		"move":
+			# 발자국 화살표 (이동)
+			ci.draw_line(p.call(-0.8, 0.55), p.call(0.55, -0.4), col, w * 1.3, true)
+			ci.draw_colored_polygon(PackedVector2Array([p.call(0.9, -0.65), p.call(0.25, -0.62), p.call(0.62, -0.1)]), col)
+			ci.draw_circle(p.call(-0.8, 0.55), w * 1.3, col)
+		"target":
+			# 조준 (대상 지시)
+			ci.draw_arc(c, r * 0.6, 0.0, TAU, 24, col, w, true)
+			ci.draw_circle(c, w * 0.9, col)
+			for d: Vector2 in [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]:
+				ci.draw_line(c + d * r * 0.38, c + d * r * 0.95, col, w, true)
 		"vehicle_move", "pin":
 			if kind == "pin":
 				ci.draw_arc(p.call(0.0, -0.3), r * 0.45, 0.0, TAU, 20, col, w, true)

@@ -174,7 +174,7 @@ func _actual_text() -> String:
 
 
 func _why_text() -> String:
-	var lines: PackedStringArray = ["[color=#%s]'누가'가 아니라 '무엇'이 결과를 만들었는지 봅니다 (SOP 113-2.1③). 판단 → 결과 → SOP 조항 → 왜(소방전술). 기준값 중 '추정'은 현장 검수 전 값입니다.[/color]" % DIM, ""]
+	var lines: PackedStringArray = ["[color=#%s]'누가'가 아니라 '무엇'이 결과를 만들었는지 봅니다 (SOP 113-2.1③). 판단 → 결과 → SOP 조항 → 왜(소방전술). 기준값 중 '추정'은 현장 검수 전 값입니다. 초 단위 기준 시간과 출동대 수 기준은 SOP 원문에 없는 훈련 설정값입니다 (원문은 '도착과 동시에', '지체 없이', '선제적으로'라고만 합니다).[/color]" % DIM, ""]
 	var card_lines: Array = report.get("card_lines", [])
 	if not card_lines.is_empty():
 		lines.append("")

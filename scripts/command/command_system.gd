@@ -461,7 +461,8 @@ func entry_verdict(c: Crew, tick: int) -> Dictionary:
 			on_scene += 1
 	if on_scene >= _entry_rit_squads and safety.crews_with(SafetySystem.Role.RIT).is_empty():
 		out.verdict = "wait"
-		out.reason = "출동대 %d개인데 RIT 미지정 (SSG 9)" % on_scene
+		# SSG 9 2.1.1 은 "재난 규모·위험성을 고려해 선제적으로 편성"이라고만 한다 — 출동대 수 기준은 훈련 설정값 (docs/sop2025_gap.md C1)
+		out.reason = "출동대 %d개인데 RIT 미지정 (SSG 9 2.1.1 선제 편성 · 출동대 %d개 기준은 훈련 설정)" % [on_scene, _entry_rit_squads]
 	return out
 
 
@@ -1328,7 +1329,9 @@ func _report_text(a: Dictionary) -> String:
 		parts.append("%s 실시." % ", ".join(PackedStringArray(acts)))
 	parts.append("%s 전략." % STRATEGY_NAMES[int(a.get("strategy", Strategy.OFFENSIVE))])
 	parts.append("지원 %s." % a.get("support", ""))
-	parts.append("차량 %s." % a.get("access", ""))
+	# 차량 진입·회차는 2025년판 8개 항목 밖 — 골랐을 때만 덧붙인다
+	if str(a.get("access", "")) != "":
+		parts.append("차량 %s." % a.get("access", ""))
 	return " ".join(parts)
 
 

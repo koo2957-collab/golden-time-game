@@ -47,7 +47,9 @@ func test_locked_door_card_and_answer() -> void:
 	var c := _step_until_card(sim)
 	assert_true(c != null and c.id == "DOOR-LOCKED-01", "잠긴 문 카드")
 	assert_true(c.text.contains("잠겨"), "문구 채움 (%s)" % c.text)
-	assert_eq(sim.events.of_type("card_asked").filter(func(e: Dictionary) -> bool: return e.title == "잠긴 문").size(), 1, "질문 기록")
+	assert_eq(sim.events.of_type("card_asked").filter(func(e: Dictionary) -> bool: return str(e.title).begins_with("잠긴 문")).size(), 1, "질문 기록")
+	# 진입구 파괴는 현장지휘관의 명령으로 (SOP 202-3.3, 2026-11-27): 조장의 판단 장면이 아니라 지휘관에게 오는 허가 요청 무전
+	assert_true(not c.judgment() and c.text.contains("허가 요청"), "잠긴 문 = 지휘관에게 파괴 허가 요청 (%s)" % c.text)
 	# 최선 선택지(강제 개방)를 고르면 문 파괴 작업이 시작된다
 	var best := -1
 	for i in c.options.size():
@@ -141,14 +143,19 @@ func test_crew_judgment_scene_and_auto() -> void:
 		assert_true(str(spec.get("monologue", "")) != "", "%s 속말" % spec.id)
 	var entry: Dictionary = (data.cards as Array).filter(func(c: Dictionary) -> bool: return c.id == "ENTRY-01")[0]
 	assert_true(not entry.has("scene"), "진입 허가 요청은 지휘관에게 오는 무전")
-	# 켬: 장면이 뜨고, 고르면 지휘관의 지시가 아니라 그 조의 판단으로 기록된다
+	var locked: Dictionary = (data.cards as Array).filter(func(c: Dictionary) -> bool: return c.id == "DOOR-LOCKED-01")[0]
+	assert_true(not locked.has("scene"), "잠긴 문 파괴는 지휘관에게 오는 무전 (SOP 202-3.3 — 파괴는 현장지휘관의 명령)")
+	# 켬: 장면이 뜨고, 고르면 지휘관의 지시가 아니라 그 조의 판단으로 기록된다 (닫힌 문 — 조장이 스스로 판단할 일)
+	var halt := {"crew": "진압1 1조", "crew_id": 0, "kind": "closed", "door": [13, 20, 1], "door_name": "현관", "reason": "", "safety": false,
+		"action": "attack", "target": [12, 16, 1]}
 	var sim := _sim()
-	_attack_locked_door(sim)
+	sim.cards.queue.clear()
+	sim.events.add(sim.clock.tick, "tactical_halt", halt.duplicate())
 	var c := _step_until_card(sim)
-	assert_true(c != null and c.id == "DOOR-LOCKED-01", "잠긴 문 장면")
+	assert_true(c != null and c.id == "DOOR-CLOSED-01", "닫힌 문 장면")
 	if c == null:
 		return
-	assert_true(c.judgment() and c.monologue.contains("잠겨 있다"), "조장의 판단 장면과 속말: %s" % c.monologue)
+	assert_true(c.judgment() and c.monologue.contains("닫혀 있다"), "조장의 판단 장면과 속말: %s" % c.monologue)
 	sim.issue(CommandOrder.make("card_answer", [], 0, Vector3i.ZERO, {"uid": c.uid}))
 	sim.step_ticks(2)
 	assert_eq([sim.events.of_type("crew_decided").size(), sim.events.of_type("card_answered").size()], [1, 0], "조의 판단으로 기록")
@@ -156,7 +163,8 @@ func test_crew_judgment_scene_and_auto() -> void:
 	# 끔: 장면 없이 대원이 최선을 고른 것처럼 움직이고 보고만 한다
 	var auto := _sim()
 	auto.cards.crew_judgment = false
-	_attack_locked_door(auto)
+	auto.cards.queue.clear()
+	auto.events.add(auto.clock.tick, "tactical_halt", halt.duplicate())
 	for i in roundi(60.0 / SimClock.TICK_DT):
 		auto.step_ticks(1)
 		if not auto.events.of_type("crew_decided").is_empty():

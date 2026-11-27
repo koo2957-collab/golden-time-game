@@ -54,6 +54,8 @@ var _post_choice: ChipGroup
 ## 상황보고 양식 (2026-11-27 사용자 결정: 왼쪽 옆 패널 + 칩 — 바깥을 보며 체크). 하나 고르는 항목 / 여럿 고르는 항목
 var _options: Dictionary = {}  # 항목 -> ChipGroup (하나)
 var _checks: Dictionary = {}  # 항목 -> ChipGroup (여럿)
+## 고르지 않아도 송신되는 참고 항목 -> ChipGroup (하나)
+var _optional: Dictionary = {}
 var _auto_labels: Dictionary = {}  # 항목 -> Label
 var _report_bar: ProgressBar
 var _report_count: Label
@@ -460,13 +462,15 @@ func report_answers() -> Dictionary:
 		a[key] = (_options[key] as ChipGroup).selected_text()
 	for key: String in _checks:
 		a[key] = (_checks[key] as ChipGroup).picked()
+	for key: String in _optional:
+		a[key] = (_optional[key] as ChipGroup).selected_text()
 	a["strategy"] = CommandSystem.STRATEGY_NAMES.find(a["strategy"]) if a["strategy"] != "" else 0
 	return a
 
 
 ## 양식 항목을 보기 글자로 고른다 (조작 점검용)
 func set_report_choice(key: String, text: String) -> void:
-	(_options[key] as ChipGroup).select_text(text)
+	((_options[key] if _options.has(key) else _optional[key]) as ChipGroup).select_text(text)
 	_update_submit()
 
 
@@ -760,7 +764,11 @@ func _build_report() -> void:
 	_row_checks(body, "⑥ 소방 활동 (여럿)", "activities", opts.activities)
 	_row_option(body, "⑦ 전략", "strategy", ["공격", "방어", "병행"])
 	_row_option(body, "⑧ 지원 요청", "support", opts.support)
-	_row_option(body, "⑨ 차량 진입·회차 (참고, 채점 안 함)", "access", opts.access)
+	# 차량 진입·회차는 2025년판 8개 항목에 없다 (SOP 101-2.1 — docs/sop2025_gap.md A5): 골라도 되고 비워도 되는 참고 항목
+	body.add_child(_row_title("참고 · 차량 진입·회차 (8개 항목 밖 — 비워도 됩니다)"))
+	var access := ChipGroup.new().setup(opts.access)
+	body.add_child(access)
+	_optional["access"] = access
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 10)
 	var cancel := _button("취소  Esc", func() -> void: _close(_report))

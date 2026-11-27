@@ -119,7 +119,7 @@
     "shoes": [],
     "witnesses": [
       {
-        "name": "시장 상인회장",
+        "name": "시장 상인회장", "portrait": "man",
         "source": "관계자",
         "pos": [
           36,

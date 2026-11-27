@@ -27,6 +27,8 @@ const DIM_COLOR := Color("94a3b8")
 const RADIO_COLOR := Color("a7f3d0")
 const REFRESH_S := 0.2
 const WARN_COLOR := Color("fca5a5")
+## 관계인 진술 장면의 강조 색 (무전 = 하늘색, 판단 = 주황, 관계인 = 초록)
+const WITNESS_COLOR := Color("86efac")
 
 var sim: SimWorld
 var _refresh := 0.0
@@ -90,8 +92,14 @@ var _witness_index := -1
 var _witness_title: Label
 var _witness_status: Label
 var _witness_answers: Label
-var _witness_questions: VBoxContainer  # 아직 묻지 않은 질문 단추 (누르면 바로 묻는다)
+var _witness_questions: VBoxContainer  # 질문 단추 (안 물은 것은 누르면 바로 묻고, 물은 것은 그 답을 다시 본다)
 var _witness_move: Button
+## 관계인 진술 장면 (2026-11-27 사용자 결정 — 무전 카드와 같은 먹물 장면): 뒤 어둡게 · 시민 그림 · 고른 질문 · 그 답
+var _witness_shade: ColorRect
+var _witness_portrait: TextureRect
+var _witness_question: Label
+## 지금 답을 보여 주는 질문 key (없으면 "")
+var _witness_pick := ""
 ## 이 창에서 방금 물은 질문 (창이 떠 있는 동안 시계가 멈춰 명령이 다음 틱에 들어가므로, 답을 먼저 보여 준다)
 var _witness_heard: Array[String] = []
 var _info: PanelContainer
@@ -305,8 +313,14 @@ func open_witness(index: int) -> void:
 		return
 	_witness_index = index
 	_witness_heard.clear()
+	_witness_pick = ""
 	_rebuild_witness()
 	_open(_witness)
+	# 무전 카드처럼 화면 가운데, 작은 화면이면 줄여서
+	var k := minf(1.0, minf(size.x / (CardUi.SCENE.x + 40.0), size.y / (CardUi.SCENE.y + 40.0)))
+	_witness.scale = Vector2(k, k)
+	_witness.position = Vector2((size.x - CardUi.SCENE.x * k) * 0.5, maxf(20.0, (size.y - CardUi.SCENE.y * k) * 0.46))
+	_witness_shade.visible = true
 
 
 func witness_visible() -> bool:
@@ -319,25 +333,50 @@ func ask_witness(questions: Array[String]) -> void:
 		ask_question(q)
 
 
-## 질문 하나를 바로 묻는다 (2026-11-27 사용자 결정: 체크하고 '질문'을 누르는 대신 질문 단추 한 번). 창은 그대로 두고 답을 아래에 보여 준다
+## 질문 단추를 누른다 (2026-11-27 사용자 결정): 안 물은 질문이면 바로 묻고, 그 질문의 답만 보인다.
+## 이미 물은 질문이면 다시 묻지 않고 그 답을 다시 보여 준다
 func ask_question(q: String) -> void:
 	var survey := sim.command.survey
-	if not _witness.visible or not survey.in_ask_range(_witness_index):
+	if not _witness.visible:
 		return
 	var w := survey.witnesses[_witness_index]
-	if w.asked.has(q) or q in _witness_heard or not w.statements.has(q):
+	if not w.statements.has(q):
 		return
-	order_issued.emit(CommandOrder.make("ask", [], _witness_index, Vector3i.ZERO, {"questions": [q] as Array[String]}))
-	_witness_heard.append(q)
+	if not (w.asked.has(q) or q in _witness_heard):
+		if not survey.in_ask_range(_witness_index):
+			return
+		order_issued.emit(CommandOrder.make("ask", [], _witness_index, Vector3i.ZERO, {"questions": [q] as Array[String]}))
+		_witness_heard.append(q)
+	_witness_pick = q
 	_rebuild_witness()
 
 
-## 진술 창의 질문 단추 (조작 점검용)
+## 진술 장면의 질문 단추 key (조작 점검용)
 func witness_question_keys() -> Array[String]:
 	var out: Array[String] = []
 	for b in _witness_questions.get_children():
-		out.append(str(b.get_meta("q")))
+		if b.has_meta("q"):
+			out.append(str(b.get_meta("q")))
 	return out
+
+
+## 진술 장면에 지금 보이는 답 (조작 점검용)
+func witness_answer() -> String:
+	return _witness_answers.text
+
+
+## 관계인의 시민 그림 (data/art.json citizen_portraits): 시나리오 portrait > 이름 낱말 규칙 > default
+static func citizen_portrait_path(w: Witness) -> String:
+	var cfg: Dictionary = SpriteArt.config().get("citizen_portraits", {})
+	var key := w.portrait
+	if key == "":
+		for r: Array in cfg.get("rules", []):
+			if w.name.contains(str(r[0])):
+				key = str(r[1])
+				break
+	if key == "":
+		key = str(cfg.get("default", "man"))
+	return str(cfg.get(key, ""))
 
 
 ## 현장 정보 창 (지휘관 명령 칸 옆 현장 정보 단추): 둘러보기·진술·물증 기록
@@ -475,6 +514,8 @@ func _close(panel: PanelContainer) -> void:
 	if not panel.visible:
 		return
 	panel.visible = false
+	if panel == _witness:
+		_witness_shade.visible = false
 	if not any_dialog_open():
 		dialog_changed.emit(false)
 
@@ -996,62 +1037,143 @@ func _info_text() -> String:
 	return "\n".join(lines)
 
 
+## 관계인 진술 장면: 무전 카드와 같은 먹물 바탕 · 왼쪽 시민 그림 · 오른쪽 이름 → 고른 질문 → 그 답 → 둥근 질문 단추
 func _build_witness() -> void:
-	_witness = _side_dialog("관계인", "SOP 101-2.2② · 관계인·목격자의 말은 틀릴 수도 있습니다. 다른 단서와 맞춰 보세요")
-	_witness_title = _side_title(_witness)
-	var body := _side_body(_witness)
-	_witness_status = _label("", 15, SidePanelStyle.DIM)
-	_witness_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.add_child(_witness_status)
-	body.add_child(_row_title("물어볼 것 (누르면 바로 묻습니다)"))
-	_witness_questions = VBoxContainer.new()
-	_witness_questions.add_theme_constant_override("separation", 6)
-	body.add_child(_witness_questions)
-	body.add_child(_spacer(6))
-	body.add_child(_row_title("들은 진술"))
-	_witness_answers = _label("", 16, RADIO_COLOR)
+	_witness_shade = ColorRect.new()
+	_witness_shade.color = Color(0.02, 0.03, 0.05, 0.5)
+	_witness_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_witness_shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	_witness_shade.visible = false
+	add_child(_witness_shade)
+	_witness = PanelContainer.new()
+	_witness.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	var scene := Control.new()
+	scene.custom_minimum_size = CardUi.SCENE
+	scene.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_witness.add_child(scene)
+	var blot := TextureRect.new()
+	blot.texture = CardUi._texture(CardUi.BLOT_PATH)
+	blot.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	blot.stretch_mode = TextureRect.STRETCH_SCALE
+	blot.size = CardUi.SCENE
+	blot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	scene.add_child(blot)
+	_witness_portrait = TextureRect.new()
+	_witness_portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_witness_portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_witness_portrait.position = Vector2(86, 118)
+	_witness_portrait.size = Vector2(460, 382)
+	_witness_portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	scene.add_child(_witness_portrait)
+	var box := VBoxContainer.new()
+	box.position = Vector2(548, 84)
+	box.custom_minimum_size = Vector2(CardUi.TEXT_W, 0)
+	box.add_theme_constant_override("separation", 8)
+	scene.add_child(box)
+	var tag := _label("관계인 · 말은 틀릴 수도 있습니다 (SOP 101-2.2②)", 14, WITNESS_COLOR)
+	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(tag)
+	var orn := Control.new()
+	orn.custom_minimum_size = Vector2(CardUi.TEXT_W, 14)
+	orn.draw.connect(func() -> void: CardUi.draw_ornament(orn, WITNESS_COLOR))
+	box.add_child(orn)
+	_witness_title = _label("", 26, Color.WHITE)
+	_witness_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(_witness_title)
+	_witness_question = _label("", 15, DIM_COLOR)
+	_witness_question.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(_witness_question)
+	_witness_answers = _label("", 20, Color("dcfce7"))
 	_witness_answers.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.add_child(_witness_answers)
-	_witness_move = _button("지휘관 이동", func() -> void:
+	_witness_answers.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_witness_answers.custom_minimum_size = Vector2(CardUi.TEXT_W, 84)
+	_witness_answers.add_theme_constant_override("line_spacing", 5)
+	box.add_child(_witness_answers)
+	_witness_questions = VBoxContainer.new()
+	_witness_questions.add_theme_constant_override("separation", 8)
+	box.add_child(_witness_questions)
+	_witness_status = _label("", 14, DIM_COLOR)
+	_witness_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_witness_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_witness_status.custom_minimum_size = Vector2(CardUi.TEXT_W, 0)
+	box.add_child(_witness_status)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 10)
+	_witness_move = CardUi.pill(200)
+	_witness_move.text = "지휘관 이동"
+	_witness_move.pressed.connect(func() -> void:
 		var w := sim.command.survey.witnesses[_witness_index]
 		order_issued.emit(CommandOrder.make("commander_move", [], 0, Vector3i(floori(w.pos.x) + 1, floori(w.pos.y), 1)))
 		_close(_witness))
-	_side_outer(_witness).add_child(_button_row([_witness_move, _button("닫기  Esc", func() -> void: _close(_witness))]))
+	row.add_child(_witness_move)
+	var close := CardUi.pill(160)
+	close.text = "닫기  Esc"
+	close.pressed.connect(func() -> void: _close(_witness))
+	row.add_child(close)
+	box.add_child(row)
+	add_child(_witness)
+	_witness.visible = false
 
 
 func _rebuild_witness() -> void:
 	var survey := sim.command.survey
 	var w := survey.witnesses[_witness_index]
-	_witness_title.text = "관계인 — %s" % w.label()
+	_witness_title.text = w.label()
+	_witness_portrait.texture = CardUi._texture(citizen_portrait_path(w))
 	var near := survey.in_ask_range(_witness_index)
-	_witness_status.text = "가까이 있어 바로 물을 수 있습니다." if near \
-		else "지휘관이 가까이(3m) 가야 물을 수 있습니다 — '지휘관 이동'을 누르거나 관계인을 우클릭하세요."
+	_witness_status.text = "" if near else "지휘관이 가까이(3m) 가야 물을 수 있습니다 — '지휘관 이동'을 누르거나 관계인을 우클릭하세요."
+	_witness_status.visible = not near
 	_witness_move.visible = not near
-	var answers: PackedStringArray = []
 	var heard: Array[String] = []
 	for q: String in w.asked:
 		heard.append(q)
 	for q in _witness_heard:
 		if not q in heard:
 			heard.append(q)
-	for q in heard:
-		answers.append("%s\n  → \"%s\"" % [SiteSurvey.QUESTIONS[q], w.statements[q].get("text", "")])
-	_witness_answers.text = "\n".join(answers) if not answers.is_empty() else "(아직 들은 진술 없음)"
+	if _witness_pick != "" and _witness_pick in heard:
+		_witness_question.text = str(SiteSurvey.QUESTIONS[_witness_pick])
+		_witness_answers.text = "“%s”" % str(w.statements[_witness_pick].get("text", ""))
+		_witness_answers.add_theme_color_override("font_color", Color("dcfce7"))
+	else:
+		_witness_question.text = ""
+		_witness_answers.text = "물어볼 것을 고르세요." if near else ""
+		_witness_answers.add_theme_color_override("font_color", DIM_COLOR)
 	for c in _witness_questions.get_children():
 		_witness_questions.remove_child(c)
 		c.queue_free()
 	for q: String in SiteSurvey.QUESTIONS:
-		if q in heard or not w.statements.has(q):
+		if not w.statements.has(q):
 			continue
 		var key := q
-		var b := _button("“%s”" % SiteSurvey.QUESTIONS[q], func() -> void: ask_question(key))
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.disabled = not near
+		var b := CardUi.pill()
+		var done := q in heard
+		b.text = ("✓ " if done else "") + str(SiteSurvey.QUESTIONS[q])
+		b.disabled = not near and not done
+		if q == _witness_pick:
+			var on := StyleBoxFlat.new()
+			on.bg_color = Color(0.12, 0.22, 0.16, 0.95)
+			on.set_corner_radius_all(22)
+			on.set_border_width_all(2)
+			on.border_color = WITNESS_COLOR
+			on.content_margin_left = 22
+			on.content_margin_right = 22
+			on.content_margin_top = 9
+			on.content_margin_bottom = 9
+			for st: String in ["normal", "hover", "pressed"]:
+				b.add_theme_stylebox_override(st, on)
+		var dis := StyleBoxFlat.new()
+		dis.bg_color = Color(0.07, 0.1, 0.13, 0.5)
+		dis.set_corner_radius_all(22)
+		dis.set_border_width_all(1)
+		dis.border_color = Color(CardUi.LINE_COLOR, 0.2)
+		b.add_theme_stylebox_override("disabled", dis)
+		b.add_theme_color_override("font_disabled_color", Color(DIM_COLOR, 0.6))
+		if done and q != _witness_pick:
+			b.add_theme_color_override("font_color", DIM_COLOR)
+		b.pressed.connect(func() -> void: ask_question(key))
 		b.set_meta("q", q)
 		_witness_questions.add_child(b)
-	if _witness_questions.get_child_count() == 0:
-		_witness_questions.add_child(_label("더 물어볼 것이 없습니다.", 15, SidePanelStyle.MUTED))
 
 
 func _build_info() -> void:

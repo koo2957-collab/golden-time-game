@@ -141,7 +141,7 @@
     ],
     "witnesses": [
       {
-        "name": "남편",
+        "name": "남편", "portrait": "man",
         "source": "가족",
         "pos": [
           3,
@@ -173,7 +173,7 @@
         }
       },
       {
-        "name": "앞집 주민",
+        "name": "앞집 주민", "portrait": "grandma",
         "source": "목격자",
         "pos": [
           35,

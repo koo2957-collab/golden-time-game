@@ -113,7 +113,7 @@
     ],
     "witnesses": [
       {
-        "name": "이웃 주민",
+        "name": "이웃 주민", "portrait": "grandma",
         "source": "신고자",
         "pos": [
           2,
@@ -143,7 +143,7 @@
         }
       },
       {
-        "name": "할머니 딸",
+        "name": "할머니 딸", "portrait": "woman",
         "source": "가족",
         "pos": [
           35,

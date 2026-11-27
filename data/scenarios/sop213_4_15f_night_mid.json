@@ -148,7 +148,7 @@
     "shoes": [],
     "witnesses": [
       {
-        "name": "경비원",
+        "name": "경비원", "portrait": "man",
         "source": "관계자",
         "pos": [
           44,

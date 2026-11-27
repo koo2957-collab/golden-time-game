@@ -207,12 +207,24 @@ func _run() -> void:
 	_click(sim.command.survey.witnesses[0].pos, MOUSE_BUTTON_LEFT, false, false, true)
 	_check("관계인 클릭 → 진술 창", cui.witness_visible(), true)
 	_check("질문 단추가 질문마다 있다 (체크·'질문' 단추 없음)", cui.witness_question_keys().has("victims"), true)
+	var w0 = sim.command.survey.witnesses[0]
+	_check("관계인 장면: 시민 그림", cui._witness_portrait.texture != null, true)
 	cui.ask_witness(["victims"] as Array[String])
-	_check("질문 단추를 누르면 창은 그대로, 답이 아래에 뜨고 그 단추는 빠진다",
-		[cui.witness_visible(), cui.witness_question_keys().has("victims"), cui._witness_answers.text.contains("→")], [true, false, true])
+	var said_victims := str(w0.statements["victims"].get("text", ""))
+	_check("질문을 누르면 그 질문의 답만 보인다 (장면은 그대로)", [cui.witness_visible(), cui.witness_answer().contains(said_victims)], [true, true])
+	var other := ""
+	for q in cui.witness_question_keys():
+		if q != "victims":
+			other = q
+			break
+	if other != "":
+		cui.ask_question(other)
+		_check("다른 질문을 누르면 그 답으로 바뀐다", [cui.witness_answer().contains(str(w0.statements[other].get("text", ""))), cui.witness_answer().contains(said_victims)], [true, false])
+		cui.ask_question("victims")
+		_check("물은 질문을 다시 누르면 다시 묻지 않고 그 답만", cui.witness_answer().contains(said_victims), true)
 	cui._close(cui._witness)
 	sim.step_ticks(100)
-	_check("진술 들음", sim.events.of_type("statement").size(), 1)
+	_check("진술 들음 (물은 질문 수만큼, 다시 누른 것은 빼고)", sim.events.of_type("statement").size(), 2)
 	cui.open_info_dialog()
 	_check("현장 정보 버튼 → 현장 정보 창", cui.info_visible(), true)
 	cui._close(cui._info)

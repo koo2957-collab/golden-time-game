@@ -117,7 +117,7 @@
     "shoes": [],
     "witnesses": [
       {
-        "name": "훈련 교관",
+        "name": "훈련 교관", "portrait": "man",
         "source": "관계자",
         "pos": [
           30,

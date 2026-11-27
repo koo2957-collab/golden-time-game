@@ -117,7 +117,7 @@
     "shoes": [],
     "witnesses": [
       {
-        "name": "물류팀장",
+        "name": "물류팀장", "portrait": "man",
         "source": "관계자",
         "pos": [
           26,

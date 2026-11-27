@@ -7,6 +7,8 @@ var index := 0
 var name := ""
 ## 출처 (신고자·가족·목격자). 화면에 보인다
 var source := ""
+## 진술 장면의 시민 그림 키 (data/art.json citizen_portraits — grandma·man·woman·girl). 비면 이름으로 고른다 (2026-11-27)
+var portrait := ""
 var pos := Vector2.ZERO
 ## 현장에 나타나는 틱
 var arrive_tick := 0
@@ -21,6 +23,7 @@ static func from_dict(i: int, d: Dictionary) -> Witness:
 	w.index = i
 	w.name = str(d.get("name", "관계인"))
 	w.source = str(d.get("source", "관계인"))
+	w.portrait = str(d.get("portrait", ""))
 	var p: Array = d.get("pos", [0, 0])
 	w.pos = Vector2(int(p[0]) + 0.5, int(p[1]) + 0.5)
 	w.arrive_tick = roundi(float(d.get("arrive_s", 0)) / SimClock.TICK_DT)

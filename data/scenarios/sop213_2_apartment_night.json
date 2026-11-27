@@ -121,7 +121,7 @@
     "shoes": [],
     "witnesses": [
       {
-        "name": "관리사무소 경비원",
+        "name": "관리사무소 경비원", "portrait": "man",
         "source": "관계자",
         "pos": [
           44,

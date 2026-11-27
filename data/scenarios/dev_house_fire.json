@@ -81,7 +81,7 @@
     ],
     "witnesses": [
       {
-        "name": "이웃 주민", "source": "신고자", "pos": [2, 25], "arrive_s": 0,
+        "name": "이웃 주민", "portrait": "grandma", "source": "신고자", "pos": [2, 25], "arrive_s": 0,
         "statements": {
           "victims": {"text": "할머니랑 손자가 같이 살아요. 오늘 둘 다 나오는 걸 못 봤어요.", "reliable": true},
           "origin": {"text": "1층 거실 쪽 창문에서 검은 연기가 먼저 났어요.", "reliable": true},
@@ -90,7 +90,7 @@
         }
       },
       {
-        "name": "할머니 딸", "source": "가족", "pos": [35, 25], "arrive_s": 150,
+        "name": "할머니 딸", "portrait": "woman", "source": "가족", "pos": [35, 25], "arrive_s": 150,
         "statements": {
           "victims": {"text": "엄마는 이 시간엔 경로당에 가세요. 아이만 1층 작은방에서 낮잠 자고 있을 거예요.", "reliable": false, "rooms": ["1F_room1"], "note": "할머니는 실제로 2층 방3에 있다 (2층 방3 실내등과 엇갈림)"},
           "origin": {"text": "모르겠어요, 저도 방금 왔어요.", "reliable": true},

@@ -119,7 +119,7 @@
     "shoes": [],
     "witnesses": [
       {
-        "name": "101호 대신 주차장 관리인",
+        "name": "101호 대신 주차장 관리인", "portrait": "man",
         "source": "관계자",
         "pos": [
           30,

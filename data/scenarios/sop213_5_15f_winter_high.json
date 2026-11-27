@@ -155,7 +155,7 @@
     "shoes": [],
     "witnesses": [
       {
-        "name": "{F}02호 어머니",
+        "name": "{F}02호 어머니", "portrait": "woman",
         "source": "신고자",
         "pos": [
           20,

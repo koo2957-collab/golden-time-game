@@ -9,6 +9,9 @@
 #   python tools/prep_radio_art.py ems <구급대원 그림> <출력 폴더 art>
 #   python tools/prep_radio_art.py dispatch <상황실 그림> <출력 폴더 art>   ('상황실.png' — 헤드셋을 쓴 상황요원. 얼굴 반쪽 그림은 만들지 않는다)
 #   art/portraits/crew_<종류>.png · half_<종류>.png 를 그 그림으로 바꾼다 (헬멧 색이 이미 맞아 물들이지 않는다)
+# 시민(관계인) 그림 (2026-11-27 사용자 제공 '시민 이미지 4컷' — 좌상 할머니·우상 아저씨·좌하 여성·우하 여자아이):
+#   python tools/prep_radio_art.py citizens <4컷 그림> <출력 폴더 art>
+#   art/portraits/citizen_grandma·man·woman·girl.png — 관계인 진술 장면 (무전 장면과 같은 크기·먹물 번짐)
 # 필요: pillow, numpy
 import os
 import sys
@@ -176,8 +179,28 @@ def ink_blot(out_dir: str, w: int = 1400, h: int = 760, seed: int = 7) -> None:
     print("그림", os.path.basename(path))
 
 
+# 4컷 그림의 칸 순서와 칸 안에서 사람 가운데의 가로 비율
+CITIZENS = [("grandma", 0.49), ("man", 0.53), ("woman", 0.49), ("girl", 0.49)]
+
+
+def citizens(src: str, out_dir: str) -> None:
+    """4컷 한 장을 칸마다 잘라 무전 장면 그림과 같은 가로세로 비(690 : 572)로, 가장자리를 먹물처럼 번지게"""
+    a = np.array(Image.open(src).convert("RGB")).astype(np.float32)
+    h, w = a.shape[0], a.shape[1]
+    qw, qh = w // 2, h // 2
+    bw = round(qh * 690.0 / 572.0)
+    for i, (key, cx_ratio) in enumerate(CITIZENS):
+        ox, oy = (i % 2) * qw, (i // 2) * qh
+        cx = ox + round(qw * cx_ratio)
+        x0 = max(ox, min(ox + qw - bw, cx - bw // 2))
+        part = a[oy:oy + qh, x0:x0 + bw]
+        save(part, ink_mask(part.shape[1], part.shape[0], 31 + i), os.path.join(out_dir, "portraits", "citizen_%s.png" % key), SIZE)
+
+
 if __name__ == "__main__":
-    if sys.argv[1] in SINGLE:
+    if sys.argv[1] == "citizens":
+        citizens(sys.argv[2], sys.argv[3])
+    elif sys.argv[1] in SINGLE:
         single_portrait(sys.argv[1], sys.argv[2], sys.argv[3])
     else:
         portraits(sys.argv[1], sys.argv[2], sys.argv[3])

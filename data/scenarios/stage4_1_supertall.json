@@ -120,7 +120,7 @@
     "shoes": [],
     "witnesses": [
       {
-        "name": "방재실장",
+        "name": "방재실장", "portrait": "man",
         "source": "관계자",
         "pos": [
           30,

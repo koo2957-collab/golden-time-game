@@ -153,7 +153,7 @@
     "shoes": [],
     "witnesses": [
       {
-        "name": "{F}01호 주민",
+        "name": "{F}01호 주민", "portrait": "woman",
         "source": "신고자",
         "pos": [
           12,

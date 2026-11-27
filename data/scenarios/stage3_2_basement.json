@@ -117,7 +117,7 @@
     "shoes": [],
     "witnesses": [
       {
-        "name": "노래방 사장",
+        "name": "노래방 사장", "portrait": "man",
         "source": "관계자",
         "pos": [
           24,

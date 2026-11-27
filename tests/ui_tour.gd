@@ -111,12 +111,15 @@ func _run() -> void:
 		sel._set_selection([c.id] as Array[int], [] as Array[int])
 		if sel.default_kind(c.id) == "":
 			continue
+		var n0 := sim.issued.size()
 		sel.order_floor(fire_lv, Vector2(600, 300))
 		await process_frame
+		# 층 우클릭 = 지시 창 없이 그 분대의 기본 임무를 바로 (2026-11-26 사용자 결정)
 		if mui.order.visible:
 			mui.confirm_order()
+		if sim.issued.size() > n0:
 			ordered += 1
-	_check("지시 창으로 층 임무를 줬다 (%d개 분대)" % ordered, ordered > 0, true)
+	_check("층을 우클릭해 층 임무를 줬다 (%d개 분대)" % ordered, ordered > 0, true)
 	print("  발화층 %d · 명령 기록 마지막 %s" % [fire_lv, sim.issued.slice(-ordered).map(func(x): return "%s %s" % [x.command.get_class(), str(x.command.get("action"))])])
 	sim.step_ticks(5)
 	for e in sim.events.entries.slice(-20):

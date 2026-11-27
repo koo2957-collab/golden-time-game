@@ -69,6 +69,11 @@ func _run() -> void:
 	var vp: Vector2 = root.get_visible_rect().size
 	var area := Rect2(iso.params.split_info_width_px, 0.0, vp.x - iso.params.split_info_width_px, vp.y - hud.console.size.y)
 	_check("처음은 1개 층 · 층 수 단추가 보인다 · 2층 건물이라 3개 층 단추는 꺼짐", [world.interior_span, hud._span_row.visible, hud.span_buttons[0].button_pressed, hud.span_buttons[1].disabled, hud.span_buttons[2].disabled], [1, true, true, false, true])
+	# 들어갈 때는 배율 그대로 (2026-11-25 사용자 결정 — 같은 자리에서 벽만 걷어 낸 것처럼). 맞춤은 층 수 단추를 누를 때만
+	_check("외부 → 내부: 배율 그대로", is_equal_approx(world.camera.zoom.x, ext_zoom.x), true)
+	world.set_interior_span(1)
+	for i in 5:
+		await process_frame
 	_check("고른 층이 화면 영역 안에 다 들어온다", area.grow(4.0).encloses(_on_screen(iso, iso.frame_rect())), true)
 	var focus_zoom: float = world.camera.zoom.x
 	_check("고른 층을 크게 본다 (배율 0.8 이상)", focus_zoom >= 0.8, true)
@@ -171,9 +176,8 @@ func _run() -> void:
 	_click(root.get_canvas_transform() * proj.to_screen(Vector2(rc) + Vector2(0.5, 0.5)), MOUSE_BUTTON_RIGHT)
 	for i in 3:
 		await process_frame
-	# 층 우클릭 → 지시 창 (임무 + 진입구) → 지시
-	_check("2층 우클릭 → 2층 지시 창", [world.mission_ui.order.visible, world.mission_ui.order_level], [true, top])
-	world.mission_ui.confirm_order()
+	# 층 우클릭 → 지시 창 없이 그 분대의 기본 임무를 바로 (2026-11-26 사용자 결정)
+	_check("2층 우클릭 → 지시 창 없이 바로", world.mission_ui.order.visible, false)
 	var tac: Array = []
 	for i in range(n0, sim.issued.size()):
 		if sim.issued[i].command is CommandOrder and sim.issued[i].command.action == "floor_mission":
@@ -199,11 +203,12 @@ func _run() -> void:
 		await process_frame
 	_check("1개 층 → 고른 층을 크게", [world.interior_span, is_equal_approx(world.camera.zoom.x, focus_zoom), hud.span_buttons[1].button_pressed], [1, true, false])
 
-	# 6) 단추를 끄면 외부 화면, 카메라는 들어가기 전으로
+	# 6) 단추를 끄면 외부 화면, 배율은 그대로 (2026-11-25 사용자 결정)
+	var zoom_inside: float = world.camera.zoom.x
 	hud.interior_button.button_pressed = false
 	for i in 30:
 		await process_frame
-	_check("끄면 외부 화면 · 층 수 단추 숨김", [world.exterior_view, world.camera.zoom == ext_zoom, world.camera.zoom_min, world.city.modulate.r, hud._span_row.visible], [true, true, RtsCamera.ZOOM_MIN, 1.0, false])
+	_check("끄면 외부 화면 · 배율 그대로 · 층 수 단추 숨김", [world.exterior_view, is_equal_approx(world.camera.zoom.x, maxf(zoom_inside, RtsCamera.ZOOM_MIN)), world.camera.zoom_min, world.city.modulate.r, hud._span_row.visible], [true, true, RtsCamera.ZOOM_MIN, 1.0, false])
 	root.get_texture().get_image().save_png(out + "view_exterior_again.png")
 	print("결과: %s (실패 %d)" % ["통과" if _failed == 0 else "실패", _failed])
 	quit(1 if _failed > 0 else 0)

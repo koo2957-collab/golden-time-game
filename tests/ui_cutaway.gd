@@ -60,6 +60,9 @@ func _run() -> void:
 	# 화면 맞춤: 고른 층이 화면 영역(왼쪽 정보창 오른쪽, 콘솔 위)에 꽉 차게. 층 수 단추로 2개 층·3개 층까지 넣는다
 	var vp: Vector2 = root.get_visible_rect().size
 	var area := Rect2(iso.params.split_info_width_px, 0.0, vp.x - iso.params.split_info_width_px, vp.y - world.hud.console.size.y)
+	# 들어갈 때는 배율·위치 그대로 (2026-11-25 사용자 결정) — 화면에 맞추는 것은 층 수 단추를 누를 때만
+	world.set_interior_span(1)
+	await process_frame
 	var focus_zoom: float = world.camera.zoom.x
 	_check("화면 맞춤: 12층이 화면 영역 안에 다 들어온다", area.grow(4.0).encloses(_on_screen(iso, iso.frame_rect())), true)
 	_check("15층 아파트: 층 수 단추 셋 다 쓸 수 있다", [world.hud.span_buttons[1].disabled, world.hud.span_buttons[2].disabled], [false, false])
@@ -177,9 +180,12 @@ func _run() -> void:
 	for i in 12:
 		world.camera._zoom_at(center, 1.0 / 1.15)
 	_check("크게 축소해도 내부 화면 그대로", [world.exterior_view, world.camera.zoom.x >= iso.params.split_zoom_min - 0.001], [false, true])
+	var zoom_inside: Vector2 = world.camera.zoom
 	world.hud.interior_button.button_pressed = false
 	await process_frame
-	_check("내부 보기 단추 끔 → 외부 화면, 카메라는 들어가기 전으로", [world.exterior_view, world.camera.zoom == zoom_before, world.camera.zoom_min], [true, true, RtsCamera.ZOOM_MIN])
+	# 나올 때도 배율 그대로 (2026-11-25 사용자 결정 — 오갈 때마다 배율이 바뀌지 않게). 외부 최소 배율보다 작으면 그 배율로
+	var expect_zoom := maxf(zoom_inside.x, RtsCamera.ZOOM_MIN)
+	_check("내부 보기 단추 끔 → 외부 화면, 배율은 그대로 (외부 최소 배율 아래면 최소 배율)", [world.exterior_view, is_equal_approx(world.camera.zoom.x, expect_zoom), world.camera.zoom_min], [true, true, RtsCamera.ZOOM_MIN])
 
 	# 스크린샷 2: 내부 화면 (발화층 3층 + 위 4층, 아래 2층. 구조가 보이게 정보 안개를 잠깐 끈다)
 	world.set_view_level(3)

@@ -963,8 +963,12 @@ func _advance(h: HoseLine, c: Crew, tick: int) -> void:
 	var spot := _approach_cell(c, nearest, h.target.z, h.pattern)
 	if spot == Pathfinder.NO_CELL or Vector3i(spot.x, spot.y, h.target.z) == c.leader.cell3():
 		return
-	# 한두 걸음 옮겨도 달라질 것이 없으면 그 자리에서 계속 쏜다 (대형을 풀지 않는다)
-	if (Vector2(spot) + Vector2(0.5, 0.5)).distance_to(from) * fire.building.cell_size_m < _advance_min_m:
+	# 같은 방 안에서 한두 걸음 옮기는 것뿐이면 그 자리에서 계속 쏜다 (대형을 풀지 않는다).
+	# 밖에서 문턱을 넘는 걸음·다른 방으로 넘어가는 걸음은 짧아도 막지 않는다 (2026-11-27 — 현관 밖 진압 분대가 들어가지 못했다)
+	var here := c.leader.cell3()
+	var crossing := building.cell(here.z, here.x, here.y) in BuildingData.OUTDOOR \
+		or fire.compartment_at(here.z, here.x, here.y) != fire.compartment_at(h.target.z, spot.x, spot.y)
+	if not crossing and (Vector2(spot) + Vector2(0.5, 0.5)).distance_to(from) * fire.building.cell_size_m < _advance_min_m:
 		return
 	h.advance_from = c.leader.cell3()
 	units.order_move([c.id] as Array[int], Vector3i(spot.x, spot.y, h.target.z), pathfinder)

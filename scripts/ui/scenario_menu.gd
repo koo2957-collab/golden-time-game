@@ -7,6 +7,9 @@ signal start_requested(path: String)
 signal quit_requested
 
 const BG := Color(0.05, 0.07, 0.1)
+## 시작 화면 배경 그림과 그 위를 덮는 어둡기 (화면 설정값)
+const OPENING_PATH := "res://art/ui/opening.jpg"
+const OPENING_SHADE := 0.45
 
 var scenarios: Array[Dictionary] = []
 var _list: ItemList
@@ -36,6 +39,20 @@ func _ready() -> void:
 	bg.color = BG
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
+	# 배경 그림 (2026-11-27 사용자 제공 '오프닝 화면' — art/ui/opening.jpg): 화면을 꽉 채우고, 글이 읽히게 어둡게 덮는다
+	if ResourceLoader.exists(OPENING_PATH):
+		var pic := TextureRect.new()
+		pic.texture = load(OPENING_PATH)
+		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		pic.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(pic)
+		var shade := ColorRect.new()
+		shade.color = Color(BG, OPENING_SHADE)
+		shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(shade)
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for side in ["left", "right", "top", "bottom"]:
@@ -77,6 +94,7 @@ func _ready() -> void:
 	_list.add_theme_font_size_override("font_size", 19)
 	_list.item_selected.connect(_show)
 	_list.item_activated.connect(func(_i: int) -> void: _on_start())
+	_list.add_theme_stylebox_override("panel", _glass())
 	row.add_child(_list)
 	# 오른쪽: 설명 → 선택(평가/교육·난이도·자동화) → 큰 시작 버튼 (상용 게임처럼 고른 것 바로 아래)
 	var right := VBoxContainer.new()
@@ -90,6 +108,7 @@ func _ready() -> void:
 	_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_detail.add_theme_font_size_override("normal_font_size", 18)
 	_detail.add_theme_font_size_override("bold_font_size", 19)
+	_detail.add_theme_stylebox_override("normal", _glass())
 	right.add_child(_detail)
 	var opts := HFlowContainer.new()
 	opts.add_theme_constant_override("h_separation", 12)
@@ -159,6 +178,17 @@ func _ready() -> void:
 
 
 ## 자료 출처 (P15): data/credits.json
+## 배경 그림 위의 반투명 어두운 판 (목록·설명이 읽히게)
+func _glass() -> StyleBoxFlat:
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color(0.04, 0.05, 0.08, 0.72)
+	st.border_color = Color(1, 1, 1, 0.12)
+	st.set_border_width_all(1)
+	st.set_corner_radius_all(8)
+	st.set_content_margin_all(14)
+	return st
+
+
 func open_credits() -> void:
 	var d: Variant = JsonData.load_file("res://data/credits.json")
 	var lines: Array = d.get("lines", []) if d is Dictionary else []

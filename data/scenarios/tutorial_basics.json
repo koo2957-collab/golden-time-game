@@ -178,7 +178,7 @@
   "reinforcements": "res://data/units/squad_reinforcements.json",
   "arrivals": [
     {
-      "squad": "pump2",
+      "squad": "pump2", "second_due": true,
       "time_s": 180
     },
     {

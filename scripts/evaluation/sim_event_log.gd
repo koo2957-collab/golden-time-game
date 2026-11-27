@@ -216,7 +216,13 @@ static func describe_text(e: Dictionary) -> String:
 		"staging_full":
 			text = "대기 장소에 자리가 없어 진입로에서 대기 — %s" % e.squad
 		"squad_staged":
-			text = "대기1단계 장소 도착 (%s, 인원 %d명, %s) — %s" % [e.place, e.people, e.vehicles, e.squad]
+			if bool(e.get("direct", false)):
+				# 2착 안전센터: 대기1단계 없이 현장 도착 (SOP 103-2.1)
+				text = "현장 도착 (2착, 인원 %d명, %s) — 임무 주십시오 — %s" % [e.people, e.vehicles, e.squad]
+			else:
+				text = "대기1단계 장소 도착 (%s, 인원 %d명, %s) — %s" % [e.place, e.people, e.vehicles, e.squad]
+		"driver_hydrant":
+			text = "후착 운전원이 소화전 점령에 나섬 — %s" % e.vehicle
 		"squad_committed":
 			text = "대기 해제, 현장 투입 — %s" % e.squad
 		"order_en_route":

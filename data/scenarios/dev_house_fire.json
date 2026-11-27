@@ -102,7 +102,7 @@
   },
   "reinforcements": "res://data/units/dev_reinforcements.json",
   "arrivals": [
-    {"squad": "pump2", "time_s": 180},
+    {"squad": "pump2", "second_due": true, "time_s": 180},
     {"squad": "pump3", "time_s": 300}
   ],
   "support": {

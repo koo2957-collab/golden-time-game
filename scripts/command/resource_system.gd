@@ -19,6 +19,10 @@ var events: SimEventLog
 
 ## 대기1단계 장소 이름 (무전·화면 표시)
 var staging_name := "대기1단계 장소"
+## 2착 안전센터 편성 key (시나리오 arrivals 의 second_due — 대기1단계 없이 도착하면 바로 현장 활동, SOP 103-2.1)
+var _second_due: Dictionary = {}
+## 물·소화전 (SimWorld 가 넣는다): 후착 펌프차 운전원이 도착 즉시 소화전을 점령한다 (SOP 200-3.1.2.2)
+var water: WaterSystem
 ## 요청한 지원 수준 (보기 글자). 요청 전이면 빈 문자열
 var support_level := ""
 var support_tick := -1
@@ -118,6 +122,9 @@ func apply_scenario(data: Dictionary) -> void:
 			_support[level] = entry
 	for a: Dictionary in data.get("arrivals", []):
 		_add_schedule(str(a.get("squad", "")), roundi(float(a.get("time_s", 0)) / SimClock.TICK_DT), "후착")
+		# 2착 안전센터 (SOP 103-2.1: 선착대 = 선착·2착 안전센터 + 1착 구조대 — 대기1단계에 들지 않는다)
+		if bool(a.get("second_due", false)):
+			_second_due[str(a.get("squad", ""))] = true
 
 
 ## 도착 예정을 모두 지운다 (지휘 절차와 상관없는 테스트용)
@@ -130,6 +137,7 @@ func delay_arrivals(factor: float) -> void:
 
 
 func clear_schedule() -> void:
+	_second_due.clear()
 	for list: Array[Dictionary] in [_schedule, _queue]:
 		for entry in list:
 			_called.erase(entry.key)
@@ -138,7 +146,9 @@ func clear_schedule() -> void:
 
 
 ## 출동대 도착을 예약한다 (편성 key, 도착 틱). 이미 부른 출동대면 false
-func schedule(key: String, tick: int, reason := "후착") -> bool:
+func schedule(key: String, tick: int, reason := "후착", second_due := false) -> bool:
+	if second_due:
+		_second_due[key] = true
 	return _add_schedule(key, tick, reason)
 
 
@@ -710,7 +720,9 @@ func _dismount(squad: Squad, tick: int) -> void:
 	# 각자 문으로 내려 차 옆(보도 쪽) 모이는 자리까지 걸어간다
 	if not vehicles.is_empty():
 		_start_dismount(vehicles[0], made, spots, tick)
-	_state[squad.id] = State.STAGED
+	# 2착 안전센터는 대기1단계를 거치지 않는다 (SOP 103-2.1) — 도착 보고만 하고 바로 현장 활동 (투입 무전 없이 명령을 받는다)
+	var direct: bool = _second_due.has(squad.key)
+	_state[squad.id] = State.COMMITTED if direct else State.STAGED
 	var kinds: PackedStringArray = []
 	for v in vehicles:
 		kinds.append(v.type)
@@ -719,7 +731,33 @@ func _dismount(squad: Squad, tick: int) -> void:
 		"people": people,
 		"vehicles": "·".join(kinds) if not kinds.is_empty() else "차량 없음",
 		"place": staging_name,
+		"direct": direct,
 	})
+	_driver_takes_hydrant(squad, tick)
+
+
+## 후착대 운전원은 도착 즉시 소화전을 점령한다 (SOP 200-3.1.2.2, 103-2.1.4): 그 출동대의 펌프차가 가장 가까운 쓸 수 있는 소화전으로.
+## 지휘관이 그 차에 다른 지시를 내리면 그 지시를 따른다 (평소의 차량 명령)
+func _driver_takes_hydrant(squad: Squad, tick: int) -> void:
+	if water == null or building.hydrants.is_empty():
+		return
+	for v in units.vehicles_of_squad(squad.id):
+		if not v.is_pump() or v.away or v.hydrant >= 0:
+			continue
+		var best := -1
+		var best_d := INF
+		for i in building.hydrants.size():
+			if i in water.hydrants_out:
+				continue
+			var d := v.pos.distance_to(Vector2(building.hydrants[i]))
+			if d < best_d:
+				best_d = d
+				best = i
+		if best < 0:
+			return
+		events.add(tick, "driver_hydrant", {"vehicle": v.display_name(squad.name), "driver": v.driver_label()})
+		water.connect_hydrant(v.id, best, tick)
+		return
 
 
 ## 조장·짝이 설 수 있는 가까운 칸 (걸을 수 있고 차체 밖)

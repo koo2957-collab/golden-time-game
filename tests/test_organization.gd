@@ -226,3 +226,38 @@ func test_division_radio_channel() -> void:
 	sim.issue(CommandOrder.make("division_clear", [], 0, Vector3i.ZERO, {"name": "D면"}))
 	_until(sim, func() -> bool: return cmd.org.division_named("D면") == null, 60.0)
 	assert_eq(cmd.direct_count(), 3, "해제하면 다시 직접 지휘")
+
+
+## 2착 안전센터는 대기1단계에 들지 않는다 (SOP 103-2.1 — 선착대 = 선착·2착 안전센터 + 1착 구조대, 2026-11-27)
+func test_second_due_skips_staging() -> void:
+	var data: Dictionary = JsonData.load_file(DEV_SCENARIO_PATH)
+	assert_true(bool((data.arrivals as Array)[0].get("second_due", false)), "시나리오 도착표 첫 줄(진압2) = 2착 안전센터")
+	var sim := SimWorld.from_scenario(DEV_SCENARIO_PATH)
+	var res := sim.command.resources
+	res.clear_schedule()
+	res.schedule("pump2", 0, "후착", true)
+	res.schedule("pump3", 0)
+	assert_true(_until(sim, func() -> bool: return sim.events.of_type("squad_staged").size() >= 2, 60.0), "두 출동대 도착")
+	var p2 := _squad(sim, "pump2")
+	var p3 := _squad(sim, "pump3")
+	assert_eq([res.is_staged(p2.id), res.on_scene(p2.id), res.is_staged(p3.id)], [false, true, true], "2착은 바로 현장 활동, 3착부터 대기1단계")
+	_until(sim, func() -> bool: return not sim.command.radio.busy(), 60.0)
+	var texts := _radio_texts(sim, sim.command.radio)
+	assert_true(_any_begins(texts, "현장지휘관, 진압2. 현장 도착 (2착"), "2착 도착 보고 (%s)" % [texts])
+	assert_true(_any_begins(texts, "현장지휘관, 진압3. 대기1단계 장소 도착"), "3착은 대기1단계 보고")
+	# 2착은 투입 무전 없이 바로 명령을 받는다
+	var crew := p2.crews[0]
+	var start := crew.leader.pos
+	sim.issue(MoveCommand.new([crew.id], Vector3i(40, 26, 1)))
+	sim.step_ticks(20)
+	assert_true(crew.leader.pos.distance_to(start) > 0.2 or crew.leader.is_moving(), "2착은 명령하면 바로 움직인다")
+	assert_eq(sim.events.of_type("squad_committed").filter(func(e: Dictionary) -> bool: return e.squad == p2.name).size(), 0, "투입 무전(대기 해제)이 필요 없다")
+
+
+## 후착대 운전원은 도착 즉시 소화전을 점령한다 (SOP 200-3.1.2.2, 2026-11-27)
+func test_late_driver_takes_hydrant() -> void:
+	var sim := _org_sim(["pump2"] as Array[String])
+	var squad := sim.units.squads[_until_staged(sim, ["pump2"] as Array[String])[0]]
+	var v := sim.units.vehicles_of_squad(squad.id)[0]
+	assert_eq(sim.events.of_type("driver_hydrant").size(), 1, "도착하면 운전원이 소화전 점령에 나선다")
+	assert_true(_until(sim, func() -> bool: return v.hydrant >= 0, 240.0), "지시 없이 소화전에 연결된다 (결과: %d)" % v.hydrant)

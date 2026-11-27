@@ -21,6 +21,8 @@ var below_modulate: Array[float] = [0.75, 0.55]
 ## "cut"(잘린 벽) 또는 "hidden"(숨김)
 var front_wall := "glass"
 var front_wall_alpha := 0.15
+## 내부 화면에서 낮게 자른 앞벽의 문 진하기 (2026-11-27)
+var cut_door_alpha := 0.6
 var wall_cap_alpha := 0.75
 var inner_wall_m := 2.4
 var inner_wall_alpha_bottom := 0.95
@@ -142,6 +144,7 @@ func apply(data: Dictionary) -> void:
 		below_modulate.append(float(m))
 	front_wall = str(_value(data, "front_wall", front_wall))
 	front_wall_alpha = float(_value(data, "front_wall_alpha", front_wall_alpha))
+	cut_door_alpha = float(_value(data, "cut_door_alpha", cut_door_alpha))
 	wall_cap_alpha = float(_value(data, "wall_cap_alpha", wall_cap_alpha))
 	inner_wall_m = float(_value(data, "inner_wall_m", inner_wall_m))
 	inner_wall_alpha_bottom = float(_value(data, "inner_wall_alpha_bottom", inner_wall_alpha_bottom))

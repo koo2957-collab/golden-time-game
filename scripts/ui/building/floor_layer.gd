@@ -178,6 +178,8 @@ var _smoky := {}
 var _smoke_hulls: Array[PackedVector2Array] = []
 ## 지금 그리는 벽 조각 표시: UV.x = 1000 + 벽 깊이(칸 x + y). 0이면 벽이 아님 (unit_hole 셰이더가 대상 앞 벽만 옅게)
 var _wall_uv := Vector2.ZERO
+## 지금 그리는 문의 진하기 (내부 화면에서 잘린 앞벽의 문 = view_params cut_door_alpha, 나머지 1)
+var _door_fade := 1.0
 var _ghost_walls: Dictionary = {}  # level -> 벽 줄 목록 (_ghost_wall_runs)
 
 ## 층 고르기 (P4-5): 외부 보기에서 노랗게 테두리를 그릴 층 (-99 = 없음)
@@ -1765,12 +1767,19 @@ func _draw_door(x: int, y: int) -> void:
 	var top := proj.to_screen(Vector2(x + 0.5, y + 0.5), minf(DOOR_TOP_M, _wall_height(x, y)) + 0.3)
 	var first := Vector2i(x, y) == o.cells[0]
 	var half := stack.wall_kind(level, x, y, _outside()) == FloorStack.Wall.HALF
-	var door_h := minf(DOOR_TOP_M, _wall_height(x, y))
+	# 내부 화면에서 낮게 자른 앞벽의 문: 외부 화면과 같은 모양이 되게 문틀·문짝은 원래 높이로, 뒤가 비치게 반투명 (2026-11-27 사용자 요청)
+	var cut := not _outside() and not half and _wall_height(x, y) < DOOR_TOP_M - 0.01
+	_door_fade = stack.params.cut_door_alpha if cut else 1.0
+	var door_h := DOOR_TOP_M if cut else minf(DOOR_TOP_M, _wall_height(x, y))
+	if cut:
+		top = proj.to_screen(Vector2(x + 0.5, y + 0.5), DOOR_TOP_M + 0.3)
 	var face := _opening_face(x, y)
 	# 문짝이 붙는 면까지의 깊이: 블록 문은 칸의 남·동 끝, 얇은 실내 벽은 벽 두께의 앞면
 	var d := (0.5 + clampf(stack.params.inner_wall_thick, 0.05, 1.0) * 0.5) if half else 1.0
-	var kind := sim.building.door_kind(o.cells, o.room_a == Opening.OUTSIDE or o.room_b == Opening.OUTSIDE)
+	var outer := o.room_a == Opening.OUTSIDE or o.room_b == Opening.OUTSIDE
+	var kind := sim.building.door_kind(o.cells, outer)
 	var leaf := _structure_color(skin.color("door_" + kind, PlanStyle.CELL_COLORS[BuildingData.Cell.DOOR]))
+	leaf.a *= _door_fade
 	# 실내 문 위(인방~천장)는 벽으로 채운다 (열려 있어도)
 	if half and _wall_height(x, y) > DOOR_TOP_M:
 		_inner_wall(x, y, DOOR_TOP_M, _wall_height(x, y), _structure_color(skin.color("wall")))
@@ -1785,17 +1794,23 @@ func _draw_door(x: int, y: int) -> void:
 			_door_leaf_detail(x, y, face, d, door_h, kind, o)
 	elif o.forced or o.broken:
 		if not thermal:
-			_door_frame(x, y, face, d, door_h)
+			_door_frame(x, y, face, d, door_h, kind)
 			_door_fallen(x, y, face, door_h, leaf.darkened(0.35 if o.forced else 0.65))
 	elif not thermal:
-		_door_frame(x, y, face, d, door_h)
-		_door_swung(x, y, face, door_h, leaf)
+		_door_frame(x, y, face, d, door_h, kind)
+		# 바깥 문은 바깥으로 열린다 (현관 철문 — 2026-11-27 사용자 요청: 밖에서 열린 문이 보이게), 방문은 방 안쪽으로
+		if not outer:
+			_door_swung(x, y, face, door_h, leaf, kind, false)
 	if _outside() and _wall_height(x, y) > DOOR_TOP_M:
 		# 외부 보기: 문 위 벽 (외벽이 천장까지 서 있으므로, 문 블록 다음에 그려야 윗면에 덮이지 않는다)
 		_block(x, y, DOOR_TOP_M, _wall_height(x, y), _structure_color(PlanStyle.CELL_COLORS[BuildingData.Cell.WALL]))
+	# 바깥으로 젖힌 문짝은 문 위 벽 다음에 (벽 앞으로 나와 있으므로)
+	if o.is_open and not (o.forced or o.broken) and outer and not thermal:
+		_door_swung(x, y, face, door_h, leaf, kind, true)
 	# 잠긴 문: 문짝 가운데 높이에 자물쇠 (문 위 벽보다 나중에 — 가리지 않게)
 	if not o.is_open and o.locked and first and not thermal:
 		_draw_padlock(_op_pt(x, y, face, d, 0.5 if o.cells.size() == 1 else 0.95, minf(1.25, door_h * 0.6)))
+	_door_fade = 1.0
 	var task := sim.doors.task_of(o)
 	if task and first:
 		var r := Rect2(top.x - 22.0, top.y + 4.0, 44.0, 5.0)
@@ -1846,7 +1861,7 @@ func _inward(x: int, y: int, face: String) -> int:
 func _door_leaf_detail(x: int, y: int, face: String, d: float, h: float, kind: String, o: Opening) -> void:
 	if h < 1.2:
 		return  # 잘린 앞벽의 낮은 문: 꾸밈 없이 색만
-	var frame := Color(_structure_color(skin.color("door_frame")), 0.85)
+	var frame := Color(_structure_color(skin.color("door_frame")), 0.85 * _door_fade)
 	var u0 := 0.12
 	var u1 := 0.88
 	# 여러 칸 문은 가운데 칸끼리 맞닿게 (양여닫이)
@@ -1893,9 +1908,10 @@ func _draw_padlock(at: Vector2) -> void:
 	draw_line(at + Vector2(0, -1.5), at + Vector2(0, 2.0), Color(0.1, 0.08, 0.05), 1.4)
 
 
-## 문틀: 양쪽 기둥 + 인방 (열린 문·부서진 문)
-func _door_frame(x: int, y: int, face: String, d: float, h: float) -> void:
-	var frame := _structure_color(skin.color("door_frame"))
+## 문틀: 양쪽 기둥 + 인방 (열린 문·부서진 문). 목재문은 밝은 나무 문틀
+func _door_frame(x: int, y: int, face: String, d: float, h: float, kind := "steel") -> void:
+	var frame := _structure_color(skin.color("door_frame_wood" if kind == "wood" else "door_frame"))
+	frame.a *= _door_fade
 	var o: Opening = _opening_of.get(Vector3i(x, y, level))
 	var cells := o.cells if o else ([] as Array[Vector2i])
 	var k := cells.find(Vector2i(x, y))
@@ -1908,17 +1924,38 @@ func _door_frame(x: int, y: int, face: String, d: float, h: float) -> void:
 	_op_quad(x, y, face, d, 0.0, 1.0, h - 0.08, h, frame)
 
 
-## 열린 문짝: 경첩(서·북 쪽 끝)에서 안쪽으로 젖힌 얇은 판
-func _door_swung(x: int, y: int, face: String, h: float, color: Color) -> void:
-	var dir := _inward(x, y, face)
-	var t0 := 0.5
+## 열린 문짝: 경첩(서·북 쪽 끝)에서 90° 젖힌 얇은 판 + 보이는 면에 테두리·판넬·손잡이 (문처럼 읽히게).
+## outward: 바깥 문은 밖으로, 방문은 방 안쪽으로
+func _door_swung(x: int, y: int, face: String, h: float, color: Color, kind := "wood", outward := false) -> void:
+	var dir := _inward(x, y, face) * (-1 if outward else 1)
 	var t1 := 0.5 + dir * 0.86
-	var lo := minf(t0, t1)
-	var hi := maxf(t0, t1)
+	var lo := minf(0.5, t1)
+	var hi := maxf(0.5, t1)
+	var top := h * 0.97
+	# 보이는 면: 남쪽 벽의 문짝(남북으로 선다)은 동쪽 면, 동쪽 벽의 문짝(동서로 선다)은 남쪽 면
+	var pt := func(u: float, hh: float) -> Vector2:
+		return proj.to_screen(Vector2(x + 0.12, y + lerpf(lo, hi, u)), hh) if face == "S" else proj.to_screen(Vector2(x + lerpf(lo, hi, u), y + 0.12), hh)
 	if face == "S":
-		_box(Vector2(x + 0.04, y + lo), Vector2(x + 0.12, y + hi), 0.02, h * 0.97, color, color)
+		_box(Vector2(x + 0.04, y + lo), Vector2(x + 0.12, y + hi), 0.02, top, color, color)
 	else:
-		_box(Vector2(x + lo, y + 0.04), Vector2(x + hi, y + 0.12), 0.02, h * 0.97, color, color)
+		_box(Vector2(x + lo, y + 0.04), Vector2(x + hi, y + 0.12), 0.02, top, color, color)
+	if h < 1.2:
+		return
+	var line := Color(_structure_color(skin.color("door_frame")), 0.7 * _door_fade)
+	var rect := func(u0: float, u1: float, h0: float, h1: float, c: Color, w: float) -> void:
+		draw_polyline(PackedVector2Array([pt.call(u0, h0), pt.call(u1, h0), pt.call(u1, h1), pt.call(u0, h1), pt.call(u0, h0)]), c, w, true)
+	rect.call(0.1, 0.9, 0.06, top - 0.08, line, 1.4)
+	# 손잡이는 경첩 반대쪽(문짝 끝) — 끝이 어느 쪽인지는 젖힌 방향으로
+	var free_u := 0.82 if dir > 0 else 0.18
+	if kind == "wood":
+		var inset := Color(line, 0.45 * _door_fade)
+		rect.call(0.22, 0.78, 1.08, top - 0.25, inset, 1.1)
+		rect.call(0.22, 0.78, 0.25, 0.92, inset, 1.1)
+		draw_circle(pt.call(free_u, 1.0), 2.4, Color(Color("d4a72c"), _door_fade))
+	else:
+		var hc := _structure_color(skin.color("door_handle"))
+		hc.a *= _door_fade
+		draw_circle(pt.call(free_u, 1.0), 2.0, hc)
 
 
 ## 쓰러진 문짝 (강제 개방·불에 타 뚫림): 안쪽 바닥에 누운 판 + 갈라진 선

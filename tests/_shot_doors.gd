@@ -100,6 +100,31 @@ func _run() -> void:
 		world.camera.zoom = Vector2(3.0, 3.0)
 		world.camera.position = proj.to_screen(inner[0].center(), 1.0)
 		await _snap(out, "door_int_zoom")
+	# 같은 바깥 문을 내부 화면에서 (외부 화면과 비교)
+	for k in [0, 2]:
+		if outer.size() > k:
+			world.camera.zoom = Vector2(3.0, 3.0)
+			world.camera.position = proj.to_screen(outer[k].center(), 1.0)
+			await _snap(out, "door_outer%d_int" % k)
+	world.set_view_level(lv, true)
+	for k in [0, 2]:
+		if outer.size() > k:
+			world.camera.zoom = Vector2(3.0, 3.0)
+			world.camera.position = proj.to_screen(outer[k].center(), 1.0)
+			await _snap(out, "door_outer%d_ext" % k)
+	# 열린 바깥 문으로 뿜는 불꽃: 시간을 돌려 불을 키운다 (롤오버·플래시오버 뒤에만 뿜는다)
+	if outer.size() > 2:
+		# 그림 점검용: 그 방을 롤오버 상태로 맞춘다 (불꽃이 뿜는 조건 — 시뮬레이션으로 기다리면 대원이 먼저 끈다)
+		var src = sim.fire.comps[outer[2].room_a if outer[2].room_a != Opening.OUTSIDE else outer[2].room_b]
+		src.rollover = true
+		src.t_upper = maxf(src.t_upper, 650.0)
+		src.q_potential = maxf(src.q_potential, 2000.0)
+		src.layer_depth = maxf(src.layer_depth, src.height * 0.8)
+		outer[2].is_open = true
+		world.camera.zoom = Vector2(2.2, 2.2)
+		world.camera.position = proj.to_screen(outer[2].center(), 1.5)
+		await _snap(out, "door_flame_ext")
+	world.set_view_level(lv, false)
 	# 방화문이 있으면 그 문도 (아파트 현관)
 	for o in inner + outer:
 		if sim.building.door_kind(o.cells, o.room_a == Opening.OUTSIDE or o.room_b == Opening.OUTSIDE) == "fire":

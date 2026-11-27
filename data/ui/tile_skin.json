@@ -11,6 +11,7 @@
   "door_fire": {"color": "4f6b58", "sprite": null, "note": "방화문 (건물 fire_doors) — 녹색 표지"},
   "door_wood": {"color": "a8743f", "sprite": null, "note": "실내 목재문"},
   "door_frame": {"color": "2b2f36", "sprite": null, "note": "문틀·문 테두리"},
+  "door_frame_wood": {"color": "c9a77c", "sprite": null, "note": "방문(목재문)의 밝은 나무 문틀 (2026-11-27 — 방문이 문처럼 읽히게)"},
   "door_handle": {"color": "d9dde3", "sprite": null, "note": "손잡이 (목재문은 놋쇠색으로 바꿔 그린다)"},
   "fire_sign": {"color": "16a34a", "sprite": null, "note": "방화문 표지"},
   "lock_mark": {"color": "f59e0b", "sprite": null, "note": "잠긴 문 자물쇠 표시 (글자 '잠김' 대신)"},

@@ -26,6 +26,7 @@ var driver_label := "운전원"
 var dialog_w := 470.0
 var dialog_top := 76.0
 var dialog_bottom_gap := 10.0
+var card_w := 560.0
 
 ## 판·글자 색 (한 곳에서 정해 창 전체가 같은 색을 쓴다)
 const BG := Color(0.035, 0.06, 0.1, 0.9)
@@ -74,6 +75,7 @@ func _load(path: String) -> void:
 	dialog_w = float(_value(data, "dialog_w", dialog_w))
 	dialog_top = float(_value(data, "dialog_top", dialog_top))
 	dialog_bottom_gap = float(_value(data, "dialog_bottom_gap", dialog_bottom_gap))
+	card_w = float(_value(data, "card_w", card_w))
 
 
 ## 출동대 종류별 임무 이름 {lead, other}

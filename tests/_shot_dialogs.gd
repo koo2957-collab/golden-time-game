@@ -65,4 +65,31 @@ func _run() -> void:
 	cu.open_end_confirm()
 	await _snap(out, "dlg_end")
 	cu.close_all()
+	cu.open_all_clear()
+	await _snap(out, "dlg_all_clear")
+	cu.close_all()
+	cu.open_role_dialog(SafetySystem.Role.RIT)
+	await _snap(out, "dlg_role")
+	cu.close_all()
+	# 전략 변경 창은 선언 뒤에만 — 선언하고 연다
+	for c in [["fire", "연기만 확인"], ["victims", "있음"], ["use", "단독주택"], ["floors", "2층"],
+			["structure", "벽돌조"], ["strategy", "공격"], ["support", "불필요"], ["access", "진입 가능, 회차 불가"]]:
+		cu.open_command_dialog()
+		cu.set_report_choice(c[0], c[1])
+	cu.submit_report()
+	sim.step_ticks(5)
+	cu.close_all()
+	cu.open_command_dialog()
+	await _snap(out, "dlg_strategy")
+	cu.close_all()
+	# 관계인: 지휘관을 옆에 두고 연다, 하나 묻는다
+	var survey = sim.command.survey
+	if not survey.witnesses.is_empty():
+		var w = survey.witnesses[0]
+		sim.command.commander.pos = w.pos + Vector2(1.0, 0.0)
+		cu.open_witness(0)
+		await _snap(out, "dlg_witness0")
+		cu.ask_question("victims")
+		await _snap(out, "dlg_witness1")
+		cu.close_all()
 	quit()

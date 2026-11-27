@@ -206,8 +206,11 @@ func _run() -> void:
 	# 관계인 클릭 → 진술 창 → 질문
 	_click(sim.command.survey.witnesses[0].pos, MOUSE_BUTTON_LEFT, false, false, true)
 	_check("관계인 클릭 → 진술 창", cui.witness_visible(), true)
+	_check("질문 단추가 질문마다 있다 (체크·'질문' 단추 없음)", cui.witness_question_keys().has("victims"), true)
 	cui.ask_witness(["victims"] as Array[String])
-	_check("질문하면 창 닫힘", cui.witness_visible(), false)
+	_check("질문 단추를 누르면 창은 그대로, 답이 아래에 뜨고 그 단추는 빠진다",
+		[cui.witness_visible(), cui.witness_question_keys().has("victims"), cui._witness_answers.text.contains("→")], [true, false, true])
+	cui._close(cui._witness)
 	sim.step_ticks(100)
 	_check("진술 들음", sim.events.of_type("statement").size(), 1)
 	cui.open_info_dialog()

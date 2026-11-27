@@ -81,12 +81,10 @@ const FIRE_GLASS := Color(1.0, 0.45, 0.12, 0.95)
 const SMOKE_GLASS := Color(0.42, 0.42, 0.45, 0.95)
 const DARK_GLASS := Color(0.16, 0.22, 0.3, 0.95)
 ## 외관 꾸밈 (R17): 창틀·층 띠·발코니 난간·옥상·창 상태 표시
-const WINDOW_FRAME := Color(0.2, 0.22, 0.26, 0.9)
 const FLOOR_BAND := Color(0.72, 0.74, 0.77)
 const RAILING := Color(0.8, 0.82, 0.85, 0.9)
 const ROOF_TOP := Color(0.5, 0.53, 0.57)
 const PENTHOUSE := Color(0.64, 0.67, 0.71)
-const BROKEN_LINE := Color(0.85, 0.9, 0.95, 0.85)
 const PERSON_BODY := Color("fbbf24")
 const PERSON_MARK := Color("4ade80")
 
@@ -727,16 +725,25 @@ func _draw_facade_window(w: Dictionary, h0: float, fh: float) -> void:
 			_face_point(w.face, b, g0), _face_point(w.face, a, g0)]), Vector2(u0, 0.3), Vector2(u0 + du, 1.0),
 			Color(1, 1, 1, lerpf(0.45, 1.0, fk)), w.o.index)
 	if not thermal:
+		# 흰 창틀·가운데 문살·하늘 반사 (2026-11-27 시안). 열린 창은 한쪽이 비어 어둡다
+		var o: Opening = w.o
+		var mid := (a + b) * 0.5
+		if o.is_open and not o.broken:
+			_face_quad(w.face, mid, b, g0, g1, Color(0.03, 0.03, 0.04, 0.85))
+		var frame := Color(_structure_color(skin.color("window_frame")), 0.95)
 		var p0 := _face_point(w.face, a, g0)
 		var p1 := _face_point(w.face, b, g0)
 		var p2 := _face_point(w.face, b, g1)
 		var p3 := _face_point(w.face, a, g1)
-		_line(p0, p1, WINDOW_FRAME)
-		_line(p1, p2, WINDOW_FRAME)
-		_line(p2, p3, WINDOW_FRAME)
-		_line(p3, p0, WINDOW_FRAME)
-		# 창 가운데 문살
-		_line(_face_point(w.face, (a + b) * 0.5, g0), _face_point(w.face, (a + b) * 0.5, g1), WINDOW_FRAME)
+		_line(p0, p1, frame)
+		_line(p1, p2, frame)
+		_line(p2, p3, frame)
+		_line(p3, p0, frame)
+		if not o.broken:
+			_line(_face_point(w.face, mid, g0), _face_point(w.face, mid, g1), frame)
+			if _facade_glass(o) == GLASS_COLOR:
+				var span := b - a
+				_line(_face_point(w.face, a + span * 0.06, g1 - (g1 - g0) * 0.3), _face_point(w.face, a + span * 0.18, g1 - (g1 - g0) * 0.05), Color(1, 1, 1, 0.38))
 	if sim.building.facade_style.get("balcony", false) and not thermal:
 		# 발코니 난간: 창 아래 허리 높이 띠
 		var r0 := h0 + fh * 0.12
@@ -762,14 +769,17 @@ func _draw_window_signs(w: Dictionary, h0: float, fh: float) -> void:
 	var g1 := h0 + fh * 0.8
 	var mid := (a + b) * 0.5
 	var t := Time.get_ticks_msec() / 1000.0
-	# 깨진 유리: 금 간 선
+	# 깨진 유리: 테두리에 남은 날카로운 조각 (2026-11-27 시안 — 금 간 선 대신)
 	if o.broken and seen:
-		var c0 := _face_point(w.face, lerpf(a, b, 0.2), g1)
-		var c1 := _face_point(w.face, lerpf(a, b, 0.55), lerpf(g0, g1, 0.55))
-		var c2 := _face_point(w.face, lerpf(a, b, 0.35), g0)
-		var c3 := _face_point(w.face, lerpf(a, b, 0.85), lerpf(g0, g1, 0.7))
-		draw_polyline(PackedVector2Array([c0, c1, c2]), BROKEN_LINE, 1.2)
-		draw_line(c1, c3, BROKEN_LINE, 1.2)
+		var shard := Color(_structure_color(skin.color("glass_shard")), 0.95)
+		for i in 5:
+			var s := fposmod(sin(o.index * 7.0 + i * 2.3) * 0.5 + 0.5, 1.0)
+			var uu := lerpf(a + 0.1, b - 0.1, (i + s * 0.6) / 5.0)
+			var wd := (b - a) * (0.04 + s * 0.035)
+			var down := i % 2 == 0
+			var base_h := g1 if down else g0
+			var tip_h := lerpf(base_h, (g0 + g1) * 0.5, 0.35 + s * 0.3)
+			_fill(PackedVector2Array([_face_point(w.face, uu - wd, base_h), _face_point(w.face, uu + wd, base_h), _face_point(w.face, uu + wd * 0.2, tip_h)]), shard)
 	# 백드래프트 징후 ③ 창에 짙은 연기 응축물(검은색 액체)이 흘러내린 얼룩 (화재1 p.44, 연기 읽기 2단계 2026-11-24) — 닫힌 창.
 	# 외관의 창은 밖에서 늘 보인다 (문틈 연기와 같게 — 2026-11-24 검사)
 	if not o.broken and not o.is_open and sim.hazards != null and sim.hazards.backdraft_sign(sim.fire.comps[o.room_a]):
@@ -1746,33 +1756,46 @@ func _draw_cell_objects(x: int, y: int) -> void:
 		_draw_fires_at(x, y)
 
 
-## 문: 닫힘(블록) / 열림(통로) / 잠김(표시) / 파괴(잔해). 작업 중이면 진행 막대.
+## 문: 닫힘(종류별 문짝 — 철문·방화문·목재문) / 열림(문틀 + 안쪽으로 젖힌 문짝) / 잠김(자물쇠 표시) / 파괴·소실(문틀만, 문짝은 쓰러짐).
+## 작업 중이면 진행 막대. (2026-11-27 사용자 결정 — 시안 mock_doors: 글자 '잠김'·'파괴' 대신 그림으로)
 func _draw_door(x: int, y: int) -> void:
 	var o: Opening = _opening_of.get(Vector3i(x, y, level))
 	if o == null:
 		return
 	var top := proj.to_screen(Vector2(x + 0.5, y + 0.5), minf(DOOR_TOP_M, _wall_height(x, y)) + 0.3)
 	var first := Vector2i(x, y) == o.cells[0]
+	var half := stack.wall_kind(level, x, y, _outside()) == FloorStack.Wall.HALF
+	var door_h := minf(DOOR_TOP_M, _wall_height(x, y))
+	var face := _opening_face(x, y)
+	# 문짝이 붙는 면까지의 깊이: 블록 문은 칸의 남·동 끝, 얇은 실내 벽은 벽 두께의 앞면
+	var d := (0.5 + clampf(stack.params.inner_wall_thick, 0.05, 1.0) * 0.5) if half else 1.0
+	var kind := sim.building.door_kind(o.cells, o.room_a == Opening.OUTSIDE or o.room_b == Opening.OUTSIDE)
+	var leaf := _structure_color(skin.color("door_" + kind, PlanStyle.CELL_COLORS[BuildingData.Cell.DOOR]))
 	# 실내 문 위(인방~천장)는 벽으로 채운다 (열려 있어도)
-	if stack.wall_kind(level, x, y, _outside()) == FloorStack.Wall.HALF and _wall_height(x, y) > DOOR_TOP_M:
+	if half and _wall_height(x, y) > DOOR_TOP_M:
 		_inner_wall(x, y, DOOR_TOP_M, _wall_height(x, y), _structure_color(skin.color("wall")))
 	if not o.is_open:
-		var dc := _structure_color(PlanStyle.CELL_COLORS[BuildingData.Cell.DOOR])
-		if stack.wall_kind(level, x, y, _outside()) == FloorStack.Wall.HALF:
+		if half:
 			_wall_uv = Vector2(1000.0 + x + y + 1.0, 0.0)
-			_thin_wall(x, y, 0.0, minf(DOOR_TOP_M, _wall_height(x, y)), dc, Color(0, 0, 0, 0))
+			_thin_wall(x, y, 0.0, door_h, leaf, Color(0, 0, 0, 0))
 			_wall_uv = Vector2.ZERO
 		else:
-			_block(x, y, 0.0, minf(DOOR_TOP_M, _wall_height(x, y)), dc)
-		if o.locked and first and not thermal:
-			draw_string(PlanStyle.font(), top + Vector2(-30, 0), "잠김", HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color("ffcc80"))
-	elif o.forced:
-		_block(x, y, 0.0, 0.12, _structure_color(Color("5d4037")))
-		if first and not thermal:
-			draw_string(PlanStyle.font(), top + Vector2(-30, 0), "파괴", HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color("bcaaa4"))
+			_block(x, y, 0.0, door_h, leaf)
+		if not thermal:
+			_door_leaf_detail(x, y, face, d, door_h, kind, o)
+	elif o.forced or o.broken:
+		if not thermal:
+			_door_frame(x, y, face, d, door_h)
+			_door_fallen(x, y, face, door_h, leaf.darkened(0.35 if o.forced else 0.65))
+	elif not thermal:
+		_door_frame(x, y, face, d, door_h)
+		_door_swung(x, y, face, door_h, leaf)
 	if _outside() and _wall_height(x, y) > DOOR_TOP_M:
 		# 외부 보기: 문 위 벽 (외벽이 천장까지 서 있으므로, 문 블록 다음에 그려야 윗면에 덮이지 않는다)
 		_block(x, y, DOOR_TOP_M, _wall_height(x, y), _structure_color(PlanStyle.CELL_COLORS[BuildingData.Cell.WALL]))
+	# 잠긴 문: 문짝 가운데 높이에 자물쇠 (문 위 벽보다 나중에 — 가리지 않게)
+	if not o.is_open and o.locked and first and not thermal:
+		_draw_padlock(_op_pt(x, y, face, d, 0.5 if o.cells.size() == 1 else 0.95, minf(1.25, door_h * 0.6)))
 	var task := sim.doors.task_of(o)
 	if task and first:
 		var r := Rect2(top.x - 22.0, top.y + 4.0, 44.0, 5.0)
@@ -1780,6 +1803,143 @@ func _draw_door(x: int, y: int) -> void:
 		draw_rect(Rect2(r.position, Vector2(r.size.x * task.progress / task.required, r.size.y)), Color("ffb74d"))
 		if task.waiting_people:
 			draw_string(PlanStyle.font(), top + Vector2(-40, 22), "인원 부족", HORIZONTAL_ALIGNMENT_CENTER, 80, 12, Color("ff8a80"))
+
+
+# --- 문·창 그림 도우미 (2026-11-27) ---
+
+## 문·창이 놓인 벽의 방향: "S" = 벽이 가로(서↔동)로 이어져 남쪽 면이 보인다, "E" = 세로로 이어져 동쪽 면이 보인다
+func _opening_face(x: int, y: int) -> String:
+	var b := sim.building
+	var wallish := [BuildingData.Cell.WALL, BuildingData.Cell.DOOR, BuildingData.Cell.WINDOW]
+	var at := func(dx: int, dy: int) -> bool: return b.in_bounds(x + dx, y + dy) and b.cell(level, x + dx, y + dy) in wallish
+	var horiz: bool = at.call(-1, 0) or at.call(1, 0)
+	var vert: bool = at.call(0, -1) or at.call(0, 1)
+	return "E" if vert and not horiz else "S"
+
+
+## 문·창 면 위의 점: u = 면을 따라 0~1(서→동 / 북→남), h = 높이(m), d = 칸 안에서 면까지 깊이
+func _op_pt(x: int, y: int, face: String, d: float, u: float, h: float) -> Vector2:
+	return proj.to_screen(Vector2(x + u, y + d) if face == "S" else Vector2(x + d, y + u), h)
+
+
+func _op_quad(x: int, y: int, face: String, d: float, u0: float, u1: float, h0: float, h1: float, color: Color) -> void:
+	_quad(_op_pt(x, y, face, d, u0, h0), _op_pt(x, y, face, d, u1, h0), _op_pt(x, y, face, d, u1, h1), _op_pt(x, y, face, d, u0, h1), color)
+
+
+func _op_rect_line(x: int, y: int, face: String, d: float, u0: float, u1: float, h0: float, h1: float, color: Color, width := 1.5) -> void:
+	var pts := PackedVector2Array([_op_pt(x, y, face, d, u0, h0), _op_pt(x, y, face, d, u1, h0), _op_pt(x, y, face, d, u1, h1),
+		_op_pt(x, y, face, d, u0, h1), _op_pt(x, y, face, d, u0, h0)])
+	draw_polyline(pts, color, width, true)
+
+
+## 이 칸에서 안쪽(방 쪽) 방향: 면에 수직으로 -1(북·서) 또는 +1(남·동). 한쪽이 바깥이면 다른 쪽, 둘 다 안이면 뒤쪽(-1 — 문짝이 통로를 가리지 않게)
+func _inward(x: int, y: int, face: String) -> int:
+	var b := sim.building
+	var n := Vector2i(x, y - 1) if face == "S" else Vector2i(x - 1, y)
+	var s := Vector2i(x, y + 1) if face == "S" else Vector2i(x + 1, y)
+	var n_out := not b.in_bounds(n.x, n.y) or b.cell(level, n.x, n.y) in BuildingData.OUTDOOR
+	var s_out := not b.in_bounds(s.x, s.y) or b.cell(level, s.x, s.y) in BuildingData.OUTDOOR
+	return 1 if n_out and not s_out else -1
+
+
+## 닫힌 문짝의 꾸밈: 안쪽 테두리, 철문·방화문은 도어클로저·레버 손잡이, 목재문은 판넬 두 칸·둥근 놋쇠 손잡이, 방화문은 녹색 표지
+func _door_leaf_detail(x: int, y: int, face: String, d: float, h: float, kind: String, o: Opening) -> void:
+	if h < 1.2:
+		return  # 잘린 앞벽의 낮은 문: 꾸밈 없이 색만
+	var frame := Color(_structure_color(skin.color("door_frame")), 0.85)
+	var u0 := 0.12
+	var u1 := 0.88
+	# 여러 칸 문은 가운데 칸끼리 맞닿게 (양여닫이)
+	var cells := o.cells
+	var k := cells.find(Vector2i(x, y))
+	if cells.size() > 1:
+		u0 = 0.12 if k == 0 else 0.02
+		u1 = 0.88 if k == cells.size() - 1 else 0.98
+	_op_rect_line(x, y, face, d, u0, u1, 0.05, h - 0.08, frame, 1.6)
+	var handle_u := u1 - 0.12 if k <= 0 or cells.size() == 1 else u0 + 0.12
+	if kind == "wood":
+		var inset := Color(frame, 0.55)
+		_op_rect_line(x, y, face, d, u0 + 0.1, u1 - 0.1, 1.08, h - 0.25, inset, 1.2)
+		_op_rect_line(x, y, face, d, u0 + 0.1, u1 - 0.1, 0.25, 0.92, inset, 1.2)
+		draw_circle(_op_pt(x, y, face, d, handle_u, 1.0), 2.4, Color("d4a72c"))
+	else:
+		# 도어클로저 (문 위 작은 막대)
+		_op_quad(x, y, face, d, u0 + 0.08, u0 + 0.36, h - 0.2, h - 0.12, frame)
+		var hp := _op_pt(x, y, face, d, handle_u, 1.0)
+		var hc := _structure_color(skin.color("door_handle"))
+		draw_line(hp, hp + (_op_pt(x, y, face, d, handle_u - 0.12, 1.0) - hp), hc, 2.2, true)
+		draw_circle(hp, 2.0, hc)
+		if kind == "fire" and (k <= 0):
+			var sign := _structure_color(skin.color("fire_sign"))
+			_op_quad(x, y, face, d, u0 + 0.12, u1 - 0.12, 1.42, 1.62, sign)
+			var a := _op_pt(x, y, face, d, u0 + 0.12, 1.47)
+			var b := _op_pt(x, y, face, d, u1 - 0.12, 1.47)
+			var w := (b - a).length()
+			if w > 34.0:
+				draw_set_transform(a, (b - a).angle(), Vector2.ONE)
+				draw_string(PlanStyle.font(), Vector2(0, 0), "방화문", HORIZONTAL_ALIGNMENT_CENTER, w, maxi(8, roundi(w / 5.0)), Color.WHITE)
+				draw_set_transform(Vector2.ZERO)
+
+
+## 자물쇠 표시 (글자 '잠김' 대신): 주황 몸통 + 고리 + 열쇠 구멍
+func _draw_padlock(at: Vector2) -> void:
+	var c := _structure_color(skin.color("lock_mark"))
+	var body := Rect2(at + Vector2(-7, -6), Vector2(14, 11))
+	draw_arc(at + Vector2(0, -6), 4.6, PI, TAU, 12, Color(0.05, 0.05, 0.06, 0.9), 4.2, true)
+	draw_arc(at + Vector2(0, -6), 4.6, PI, TAU, 12, c, 2.4, true)
+	draw_rect(body.grow(1.2), Color(0.05, 0.05, 0.06, 0.9))
+	draw_rect(body, c)
+	draw_circle(at + Vector2(0, -1.5), 1.6, Color(0.1, 0.08, 0.05))
+	draw_line(at + Vector2(0, -1.5), at + Vector2(0, 2.0), Color(0.1, 0.08, 0.05), 1.4)
+
+
+## 문틀: 양쪽 기둥 + 인방 (열린 문·부서진 문)
+func _door_frame(x: int, y: int, face: String, d: float, h: float) -> void:
+	var frame := _structure_color(skin.color("door_frame"))
+	var o: Opening = _opening_of.get(Vector3i(x, y, level))
+	var cells := o.cells if o else ([] as Array[Vector2i])
+	var k := cells.find(Vector2i(x, y))
+	var left := k <= 0
+	var right := k == cells.size() - 1 or cells.size() <= 1
+	if left:
+		_op_quad(x, y, face, d, 0.0, 0.07, 0.0, h, frame)
+	if right:
+		_op_quad(x, y, face, d, 0.93, 1.0, 0.0, h, frame)
+	_op_quad(x, y, face, d, 0.0, 1.0, h - 0.08, h, frame)
+
+
+## 열린 문짝: 경첩(서·북 쪽 끝)에서 안쪽으로 젖힌 얇은 판
+func _door_swung(x: int, y: int, face: String, h: float, color: Color) -> void:
+	var dir := _inward(x, y, face)
+	var t0 := 0.5
+	var t1 := 0.5 + dir * 0.86
+	var lo := minf(t0, t1)
+	var hi := maxf(t0, t1)
+	if face == "S":
+		_box(Vector2(x + 0.04, y + lo), Vector2(x + 0.12, y + hi), 0.02, h * 0.97, color, color)
+	else:
+		_box(Vector2(x + lo, y + 0.04), Vector2(x + hi, y + 0.12), 0.02, h * 0.97, color, color)
+
+
+## 쓰러진 문짝 (강제 개방·불에 타 뚫림): 안쪽 바닥에 누운 판 + 갈라진 선
+func _door_fallen(x: int, y: int, face: String, h: float, color: Color) -> void:
+	var dir := _inward(x, y, face)
+	var ln := minf(0.95, h * 0.45)
+	var a := 0.5 + dir * 0.08
+	var b := 0.5 + dir * (0.08 + ln)
+	var p0: Vector2
+	var p1: Vector2
+	if face == "S":
+		p0 = Vector2(x + 0.1, y + minf(a, b))
+		p1 = Vector2(x + 0.9, y + maxf(a, b))
+	else:
+		p0 = Vector2(x + minf(a, b), y + 0.1)
+		p1 = Vector2(x + maxf(a, b), y + 0.9)
+	_box(p0, p1, 0.0, 0.06, color, color, color.lightened(0.08))
+	var crack := Color(0.08, 0.06, 0.05, 0.7)
+	var c := (p0 + p1) * 0.5
+	draw_line(proj.to_screen(p0.lerp(p1, 0.25), 0.07), proj.to_screen(c, 0.07), crack, 1.2, true)
+	draw_line(proj.to_screen(c, 0.07), proj.to_screen(Vector2(p1.x, p0.y).lerp(p1, 0.4), 0.07), crack, 1.2, true)
 
 
 func _draw_window(x: int, y: int) -> void:
@@ -1804,13 +1964,74 @@ func _draw_window(x: int, y: int) -> void:
 			draw_line((g[0] + g[3]) * 0.5, (g[1] + g[2]) * 0.5, Color(glass, 0.9), 2.0)
 		return
 	_block(x, y, 0.0, WINDOW_SILL_M, wall)
+	var g1 := minf(WINDOW_TOP_M, h)
+	# 깨진 창(밖에서 볼 때): 안이 검다 (시안 — 날카로운 유리 조각 + 검은 안)
+	if o and o.broken and _outside() and not thermal:
+		_op_quad(x, y, _opening_face(x, y), 1.0, 0.04, 0.96, WINDOW_SILL_M, g1, Color(0.03, 0.03, 0.04, 0.92))
 	if glass.a > 0.0:
-		_block(x, y, WINDOW_SILL_M, minf(WINDOW_TOP_M, h), glass)
+		_block(x, y, WINDOW_SILL_M, g1, glass)
+	if o and not thermal:
+		_window_detail(x, y, _opening_face(x, y), 1.0, WINDOW_SILL_M, g1, o, glass)
 	# 창 위 벽: 앞 바깥벽이면 벽과 같은 반투명 (창 자체는 진하게 — 깨서 배연하는 대상)
 	if stack.wall_kind(level, x, y, _outside()) == FloorStack.Wall.GLASS:
 		_wall_piece(x, y, WINDOW_TOP_M, h, wall, stack.params.front_wall_alpha, stack.params.front_wall_alpha, stack.params.wall_cap_alpha)
 	else:
 		_block(x, y, WINDOW_TOP_M, h, wall)
+
+
+## 창 꾸밈 (2026-11-27 시안): 흰 창틀·가운데 문살·하늘 반사 / 깨짐 = 테두리에 남은 날카로운 유리 조각(+ 밖이면 바닥에 떨어진 조각) /
+## 열림 = 창짝 한쪽이 밀려 겹치고 반대쪽이 비어 어둡다. 불빛·연기 얼룩·화염은 유리 색과 _draw_window_signs 가 그대로 맡는다
+func _window_detail(x: int, y: int, face: String, d: float, g0: float, g1: float, o: Opening, glass: Color) -> void:
+	var frame := Color(_structure_color(skin.color("window_frame")), 0.95)
+	var k := o.cells.find(Vector2i(x, y))
+	var u0 := 0.04 if k <= 0 else 0.0
+	var u1 := 0.96 if k == o.cells.size() - 1 or o.cells.size() <= 1 else 1.0
+	if o.broken:
+		var shard := Color(_structure_color(skin.color("glass_shard")), 0.95)
+		var sd := o.index * 7 + x * 3 + y
+		# 테두리에 남은 조각: 위·아래·양옆에서 안으로 뾰족한 세모
+		for i in 5:
+			var s := fposmod(sin(sd + i * 2.3) * 0.5 + 0.5, 1.0)
+			var uu := lerpf(u0 + 0.08, u1 - 0.08, (i + s * 0.6) / 5.0)
+			var w := 0.06 + s * 0.05
+			var down := i % 2 == 0
+			var base_h := g1 if down else g0
+			var tip_h := lerpf(base_h, (g0 + g1) * 0.5, 0.35 + s * 0.3)
+			_fill(PackedVector2Array([_op_pt(x, y, face, d, uu - w, base_h), _op_pt(x, y, face, d, uu + w, base_h),
+				_op_pt(x, y, face, d, uu + w * 0.2, tip_h)]), shard)
+		_fill(PackedVector2Array([_op_pt(x, y, face, d, u0, g0 + 0.1), _op_pt(x, y, face, d, u0, g1 - 0.15),
+			_op_pt(x, y, face, d, u0 + 0.16, lerpf(g0, g1, 0.45))]), shard)
+		_op_rect_line(x, y, face, d, u0, u1, g0, g1, frame, 1.6)
+		# 바깥 바닥에 떨어진 조각 (밖에서 볼 때)
+		if _outside():
+			var out := 1.15
+			for i in 4:
+				var s2 := fposmod(cos(sd + i * 1.7) * 0.5 + 0.5, 1.0)
+				var p := Vector2(x + lerpf(u0, u1, (i + 0.5) / 4.0), y + out + s2 * 0.4) if face == "S" else Vector2(x + out + s2 * 0.4, y + lerpf(u0, u1, (i + 0.5) / 4.0))
+				var c := proj.to_screen(p, 0.01)
+				_fill(PackedVector2Array([c + Vector2(-3, 1), c + Vector2(3, 0), c + Vector2(0, -3)]), Color(shard, 0.8))
+		return
+	if o.is_open:
+		# 열린 창: 오른쪽 창짝이 왼쪽 위로 밀려 겹치고, 빈 쪽은 어둡다. 여러 칸 창은 창 전체의 뒤쪽 절반 칸이 빈다
+		var dark := Color(0.03, 0.03, 0.04, 0.85 if _outside() else 0.4)
+		var n := o.cells.size()
+		if n > 1:
+			if k >= ceili(n / 2.0):
+				_op_quad(x, y, face, d, u0, u1, g0, g1, dark)
+			else:
+				_op_rect_line(x, y, face, d, u0 + 0.04, u1 - 0.02, g0 + 0.04, g1 - 0.04, frame, 1.3)
+		else:
+			_op_quad(x, y, face, d, (u0 + u1) * 0.5, u1, g0, g1, dark)
+			_op_rect_line(x, y, face, d, u0 + 0.04, (u0 + u1) * 0.5 + 0.03, g0 + 0.04, g1 - 0.04, frame, 1.3)
+		_op_rect_line(x, y, face, d, u0, u1, g0, g1, frame, 1.8)
+		return
+	_op_rect_line(x, y, face, d, u0, u1, g0, g1, frame, 1.8)
+	_line(_op_pt(x, y, face, d, (u0 + u1) * 0.5, g0), _op_pt(x, y, face, d, (u0 + u1) * 0.5, g1), frame)
+	# 하늘 반사 (보통 유리일 때만 — 불빛·연기 색 창은 그 색을 읽어야 하므로)
+	if glass == GLASS_COLOR:
+		var r := Color(1, 1, 1, 0.38)
+		draw_line(_op_pt(x, y, face, d, u0 + 0.06, g1 - 0.35), _op_pt(x, y, face, d, u0 + 0.2, g1 - 0.06), r, 2.0, true)
+		draw_line(_op_pt(x, y, face, d, u0 + 0.06, g1 - 0.62), _op_pt(x, y, face, d, u0 + 0.3, g1 - 0.08), Color(r, 0.22), 1.5, true)
 
 
 ## 지금 층의 불(채) 목록 (FireDraw.bodies — 2026-11-22): 가까운 타는 칸을 묶어 열방출률에 맞는 크기의 불꽃 하나로.

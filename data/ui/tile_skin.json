@@ -6,5 +6,14 @@
   "wall": {"color": "8a9099", "sprite": null, "note": "벽 몸체 (뒷벽은 천장까지, 앞벽·실내 벽은 잘린 높이까지)"},
   "cut_face": {"color": "f2efe8", "sprite": null, "note": "잘린 벽 윗면 — 두께가 보이는 밝은 단면 띠"},
   "slab_edge": {"color": "3b4048", "sprite": null, "note": "층 사이 바닥판(슬래브) 앞 모서리 단면"},
-  "shaft": {"color": "475569", "sprite": null, "note": "승강로 (여러 층을 관통)"}
+  "shaft": {"color": "475569", "sprite": null, "note": "승강로 (여러 층을 관통)"},
+  "door_steel": {"color": "5b6472", "sprite": null, "note": "현관 철문 (2026-11-27 문창 그림 — 바깥으로 난 문)"},
+  "door_fire": {"color": "4f6b58", "sprite": null, "note": "방화문 (건물 fire_doors) — 녹색 표지"},
+  "door_wood": {"color": "a8743f", "sprite": null, "note": "실내 목재문"},
+  "door_frame": {"color": "2b2f36", "sprite": null, "note": "문틀·문 테두리"},
+  "door_handle": {"color": "d9dde3", "sprite": null, "note": "손잡이 (목재문은 놋쇠색으로 바꿔 그린다)"},
+  "fire_sign": {"color": "16a34a", "sprite": null, "note": "방화문 표지"},
+  "lock_mark": {"color": "f59e0b", "sprite": null, "note": "잠긴 문 자물쇠 표시 (글자 '잠김' 대신)"},
+  "window_frame": {"color": "e8ecf0", "sprite": null, "note": "흰 창틀·문살"},
+  "glass_shard": {"color": "cfe6f5", "sprite": null, "note": "깨진 유리 조각"}
 }

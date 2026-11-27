@@ -52,6 +52,8 @@ var indoor_lpm := 0.0
 var indoor_tank_l := 0.0
 ## 현관 방화문 칸 (모든 층). 잠겨 있으면 파괴에 더 오래 걸린다 (SOP 213-2.3)
 var fire_doors: Array[Vector2i] = []
+## 문 종류를 직접 정한 칸 (모든 층): 칸 -> "steel" 철문 · "fire" 방화문 · "wood" 목재문. 없으면 규칙으로 (door_kind)
+var door_kinds: Dictionary = {}
 ## 같은 건물 아래층 창 → 위층 창 연소 확대 (SOP 213-1.1)
 var vertical_exposure := false
 ## 가연성 외장재: 아래층 창 화염이 위층 창을 데우는 속도 배율 (필로티 다세대, SOP 232, R14)
@@ -199,6 +201,8 @@ func _parse(data: Dictionary) -> void:
 	indoor_tank_l = float(ih.get("tank_l", 0.0))
 	for d: Array in data.get("fire_doors", []):
 		fire_doors.append(Vector2i(int(d[0]), int(d[1])))
+	for d: Array in data.get("door_kinds", []):
+		door_kinds[Vector2i(int(d[0]), int(d[1]))] = str(d[2])
 	vertical_exposure = bool(data.get("vertical_exposure", false))
 	facade_factor = float(data.get("facade_factor", 1.0))
 	facade_style = data.get("facade_style", {})
@@ -293,3 +297,15 @@ func outlet_on(level: int) -> int:
 
 func is_fire_door(cell: Vector2i) -> bool:
 	return cell in fire_doors
+
+
+## 문 종류 (2026-11-27 사용자 결정 — 겉모습): 건물 JSON door_kinds 가 있으면 그것, 아니면 fire_doors = 방화문(fire),
+## 바깥으로 난 문 = 현관 철문(steel), 나머지 = 실내 목재문(wood)
+func door_kind(cells: Array[Vector2i], outside: bool) -> String:
+	for c in cells:
+		if door_kinds.has(c):
+			return str(door_kinds[c])
+	for c in cells:
+		if c in fire_doors:
+			return "fire"
+	return "steel" if outside else "wood"

@@ -94,3 +94,21 @@ func test_end_suggestion() -> void:
 	quiet.phases.step(0.1, 10, true)
 	quiet.phases.step(0.1, 10 + roundi(61.0 / SimClock.TICK_DT), true)
 	assert_eq(quiet.events.of_type("end_suggested").size(), 1, "종료 제안")
+
+
+## 교차탐색 (SOP 202-5.2, 2026-11-27): 초진 전 검색한 출동대와 다른 출동대가 초진 뒤 다시 검색하면 교차탐색으로 표시
+func test_cross_search_marks_other_squad() -> void:
+	var sim := _sim()
+	var ph := sim.phases
+	var room: Compartment = ph.search_targets()[0]
+	var other: Compartment = ph.search_targets()[1]
+	sim.events.add(sim.clock.tick, "search_done", {"room": room.display_name(), "crew": "구조1 1조"})
+	sim.events.add(sim.clock.tick, "search_done", {"room": other.display_name(), "crew": "구조1 1조"})
+	sim.step_ticks(2)
+	assert_eq(str(ph.primary_by.get(room.index, "")), "구조1", "우선탐색한 출동대 기록")
+	ph.knockdown_tick = sim.clock.tick
+	sim.events.add(sim.clock.tick, "search_done", {"room": room.display_name(), "crew": "진압2 1조"})
+	sim.events.add(sim.clock.tick, "search_done", {"room": other.display_name(), "crew": "구조1 2조"})
+	sim.step_ticks(2)
+	assert_eq([ph.secondary.has(room.index), ph.secondary_cross.has(room.index)], [true, true], "다른 출동대가 다시 검색 → 교차탐색")
+	assert_eq([ph.secondary.has(other.index), ph.secondary_cross.has(other.index)], [true, false], "같은 출동대가 다시 검색 → 2차 검색이지만 교차는 아님")

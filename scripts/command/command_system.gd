@@ -894,7 +894,12 @@ func set_watch(value: String, tick: int) -> void:
 	_decide(tick, "활동 종료 — 재발화 감시: %s" % (value if value != "" else "지정 안 함"))
 
 
-## 진입 금지 판단 요소 중 지금 해당하는 것 (SOP 102-4.1). 진입 명령 때 알리고 기록한다
+## 초진 보고가 있었고 지금도 지휘관이 아는 불이 있는가 (SimWorld 가 넣는다 — 진입 금지 판단 요소 ⑥)
+var knockdown_seen_fire := Callable()
+
+
+## 진입 금지 판단 요소 중 지금 해당하는 것 (SOP 102-4.1): ② ④ ⑥ ⑧ ⑨ ⑩. 진입 명령 때 알리고 기록한다
+## (① 숨겨진 공간 화재 ③ 시계 0 ⑤ 지원 요청 ⑦ 바람은 해당 시스템이 없어 아직 넣지 않았다 — docs/sop2025_gap.md A7)
 func entry_factors(tick: int) -> PackedStringArray:
 	var out: PackedStringArray = []
 	var signs: PackedStringArray = []
@@ -928,6 +933,14 @@ func entry_factors(tick: int) -> PackedStringArray:
 		out.append("⑨ 붕괴 징후 (%s)" % ", ".join(collapse))
 	if _victim_truth() == "있음":
 		out.append("⑩ 구조대상자 내부 존재")
+	# ④ 통상적인 소요 시간이 지났는데도 화점을 발견할 수 없는 경우 (화점 못 찾음 보고가 최근에 있었다)
+	for e in events.of_type("fire_not_found"):
+		if tick - int(e.tick) <= safety.factor_recent_ticks:
+			out.append("④ 화점 미발견 (%s)" % str(e.get("crew", "")))
+			break
+	# ⑥ 건물 안의 출동대가 '초진'을 보고했는데도 밖에서 여전히 진행 중인 화재가 보이는 경우
+	if knockdown_seen_fire.is_valid() and bool(knockdown_seen_fire.call()):
+		out.append("⑥ 초진 보고 뒤에도 화재가 보임")
 	return out
 
 

@@ -123,6 +123,10 @@ func transfer(answers: Dictionary, tick: int) -> bool:
 		sim.command.commander.rank = str(chief.get("rank", ""))
 	events.add(tick, "command_transferred", {"crew": sim.command.commander_title, "accuracy": roundi(accuracy * 100.0),
 		"delay_s": roundi((tick - arrived_tick) * SimClock.TICK_DT)})
+	# 지휘권을 이양받은 현장지휘관은 무전으로 지휘권을 선언한다 (SOP 112-2.1.3) — 전 출동대가 누가 지휘하는지 안다
+	sim.command.radio.send(Radio.Priority.KEY_FACTOR, CommandSystem.COMMANDER, "각 출동대",
+		"%s %s 현장 도착, 지휘권을 이양받아 지금부터 현장지휘한다. 지휘 위치 %s." % [sim.command.commander_title, sim.command.commander.name,
+			sim.command.commander_position_text()], tick)
 	# 이양받은 현장지휘관은 고정지휘 (SOP 101-3, 기획안 9-1-1): 지금 자리를 지휘소로
 	if sim.command.post:
 		sim.command.post.set_post(Vector2i(sim.command.commander.pos.floor()), tick, "지휘권 이양")

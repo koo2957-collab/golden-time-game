@@ -97,6 +97,11 @@ func test_rit_reserved_and_deployed() -> void:
 	sim.step_ticks(2)
 	assert_true(cmd.safety.deployed.has(3), "긴급탈출 상황에서 RIT 투입")
 	assert_eq(sim.events.of_type("rit_deployed").size(), 1, "투입 기록 (추가 RIT 지정 안내)")
+	# RIT 를 투입해 남은 RIT 가 없으면 추가 RIT 를 지정하라고 알리고, 지정하면 걸린 시간을 남긴다 (SSG 9 3.1.4)
+	assert_eq(sim.events.of_type("rit_more_needed").size(), 1, "남은 RIT 없음 → 추가 RIT 지정 알림")
+	sim.issue(CommandOrder.make("role", [2], SafetySystem.Role.RIT))
+	_quiet(sim)
+	assert_eq(sim.events.of_type("rit_more_assigned").size(), 1, "추가 RIT 지정 기록")
 	sim.step_ticks(150)
 	assert_true(sim.events.of_type("rescue_pickup").size() >= 1, "투입된 RIT가 들어가 쓰러진 대원을 확보한다")
 
@@ -145,6 +150,14 @@ func test_entry_factors_and_report_items() -> void:
 	assert_true(str(f[0].factors).contains("⑧ 특수현상 징후") and str(f[0].factors).contains("⑩ 구조대상자"), "해당 요소 (%s)" % f[0].factors)
 	assert_eq(sim.command.entry_checks.size(), 1, "진입 판단 기록")
 	assert_true(sim.command.decisions.size() >= 1 and str(sim.command.decisions[-1].context).contains("구조대상자"), "주요 의사결정과 그때 알던 정보 (111-2.2)")
+	# ④ 화점 미발견 · ⑥ 초진 보고 뒤에도 화재가 보임 (SOP 102-4.1, 2026-11-27)
+	sim.events.add(sim.clock.tick, "fire_not_found", {"crew": "진압1 1조"})
+	var kd := [true]
+	sim.command.knockdown_seen_fire = func() -> bool: return kd[0]
+	var fs := ", ".join(sim.command.entry_factors(sim.clock.tick))
+	assert_true(fs.contains("④ 화점 미발견") and fs.contains("⑥ 초진 보고 뒤에도 화재가 보임"), "진입 금지 판단 요소 ④⑥ (%s)" % fs)
+	kd[0] = false
+	assert_true(not ", ".join(sim.command.entry_factors(sim.clock.tick)).contains("⑥"), "초진 뒤 보이는 불이 없으면 ⑥ 없음")
 	var r := sim.command.grade_report({"access": "진입 불가"})
 	var last: Dictionary = r.items[-1]
 	assert_true(not last.scored, "차량 진입·회차는 2025 SOP 8항목 밖 — 채점 안 함")

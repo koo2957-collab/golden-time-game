@@ -1317,12 +1317,16 @@ func all_clear_checklist() -> String:
 			continue
 		var total := 0
 		var done := 0
+		var cross := 0
 		for c in ph.search_targets():
 			if c.level == lv:
 				total += 1
 				if ph.secondary.has(c.index):
 					done += 1
-		lines.append("%s %s(%s) 2차 검색 %d/%d" % ["✓" if done == total else "✗", pair[1], sim.building.floor_name(lv), done, total])
+				if ph.secondary_cross.has(c.index):
+					cross += 1
+		# 교차탐색 (SOP 202-5.2): 처음 검색한 출동대와 다른 출동대가 다시 본 방 수 (감점 없이 표시)
+		lines.append("%s %s(%s) 2차 검색 %d/%d · 다른 출동대가 교차탐색 %d" % ["✓" if done == total else "✗", pair[1], sim.building.floor_name(lv), done, total, cross])
 	var seen := 0
 	for i in sim.fire.grid.burning:
 		if not sim.perception.enabled or sim.perception.seen_burning[i] == 1:

@@ -221,6 +221,10 @@ static func describe_text(e: Dictionary) -> String:
 				text = "현장 도착 (2착, 인원 %d명, %s) — 임무 주십시오 — %s" % [e.people, e.vehicles, e.squad]
 			else:
 				text = "대기1단계 장소 도착 (%s, 인원 %d명, %s) — %s" % [e.place, e.people, e.vehicles, e.squad]
+		"rit_more_needed":
+			text = "RIT 투입 — 추가 RIT 를 지정하세요 (SSG 9 3.1.4)"
+		"rit_more_assigned":
+			text = "추가 RIT 지정 — %s (투입 %d초 뒤)" % [e.crew, e.delay_s]
 		"driver_hydrant":
 			text = "후착 운전원이 소화전 점령에 나섬 — %s" % e.vehicle
 		"squad_committed":
@@ -526,7 +530,7 @@ static func describe_text(e: Dictionary) -> String:
 		"knockdown_reported":
 			text = "초진 — %s (%s)" % [e.rooms, e.crew]
 		"secondary_search_done":
-			text = "2차 검색 완료 — %s" % e.room
+			text = "2차 검색 완료 — %s%s" % [e.room, " (다른 출동대가 교차탐색)" if bool(e.get("cross", false)) else ""]
 		"all_clear_declared":
 			text = "완진 선언 — 잔불정리·감시·인원점검 후 활동 종료"
 		"end_suggested":

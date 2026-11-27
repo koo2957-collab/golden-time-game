@@ -39,6 +39,9 @@ var par_log: Array[Dictionary] = []  # {tick, missing, indoor}
 var par_no_response: Array[int] = []
 var role_log: Array[Dictionary] = []  # {tick, crew, role}
 var rit_deploy_log: Array[Dictionary] = []  # {tick, crew}
+## 추가 RIT (SSG 9 3.1.4): RIT 를 투입해 남은 RIT 가 없어진 틱 / 그 뒤 새 RIT 를 지정한 틱 (없으면 -1)
+var rit_more_need_tick := -1
+var rit_more_tick := -1
 var suppressed_reports := 0
 ## 진입 금지 판단 요소(102-4.1 ⑧)를 '지금 있음'으로 보는 틱 수
 var factor_recent_ticks := 1200
@@ -156,7 +159,12 @@ func deploy(crew_id: int, tick: int) -> bool:
 		return false
 	deployed[crew_id] = tick
 	rit_deploy_log.append({"tick": tick, "crew": crew_id})
-	events.add(tick, "rit_deployed", {"crew": _crew_name(units.get_crew(crew_id)), "remaining": crews_with(Role.RIT).size() - deployed.size()})
+	var remaining := crews_with(Role.RIT).size() - deployed.size()
+	events.add(tick, "rit_deployed", {"crew": _crew_name(units.get_crew(crew_id)), "remaining": remaining})
+	# RIT 투입 즉시 추가 RIT 를 지정하고 상황실에 전파한다 (SSG 9 3.1.4): 남은 RIT 가 없으면 알린다. 지정하면 rit_more_tick 에 걸린 시간이 남는다
+	if remaining <= 0:
+		rit_more_need_tick = tick
+		events.add(tick, "rit_more_needed", {"crew": _crew_name(units.get_crew(crew_id))})
 	return true
 
 
@@ -449,6 +457,10 @@ func _on_role_received(tick: int, crew_id: int, role: Role) -> void:
 				units.order_move([crew_id] as Array[int], exits[0], pathfinder)
 	role_log.append({"tick": tick, "crew": crew_id, "role": role})
 	events.add(tick, "role_assigned", {"crew": _crew_name(c), "role": ROLE_NAMES[role] if role != Role.NONE else "임무 해제"})
+	# RIT 투입 뒤의 추가 RIT 지정 (SSG 9 3.1.4): 걸린 시간을 남긴다
+	if role == Role.RIT and rit_more_need_tick >= 0 and rit_more_tick < 0:
+		rit_more_tick = tick
+		events.add(tick, "rit_more_assigned", {"crew": _crew_name(c), "delay_s": roundi((tick - rit_more_need_tick) * SimClock.TICK_DT)})
 	radio.send(Radio.Priority.TACTICS, _crew_name(c), CommandSystem.COMMANDER, "%s 수신." % (ROLE_NAMES[role] if role != Role.NONE else "임무 해제"), tick)
 
 

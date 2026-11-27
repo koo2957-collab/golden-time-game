@@ -47,6 +47,12 @@ func test_delegated_cards_after_transfer() -> void:
 	sim.step_ticks(1)
 	sim.transfer.transfer({}, sim.clock.tick)
 	assert_true(sim.transfer.delegates(0) != "", "진압1은 단위대 소속 → 단위지휘관 대리")
+	# 이양받은 현장지휘관은 무전으로 지휘권을 선언한다 (SOP 112-2.1.3, 2026-11-27)
+	var declared := false
+	for m in sim.command.radio.queue + sim.command.radio.history + ([sim.command.radio.current] if sim.command.radio.current else []):
+		if str(m.body).contains("지휘권을 이양받아"):
+			declared = true
+	assert_true(declared, "이양 뒤 지휘권 선언 무전")
 	sim.cards.queue.clear()
 	sim.events.add(sim.clock.tick, "tactical_halt", {"crew": "진압1 1조", "crew_id": 0, "kind": "locked", "door": [27, 14, 18],
 		"door_name": "18층 문", "reason": "", "safety": false, "action": "attack", "target": [10, 16, 18]})

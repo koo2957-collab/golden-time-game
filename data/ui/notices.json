@@ -9,7 +9,7 @@
     "_source": "화면 설정 — 색은 아래 팀 초상·무전 카드와 겹치지 않게. 종류 순서대로 찾고, 어디에도 없으면 info",
     "danger": {"label": "위험", "color": "#f87171", "icon": "danger",
       "types": ["heat_blocked", "heat_retreat", "heat_stress_retreat", "heat_stress_high", "air_alarm", "exit_blocked", "rollover_sign", "backdraft_sign", "backdraft",
-        "fgi_warning", "par_no_response", "crew_disoriented", "exit_air_low", "post_danger", "ppv_fire_push", "aerial_debris", "zone_warning", "span_warning", "withdraw", "evacuation_ordered", "rit_deployed"],
+        "fgi_warning", "par_no_response", "crew_disoriented", "exit_air_low", "post_danger", "ppv_fire_push", "aerial_debris", "zone_warning", "span_warning", "withdraw", "evacuation_ordered", "rit_deployed", "rit_more_needed"],
       "radio": ["대원 안전"]},
     "victim": {"label": "구조대상자", "color": "#fb923c", "icon": "person",
       "types": ["victim_found", "victim_state", "victim_rescued", "victim_recovered", "ff_rescued", "rescue_pickup", "victim_handover", "victim_refuge", "triage_tagged", "evac_priority"],

@@ -26,6 +26,9 @@ var knockdown_tick := -1
 var all_clear: Dictionary = {}
 ## 구획 index -> 2차 검색 tick
 var secondary: Dictionary = {}
+## 교차탐색 (SOP 202-5.2): 방 번호 -> 처음(초진 전) 검색한 출동대 이름 / 2차 검색을 다른 출동대가 한 방
+var primary_by: Dictionary = {}
+var secondary_cross: Dictionary = {}
 var end_suggested := false
 
 var _hold_ticks: int
@@ -135,12 +138,23 @@ func _scan_searches() -> void:
 	while _event_index < list.size():
 		var e: Dictionary = list[_event_index]
 		_event_index += 1
-		if e.type != "search_done" or knockdown_tick < 0 or int(e.tick) < knockdown_tick:
+		if e.type != "search_done":
+			continue
+		if knockdown_tick < 0 or int(e.tick) < knockdown_tick:
+			# 초진 전 검색 = 우선탐색. 누가 했는지 적어 둔다 (교차탐색 판단용)
+			for c in fire.comps:
+				if c.display_name() == e.room and not primary_by.has(c.index):
+					primary_by[c.index] = _squad_of(str(e.get("crew", "")))
 			continue
 		for c in fire.comps:
 			if c.display_name() == e.room and not secondary.has(c.index):
 				secondary[c.index] = int(e.tick)
-				events.add(int(e.tick), "secondary_search_done", {"room": e.room, "crew": e.crew})
+				# 교차탐색 (SOP 202-5.2): 위험지역은 선착대와 후착대가 교차 탐색 — 처음 검색한 출동대와 다른 출동대가 다시 봤는가
+				var who := _squad_of(str(e.get("crew", "")))
+				var cross: bool = primary_by.has(c.index) and str(primary_by[c.index]) != "" and who != "" and who != str(primary_by[c.index])
+				if cross:
+					secondary_cross[c.index] = true
+				events.add(int(e.tick), "secondary_search_done", {"room": e.room, "crew": e.crew, "cross": cross})
 
 
 ## 2차 검색 대상 (화재 건물 구획, 인접 건물 제외)
@@ -180,3 +194,8 @@ func _enter(p: Phase, tick: int) -> void:
 	if not reached.has(p):
 		reached[p] = tick
 		events.add(tick, "phase", {"phase": PHASE_NAMES[p], "index": p})
+
+
+## 조 이름("구조1 1조"·"구조1")에서 출동대 이름
+static func _squad_of(crew_name: String) -> String:
+	return crew_name.get_slice(" ", 0)

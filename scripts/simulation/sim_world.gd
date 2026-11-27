@@ -193,6 +193,7 @@ static func create(building_path: String, roster_path: String, unit_stats_path :
 	sim.command.resources = ResourceSystem.new(sim.units, sim.pathfinder, sim.conditions, building, sim.events)
 	sim.command.resources.commander = sim.command.commander
 	sim.command.resources.water = sim.water
+	sim.command.knockdown_seen_fire = func() -> bool: return sim.phases.knockdown_tick >= 0 and not sim.seen_burning_rooms().is_empty()
 	var safety := SafetySystem.new(sim.fire, sim.units, sim.pathfinder, sim.rescue, sim.water, sim.doors, ParamTable.from_dict(safety_data), sim.events)
 	safety.radio = sim.command.radio
 	safety.org = sim.command.org

@@ -182,6 +182,11 @@ func _ready() -> void:
 	hud.speed_pressed.connect(set_speed)
 	hud.pause_pressed.connect(toggle_pause)
 	hud.card_ui.scene_changed.connect(_on_radio_scene)
+	# 무전한 조: 지도 위 표시 · 현장 보기(Space)로 그 조에게 (2026-11-27 사용자 결정)
+	hud.card_ui.peek_requested.connect(_jump_to_crew)
+	selection.radio_crew_fn = func() -> int:
+		var rc: CardSystem.Card = hud.card_ui.current() if hud.card_ui.scene_open() else null
+		return rc.crew_id if rc != null else -1
 	hud.command_ui.end_dialog_opened.connect(hud.hint_ui.on_end_dialog)
 	# 지휘권 선언: 지휘 위치를 지도에서 고르면 클릭으로 선언을 마친다 (P4-4)
 	hud.command_ui.post_pick_requested.connect(func(a: Dictionary) -> void:

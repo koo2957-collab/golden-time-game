@@ -14,6 +14,8 @@ extends Control
 signal order_issued(order: CommandOrder)
 ## 장면이 뜨거나 닫힘 (World가 훈련 방식에서 시간을 멈추고 푼다)
 signal scene_changed(open: bool)
+## 현장 보기: 무전한 조로 화면을 옮겨 달라 (World)
+signal peek_requested(crew_id: int)
 
 ## 장면 크기 (먹물 바탕) — 화면 설정값
 const SCENE := Vector2(1180, 640)
@@ -30,6 +32,8 @@ const LINE_COLOR := Color(0.78, 0.9, 0.95, 0.85)
 ## 꼬리표 색: 지휘관에게 오는 무전 / 조장의 판단
 const RADIO_TAG := Color("7dd3fc")
 const JUDGMENT_TAG := Color("fdba74")
+## 현장 보기 중 장면의 불투명도 — 화면 설정값
+const PEEK_ALPHA := 0.05
 
 var sim: SimWorld
 ## 장면이 뜨면 시간이 멈추는 방식인가 (World가 준다: 훈련 = true). 없으면 멈추지 않는 것으로 본다
@@ -61,6 +65,15 @@ var _open := false
 var _accent := Color.WHITE
 ## 동시 진입 허가 (P4-5): 진입 허가를 묻는 출동대가 둘 이상이면 진입 카드 아래에
 var _all: Button
+## 누가 무전했는지 (2026-11-27 사용자 결정): 분대 색 원 + 큰 분대 이름 (아래 팀 초상·지도 표시와 같은 색)
+var _squad_row: HBoxContainer
+var _squad_dot: Control
+var _squad_name: Label
+var _squad_color := Color.WHITE
+var _squad_short := ""
+## 현장 보기 (Space 누르고 있기 / 단추 누르고 있기): 장면이 투명해지고 화면이 그 조로 간다. 떼면 장면이 돌아온다
+var _peek_btn: Button
+var peeking := false
 static var _textures: Dictionary = {}
 
 
@@ -149,6 +162,18 @@ func setup(p_sim: SimWorld) -> void:
 	_ornament.custom_minimum_size = Vector2(TEXT_W, 14)
 	_ornament.draw.connect(_draw_ornament)
 	box.add_child(_ornament)
+	_squad_row = HBoxContainer.new()
+	_squad_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_squad_row.add_theme_constant_override("separation", 10)
+	_squad_dot = Control.new()
+	_squad_dot.custom_minimum_size = Vector2(40, 40)
+	_squad_dot.draw.connect(_draw_squad_dot)
+	_squad_row.add_child(_squad_dot)
+	_squad_name = Label.new()
+	_squad_name.add_theme_font_size_override("font_size", 26)
+	_squad_name.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_squad_row.add_child(_squad_name)
+	box.add_child(_squad_row)
 	_who = Label.new()
 	_who.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_who.add_theme_font_size_override("font_size", 15)
@@ -182,6 +207,14 @@ func setup(p_sim: SimWorld) -> void:
 	_more.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_more.add_theme_color_override("font_color", Color("94a3b8"))
 	box.add_child(_more)
+	_peek_btn = pill(260)
+	_peek_btn.text = "현장 보기 (Space 누르고 있기)"
+	_peek_btn.add_theme_font_size_override("font_size", 14)
+	_peek_btn.custom_minimum_size = Vector2(260, 34)
+	_peek_btn.add_theme_color_override("font_color", Color(0.75, 0.82, 0.9))
+	_peek_btn.button_down.connect(func() -> void: set_peek(true))
+	_peek_btn.button_up.connect(func() -> void: set_peek(false))
+	box.add_child(_peek_btn)
 	_panel.visible = false
 	# 고른 직후 한 줄 (훈련 방식): 화면 위쪽 가운데에 잠깐
 	_feedback_box = PanelContainer.new()
@@ -278,8 +311,11 @@ func _process(delta: float) -> void:
 	if open != _open:
 		_open = open
 		scene_changed.emit(open)
+	if not open and peeking:
+		peeking = false
 	_panel.visible = open
-	_shade.visible = open
+	_panel.modulate.a = PEEK_ALPHA if peeking else 1.0
+	_shade.visible = open and not peeking
 	_shade.mouse_filter = Control.MOUSE_FILTER_STOP if pausing() else Control.MOUSE_FILTER_IGNORE
 	_shade.color.a = 0.5 if pausing() else 0.22
 	if not open:
@@ -329,11 +365,31 @@ func _fill(c: CardSystem.Card) -> void:
 	_accent = URGENCY_COLORS.get(c.urgency, Color.WHITE)
 	var sp := speaker(sim, c)
 	var judgment := c.judgment() and str(sp.get("half", "")) != ""
-	_who.text = "%s%s" % [str(sp.name), "  ·  " + str(sp.where) if str(sp.where) != "" else ""]
+	var crew := sim.units.get_crew(c.crew_id)
+	_squad_row.visible = crew != null
+	_peek_btn.visible = crew != null and not crew.leader.aboard
+	if crew != null:
+		_squad_color = sim.units.squads[crew.squad_id].color
+		_squad_short = TeamStrip.short_label(sim, crew)
+		_squad_name.text = sim.units.crew_name(crew)
+		_squad_name.add_theme_color_override("font_color", _squad_color.lightened(0.45))
+		_squad_dot.queue_redraw()
+		# 이름 줄에서 분대 이름은 빼고 사람·층·공기만 (분대 이름은 위 배지가 크게 보여 준다)
+		var person := ff_part(str(sp.name))
+		_who.text = "%s%s" % [person, "  ·  " + str(sp.where) if str(sp.where) != "" else ""]
+	else:
+		_who.text = "%s%s" % [str(sp.name), "  ·  " + str(sp.where) if str(sp.where) != "" else ""]
 	var tex := _texture(str(sp.half) if judgment else str(sp.portrait))
 	_portrait.texture = tex
 	_portrait.visible = tex != null
-	_glow.visible = false
+	# 초상 뒤 빛: 분대 색 (무전한 분대를 색으로도 잇는다)
+	_glow.visible = crew != null and not judgment
+	if _glow.visible:
+		var g := (_glow.texture as GradientTexture2D).gradient
+		g.set_color(0, Color(_squad_color.lightened(0.2), 0.5))
+		g.set_color(1, Color(_squad_color, 0.0))
+		_glow.position = Vector2(86, 79)  # 초상(86,118 · 460×382) 가운데에 맞춤
+		_glow.size = Vector2(460, 460)
 	_badge.visible = tex == null
 	_vline.visible = judgment
 	# 무전: 왼쪽에 말하는 사람 온 모습 / 판단: 왼쪽에 얼굴 반쪽 (오른쪽 변이 세로 줄에 맞닿는다)
@@ -363,6 +419,37 @@ func _fill(c: CardSystem.Card) -> void:
 		if b.visible:
 			b.text = str(c.options[i].text)
 			b.tooltip_text = "숫자키 %d" % (i + 1)
+
+
+## 분대 배지: 아래 팀 초상과 같은 모양 (분대 색 원 + 짧은 이름 + 노란 무전 표시)
+func _draw_squad_dot() -> void:
+	var r := _squad_dot.size * 0.5
+	var rad := minf(r.x, r.y)
+	_squad_dot.draw_circle(r, rad, Color(0.06, 0.09, 0.14, 0.95))
+	_squad_dot.draw_circle(r, rad - 3.0, _squad_color.darkened(0.15))
+	_squad_dot.draw_arc(r, rad - 0.5, 0.0, TAU, 40, TeamStrip.RADIO_COLOR, 2.0)
+	var font := get_theme_default_font()
+	var fs := 11 if _squad_short.length() > 3 else 12
+	var w := font.get_string_size(_squad_short, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	_squad_dot.draw_string(font, r + Vector2(-w * 0.5, 4.0), _squad_short, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
+
+
+## 이름 줄 "진압1 · 소방위 최현수"에서 사람 부분만 ("소방위 최현수")
+static func ff_part(name_line: String) -> String:
+	var i := name_line.find(" · ")
+	return name_line.substr(i + 3) if i >= 0 else name_line
+
+
+## 현장 보기 켜기·끄기 (Space·단추를 누르고 있는 동안)
+func set_peek(on: bool) -> void:
+	var c := current()
+	if on and (c == null or sim.units.get_crew(c.crew_id) == null):
+		return
+	if on == peeking:
+		return
+	peeking = on
+	if on:
+		peek_requested.emit(c.crew_id)
 
 
 ## 무전 내용에서 맨 앞의 "진압1 1조: " 같은 이름표를 뗀다 — 누가 말하는지는 그림과 이름 줄이 보여 준다
@@ -421,7 +508,15 @@ static func feedback_text(c: CardSystem.Card, index: int) -> String:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
-	if not _panel.visible or not event is InputEventKey or not event.pressed or event.echo:
+	if not _panel.visible or not event is InputEventKey:
+		return
+	# Space: 누르고 있는 동안 현장 보기 (장면이 떠 있으면 일시정지 대신)
+	if event.keycode == KEY_SPACE:
+		get_viewport().set_input_as_handled()
+		if not event.echo:
+			set_peek(event.pressed)
+		return
+	if not event.pressed or event.echo:
 		return
 	# 방금 답해서 무전이 없는데 아직 화면이 안 바뀐 사이에는 숫자키를 팀 선택(1~9)에 넘긴다
 	if current() == null:

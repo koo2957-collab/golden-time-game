@@ -147,6 +147,12 @@ var _marker_start_ms := -1.0
 ## 클릭 표시 (2026-11-27 사용자: 클릭한 곳이 표시가 나지 않아 실행됐는지 알 수 없다 — 스타크래프트·CoH 의 명령 고리):
 ## 지시가 나간 자리에 조여 드는 고리 + 떠오르는 짧은 글, 안 되는 곳은 빨간 X. {pos, t0, kind: order·move·bad, text, lv}
 var _pings: Array[Dictionary] = []
+## 무전 표시 (2026-11-27 사용자 결정 — 어느 분대가 무전했는지): 지금 무전 장면을 띄운 조. World가 넣는다 (-1 = 없음)
+var radio_crew_fn := Callable()
+var _radio_crew := -1
+var _radio_until_ms := 0
+## 장면을 닫은 뒤에도 표시가 남는 실제 시간 (ms) — 화면 설정값
+const RADIO_LINGER_MS := 4000
 var _noticed := false
 var _in_click := false
 ## 마우스 아래의 우클릭 대상 (문·창·소화전·송수구·펌프차): {kind: door·window·spot·vehicle, cells/pos/vid, text, off, lv} — 옅은 노란 면 + 테두리
@@ -253,7 +259,13 @@ func _step_ask_walk() -> void:
 
 func _process(_delta: float) -> void:
 	_step_ask_walk()
-	if not _pings.is_empty() or not _g_obj.is_empty() or mode == Mode.TARGET:
+	var now_ms := Time.get_ticks_msec()
+	var rc := int(radio_crew_fn.call()) if radio_crew_fn.is_valid() else -1
+	if rc >= 0:
+		_radio_crew = rc
+		_radio_until_ms = now_ms + RADIO_LINGER_MS
+	var radio_on := _radio_crew >= 0 and now_ms < _radio_until_ms
+	if not _pings.is_empty() or not _g_obj.is_empty() or mode == Mode.TARGET or radio_on:
 		queue_redraw()
 	_update_cursor()
 	# 합쳐져 없어진 조는 선택에서 뺀다 (분대 합치기)
@@ -1395,6 +1407,79 @@ func _draw() -> void:
 		draw_rect(_drag_rect, Color(PlanStyle.SELECTION, 0.12))
 		draw_rect(_drag_rect, PlanStyle.SELECTION, false, 1.5)
 	_draw_pings()
+	_draw_radio_marker()
+
+
+## 무전한 조 표시: 조장 머리 위에 노란 무전기 말풍선이 맥박치듯 + 발밑 분대 색 고리, 화면 밖이면 가장자리 화살표 + 이름.
+## 스타크래프트 경보 핑처럼 화면 크기 고정. 장면을 닫은 뒤에도 RADIO_LINGER_MS 동안 옅어지며 남는다
+func _draw_radio_marker() -> void:
+	if sim == null or _radio_crew < 0 or projection == null:
+		return
+	var left_ms := _radio_until_ms - Time.get_ticks_msec()
+	if left_ms <= 0:
+		return
+	var c := sim.units.get_crew(_radio_crew)
+	if c == null or not sim.units.crew_active(_radio_crew):
+		return
+	var ff: Firefighter = c.speaker()
+	if ff.aboard:
+		return
+	var fade := clampf(float(left_ms) / 1000.0, 0.0, 1.0)
+	var z := get_canvas_transform().get_scale().x
+	var vp := _view_params()
+	var off := _floor_off(ff.level)
+	var shown := off != NOT_SHOWN
+	if not shown:
+		off = Vector2.ZERO
+	var color: Color = sim.units.squads[c.squad_id].color
+	var gold := TeamStrip.RADIO_COLOR
+	var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 1000.0 * TAU * 1.6)
+	var feet := projection.to_screen(ff.pos) + off
+	var head := projection.to_screen(ff.pos, projection.pick_height_m) + off - Vector2(0, vp.pick_h_px * 0.95 / z)
+	var label := sim.units.crew_name(c) + ("" if shown else " · " + sim.building.floor_name(ff.level))
+	# 화면 밖이면 가장자리에 화살표
+	var xf := get_canvas_transform()
+	var screen := xf * head
+	var rect := get_viewport_rect().grow(-40.0)
+	if not rect.has_point(screen):
+		var mid := rect.get_center()
+		var d := (screen - mid).normalized()
+		var t := INF
+		if absf(d.x) > 0.001:
+			t = minf(t, (rect.size.x * 0.5) / absf(d.x))
+		if absf(d.y) > 0.001:
+			t = minf(t, (rect.size.y * 0.5) / absf(d.y))
+		var edge := mid + d * t
+		draw_set_transform_matrix(xf.affine_inverse())
+		var n := Vector2(-d.y, d.x)
+		draw_colored_polygon(PackedVector2Array([edge + d * 18.0, edge - d * 6.0 + n * 13.0, edge - d * 6.0 - n * 13.0]), Color(gold, fade))
+		draw_circle(edge - d * 30.0, 15.0, Color(0.06, 0.09, 0.14, 0.9 * fade))
+		draw_arc(edge - d * 30.0, 15.0, 0.0, TAU, 32, Color(gold, (0.5 + 0.5 * pulse) * fade), 2.0)
+		TeamStrip.draw_radio_icon(self, edge - d * 30.0, 8.0, Color(gold, fade))
+		var font := PlanStyle.font()
+		var tp := edge - d * 30.0 + Vector2(-80.0, 32.0 if d.y < 0.5 else -22.0)
+		draw_string_outline(font, tp, label, HORIZONTAL_ALIGNMENT_CENTER, 160.0, 14, 3, Color(0.02, 0.04, 0.08, 0.9 * fade))
+		draw_string(font, tp, label, HORIZONTAL_ALIGNMENT_CENTER, 160.0, 14, Color(gold, fade))
+		draw_set_transform_matrix(Transform2D.IDENTITY)
+		return
+	# 발밑 고리 (입체 화면은 눕힌 타원)
+	var flat := Vector2(1.0, 0.5) if projection is IsoProjection else Vector2.ONE
+	draw_set_transform(feet, 0.0, flat)
+	draw_arc(Vector2.ZERO, (20.0 + pulse * 8.0) / z, 0.0, TAU, 36, Color(color.lightened(0.3), (0.9 - pulse * 0.5) * fade), 2.5 / z, true)
+	draw_arc(Vector2.ZERO, 14.0 / z, 0.0, TAU, 36, Color(gold, 0.8 * fade), 2.0 / z, true)
+	draw_set_transform(Vector2.ZERO)
+	# 머리 위 말풍선: 노란 원 + 꼬리 + 무전기, 맥박치듯 커졌다 작아짐
+	var r := (13.0 + pulse * 2.0) / z
+	var bub := head - Vector2(0, 16.0 / z)
+	draw_colored_polygon(PackedVector2Array([bub + Vector2(-5.0 / z, r * 0.7), bub + Vector2(5.0 / z, r * 0.7), bub + Vector2(0, r + 7.0 / z)]), Color(gold, fade))
+	draw_circle(bub, r + 2.0 / z, Color(0.06, 0.09, 0.14, 0.85 * fade))
+	draw_circle(bub, r, Color(gold, fade))
+	TeamStrip.draw_radio_icon(self, bub, 7.0 / z, Color(0, 0, 0, fade))
+	var font := PlanStyle.font()
+	var fs := maxi(8, roundi(14.0 / z))
+	var tp := bub + Vector2(-80.0 / z, -r - 6.0 / z)
+	draw_string_outline(font, tp, label, HORIZONTAL_ALIGNMENT_CENTER, 160.0 / z, fs, maxi(1, roundi(3.0 / z)), Color(0.02, 0.04, 0.08, 0.9 * fade))
+	draw_string(font, tp, label, HORIZONTAL_ALIGNMENT_CENTER, 160.0 / z, fs, Color(gold, fade))
 
 
 ## 마우스를 올린 조: 두 대원 둘레에 팀 색 윤곽 + 이름. 가려진 대원도 윤곽선으로 비쳐 보인다 (화면 크기 고정)

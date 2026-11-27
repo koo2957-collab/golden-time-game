@@ -75,6 +75,12 @@ func _play(realism: String) -> void:
 	_check("말하는 사람: 분대 이름 · 말하는 대원", str(sp.name).begins_with(sim.units.crew_name(rc)) and str(sp.name).contains(leader_name), true)
 	_check("말하는 사람 그림 (진압대)", [str(sp.portrait), ui._portrait.texture != null], ["res://art/portraits/crew_fire.png", true])
 	_check("무전 내용에서 이름표를 뗀다", [ui._text.text.contains(sim.units.crew_name(rc) + ":"), ui._text.text.contains("진입 허가 요청")], [false, true])
+	# 어느 분대가 무전했는지 (2026-11-27 사용자 결정): 카드 배지·아래 팀 초상·지도 표시가 같은 조를 가리킨다
+	_check("분대 배지: 큰 분대 이름 + 분대 색", [ui._squad_row.visible, ui._squad_name.text, ui._squad_color], [true, sim.units.crew_name(rc), sim.units.squads[rc.squad_id].color])
+	_check("이름 줄은 사람·층·공기만 (분대 이름은 배지에)", ui._who.text.begins_with(rc.speaker().rank), true)
+	await process_frame
+	_check("아래 팀 초상: 무전한 조에 무전 표시", world.hud.team_strip.speaking, rc.id)
+	_check("지도: 무전한 조 표시", world.selection._radio_crew, rc.id)
 	var cx: float = ui.size.x * 0.5
 	_check("화면 정가운데 (먹물 바탕 장면)", absf(ui._panel.position.x + ui._panel.size.x * ui._panel.scale.x * 0.5 - cx) < 4.0 and ui._panel.position.y >= 20.0, true)
 	_check("선택 단추가 선택지 수만큼", ui._buttons.filter(func(b): return b.visible).size(), card.options.size())

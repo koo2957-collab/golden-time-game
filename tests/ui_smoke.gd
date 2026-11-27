@@ -441,6 +441,21 @@ func _run() -> void:
 	_check("4× 단추 → 4배속", sim.clock.speed, 4.0)
 	_key(KEY_F1)
 	_check("F1 → 1배속", sim.clock.speed, 1.0)
+	# 무전 장면이 떠 있으면 Space = 현장 보기 (누르는 동안만, 2026-11-27 사용자 결정)
+	var cu: CardUi = world.hud.card_ui
+	if cu.scene_open() and cu.current() != null and sim.units.get_crew(cu.current().crew_id) != null:
+		var ev := InputEventKey.new()
+		ev.keycode = KEY_SPACE
+		ev.pressed = true
+		cu._unhandled_key_input(ev)
+		await process_frame
+		_check("무전 장면 + Space 누름 → 현장 보기 (장면이 투명·어둡게 하지 않음)", [cu.peeking, cu._panel.modulate.a < 0.5, cu._shade.visible], [true, true, false])
+		ev.pressed = false
+		cu._unhandled_key_input(ev)
+		_check("Space 뗌 → 장면이 돌아옴", cu.peeking, false)
+	sim.cards.queue.clear()
+	for i in 3:
+		await process_frame
 	_key(KEY_SPACE)
 	await process_frame
 	_check("Space → 일시정지 (정지 단추가 눌린 모양)", [sim.clock.paused, world.hud.pause_button.button_pressed], [true, true])

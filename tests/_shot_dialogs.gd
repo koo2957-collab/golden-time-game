@@ -48,6 +48,12 @@ func _run() -> void:
 		sim.step_ticks(2)
 	world.hud.card_ui.visible = true
 	await _snap(out, "dlg_card")
+	# 현장 보기 (Space 누르고 있기): 장면이 투명해지고 화면이 그 조로
+	world.hud.card_ui.set_peek(true)
+	for i in 40:
+		await process_frame
+	await _snap(out, "dlg_card_peek")
+	world.hud.card_ui.set_peek(false)
 	sim.cards.queue.clear()
 	await _snap(out, "dlg_none")
 	cu.open_command_dialog()

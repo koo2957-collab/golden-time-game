@@ -11,9 +11,13 @@ const SIZE := 46.0
 const GAP := 8.0
 const RING := 4.0
 const IDLE_COLOR := Color("7dd3fc")
+## 무전 표시 색 (무전 카드의 분대 배지·지도 위 표시와 같은 색)
+const RADIO_COLOR := Color("fde047")
 
 var sim: SimWorld
 var selected: Array[int] = []
+## 지금 떠 있는 무전을 보낸 조 (-1 = 없음)
+var speaking := -1
 var _refresh := 0.0
 
 
@@ -36,6 +40,11 @@ func crews() -> Array[int]:
 func _process(delta: float) -> void:
 	if sim == null:
 		return
+	var card := sim.cards.active()
+	var now_speaking := card.crew_id if card != null else -1
+	if now_speaking != speaking or speaking >= 0:
+		speaking = now_speaking
+		queue_redraw()
 	_refresh -= delta
 	if _refresh <= 0.0:
 		_refresh = 0.25
@@ -115,9 +124,7 @@ func _draw() -> void:
 		draw_arc(center, SIZE * 0.5 - RING * 0.5, -PI / 2.0, -PI / 2.0 + TAU * a, 32, ring_color, RING)
 		if c.id in selected:
 			draw_arc(center, SIZE * 0.5 + 1.0, 0.0, TAU, 32, Color.WHITE, 2.0)
-		# 나누지 않은 분대는 분대 이름("진압2"), 나뉜 조는 예전처럼 앞 두 글자 + 조 번호
-		var label := sim.units.squads[c.squad_id].name if sim.units.whole_squad(c) \
-			else "%s%d" % [sim.units.squads[c.squad_id].name.substr(0, 2), c.number]
+		var label := short_label(sim, c)
 		var w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
 		draw_string(font, center + Vector2(-w / 2.0, 5), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
 		# 인원 점: 조원 수만큼 (쓰러진 대원은 빨강) — 3명 이상일 때만
@@ -126,7 +133,13 @@ func _draw() -> void:
 				var dot := Vector2(center.x + (k - (c.list.size() - 1) * 0.5) * 7.0, r.position.y + 9.0)
 				draw_circle(dot, 2.5, Color("ef4444") if c.list[k].incapacitated else Color(1, 1, 1, 0.9))
 		draw_string(font, Vector2(r.position.x + 2, r.end.y + 14), str(i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("94a3b8"))
-		if asking(c.id):
+		if c.id == speaking:
+			# 지금 떠 있는 무전을 보낸 조: 노란 고리가 맥박치듯 + 무전기 표시 (2026-11-27 사용자 결정 — 어느 분대가 무전했는지)
+			var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 1000.0 * TAU * 1.6)
+			draw_arc(center, SIZE * 0.5 + 3.0 + pulse * 3.0, 0.0, TAU, 40, Color(RADIO_COLOR, 0.45 + 0.55 * pulse), 2.5)
+			draw_circle(r.position + Vector2(SIZE - 8, 8), 10.0, RADIO_COLOR)
+			draw_radio_icon(self, r.position + Vector2(SIZE - 8, 8), 7.0, Color.BLACK)
+		elif asking(c.id):
 			draw_circle(r.position + Vector2(SIZE - 8, 8), 9.0, Color("fde047"))
 			draw_string(font, r.position + Vector2(SIZE - 12, 13), "?", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.BLACK)
 		elif idle(c.id):
@@ -134,3 +147,20 @@ func _draw() -> void:
 			draw_string(font, Vector2(r.end.x - 24, r.end.y + 14), "대기", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, IDLE_COLOR)
 		if down:
 			draw_string(font, center + Vector2(-6, -8), "X", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("ef4444"))
+
+
+## 분대 짧은 이름: 나누지 않은 분대는 분대 이름("진압2"), 나뉜 조는 앞 두 글자 + 조 번호 (팀 초상·무전 카드 배지)
+static func short_label(p_sim: SimWorld, c: Crew) -> String:
+	if p_sim.units.whole_squad(c):
+		return p_sim.units.squads[c.squad_id].name
+	return "%s%d" % [p_sim.units.squads[c.squad_id].name.substr(0, 2), c.number]
+
+
+## 작은 무전기 그림 (몸통 + 안테나 + 스피커 줄). at = 가운데, s = 반 높이
+static func draw_radio_icon(ci: CanvasItem, at: Vector2, s: float, col: Color) -> void:
+	ci.draw_rect(Rect2(at + Vector2(-s * 0.5, -s * 0.45), Vector2(s, s * 1.4)), col)
+	ci.draw_line(at + Vector2(s * 0.25, -s * 0.45), at + Vector2(s * 0.25, -s * 1.05), col, maxf(1.0, s * 0.22))
+	var hole := Color(1.0 - col.r, 1.0 - col.g, 1.0 - col.b, 0.8)
+	for k in 2:
+		var y := at.y + s * 0.32 * k
+		ci.draw_line(Vector2(at.x - s * 0.28, y), Vector2(at.x + s * 0.28, y), hole, maxf(1.0, s * 0.14))

@@ -501,7 +501,7 @@ func _run() -> void:
 	_check("입체: 소화전 점령", tanker.hydrant, 0)
 	await process_frame
 	await process_frame
-	_check("알림 표시", world.hud._notice_label.text.contains("소화전 점령"), true)
+	_check("알림 표시", world.hud.notice_text().contains("소화전 점령"), true)
 
 	# 진압대·구조대 같은 팀 카드. 임무는 층 우클릭 지시 창 — W 화재진압, Q 인명검색 (팀 초상 줄에 가리지 않게 가운데로)
 	world.camera.retarget(world.projection().bounds(sim.building), world.projection().to_screen(u.get_crew(1).leader.pos))

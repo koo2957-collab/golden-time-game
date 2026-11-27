@@ -36,8 +36,6 @@ const NOTICE_TYPES: Array[String] = [
 ]
 ## 알림으로도 띄우는 무전 우선순위
 const NOTICE_RADIO_PRIORITIES: Array[String] = ["대원 안전", "구조대상자"]
-const NOTICE_SECONDS := 4.0
-const NOTICE_MAX := 3
 const DEBUG_EVENT_LINES := 8
 const DEBUG_COLUMNS: Array[String] = ["구획", "단계", "상부℃", "하부℃", "연기층m", "O2%", "가스%", "열방출kW", "시야m", "FO℃"]
 
@@ -68,8 +66,8 @@ var _command_panel: VBoxContainer
 var _card_title: Label
 var _card_buttons: Array[CmdButton] = []
 var _card_back: Button
-var _notice_label: Label
-var _notices: Array[Array] = []  # [문장, 남은 시간(실제 초)]
+## 위쪽 알림 칩 (2026-11-27 — 예전 노란 글자 _notice_label 대신 종류 아이콘·색·누르면 이동)
+var notice_feed: NoticeFeed
 var _events_seen := 0
 var _commander_selected := false
 var command_ui: CommandUi
@@ -131,7 +129,9 @@ func setup(p_sim: SimWorld, on_floor_selected: Callable) -> void:
 	_build_debug_panel()
 	card = CommandCard.new()
 	_build_command_panel()
-	_build_notice_label()
+	notice_feed = NoticeFeed.new()
+	add_child(notice_feed)
+	notice_feed.setup(sim)
 	_build_victim_panel()
 	# 전술상황판은 지휘 창(command_ui)보다 아래에 깐다 — 상황판을 연 채로 지휘 창·질문 카드가 위에 뜬다
 	board = TacticalBoard.new()
@@ -201,12 +201,15 @@ func _process(delta: float) -> void:
 	# 화면 모드·조작 안내는 왼쪽 위에 작게 (위 가운데 시계가 길어지지 않게)
 	_mode_label.text = "[%s]" % mode_text if mode_text != "" else ""
 	_refresh_phase_bar()
-	if _notice_label:
-		# 알림은 오른쪽 상황판이 가리지 않는 지도 영역 가운데에
+	if notice_feed:
+		# 알림은 오른쪽 상황판이 가리지 않는 지도 영역 가운데에 (왼쪽 옆 패널이 열려 있으면 그 오른쪽 영역 가운데)
+		var left := command_ui.side_panel_right()
 		var cx := command_ui.map_center_x()
-		_notice_label.offset_left = cx - size.x * 0.5 - 400.0
-		_notice_label.offset_right = cx - size.x * 0.5 + 400.0
-		_notice_label.offset_top = top_reserved_px() + (56.0 if _emergency_button and _emergency_button.visible else 4.0)
+		if left > 0.0:
+			cx = (left + command_ui.map_center_x() * 2.0) * 0.5
+		notice_feed.reset_size()
+		notice_feed.position = Vector2(roundf(cx - notice_feed.size.x * 0.5),
+			top_reserved_px() + (56.0 if _emergency_button and _emergency_button.visible else 4.0))
 	_refresh_floor_bar(delta)
 	_layout_console()
 	_refresh_subtitles()
@@ -349,7 +352,7 @@ func _refresh_card() -> void:
 
 
 func show_notice(text: String) -> void:
-	_notices.append([text, NOTICE_SECONDS * 2.0])
+	notice_feed.push(text, "info")
 
 
 func _update_notices(delta: float) -> void:
@@ -358,36 +361,15 @@ func _update_notices(delta: float) -> void:
 		var e := entries[_events_seen]
 		_events_seen += 1
 		if e.type in NOTICE_TYPES and not CommandSystem.REPORT_PRIORITY.has(e.type) and sim.command.observable(e):
-			_notices.append([SimEventLog.describe(e), NOTICE_SECONDS])
+			notice_feed.push_event(e)
 		elif e.type == "radio" and e.priority in NOTICE_RADIO_PRIORITIES:
-			_notices.append([SimEventLog.describe(e), NOTICE_SECONDS])
-	for n in _notices:
-		n[1] -= delta
-	_notices = _notices.filter(func(n: Array) -> bool: return n[1] > 0.0)
-	while _notices.size() > NOTICE_MAX:
-		_notices.pop_front()
-	var lines: PackedStringArray = []
-	for n in _notices:
-		lines.append(n[0])
-	_notice_label.text = "\n".join(lines)
-	_notice_label.visible = not lines.is_empty()
+			notice_feed.push_event(e)
+	notice_feed.step(delta)
 
 
-func _build_notice_label() -> void:
-	_notice_label = Label.new()
-	_notice_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_notice_label.offset_left = -400
-	_notice_label.offset_right = 400
-	_notice_label.offset_top = 70
-	_notice_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_notice_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_notice_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_notice_label.add_theme_font_size_override("font_size", 20)
-	_notice_label.add_theme_color_override("font_color", Color("fde68a"))
-	_notice_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	_notice_label.add_theme_constant_override("outline_size", 6)
-	add_child(_notice_label)
-	_notice_label.visible = false
+## 떠 있는 알림 글 (화면 점검용)
+func notice_text() -> String:
+	return notice_feed.feed_text()
 
 
 func _build_command_panel() -> void:

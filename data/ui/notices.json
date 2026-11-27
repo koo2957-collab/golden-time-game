@@ -1,0 +1,27 @@
+{
+  "_note": "위쪽 알림 칩 (2026-11-27 사용자 결정: 노란 글자만으로는 무엇인지·어디서인지 몰랐다 — CoH·프로스트펑크의 아이콘 알림). 종류마다 아이콘·색, 그 자리를 알면 누르면 화면 이동 + 지도에 표시",
+  "seconds": {"value": 8.0, "source": "게임 설정값", "note": "알림 칩이 떠 있는 실제 시간(초). 예전 4초는 읽기 전에 사라졌다"},
+  "fade_s": {"value": 1.0, "source": "게임 설정값", "note": "사라지기 전 옅어지는 시간(초)"},
+  "max": {"value": 4, "source": "게임 설정값", "note": "한꺼번에 보이는 칩 수 (넘으면 오래된 것부터 뺀다)"},
+  "statement_bubble_s": {"value": 6.0, "source": "게임 설정값", "note": "관계인 머리 위 진술 말풍선이 떠 있는 실제 시간(초)"},
+  "map_ping_s": {"value": 2.4, "source": "게임 설정값", "note": "알림 자리 지도 표시(고리·짧은 글)가 떠 있는 실제 시간(초)"},
+  "categories": {
+    "_source": "화면 설정 — 색은 아래 팀 초상·무전 카드와 겹치지 않게. 종류 순서대로 찾고, 어디에도 없으면 info",
+    "danger": {"label": "위험", "color": "#f87171", "icon": "danger",
+      "types": ["heat_blocked", "heat_retreat", "heat_stress_retreat", "heat_stress_high", "air_alarm", "exit_blocked", "rollover_sign", "backdraft_sign", "backdraft",
+        "fgi_warning", "par_no_response", "crew_disoriented", "exit_air_low", "post_danger", "ppv_fire_push", "aerial_debris", "zone_warning", "span_warning", "withdraw", "evacuation_ordered", "rit_deployed"],
+      "radio": ["대원 안전"]},
+    "victim": {"label": "구조대상자", "color": "#fb923c", "icon": "person",
+      "types": ["victim_found", "victim_state", "victim_rescued", "victim_recovered", "ff_rescued", "rescue_pickup", "victim_handover", "victim_refuge", "triage_tagged", "evac_priority"],
+      "radio": ["구조대상자"]},
+    "vehicle": {"label": "차량", "color": "#60a5fa", "icon": "truck",
+      "types": ["squad_dispatched", "staging_full", "order_en_route", "vehicle_locked", "vehicle_blocked", "command_unit_arrived", "tank_empty", "tanker_idle",
+        "hydrant_connected", "hydrant_disconnected", "supply_connected", "aerial_deploying", "aerial_deployed", "aerial_stowed", "aerial_out_of_reach", "aerial_no_target", "aerial_no_window", "aerial_busy", "aerial_rescue_start", "aerial_no_feed",
+        "monitor_start", "monitor_no_target", "monitor_too_far", "monitor_crew_inside"]},
+    "witness": {"label": "관계인", "color": "#4ade80", "icon": "speech",
+      "types": ["statement", "witness_arrived", "ask_too_far", "ask_cancelled"]},
+    "clue": {"label": "단서", "color": "#facc15", "icon": "eye",
+      "types": ["face_seen", "site_info_found", "clue_found", "plan_acquired", "plan_diff_found", "panel_fire_floor", "fire_not_found", "search_done"]},
+    "info": {"label": "현장", "color": "#94a3b8", "icon": "info", "types": []}
+  }
+}

@@ -184,6 +184,9 @@ func _ready() -> void:
 	hud.card_ui.scene_changed.connect(_on_radio_scene)
 	# 무전한 조: 지도 위 표시 · 현장 보기(Space)로 그 조에게 (2026-11-27 사용자 결정)
 	hud.card_ui.peek_requested.connect(_jump_to_crew)
+	# 알림 칩: 누르면 그 자리로, 뜰 때 지도에 표시 (2026-11-27 사용자 결정)
+	hud.notice_feed.jump.connect(_jump_to_spot)
+	hud.notice_feed.placed.connect(selection.notice_ping)
 	selection.radio_crew_fn = func() -> int:
 		var rc: CardSystem.Card = hud.card_ui.current() if hud.card_ui.scene_open() else null
 		return rc.crew_id if rc != null else -1
@@ -799,6 +802,14 @@ func _jump_to_crew(crew_id: int) -> void:
 		return
 	set_view_level(c.leader.level, _outdoors(c.leader.level, c.leader.pos))
 	camera.retarget(_view_bounds(), projection().to_screen(c.leader.pos))
+
+
+## 알림 칩: 그 자리로 화면 이동 (층도 바꾼다)
+func _jump_to_spot(pos: Vector2, lv: int) -> void:
+	if not sim.building.has_level(lv):
+		return
+	set_view_level(lv, _outdoors(lv, pos))
+	camera.retarget(_view_bounds(), projection().to_screen(pos))
 
 
 ## 명령판 12칸의 단축키 입력 동작 (cmd_q … cmd_v). 프로젝트 설정에 없는 키(D F Z X C V — 2026-11-26 명령판 세 줄)는 여기서 더한다

@@ -423,6 +423,19 @@ func ping(world: Vector2, text := "", kind := "order", lv := -99) -> void:
 	queue_redraw()
 
 
+## 알림 자리 표시 (2026-11-27 사용자 결정 — 알림이 어디서 나왔는지): 그 자리에 종류 색 고리가 두 번 퍼지고, 짧은 글을 말풍선으로.
+## pos = 칸 좌표, lv = 층. 지금 보이지 않는 층이면 그리지 않는다 (칩은 그대로 — 누르면 그 층으로 간다)
+func notice_ping(pos: Vector2, lv: int, color: Color, text: String, seconds: float) -> void:
+	if projection == null:
+		return
+	var off := _floor_off(lv)
+	if off == NOT_SHOWN:
+		return
+	_pings.append({"pos": projection.to_screen(pos) + off, "t0": Time.get_ticks_msec(), "kind": "notice", "text": text, "lv": -99,
+		"color": color, "dur": seconds * 1000.0})
+	queue_redraw()
+
+
 func _draw_pings() -> void:
 	if _pings.is_empty():
 		return
@@ -435,12 +448,15 @@ func _draw_pings() -> void:
 	var keep: Array[Dictionary] = []
 	for p in _pings:
 		var age := float(now - int(p.t0))
-		if age > PING_TEXT_MS:
+		if age > float(p.get("dur", PING_TEXT_MS)):
 			continue
 		keep.append(p)
 		var pos: Vector2 = p.pos
 		var t := clampf(age / PING_MS, 0.0, 1.0)
 		var kind := str(p.kind)
+		if kind == "notice":
+			_draw_notice_ping(p, age, z, flat, font)
+			continue
 		if kind == "bad":
 			if t < 1.0:
 				var s := 10.0 / z
@@ -482,6 +498,34 @@ func _draw_pings() -> void:
 			draw_string_outline(font, tp, text, HORIZONTAL_ALIGNMENT_CENTER, w, fs, maxi(1, roundi(3.0 / z)), Color(0.02, 0.04, 0.08, ta * 0.9))
 			draw_string(font, tp, text, HORIZONTAL_ALIGNMENT_CENTER, w, fs, Color(col, ta))
 	_pings = keep
+
+
+## 알림 자리: 종류 색 고리가 바깥으로 두 번 퍼지고(0.9초 간격), 위에 어두운 말풍선 + 종류 색 테두리 글. 끝 0.6초에 옅어진다
+func _draw_notice_ping(p: Dictionary, age: float, z: float, flat: Vector2, font: Font) -> void:
+	var pos: Vector2 = p.pos
+	var col: Color = p.color
+	var dur := float(p.dur)
+	var fade := clampf((dur - age) / 600.0, 0.0, 1.0)
+	draw_set_transform(pos, 0.0, flat)
+	for k in 2:
+		var t := (age - k * 900.0) / 900.0
+		if t < 0.0 or t > 1.0:
+			continue
+		draw_arc(Vector2.ZERO, lerpf(10.0, 46.0, t) / z, 0.0, TAU, 36, Color(col, (1.0 - t) * fade), 3.0 / z, true)
+	draw_circle(Vector2.ZERO, 5.0 / z, Color(col, 0.9 * fade))
+	draw_set_transform(Vector2.ZERO)
+	var text := str(p.text)
+	if text == "":
+		return
+	var fs := maxi(8, roundi(15.0 / z))
+	var tw := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var pad := Vector2(10.0, 6.0) / z
+	var box := Rect2(pos + Vector2(-tw * 0.5, -(58.0 / z) - fs) - pad, Vector2(tw, fs * 1.25) + pad * 2.0)
+	var tail := PackedVector2Array([Vector2(pos.x - 6.0 / z, box.end.y), Vector2(pos.x + 6.0 / z, box.end.y), Vector2(pos.x, box.end.y + 10.0 / z)])
+	draw_colored_polygon(tail, Color(0.04, 0.06, 0.09, 0.92 * fade))
+	draw_rect(box, Color(0.04, 0.06, 0.09, 0.92 * fade))
+	draw_rect(box, Color(col, fade), false, 1.6 / z)
+	draw_string(font, Vector2(box.position.x + pad.x, box.position.y + pad.y + fs * 0.95), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(SidePanelStyle.TEXT, fade))
 
 
 # --- 마우스 올림: 우클릭 대상 강조·커서 ---

@@ -56,6 +56,18 @@ func _run() -> void:
 	world.hud.card_ui.set_peek(false)
 	sim.cards.queue.clear()
 	await _snap(out, "dlg_none")
+	# 알림 칩: 관계인 진술(말풍선) · 차량 · 위험 · 단서
+	var feed = world.hud.notice_feed
+	var w0 = sim.command.survey.witnesses[0] if not sim.command.survey.witnesses.is_empty() else null
+	if w0:
+		feed.push_event({"type": "statement", "time_s": 251, "witness": w0.label(), "question": "안에 사람이 있습니까?", "text": "할머니랑 손자가 같이 살아요"})
+	var v0 = sim.units.vehicles[1]
+	feed.push_event({"type": "tank_empty", "time_s": 252, "vehicle": v0.display_name(sim.units.squads[v0.squad_id].name)})
+	feed.push_event({"type": "radio", "priority": "대원 안전", "time_s": 253, "from": "진압1", "to": "현장지휘관", "text": "공기 경보, 탈출합니다."})
+	feed.push_event({"type": "clue_found", "time_s": 254, "text": "실내등 켜짐 — 2층 방3 (A면 창)"})
+	for i in 30:
+		await process_frame
+	await _snap(out, "notice_feed")
 	cu.open_command_dialog()
 	await _snap(out, "dlg_report")
 	cu.close_all()

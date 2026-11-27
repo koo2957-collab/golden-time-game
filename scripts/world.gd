@@ -187,6 +187,8 @@ func _ready() -> void:
 	# 알림 칩: 누르면 그 자리로, 뜰 때 지도에 표시 (2026-11-27 사용자 결정)
 	hud.notice_feed.jump.connect(_jump_to_spot)
 	hud.notice_feed.placed.connect(selection.notice_ping)
+	# 무전: 말한 분대 머리 위 짧은 말풍선 (2026-11-27 사용자 결정)
+	hud.radio_subtitles.bark.connect(selection.notice_ping)
 	selection.radio_crew_fn = func() -> int:
 		var rc: CardSystem.Card = hud.card_ui.current() if hud.card_ui.scene_open() else null
 		return rc.crew_id if rc != null else -1

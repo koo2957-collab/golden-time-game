@@ -63,11 +63,24 @@ func _run() -> void:
 		feed.push_event({"type": "statement", "time_s": 251, "witness": w0.label(), "question": "안에 사람이 있습니까?", "text": "할머니랑 손자가 같이 살아요"})
 	var v0 = sim.units.vehicles[1]
 	feed.push_event({"type": "tank_empty", "time_s": 252, "vehicle": v0.display_name(sim.units.squads[v0.squad_id].name)})
-	feed.push_event({"type": "radio", "priority": "대원 안전", "time_s": 253, "from": "진압1", "to": "현장지휘관", "text": "공기 경보, 탈출합니다."})
 	feed.push_event({"type": "clue_found", "time_s": 254, "text": "실내등 켜짐 — 2층 방3 (A면 창)"})
 	for i in 30:
 		await process_frame
 	await _snap(out, "notice_feed")
+	# 무전: 아래 자막 줄 · 머리 위 말풍선 · 긴급 띠 (2026-11-27 사용자 결정)
+	var radio = sim.command.radio
+	var rc = sim.units.crews[sim.units.crews.size() - 1]
+	var rname: String = sim.units.crew_name(rc)
+	radio.send(Radio.Priority.TACTICS, rname, CommandSystem.COMMANDER, "1층 현관 진입 준비 완료.", sim.clock.tick)
+	radio.send(Radio.Priority.SAFETY, rname, CommandSystem.COMMANDER, "공기 경보, 탈출합니다.", sim.clock.tick)
+	for i in 400:
+		sim.step_ticks(1)
+		await process_frame
+		if radio.current and radio.current.priority == Radio.Priority.SAFETY:
+			break
+	for i in 20:
+		await process_frame
+	await _snap(out, "radio_a")
 	cu.open_command_dialog()
 	await _snap(out, "dlg_report")
 	cu.close_all()

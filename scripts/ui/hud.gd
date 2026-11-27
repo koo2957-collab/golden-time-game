@@ -19,7 +19,7 @@ signal board_pressed(id: String)
 const DEBUG_REFRESH_S := 0.25
 const SELECTION_REFRESH_S := 0.25
 ## 화면 위쪽에 알림으로 띄우는 사건. 대원이 무전으로 보고하는 사건(CommandSystem.REPORT_PRIORITY)은
-## 무전 송신이 끝났을 때 무전 기록에 나오고, 대원 안전·구조대상자 무전은 알림으로도 띄운다.
+## 무전 송신이 끝났을 때 무전 기록에 나온다. 무전은 알림 칩에 넣지 않는다 — 아래 왼쪽 무전 자막·머리 위 말풍선·긴급 띠가 맡는다 (2026-11-27)
 const NOTICE_TYPES: Array[String] = [
 	"hydrant_connected", "hydrant_disconnected", "supply_connected", "hose_laid", "hose_too_short",
 	"hose_limit", "tank_empty", "vehicle_locked", "vehicle_blocked", "spray_unreachable",
@@ -34,8 +34,6 @@ const NOTICE_TYPES: Array[String] = [
 	"emergency_cleared", "evacuation_ordered", "par_done", "par_no_response", "role_assigned", "role_reserved", "rit_deployed", "squad_split", "squad_merged", "regroup_rejected", "solo_sent", "solo_done", "solo_back", "solo_rejected", "solo_order_rejected", "work_helped",
 	"entry_factors", "order_unseen", "exit_air_low", "indoor_hydrant_empty", "command_unit_arrived", "command_transferred", "lifeline_laid", "crew_disoriented", "crew_reoriented", "victim_refuge", "elevator_ride", "elevator_arrived", "elevator_far", "elevator_too_high", "monitor_start", "monitor_no_target", "monitor_too_far", "monitor_crew_inside", "ppv_start", "ppv_no_door", "ppv_no_exhaust", "ppv_fire_push", "ppv_exhaust_order", "ppv_exhaust_none", "command_post_set", "post_danger", "forward_set", "command_mode", "zone_install_go", "zone_no_crew", "aerial_deploying", "aerial_deployed", "aerial_stowed", "aerial_debris", "aerial_out_of_reach", "aerial_no_target", "aerial_no_window", "aerial_busy", "aerial_rescue_start", "aerial_no_feed", "fire_not_found", "evac_priority", "rit_misused", "tanker_idle", "hose_to_outlet", "plan_acquired", "panel_fire_floor", "plan_diff_found",
 ]
-## 알림으로도 띄우는 무전 우선순위
-const NOTICE_RADIO_PRIORITIES: Array[String] = ["대원 안전", "구조대상자"]
 const DEBUG_EVENT_LINES := 8
 const DEBUG_COLUMNS: Array[String] = ["구획", "단계", "상부℃", "하부℃", "연기층m", "O2%", "가스%", "열방출kW", "시야m", "FO℃"]
 
@@ -208,8 +206,10 @@ func _process(delta: float) -> void:
 		if left > 0.0:
 			cx = (left + command_ui.map_center_x() * 2.0) * 0.5
 		notice_feed.reset_size()
-		notice_feed.position = Vector2(roundf(cx - notice_feed.size.x * 0.5),
-			top_reserved_px() + (56.0 if _emergency_button and _emergency_button.visible else 4.0))
+		var below := 56.0 if _emergency_button and _emergency_button.visible else 4.0
+		if _urgent and _urgent.visible:
+			below += _urgent.size.y + 6.0
+		notice_feed.position = Vector2(roundf(cx - notice_feed.size.x * 0.5), top_reserved_px() + below)
 	_refresh_floor_bar(delta)
 	_layout_console()
 	_refresh_subtitles()
@@ -361,8 +361,6 @@ func _update_notices(delta: float) -> void:
 		var e := entries[_events_seen]
 		_events_seen += 1
 		if e.type in NOTICE_TYPES and not CommandSystem.REPORT_PRIORITY.has(e.type) and sim.command.observable(e):
-			notice_feed.push_event(e)
-		elif e.type == "radio" and e.priority in NOTICE_RADIO_PRIORITIES:
 			notice_feed.push_event(e)
 	notice_feed.step(delta)
 
@@ -571,41 +569,108 @@ func _refresh_floor_bar(delta: float) -> void:
 	floor_bar.queue_redraw()
 
 
-var _subtitles: Label
+## 무전 자막 줄 (2026-11-27 사용자 결정 — 무전은 여기 한 곳에, 말한 쪽 배지·이름): 화면 아래 왼쪽 (기획안 9-2, SOP 107)
+var radio_subtitles: RadioSubtitles
+## 긴급 무전 띠 (대원 안전): 위 가운데 빨간 띠 + 위치 보기
+var _urgent: PanelContainer
+var _urgent_text: Label
+var _urgent_badge: Control
+var _urgent_left := 0.0
+var _urgent_at := {}
+const URGENT_SECONDS := 8.0
 
 
-## 무전 자막: 화면 아래 왼쪽 반투명 2~3줄, 5초 뒤 사라짐, 대원 안전 무전은 빨강 (기획안 9-2, SOP 107)
 func _build_subtitles() -> void:
-	_subtitles = Label.new()
-	_subtitles.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_subtitles.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_subtitles.custom_minimum_size = Vector2(760, 0)
-	_subtitles.add_theme_font_size_override("font_size", 17)
-	_subtitles.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	_subtitles.add_theme_constant_override("outline_size", 5)
-	add_child(_subtitles)
+	radio_subtitles = RadioSubtitles.new()
+	add_child(radio_subtitles)
+	radio_subtitles.setup(sim)
+	radio_subtitles.urgent.connect(_show_urgent)
+	_urgent = PanelContainer.new()
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color(0.24, 0.04, 0.05, 0.94)
+	st.border_color = RadioSubtitles.SAFETY_COLOR
+	st.set_border_width_all(2)
+	st.set_corner_radius_all(8)
+	st.content_margin_left = 14
+	st.content_margin_right = 16
+	st.content_margin_top = 7
+	st.content_margin_bottom = 7
+	_urgent.add_theme_stylebox_override("panel", st)
+	_urgent.mouse_filter = Control.MOUSE_FILTER_STOP
+	_urgent.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_urgent.tooltip_text = "누르면 그 분대로"
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_urgent.add_child(row)
+	var icon := Control.new()
+	icon.custom_minimum_size = Vector2(18, 26)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.draw.connect(func() -> void: TeamStrip.draw_radio_icon(icon, icon.size * 0.5 + Vector2(0, 2), 9.0, RadioSubtitles.SAFETY_COLOR))
+	row.add_child(icon)
+	var tag := Label.new()
+	tag.text = "긴급 무전"
+	tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tag.add_theme_font_size_override("font_size", 18)
+	tag.add_theme_color_override("font_color", RadioSubtitles.SAFETY_COLOR)
+	row.add_child(tag)
+	_urgent_badge = Control.new()
+	_urgent_badge.custom_minimum_size = Vector2(30, 30)
+	_urgent_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(_urgent_badge)
+	_urgent_text = Label.new()
+	_urgent_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_urgent_text.add_theme_font_size_override("font_size", 18)
+	_urgent_text.add_theme_color_override("font_color", Color.WHITE)
+	row.add_child(_urgent_text)
+	var go := Label.new()
+	go.text = "◎ 위치 보기"
+	go.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	go.add_theme_font_size_override("font_size", 15)
+	go.add_theme_color_override("font_color", Color("fecaca"))
+	row.add_child(go)
+	_urgent.gui_input.connect(func(ev: InputEvent) -> void:
+		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+			if not _urgent_at.is_empty():
+				notice_feed.jump.emit(_urgent_at.pos, int(_urgent_at.lv))
+			_urgent_left = 0.0
+			_urgent.visible = false
+			_urgent.accept_event())
+	_urgent.visible = false
+	add_child(_urgent)
+
+
+## 대원 안전 무전: 위 가운데 빨간 띠 (URGENT_SECONDS 동안, 누르면 그 분대로)
+func _show_urgent(speaker: String, body: String, color: Color, label: String, pos: Vector2, lv: int) -> void:
+	_urgent_text.text = "%s — %s" % [speaker, body]
+	_urgent_at = {} if pos.x < 0.0 else {"pos": pos, "lv": lv}
+	for c in _urgent_badge.get_signal_connection_list("draw"):
+		_urgent_badge.draw.disconnect(c.callable)
+	_urgent_badge.draw.connect(func() -> void: RadioSubtitles.draw_badge(_urgent_badge, _urgent_badge.size * 0.5, 15.0, color, label))
+	_urgent_badge.queue_redraw()
+	_urgent_left = URGENT_SECONDS
+	_urgent.visible = true
+	_urgent.modulate.a = 1.0
+
+
+## 떠 있는 긴급 띠 글 (화면 점검용, 없으면 "")
+func urgent_text() -> String:
+	return _urgent_text.text if _urgent.visible else ""
 
 
 func _refresh_subtitles() -> void:
-	var radio := sim.command.radio
-	var now := sim.clock.tick
-	var lines: PackedStringArray = []
-	var danger := false
-	var shown := 0
-	for i in range(radio.history.size() - 1, -1, -1):
-		var m := radio.history[i]
-		if (now - m.end_tick) * SimClock.TICK_DT > 5.0 or shown >= 3:
-			break
-		lines.insert(0, m.text())
-		danger = danger or m.priority == Radio.Priority.SAFETY
-		shown += 1
-	if radio.current:
-		lines.append("▶ " + radio.current.text())
-		danger = danger or radio.current.priority == Radio.Priority.SAFETY
-	_subtitles.text = "\n".join(lines)
-	_subtitles.add_theme_color_override("font_color", Color("fca5a5") if danger else Color("f1f5f9"))
+	radio_subtitles.refresh()
 	var bottom := console.position.y if console else size.y - 120.0
-	_subtitles.position = Vector2(16, bottom - 8.0 - _subtitles.get_combined_minimum_size().y)
+	radio_subtitles.reset_size()
+	radio_subtitles.position = Vector2(14, bottom - 8.0 - radio_subtitles.size.y)
+	if _urgent.visible:
+		_urgent_left -= get_process_delta_time()
+		_urgent.modulate.a = clampf(_urgent_left, 0.0, 1.0)
+		if _urgent_left <= 0.0:
+			_urgent.visible = false
+		_urgent.reset_size()
+		var cx := command_ui.map_center_x()
+		_urgent.position = Vector2(roundf(cx - _urgent.size.x * 0.5), top_reserved_px() + 4.0)
 
 
 var _emergency_button: Button

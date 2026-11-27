@@ -56,6 +56,9 @@ func _run() -> void:
 	world.hud.card_ui.set_peek(false)
 	sim.cards.queue.clear()
 	await _snap(out, "dlg_none")
+	world.hud.notice_feed.modulate.a = 0.0
+	await _snap(out, "base_clean")
+	world.hud.notice_feed.modulate.a = 1.0
 	# 알림 칩: 관계인 진술(말풍선) · 차량 · 위험 · 단서
 	var feed = world.hud.notice_feed
 	var w0 = sim.command.survey.witnesses[0] if not sim.command.survey.witnesses.is_empty() else null
